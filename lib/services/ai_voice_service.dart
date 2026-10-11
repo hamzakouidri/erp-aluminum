@@ -41,7 +41,7 @@ class AiVoiceService {
     try {
       // استخدام Gemini REST API مباشرة (يدعم المفاتيح الجديدة)
       final url = Uri.parse(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent',
       );
 
       final response = await http.post(

@@ -106,17 +106,19 @@ void main() {
         }
         expect(cleatItem.roleKey, equals('complement_haut_base'));
 
-        // 3. Traverse cut at 45°/90° must be present
-        final traverse4590 = bom.firstWhere(
-          (item) => item.originalName.contains('45°/90°'),
-          orElse: () => throw Exception('Traverse 45°/90° not found in BOM'),
+        // 3. The sash keeps its two widths. Slim replaces only one vertical
+        // montant and must never move those widths to the complement row.
+        final sashItem = bom.firstWhere(
+          (item) => item.originalName.contains('Sliding Sash'),
         );
-        expect(traverse4590.pieces, isNotNull);
         expect(
-          traverse4590.pieces!.length,
+          sashItem.pieces!.where((piece) => piece < 1.0).length,
           equals(2),
-        ); // top and bottom rail of sash 0
-        expect(traverse4590.roleKey, equals('sash_traverse'));
+        );
+        expect(
+          bom.where((item) => item.roleKey == 'sash_traverse'),
+          isEmpty,
+        );
 
         // 4. Chicane must be cancelled (eliminated) for this junction
         final chicaneExists = bom.any(
@@ -129,7 +131,7 @@ void main() {
     );
 
     test(
-      '3-Sash sliding window with middle sash both sides slim generates 90°/90° traverse',
+      '3-Sash sliding window with middle sash both sides slim keeps widths on sash',
       () {
         final fakeDb = FakeSqlDatabase();
         final model = WindowModel(db: fakeDb, width: 2100, height: 1200);
@@ -172,16 +174,13 @@ void main() {
           kitPerLeafMap: {},
         );
 
-        // 1. 90°/90° traverse must be present for middle sash
-        final traverse9090 = bom.firstWhere(
-          (item) => item.originalName.contains('90°/90°'),
-          orElse: () => throw Exception('Traverse 90°/90° not found in BOM'),
+        // 1. No separate traverse profile: all six widths remain on the
+        // normal sash row, including the middle sash's 90°/90° pieces.
+        final sashItem = bom.firstWhere(
+          (item) => item.originalName.contains('Sliding Sash'),
         );
-        expect(traverse9090.pieces, isNotNull);
-        expect(
-          traverse9090.pieces!.length,
-          equals(2),
-        ); // top & bottom of middle sash
+        expect(sashItem.pieces!.where((piece) => piece < 1.0).length, equals(6));
+        expect(bom.where((item) => item.roleKey == 'sash_traverse'), isEmpty);
 
         // 2. Montant Slim must have 2 pieces (one for central_1, one for central_2)
         final slimItem = bom.firstWhere(
@@ -200,6 +199,28 @@ void main() {
         expect(cleatItem.pieces!.length, equals(4));
       },
     );
+
+    test('cancelling the final Slim flag clears the selected profile', () {
+      final model = WindowModel(db: FakeSqlDatabase());
+      final zone = WindowZone(
+        id: 'z1',
+        content: ZoneContent.slidingSash,
+        boundary: const Rect.fromLTWH(0, 0, 1000, 1000),
+        slidingMontantSlim: {'central_0': true},
+      );
+      model.zones = [zone];
+      model.applySlidingMontantSlimOverride({'id': 999, 'name': 'Slim'});
+      expect(model.selectedSlimMontantProfile, isNotNull);
+
+      zone.slidingMontantSlim['central_0'] = false;
+      model.clearSlidingMontantSlimOverrideIfInactive();
+
+      expect(model.selectedSlimMontantProfile, isNull);
+      expect(
+        model.componentOverrides['قائم وسطي سليم (Montant Slim)'],
+        isNull,
+      );
+    });
 
     test(
       'pdf_fiche_coupe_api anglesFor detects 45/90 and slim 90/90 correctly',

@@ -31,7 +31,7 @@ import 'package:database_data/services/auth_service.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:database_data/services/supabase_workshop_sync_service.dart';
 import 'package:database_data/sql_database.dart';
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
@@ -208,6 +208,9 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
     final background = isDark ? const Color(0xFF111827) : Colors.white;
     final db = SqlDatabase();
 
+    final allowWorkshop = settings.isWorkingInWorkshop;
+    final allowStore = settings.isWorkingInStore;
+
     // ── Fichier (ملف) ────────────────────────────────────────────────────────
     final fichierItems = <_DesktopMenuItem>[
       _DesktopMenuItem(
@@ -236,14 +239,14 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
 
     // ── Vente (المبيعات والزبائن) ───────────────────────────────────────────
     final venteItems = <_DesktopMenuItem>[
-      if (settings.canViewOrders())
+      if (allowWorkshop && settings.canViewOrders())
         _DesktopMenuItem(
           label: Localization.translate('commandes', lang),
           icon: Icons.receipt_long_rounded,
           onSelected: () =>
               _open('commandes', Icons.receipt_long_rounded, Commande()),
         ),
-      if (settings.canMaterialSales())
+      if (allowStore && settings.canMaterialSales())
         _DesktopMenuItem(
           label: _label(
             lang,
@@ -258,7 +261,7 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
             MaterialSalesScreen(db: db),
           ),
         ),
-      if (settings.canViewSales())
+      if (allowWorkshop && settings.canViewSales())
         _DesktopMenuItem(
           label: Localization.translate('vente', lang),
           icon: Icons.point_of_sale_rounded,
@@ -272,9 +275,17 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
         _DesktopMenuItem(
           label: Localization.translate('clients', lang),
           icon: Icons.groups_rounded,
-          onSelected: () => _open('clients', Icons.groups_rounded, Customers()),
+          onSelected: () => _open(
+            'clients',
+            Icons.groups_rounded,
+            Customers(
+              storeOnly:
+                  settings.workingSection == WorkingSection.materialsStore,
+            ),
+          ),
         ),
-      if (settings.canViewClientLedger())
+      if (settings.workingSection != WorkingSection.materialsStore &&
+          settings.canViewClientLedger())
         _DesktopMenuItem(
           label: Localization.translate('كشف حساب الزبائن', lang),
           icon: Icons.history_edu_rounded,
@@ -284,7 +295,7 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
             const ClientChronoSearchScreen(),
           ),
         ),
-      if (settings.canAccessDistributionTracking())
+      if (allowWorkshop && settings.canAccessDistributionTracking())
         _DesktopMenuItem(
           label: _label(
             lang,
@@ -303,12 +314,31 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
 
     // ── Achat (المشتريات والموردون) ─────────────────────────────────────────
     final achatItems = <_DesktopMenuItem>[
-      if (settings.canRegisterPurchases())
+      if (allowWorkshop && settings.canAccessWorkshopPurchases())
         _DesktopMenuItem(
-          label: Localization.translate('achat', lang),
+          label: Localization.translate(
+            settings.isDualActivity ? 'مشتريات الورشة' : 'المشتريات',
+            lang,
+          ),
+          icon: Icons.precision_manufacturing_rounded,
+          onSelected: () => _open(
+            'achat_workshop',
+            Icons.precision_manufacturing_rounded,
+            AchatScreen(db: db, isWorkshop: true),
+          ),
+        ),
+      if (allowStore && settings.canAccessStorePurchases())
+        _DesktopMenuItem(
+          label: Localization.translate(
+            settings.isDualActivity ? 'مشتريات محل المواد' : 'المشتريات',
+            lang,
+          ),
           icon: Icons.shopping_bag_rounded,
-          onSelected: () =>
-              _open('achat', Icons.shopping_bag_rounded, AchatScreen(db: db)),
+          onSelected: () => _open(
+            'achat_store',
+            Icons.shopping_bag_rounded,
+            AchatScreen(db: db, isWorkshop: false),
+          ),
         ),
       if (settings.canViewSuppliers())
         _DesktopMenuItem(
@@ -339,17 +369,35 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
             ProductsMenuScreen(db: db),
           ),
         ),
-      if (settings.canAccessInventory())
-        _DesktopMenuItem(
-          label: Localization.translate('المخزون', lang),
-          icon: Icons.warehouse_rounded,
-          onSelected: () => _open(
-            'inventory',
-            Icons.warehouse_rounded,
-            InventoryScreen(db: db),
+      if (settings.canAccessInventory()) ...[
+        if (allowWorkshop)
+          _DesktopMenuItem(
+            label: Localization.translate(
+              settings.isDualActivity ? 'مخزون الورشة' : 'المخزون',
+              lang,
+            ),
+            icon: Icons.precision_manufacturing_rounded,
+            onSelected: () => _open(
+              'inventory_workshop',
+              Icons.precision_manufacturing_rounded,
+              InventoryScreen(db: db, isWorkshop: true),
+            ),
           ),
-        ),
-      if (settings.canAccessInventory())
+        if (allowStore)
+          _DesktopMenuItem(
+            label: Localization.translate(
+              settings.isDualActivity ? 'مخزون محل المواد' : 'المخزون',
+              lang,
+            ),
+            icon: Icons.warehouse_rounded,
+            onSelected: () => _open(
+              'inventory_store',
+              Icons.warehouse_rounded,
+              InventoryScreen(db: db, isWorkshop: false),
+            ),
+          ),
+      ],
+      if (allowWorkshop && settings.canAccessInventory())
         _DesktopMenuItem(
           label: _label(
             lang,
@@ -364,7 +412,7 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
             const MaterialRemnantsScreen(),
           ),
         ),
-      if (settings.canViewGlobalConsumption())
+      if (allowWorkshop && settings.canViewGlobalConsumption())
         _DesktopMenuItem(
           label: Localization.translate('تقرير النواقص الشامل', lang),
           icon: Icons.inventory_2_rounded,
@@ -378,54 +426,56 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
 
     // ── Tâche (المهام والتنفيذ) ──────────────────────────────────────────────
     final tacheItems = <_DesktopMenuItem>[
-      _DesktopMenuItem(
-        label: _label(
-          lang,
-          arabic: 'مهام العمال',
-          french: 'Tâches des ouvriers',
-          english: 'Worker tasks',
-        ),
-        icon: Icons.engineering_rounded,
-        onSelected: () => _open(
-          'worker_tasks',
-          Icons.engineering_rounded,
-          WorkerTasksScreen(db: db),
-        ),
-      ),
-      _DesktopMenuItem(
-        label: _label(
-          lang,
-          arabic: 'أرشيف مهام العمال',
-          french: 'Archive des tâches',
-          english: 'Tasks archive',
-        ),
-        icon: Icons.archive_rounded,
-        onSelected: () => _open(
-          'worker_archive',
-          Icons.archive_rounded,
-          WorkerArchiveScreen(db: db),
-        ),
-      ),
-      if (settings.canAccessDistributionTracking())
+      if (allowWorkshop) ...[
         _DesktopMenuItem(
           label: _label(
             lang,
-            arabic: 'التوزيع والتتبع',
-            french: 'Distribution et suivi',
-            english: 'Distribution and tracking',
+            arabic: 'مهام العمال',
+            french: 'Tâches des ouvriers',
+            english: 'Worker tasks',
           ),
-          icon: Icons.local_shipping_rounded,
+          icon: Icons.engineering_rounded,
           onSelected: () => _open(
-            'distribution_tracking',
-            Icons.local_shipping_rounded,
-            const DistributionTrackingScreen(),
+            'worker_tasks',
+            Icons.engineering_rounded,
+            WorkerTasksScreen(db: db),
           ),
         ),
+        _DesktopMenuItem(
+          label: _label(
+            lang,
+            arabic: 'أرشيف مهام العمال',
+            french: 'Archive des tâches',
+            english: 'Tasks archive',
+          ),
+          icon: Icons.archive_rounded,
+          onSelected: () => _open(
+            'worker_archive',
+            Icons.archive_rounded,
+            WorkerArchiveScreen(db: db),
+          ),
+        ),
+        if (settings.canAccessDistributionTracking())
+          _DesktopMenuItem(
+            label: _label(
+              lang,
+              arabic: 'التوزيع والتتبع',
+              french: 'Distribution et suivi',
+              english: 'Distribution and tracking',
+            ),
+            icon: Icons.local_shipping_rounded,
+            onSelected: () => _open(
+              'distribution_tracking',
+              Icons.local_shipping_rounded,
+              const DistributionTrackingScreen(),
+            ),
+          ),
+      ],
     ];
 
     // ── Trésorerie (الخزينة والصناديق والأجور) ────────────────────────────────
     final tresorerieItems = <_DesktopMenuItem>[
-      if (settings.canAccessTreasury())
+      if (settings.canAccessTreasury()) ...[
         _DesktopMenuItem(
           label: Localization.translate('caisse', lang),
           icon: Icons.account_balance_wallet_rounded,
@@ -435,6 +485,35 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
             TreasuryScreen(db: db),
           ),
         ),
+        _DesktopMenuItem(
+          label: _label(
+            lang,
+            arabic: 'قبض جديد (Encaissement)',
+            french: 'Encaissement',
+            english: 'Encashment / Income',
+          ),
+          icon: Icons.arrow_downward_rounded,
+          onSelected: () => TreasuryScreen.showQuickTransactionDialog(
+            context,
+            db: db,
+            initialType: 'Encaissement',
+          ),
+        ),
+        _DesktopMenuItem(
+          label: _label(
+            lang,
+            arabic: 'دفع جديد (Décaissement)',
+            french: 'Décaissement',
+            english: 'Disbursement / Expense',
+          ),
+          icon: Icons.arrow_upward_rounded,
+          onSelected: () => TreasuryScreen.showQuickTransactionDialog(
+            context,
+            db: db,
+            initialType: 'Décaissement',
+          ),
+        ),
+      ],
       if (settings.canViewWorkerFinances())
         _DesktopMenuItem(
           label: Localization.translate('إدارة شؤون وأجور العمال', lang),
@@ -614,7 +693,7 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
             WorkersManagementScreen(db: db),
           ),
         ),
-      if (settings.canSelectSystems())
+      if (allowWorkshop && settings.canSelectSystems())
         _DesktopMenuItem(
           label: Localization.translate('تحديد الأنظمة المستعملة', lang),
           icon: Icons.dashboard_customize_rounded,
@@ -624,7 +703,7 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
             const SelectedSystemsScreen(),
           ),
         ),
-      if (settings.canChangePrices())
+      if (allowWorkshop && settings.canChangePrices())
         _DesktopMenuItem(
           label: Localization.translate('Manage Prices', lang),
           icon: Icons.monetization_on_rounded,
@@ -909,8 +988,8 @@ class _DesktopResponsiveMenuBar extends StatelessWidget {
 
         int visibleCount = menus.length;
         if (menus.length * approxItemWidth > availableWidth) {
-          visibleCount =
-              ((availableWidth - overflowBtnWidth) / approxItemWidth).floor();
+          visibleCount = ((availableWidth - overflowBtnWidth) / approxItemWidth)
+              .floor();
           if (visibleCount < 1) visibleCount = 1;
           if (visibleCount > menus.length) visibleCount = menus.length;
         }

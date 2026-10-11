@@ -564,6 +564,54 @@ void main() {
     },
   );
 
+  test('face-to-face requires exactly two sliding leaves per track', () {
+    expect(
+      isSlidingFaceToFaceLayout(trackCount: 2, sashCount: 4),
+      isTrue,
+    );
+    expect(
+      isSlidingFaceToFaceLayout(trackCount: 3, sashCount: 6),
+      isTrue,
+    );
+    expect(
+      isSlidingFaceToFaceLayout(trackCount: 2, sashCount: 6),
+      isFalse,
+    );
+    expect(
+      isSlidingFaceToFaceLayout(trackCount: 3, sashCount: 4),
+      isFalse,
+    );
+    expect(
+      isSlidingFaceToFaceLayout(trackCount: 4, sashCount: 6),
+      isFalse,
+    );
+  });
+
+  test('changing tracks clears an invalid face-to-face and middle handles', () {
+    final model = RoleWindow()..systemMode = 'sliding';
+    final zone = WindowZone(
+      id: 'z1',
+      content: ZoneContent.slidingSash,
+      slidingTrackCount: 2,
+      slidingSashesCount: 4,
+      slidingFaceToFace: true,
+      slidingCentralHandle: true,
+      slidingSecondCentralHandle: true,
+      isSelected: true,
+      boundary: const Rect.fromLTRB(50, 50, 1950, 1150),
+    );
+    model
+      ..zones = [zone]
+      ..selection = SelectionInfo.zone(zone.id);
+
+    model.setSelectedZoneSlidingTracks(3);
+
+    expect(zone.slidingFaceToFace, isFalse);
+    expect(zone.slidingCentralHandle, isFalse);
+    expect(zone.slidingSecondCentralHandle, isFalse);
+    model.dispose();
+  });
+
   test(
     'face_to_face disabled converts 4-sash to normal overlapping and omits face_to_face pieces',
     () {

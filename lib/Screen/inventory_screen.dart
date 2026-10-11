@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
@@ -88,10 +88,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   Future<void> _loadLocations({int? preferredLocationId}) async {
-    final locs = _effectiveIsWorkshop
-        ? await widget.db.readWorkshopLocations()
-        : await widget.db.readStoreLocations();
-    if (mounted) {
+    setState(() => _isLoading = true);
+    try {
+      final locs = _effectiveIsWorkshop
+          ? await widget.db.readWorkshopLocations()
+          : await widget.db.readStoreLocations();
+      if (!mounted) return;
       setState(() {
         _locations = locs;
         if (_locations.isNotEmpty) {
@@ -117,11 +119,17 @@ class _InventoryScreenState extends State<InventoryScreen> {
               : (hasDefault
                   ? defaultLocId
                   : (_locations.first['id'] as num).toInt());
-          final selectedLocation = _locations.firstWhere(
+
+          // Verify _selectedLocationId exists in loaded locations
+          final matching = _locations.where(
             (location) =>
                 (location['id'] as num?)?.toInt() == _selectedLocationId,
-            orElse: () => _locations.first,
-          );
+          ).toList();
+          final selectedLocation = matching.isNotEmpty
+              ? matching.first
+              : _locations.first;
+          _selectedLocationId = (selectedLocation['id'] as num).toInt();
+
           final firstLocName =
               selectedLocation['name']?.toString() ?? 'المستودع الرئيسي';
           _selectedLocationName = firstLocName == 'المستودع الرئيسي'
@@ -135,9 +143,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
               : firstLocName;
           _loadStockData();
         } else {
+          _selectedLocationId = null;
+          _selectedLocationName = '';
           _isLoading = false;
         }
       });
+    } catch (e) {
+      debugPrint('Error loading locations: $e');
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -146,46 +159,80 @@ class _InventoryScreenState extends State<InventoryScreen> {
     final lang = settings.language;
     if (!settings.canAddWarehouses()) return;
 
-    final controller = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(Localization.translate('إضافة مستودع', lang)),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textInputAction: TextInputAction.done,
-          decoration: InputDecoration(
-            labelText: Localization.translate('اسم المستودع', lang),
-            hintText: Localization.translate(
-              'مثال: مستودع المواد الجاهزة',
-              lang,
+    try {
+      final name = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) {
+          final controller = TextEditingController();
+          return AlertDialog(
+            title: Text(Localization.translate('إضافة مستودع', lang)),
+            content: TextField(
+              controller: controller,
+              autofocus: true,
+              textInputAction: TextInputAction.done,
+              decoration: InputDecoration(
+                labelText: Localization.translate('اسم المستودع', lang),
+                hintText: Localization.translate(
+                  'مثال: مستودع المواد الجاهزة',
+                  lang,
+                ),
+              ),
+              onSubmitted: (value) => Navigator.of(dialogContext).pop(value.trim()),
             ),
-          ),
-          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(Localization.translate('إلغاء', lang)),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
-            child: Text(Localization.translate('إضافة', lang)),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(Localization.translate('إلغاء', lang)),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(controller.text.trim()),
+                child: Text(Localization.translate('إضافة', lang)),
+              ),
+            ],
+          );
+        },
+      );
 
-    final cleanName = name?.trim() ?? '';
-    if (!mounted || cleanName.isEmpty) return;
-    final locationId = await widget.db.insertLocation(
-      cleanName,
-      isWorkshop: _effectiveIsWorkshop,
-    );
-    if (!mounted || locationId == 0) return;
-    await _loadLocations(preferredLocationId: locationId);
+      final cleanName = name?.trim() ?? '';
+      if (!mounted || cleanName.isEmpty) return;
+      final locationId = await widget.db.insertLocation(
+        cleanName,
+        isWorkshop: _effectiveIsWorkshop,
+      );
+      if (!mounted || locationId == 0) return;
+      await _loadLocations(preferredLocationId: locationId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              lang == AppLanguage.arabic
+                  ? 'تمت إضافة المستودع بنجاح'
+                  : (lang == AppLanguage.french
+                      ? 'Entrepôt ajouté avec succès'
+                      : 'Warehouse added successfully'),
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error adding location: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              lang == AppLanguage.arabic
+                  ? 'تعذر إضافة المستودع: $e'
+                  : (lang == AppLanguage.french
+                      ? 'Impossible d\'ajouter l\'entrepôt'
+                      : 'Could not add warehouse'),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _loadStockData() async {
@@ -704,6 +751,19 @@ class _InventoryScreenState extends State<InventoryScreen> {
   Widget _buildLocationDropdown() {
     if (_locations.isEmpty) return const SizedBox.shrink();
 
+    final uniqueItems = <int, Map<String, dynamic>>{};
+    for (final loc in _locations) {
+      final id = (loc['id'] as num?)?.toInt();
+      if (id != null) {
+        uniqueItems.putIfAbsent(id, () => loc);
+      }
+    }
+    if (uniqueItems.isEmpty) return const SizedBox.shrink();
+
+    final effectiveValue = uniqueItems.containsKey(_selectedLocationId)
+        ? _selectedLocationId
+        : uniqueItems.keys.first;
+
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
@@ -720,10 +780,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<int>(
-          value: _selectedLocationId,
+          value: effectiveValue,
           isExpanded: true,
           icon: Icon(Icons.keyboard_arrow_down_rounded, color: _textDim),
-          items: _locations.map((loc) {
+          items: uniqueItems.values.map((loc) {
             final locName = loc['name']?.toString() ?? 'المستودع الرئيسي';
             final displayName = locName == 'المستودع الرئيسي'
                 ? Localization.translate(
@@ -758,10 +818,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
               setState(() {
                 _selectedLocationId = val;
                 final matchedLocName =
-                    _locations
-                        .firstWhere((l) => l['id'] == val)['name']
-                        ?.toString() ??
-                    'المستودع الرئيسي';
+                    uniqueItems[val]?['name']?.toString() ?? 'المستودع الرئيسي';
                 _selectedLocationName = matchedLocName == 'المستودع الرئيسي'
                     ? Localization.translate(
                         'المستودع الرئيسي',

@@ -8,7 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/gestures.dart';
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 import '../widgets/home_back_boundary.dart';
@@ -33,18 +33,29 @@ Future<void> _confirmHomeExit(BuildContext context) async {
   _exitConfirmationOpen = true;
   try {
     final lang = context.read<AppSettingsProvider>().language;
-    final exit = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-      title: Text(Localization.translate('الخروج من التطبيق', lang)),
-      content: Text(Localization.translate('هل تريد الخروج من التطبيق؟', lang)),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false),
-            child: Text(Localization.translate('لا', lang))),
-        TextButton(onPressed: () => Navigator.pop(ctx, true),
-            child: Text(Localization.translate('خروج', lang))),
-      ],
-    ));
-    if (exit != true || !context.mounted ||
-        !context.read<WorkspaceController>().isHomeActive) return;
+    final exit = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(Localization.translate('الخروج من التطبيق', lang)),
+        content: Text(
+          Localization.translate('هل تريد الخروج من التطبيق؟', lang),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(Localization.translate('لا', lang)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(Localization.translate('خروج', lang)),
+          ),
+        ],
+      ),
+    );
+    if (exit != true ||
+        !context.mounted ||
+        !context.read<WorkspaceController>().isHomeActive)
+      return;
     if (_isWindowsDesktop) {
       await windowManager.close();
     } else {
@@ -235,6 +246,7 @@ class WorkspaceController extends ChangeNotifier {
     _activeIndex = homeIndex;
     notifyListeners();
   }
+
   void closeAndReturnHome(int index) {
     if (index < 0 || index >= _entries.length) {
       activateHome();
@@ -522,6 +534,7 @@ void openAdaptiveScreen(
   required String title,
   required IconData icon,
   required Widget screen,
+  String? entryId,
 }) {
   final settings = Provider.of<AppSettingsProvider>(context, listen: false);
   final liveScreen = _CloudDataRefreshBoundary(child: screen);
@@ -537,7 +550,12 @@ void openAdaptiveScreen(
   }
 
   final workspace = Provider.of<WorkspaceController>(context, listen: false);
-  workspace.open(title: title, icon: icon, content: liveScreen);
+  workspace.open(
+    title: title,
+    icon: icon,
+    content: liveScreen,
+    entryId: entryId,
+  );
 }
 
 /// Keeps the current route identity stable while cloud data is applied in the
@@ -672,8 +690,10 @@ class _WorkspaceContentHostState extends State<_WorkspaceContentHost> {
               builder: (context) => widget.entry.id == 'home'
                   ? widget.entry.content
                   : HomeBackBoundary(
-                      label: Localization.translate('الصفحة الرئيسية',
-                          context.read<AppSettingsProvider>().language),
+                      label: Localization.translate(
+                        'الصفحة الرئيسية',
+                        context.read<AppSettingsProvider>().language,
+                      ),
                       onBack: () => context
                           .read<WorkspaceController>()
                           .closeByIdAndReturnHome(widget.entry.id),
@@ -738,9 +758,9 @@ class _WorkspaceHeaderState extends State<_WorkspaceHeader> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final savedName = (prefs.getString('workshop_name') ?? '').trim();
-      final savedUserName =
-          (prefs.getString('user_display_name') ?? '').trim();
-      final rawLogo = prefs.getString('workshop_logo_base64') ??
+      final savedUserName = (prefs.getString('user_display_name') ?? '').trim();
+      final rawLogo =
+          prefs.getString('workshop_logo_base64') ??
           prefs.getString('workshop_logo') ??
           '';
       final savedLogo = rawLogo.trim();
@@ -756,7 +776,8 @@ class _WorkspaceHeaderState extends State<_WorkspaceHeader> {
       }
       if (!mounted ||
           (resolvedName == _workshopName &&
-              savedUserName == _userDisplayName && savedLogo == _workshopLogo)) {
+              savedUserName == _userDisplayName &&
+              savedLogo == _workshopLogo)) {
         return;
       }
       setState(() {
@@ -1096,7 +1117,8 @@ class _HomeTabBrandContentState extends State<_HomeTabBrandContent> {
       final savedName = rawSavedName.isNotEmpty && rawSavedName != savedCode
           ? rawSavedName
           : null;
-      final savedLogo = prefs.getString('workshop_logo_base64') ??
+      final savedLogo =
+          prefs.getString('workshop_logo_base64') ??
           prefs.getString('workshop_logo');
       _workshopCode = savedCode;
       final nextName = savedName != null && savedName.isNotEmpty
@@ -1266,7 +1288,8 @@ class _HeaderWorkshopBrandState extends State<_HeaderWorkshopBrand> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final savedName = prefs.getString('workshop_name');
-      final savedLogo = prefs.getString('workshop_logo_base64') ??
+      final savedLogo =
+          prefs.getString('workshop_logo_base64') ??
           prefs.getString('workshop_logo');
       final nextName = savedName != null && savedName.isNotEmpty
           ? savedName
@@ -1586,7 +1609,9 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
                         Builder(
                           builder: (menuContext) => IconButton(
                             tooltip: Localization.translate(
-                              workspace.isSidebarOpen ? 'إغلاق القائمة' : 'فتح القائمة',
+                              workspace.isSidebarOpen
+                                  ? 'إغلاق القائمة'
+                                  : 'فتح القائمة',
                               lang,
                             ),
                             onPressed: () {

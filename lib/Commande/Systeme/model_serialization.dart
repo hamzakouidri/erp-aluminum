@@ -225,6 +225,7 @@ extension GlassSpecificationSerialization on GlassSpecification {
       'isVerticalBardage': isVerticalBardage,
       'bardageUsesFrameColor': bardageUsesFrameColor,
       'panneauProductId': panneauProductId,
+      'decorDesignCode': decorDesignCode,
       'thicknessOuter': thicknessOuter,
       'thicknessInner': thicknessInner,
       'laminatedColorOuter': laminatedColorOuter,
@@ -297,6 +298,7 @@ GlassSpecification glassSpecificationFromMap(Map<String, dynamic> map) {
     isVerticalBardage: map['isVerticalBardage'] as bool? ?? false,
     bardageUsesFrameColor: map['bardageUsesFrameColor'] as bool? ?? true,
     panneauProductId: map['panneauProductId'] as int?,
+    decorDesignCode: map['decorDesignCode']?.toString(),
     thicknessOuter: (map['thicknessOuter'] as num?)?.toDouble(),
     thicknessInner: (map['thicknessInner'] as num?)?.toDouble(),
     laminatedColorOuter:

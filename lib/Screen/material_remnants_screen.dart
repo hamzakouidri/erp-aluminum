@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import 'package:provider/provider.dart';
 
 import '../settings/app_settings.dart';
@@ -449,6 +449,10 @@ class _MaterialRemnantsScreenState extends State<MaterialRemnantsScreen> {
                       final canRotate =
                           ((rem['allow_rotation'] as num?)?.toInt() ?? 1) == 1;
 
+                      final seriesName = rem['series_name']?.toString() ?? '';
+                      final shelf = rem['shelf_code']?.toString() ?? '';
+                      final bin = rem['bin_code']?.toString() ?? '';
+
                       return Card(
                         elevation: 1.5,
                         margin: const EdgeInsets.symmetric(vertical: 6),
@@ -547,6 +551,32 @@ class _MaterialRemnantsScreenState extends State<MaterialRemnantsScreen> {
                                             ),
                                           ),
                                         ),
+                                        if (itemCode.isNotEmpty) ...[
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 2,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.indigo.shade50,
+                                              borderRadius: BorderRadius.circular(
+                                                6,
+                                              ),
+                                              border: Border.all(
+                                                color: Colors.indigo.shade200,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              itemCode,
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 11,
+                                                color: Colors.indigo.shade800,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                         const SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
@@ -564,15 +594,44 @@ class _MaterialRemnantsScreenState extends State<MaterialRemnantsScreen> {
                                       ],
                                     ),
                                     const SizedBox(height: 4),
-                                    Text(
-                                      isSheet
-                                          ? '${isArabic ? 'المقاس:' : 'Dimensions:'} ${length.round()} × ${width.round()} مم'
-                                          : '${isArabic ? 'الطول:' : 'Longueur:'} ${length.round()} مم',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.teal,
-                                        fontSize: 13,
-                                      ),
+                                    Row(
+                                      children: [
+                                        Text(
+                                          isSheet
+                                              ? '${isArabic ? 'المقاس:' : 'Dimensions:'} ${length.round()} × ${width.round()} مم'
+                                              : '${isArabic ? 'الطول:' : 'Longueur:'} ${length.round()} مم',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.teal,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                        if (seriesName.isNotEmpty) ...[
+                                          const SizedBox(width: 8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 1.5,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.amber.shade50,
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(
+                                                color: Colors.amber.shade400,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              seriesName,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.amber.shade900,
+                                                fontFamily: isArabic ? 'Cairo' : null,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
                                     ),
                                     const SizedBox(height: 3),
                                     Text(
@@ -580,7 +639,11 @@ class _MaterialRemnantsScreenState extends State<MaterialRemnantsScreen> {
                                         if (color.isNotEmpty)
                                           '${isArabic ? 'اللون:' : 'Couleur:'} $color',
                                         if (rack.isNotEmpty)
-                                          '${isArabic ? 'الموقع:' : 'Emplacement:'} $rack',
+                                          '${isArabic ? 'الحامل:' : 'Râtelier:'} $rack',
+                                        if (shelf.isNotEmpty)
+                                          '${isArabic ? 'الرف:' : 'Étagère:'} $shelf',
+                                        if (bin.isNotEmpty)
+                                          '${isArabic ? 'الخانة:' : 'Casier:'} $bin',
                                         if (isSheet)
                                           (canRotate ? '🔄 90°' : '🔒 Fixe'),
                                       ].join(' · '),

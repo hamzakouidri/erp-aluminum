@@ -7,6 +7,7 @@ import '../sql_database.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../widgets/order_profitability_dialog.dart';
+import '../widgets/resizable_columns_table.dart';
 
 class SalesScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -21,6 +22,9 @@ class _SalesScreenState extends State<SalesScreen> {
   bool _isLoading = true;
   List<Map<String, dynamic>> _allOrders = [];
   List<Map<String, dynamic>> _allDeliveries = [];
+  List<Map<String, dynamic>> _materialStoreSales = [];
+  List<Map<String, dynamic>> _workshopPurchases = [];
+  List<Map<String, dynamic>> _storePurchases = [];
   final NumberFormat _currencyFormatter = NumberFormat('#,##0.00');
 
   // Active filter tab:
@@ -28,7 +32,6 @@ class _SalesScreenState extends State<SalesScreen> {
   // | 'partial_distribution' | 'full_distribution' | 'installed' | 'reserve' | 'finished' | 'partial'
   String _selectedTab = 'all';
   double _dividerRatio = 0.35; // نسبة عرض اليسار (المخططات) من الإجمالي
-  String _chartType = 'bar'; // 'bar' | 'line'
   String _mobileViewMode = 'orders'; // 'orders' | 'chart'
 
   @override
@@ -70,10 +73,16 @@ class _SalesScreenState extends State<SalesScreen> {
           AND LOWER(TRIM(co.status)) NOT IN ('pending', 'en attente', 'en_attente', 'في الانتظار', 'في حالة انتظار', 'nouveau', 'new', 'جديد', 'جديدة', 'draft')
         ORDER BY cd.delivery_date DESC
       ''');
+      final materialStoreSales = await widget.db.readMaterialSales();
+      final workshopPurchases = await widget.db.readAchats(isWorkshop: true);
+      final storePurchases = await widget.db.readAchats(isWorkshop: false);
 
       setState(() {
         _allOrders = List<Map<String, dynamic>>.from(ordersRaw);
         _allDeliveries = List<Map<String, dynamic>>.from(deliveriesRaw);
+        _materialStoreSales = materialStoreSales;
+        _workshopPurchases = workshopPurchases;
+        _storePurchases = storePurchases;
         _isLoading = false;
       });
     } catch (e) {
@@ -357,7 +366,7 @@ class _SalesScreenState extends State<SalesScreen> {
         status == 'مؤكدة';
   }
 
-  List<_SalesChartPoint> get _salesChartPoints {
+  List<_SalesChartPoint> get _workshopChartPoints {
     final grouped = <DateTime, _SalesChartPoint>{};
     for (final order in _allOrders) {
       final status = (order['status'] ?? '').toString().trim().toLowerCase();
@@ -371,14 +380,17 @@ class _SalesScreenState extends State<SalesScreen> {
       final total = netPayable > 0 ? netPayable : rawTotal;
       if (total <= 0) continue;
 
-      final confirmed = _isConfirmedOrder(order);
-      final paid = (order['advance_payment'] as num?)?.toDouble() ?? 0.0;
       final point = grouped[month] ?? _SalesChartPoint(month: month);
       point.total += total;
-      if (confirmed) {
-        point.confirmed += total;
-        if (paid >= total - 0.01) point.paid += total;
-      }
+      grouped[month] = point;
+    }
+
+    for (final purchase in _workshopPurchases) {
+      final date = _parseOrderDate(purchase['created_at']);
+      if (date == null) continue;
+      final month = DateTime(date.year, date.month);
+      final point = grouped[month] ?? _SalesChartPoint(month: month);
+      point.confirmed += (purchase['total'] as num?)?.toDouble() ?? 0.0;
       grouped[month] = point;
     }
 
@@ -388,9 +400,291 @@ class _SalesScreenState extends State<SalesScreen> {
     return points.length > 12 ? points.sublist(points.length - 12) : points;
   }
 
-  Widget _buildSalesChart(AppLanguage lang) {
+  List<_SalesChartPoint> get _storeChartPoints {
+    final grouped = <DateTime, _SalesChartPoint>{};
+    for (final sale in _materialStoreSales) {
+      if ((sale['is_internal'] as num?)?.toInt() == 1) continue;
+      final date = _parseOrderDate(sale['sale_date'] ?? sale['created_at']);
+      if (date == null) continue;
+      final month = DateTime(date.year, date.month);
+      final point = grouped[month] ?? _SalesChartPoint(month: month);
+      point.total += (sale['net_total'] as num?)?.toDouble() ?? 0.0;
+      grouped[month] = point;
+    }
+    for (final purchase in _storePurchases) {
+      final date = _parseOrderDate(purchase['created_at']);
+      if (date == null) continue;
+      final month = DateTime(date.year, date.month);
+      final point = grouped[month] ?? _SalesChartPoint(month: month);
+      point.confirmed += (purchase['total'] as num?)?.toDouble() ?? 0.0;
+      grouped[month] = point;
+    }
+    final points = grouped.values.toList()
+      ..sort((a, b) => a.month.compareTo(b.month));
+    return points.length > 12 ? points.sublist(points.length - 12) : points;
+  }
+
+  List<_StoreSalesMonthRow> get _storeSalesByMonth {
+    final grouped = <DateTime, _StoreSalesMonthRow>{};
+    for (final sale in _materialStoreSales) {
+      if ((sale['is_internal'] as num?)?.toInt() == 1) continue;
+      final rawDate = (sale['sale_date'] ?? sale['created_at'] ?? '')
+          .toString();
+      final date = DateTime.tryParse(rawDate);
+      if (date == null) continue;
+      final month = DateTime(date.year, date.month);
+      final row = grouped[month] ?? _StoreSalesMonthRow(month: month);
+      row.documents++;
+      row.total += (sale['net_total'] as num?)?.toDouble() ?? 0.0;
+      row.paid += (sale['paid_amount'] as num?)?.toDouble() ?? 0.0;
+      row.remaining += (sale['remaining_amount'] as num?)?.toDouble() ?? 0.0;
+      grouped[month] = row;
+    }
+    for (final purchase in _storePurchases) {
+      final date = _parseOrderDate(purchase['created_at']);
+      if (date == null) continue;
+      final month = DateTime(date.year, date.month);
+      final row = grouped[month] ?? _StoreSalesMonthRow(month: month);
+      row.purchaseDocuments++;
+      row.purchaseTotal += (purchase['total'] as num?)?.toDouble() ?? 0.0;
+      row.purchasePaid +=
+          (purchase['paid_amount'] as num?)?.toDouble() ?? 0.0;
+      row.purchaseRemaining +=
+          (purchase['remaining_amount'] as num?)?.toDouble() ?? 0.0;
+      grouped[month] = row;
+    }
+    final rows = grouped.values.toList()
+      ..sort((a, b) => b.month.compareTo(a.month));
+    return rows.length > 6 ? rows.sublist(0, 6) : rows;
+  }
+
+  List<_RecentBusinessActivity> get _recentActivities {
+    final activities = <_RecentBusinessActivity>[];
+    void addActivity({
+      required String kind,
+      required String document,
+      required String party,
+      required dynamic date,
+      required dynamic user,
+      required IconData icon,
+      required Color color,
+    }) {
+      final parsed = _parseOrderDate(date);
+      if (parsed == null) return;
+      activities.add(
+        _RecentBusinessActivity(
+          kind: kind,
+          document: document,
+          party: party,
+          date: parsed,
+          user: (user ?? '').toString().trim(),
+          icon: icon,
+          color: color,
+        ),
+      );
+    }
+
+    for (final order in _allOrders) {
+      addActivity(
+        kind: 'order',
+        document: (order['order_code'] ?? '#${order['id']}').toString(),
+        party: '${order['firstname'] ?? ''} ${order['lastname'] ?? ''}'.trim(),
+        date: order['created_at'],
+        user: order['created_by'] ?? order['updated_by'],
+        icon: Icons.add_shopping_cart_rounded,
+        color: const Color(0xFF2563EB),
+      );
+      final created = _parseOrderDate(order['created_at']);
+      final updated = _parseOrderDate(order['updated_at']);
+      if (created != null &&
+          updated != null &&
+          updated.difference(created).abs() > const Duration(seconds: 5)) {
+        addActivity(
+          kind: 'order_updated',
+          document: (order['order_code'] ?? '#${order['id']}').toString(),
+          party: '${order['firstname'] ?? ''} ${order['lastname'] ?? ''}'.trim(),
+          date: updated,
+          user: order['updated_by'],
+          icon: Icons.edit_note_rounded,
+          color: const Color(0xFF7C3AED),
+        );
+      }
+    }
+    for (final delivery in _allDeliveries) {
+      addActivity(
+        kind: 'delivery',
+        document: (delivery['delivery_code'] ?? delivery['id'] ?? '—').toString(),
+        party: '${delivery['firstname'] ?? ''} ${delivery['lastname'] ?? ''}'.trim(),
+        date: delivery['delivery_date'] ?? delivery['created_at'],
+        user: delivery['created_by'] ?? delivery['updated_by'],
+        icon: Icons.local_shipping_rounded,
+        color: const Color(0xFF0891B2),
+      );
+    }
+    for (final sale in _materialStoreSales) {
+      addActivity(
+        kind: 'sale',
+        document: (sale['sale_code'] ?? '#${sale['id']}').toString(),
+        party: (sale['client_name'] ?? '').toString(),
+        date: sale['created_at'],
+        user: sale['created_by'],
+        icon: Icons.point_of_sale_rounded,
+        color: const Color(0xFF16A34A),
+      );
+    }
+    for (final purchase in [..._workshopPurchases, ..._storePurchases]) {
+      addActivity(
+        kind: 'purchase',
+        document: (purchase['invoice_number'] ?? '#${purchase['id']}').toString(),
+        party: (purchase['supplier_name'] ?? '').toString(),
+        date: purchase['created_at'],
+        user: purchase['created_by'],
+        icon: Icons.shopping_bag_rounded,
+        color: const Color(0xFFF59E0B),
+      );
+    }
+    activities.sort((a, b) => b.date.compareTo(a.date));
+    return activities.take(12).toList(growable: false);
+  }
+
+  String _activityLabel(String kind, AppLanguage lang) {
+    switch (kind) {
+      case 'order':
+        return _tr('إضافة طلبية', 'Ajout commande', 'Order added', lang);
+      case 'order_updated':
+        return _tr('تعديل طلبية', 'Modification commande', 'Order updated', lang);
+      case 'delivery':
+        return _tr('إضافة وصل تسليم', 'Ajout bon de livraison', 'Delivery note added', lang);
+      case 'purchase':
+        return _tr('إضافة شراء', 'Ajout achat', 'Purchase added', lang);
+      case 'sale':
+        return _tr('إضافة بيع', 'Ajout vente', 'Sale added', lang);
+      default:
+        return kind;
+    }
+  }
+
+  Widget _buildStoreSalesDataTable(AppLanguage lang) {
+    final activities = _recentActivities;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final points = _salesChartPoints;
+    final border = isDark ? Colors.grey.shade800 : Colors.grey.shade300;
+    final header = isDark ? Colors.grey.shade900 : Colors.blueGrey.shade800;
+    Widget cell(String text, {bool bold = false, Color? color}) => Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+      child: Text(
+        text,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontFamily: 'Cairo',
+          fontSize: 10,
+          fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+          color: color,
+        ),
+      ),
+    );
+
+    return Container(
+      height: 178,
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        border: Border.all(color: border),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            color: header,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.storefront_rounded,
+                  color: Colors.white,
+                  size: 17,
+                ),
+                const SizedBox(width: 7),
+                Text(
+                  _tr(
+                    'آخر النشاطات',
+                    'Activités récentes',
+                    'Recent activity',
+                    lang,
+                  ),
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (activities.isEmpty)
+            Expanded(
+              child: Center(
+                child: Text(
+                  _tr(
+                    'لا توجد نشاطات حديثة',
+                    'Aucune activité récente',
+                    'No recent activity',
+                    lang,
+                  ),
+                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 11),
+                ),
+              ),
+            )
+          else
+            Expanded(
+              child: ResizableColumnsTable(
+                persistenceKey: 'recent_business_activity_v1',
+                headerMinHeight: 34,
+                rowMinHeight: 34,
+                cellPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                columns: [
+                  ResizableTableColumn(id: 'activity', label: cell(_tr('النشاط', 'Activité', 'Activity', lang), bold: true), initialWidth: 155),
+                  ResizableTableColumn(id: 'document', label: cell(_tr('الوثيقة', 'Document', 'Document', lang), bold: true), initialWidth: 145),
+                  ResizableTableColumn(id: 'party', label: cell(_tr('العميل / المورد', 'Client / fournisseur', 'Client / supplier', lang), bold: true), initialWidth: 190),
+                  ResizableTableColumn(id: 'user', label: cell(_tr('بواسطة', 'Par', 'By', lang), bold: true), initialWidth: 145),
+                  ResizableTableColumn(id: 'date', label: cell(_tr('التاريخ', 'Date', 'Date', lang), bold: true), initialWidth: 155),
+                ],
+                rows: [
+                  for (final activity in activities)
+                    ResizableTableRow(
+                      reorderId: '${activity.kind}_${activity.document}_${activity.date.toIso8601String()}',
+                      cells: [
+                        Row(children: [Icon(activity.icon, size: 16, color: activity.color), const SizedBox(width: 6), Expanded(child: cell(_activityLabel(activity.kind, lang), bold: true, color: activity.color))]),
+                        cell(activity.document, bold: true),
+                        cell(activity.party.isEmpty ? '—' : activity.party),
+                        cell(activity.user.isEmpty ? '—' : activity.user),
+                        cell(DateFormat('dd/MM/yyyy HH:mm').format(activity.date.toLocal())),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWorkshopChartWithStoreData(AppLanguage lang) {
+    return Column(
+      children: [
+        Expanded(child: _buildSalesChart(lang, workshop: true)),
+        const SizedBox(height: 10),
+        Expanded(child: _buildSalesChart(lang, workshop: false)),
+        const SizedBox(height: 10),
+        _buildStoreSalesDataTable(lang),
+      ],
+    );
+  }
+
+  Widget _buildSalesChart(AppLanguage lang, {required bool workshop}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final points = workshop ? _workshopChartPoints : _storeChartPoints;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
       decoration: BoxDecoration(
@@ -409,9 +703,15 @@ class _SalesScreenState extends State<SalesScreen> {
               Expanded(
                 child: Text(
                   _tr(
-                    'حركة المبيعات خلال الفترة',
-                    'Évolution des ventes sur la période',
-                    'Sales activity over time',
+                    workshop
+                        ? 'مبيعات ومشتريات الورشة'
+                        : 'مبيعات ومشتريات المحل',
+                    workshop
+                        ? 'Ventes et achats de l’atelier'
+                        : 'Ventes et achats du magasin',
+                    workshop
+                        ? 'Workshop sales and purchases'
+                        : 'Store sales and purchases',
                     lang,
                   ),
                   style: TextStyle(
@@ -422,8 +722,10 @@ class _SalesScreenState extends State<SalesScreen> {
                   ),
                 ),
               ),
-              // أزرار اختيار نوع الرسم
-              _chartTypeToggle(isDark),
+              Icon(
+                workshop ? Icons.bar_chart_rounded : Icons.show_chart_rounded,
+                color: workshop ? const Color(0xFF2563EB) : const Color(0xFF0891B2),
+              ),
             ],
           ),
           const SizedBox(height: 6),
@@ -433,21 +735,12 @@ class _SalesScreenState extends State<SalesScreen> {
             runSpacing: 4,
             children: [
               _chartLegend(
-                _tr('إجمالي المبيعات', 'Total ventes', 'Total sales', lang),
+                _tr('المبيعات', 'Ventes', 'Sales', lang),
                 const Color(0xFF2563EB),
               ),
               _chartLegend(
-                _tr('مؤكدة', 'Confirmées', 'Confirmed', lang),
+                _tr('المشتريات', 'Achats', 'Purchases', lang),
                 const Color(0xFFF59E0B),
-              ),
-              _chartLegend(
-                _tr(
-                  'مؤكدة ومدفوعة',
-                  'Confirmées et payées',
-                  'Confirmed & paid',
-                  lang,
-                ),
-                const Color(0xFF16A34A),
               ),
             ],
           ),
@@ -458,9 +751,9 @@ class _SalesScreenState extends State<SalesScreen> {
                 ? Center(
                     child: Text(
                       _tr(
-                        'لا توجد بيانات مبيعات للرسم البياني.',
-                        'Aucune donnée de vente à afficher.',
-                        'No sales data to display.',
+                        'لا توجد بيانات للرسم البياني.',
+                        'Aucune donnée à afficher.',
+                        'No data to display.',
                         lang,
                       ),
                       style: TextStyle(
@@ -474,55 +767,13 @@ class _SalesScreenState extends State<SalesScreen> {
                     painter: _SalesChartPainter(
                       points: points,
                       isDark: isDark,
-                      chartType: _chartType,
+                      chartType: workshop ? 'bar' : 'line',
+                      showPaid: false,
                     ),
                     child: const SizedBox.expand(),
                   ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _chartTypeToggle(bool isDark) {
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? Colors.white10 : Colors.blueGrey.shade50,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: isDark ? Colors.white12 : Colors.blueGrey.shade200,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _chartTypeBtn('bar', Icons.bar_chart_rounded, isDark),
-          _chartTypeBtn('line', Icons.show_chart_rounded, isDark),
-        ],
-      ),
-    );
-  }
-
-  Widget _chartTypeBtn(String type, IconData icon, bool isDark) {
-    final isActive = _chartType == type;
-    return GestureDetector(
-      onTap: () => setState(() => _chartType = type),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: isActive
-              ? (isDark ? Colors.blue.shade700 : Colors.blue.shade600)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(7),
-        ),
-        child: Icon(
-          icon,
-          size: 18,
-          color: isActive
-              ? Colors.white
-              : (isDark ? Colors.white38 : Colors.blueGrey.shade400),
-        ),
       ),
     );
   }
@@ -835,7 +1086,8 @@ class _SalesScreenState extends State<SalesScreen> {
                       child: LayoutBuilder(
                         builder: (context, constraints) {
                           final totalW = constraints.maxWidth;
-                          final isDark = Theme.of(context).brightness == Brightness.dark;
+                          final isDark =
+                              Theme.of(context).brightness == Brightness.dark;
 
                           if (totalW < 700) {
                             // ── نمط الهاتف: مبدل تبويبات أنيق بين الطلبيات والرسم البياني ──
@@ -849,35 +1101,49 @@ class _SalesScreenState extends State<SalesScreen> {
                                   margin: const EdgeInsets.only(bottom: 10),
                                   padding: const EdgeInsets.all(3),
                                   decoration: BoxDecoration(
-                                    color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                                    color: isDark
+                                        ? const Color(0xFF1E293B)
+                                        : const Color(0xFFF1F5F9),
                                     borderRadius: BorderRadius.circular(10),
                                     border: Border.all(
-                                      color: isDark ? Colors.white12 : Colors.grey.shade300,
+                                      color: isDark
+                                          ? Colors.white12
+                                          : Colors.grey.shade300,
                                     ),
                                   ),
                                   child: Row(
                                     children: [
                                       Expanded(
                                         child: InkWell(
-                                          onTap: () => setState(() => _mobileViewMode = 'orders'),
-                                          borderRadius: BorderRadius.circular(8),
+                                          onTap: () => setState(
+                                            () => _mobileViewMode = 'orders',
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
                                           child: Container(
                                             decoration: BoxDecoration(
                                               color: _mobileViewMode == 'orders'
                                                   ? const Color(0xFF2563EB)
                                                   : Colors.transparent,
-                                              borderRadius: BorderRadius.circular(8),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
                                             ),
                                             alignment: Alignment.center,
                                             child: Row(
-                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
                                               children: [
                                                 Icon(
                                                   Icons.list_alt_rounded,
                                                   size: 16,
-                                                  color: _mobileViewMode == 'orders'
+                                                  color:
+                                                      _mobileViewMode ==
+                                                          'orders'
                                                       ? Colors.white
-                                                      : (isDark ? Colors.white70 : Colors.black87),
+                                                      : (isDark
+                                                            ? Colors.white70
+                                                            : Colors.black87),
                                                 ),
                                                 const SizedBox(width: 6),
                                                 Text(
@@ -886,9 +1152,13 @@ class _SalesScreenState extends State<SalesScreen> {
                                                     fontFamily: 'Cairo',
                                                     fontWeight: FontWeight.bold,
                                                     fontSize: 12,
-                                                    color: _mobileViewMode == 'orders'
+                                                    color:
+                                                        _mobileViewMode ==
+                                                            'orders'
                                                         ? Colors.white
-                                                        : (isDark ? Colors.white70 : Colors.black87),
+                                                        : (isDark
+                                                              ? Colors.white70
+                                                              : Colors.black87),
                                                   ),
                                                 ),
                                               ],
@@ -899,36 +1169,54 @@ class _SalesScreenState extends State<SalesScreen> {
                                       const SizedBox(width: 4),
                                       Expanded(
                                         child: InkWell(
-                                          onTap: () => setState(() => _mobileViewMode = 'chart'),
-                                          borderRadius: BorderRadius.circular(8),
+                                          onTap: () => setState(
+                                            () => _mobileViewMode = 'chart',
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
                                           child: Container(
                                             decoration: BoxDecoration(
                                               color: _mobileViewMode == 'chart'
                                                   ? const Color(0xFF2563EB)
                                                   : Colors.transparent,
-                                              borderRadius: BorderRadius.circular(8),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
                                             ),
                                             alignment: Alignment.center,
                                             child: Row(
-                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
                                               children: [
                                                 Icon(
                                                   Icons.bar_chart_rounded,
                                                   size: 16,
-                                                  color: _mobileViewMode == 'chart'
+                                                  color:
+                                                      _mobileViewMode == 'chart'
                                                       ? Colors.white
-                                                      : (isDark ? Colors.white70 : Colors.black87),
+                                                      : (isDark
+                                                            ? Colors.white70
+                                                            : Colors.black87),
                                                 ),
                                                 const SizedBox(width: 6),
                                                 Text(
-                                                  _tr('الرسم البياني', 'Graphique', 'Chart', lang),
+                                                  _tr(
+                                                    'الرسم البياني',
+                                                    'Graphique',
+                                                    'Chart',
+                                                    lang,
+                                                  ),
                                                   style: TextStyle(
                                                     fontFamily: 'Cairo',
                                                     fontWeight: FontWeight.bold,
                                                     fontSize: 12,
-                                                    color: _mobileViewMode == 'chart'
+                                                    color:
+                                                        _mobileViewMode ==
+                                                            'chart'
                                                         ? Colors.white
-                                                        : (isDark ? Colors.white70 : Colors.black87),
+                                                        : (isDark
+                                                              ? Colors.white70
+                                                              : Colors.black87),
                                                   ),
                                                 ),
                                               ],
@@ -941,10 +1229,18 @@ class _SalesScreenState extends State<SalesScreen> {
                                 ),
                                 Expanded(
                                   child: _mobileViewMode == 'chart'
-                                      ? SingleChildScrollView(child: _buildSalesChart(lang))
+                                      ? SingleChildScrollView(
+                                          child: SizedBox(
+                                            height: 650,
+                                            child:
+                                                _buildWorkshopChartWithStoreData(
+                                                  lang,
+                                                ),
+                                          ),
+                                        )
                                       : (_selectedTab == 'partial'
-                                          ? _buildPartialDeliveriesList(lang)
-                                          : _buildOrdersList(lang)),
+                                            ? _buildPartialDeliveriesList(lang)
+                                            : _buildOrdersList(lang)),
                                 ),
                               ],
                             );
@@ -953,8 +1249,14 @@ class _SalesScreenState extends State<SalesScreen> {
                           // ── نمط الشاشات الكبيرة والكمبيوتر ──
                           final minW = 200.0;
                           final maxLeft = (totalW - minW).clamp(minW, totalW);
-                          final leftW = (_dividerRatio * totalW).clamp(minW, maxLeft);
-                          final rightW = (totalW - leftW - 6.0).clamp(0.0, totalW);
+                          final leftW = (_dividerRatio * totalW).clamp(
+                            minW,
+                            maxLeft,
+                          );
+                          final rightW = (totalW - leftW - 6.0).clamp(
+                            0.0,
+                            totalW,
+                          );
 
                           return Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -962,7 +1264,7 @@ class _SalesScreenState extends State<SalesScreen> {
                               // ── اليسار: المخططات ──
                               SizedBox(
                                 width: leftW,
-                                child: _buildSalesChart(lang),
+                                child: _buildWorkshopChartWithStoreData(lang),
                               ),
 
                               // ── الفاصل القابل للسحب ──
@@ -973,7 +1275,10 @@ class _SalesScreenState extends State<SalesScreen> {
                                     final minRatio = minW / totalW;
                                     final maxRatio = (totalW - minW) / totalW;
                                     if (minRatio < maxRatio) {
-                                      _dividerRatio = (newLeft / totalW).clamp(minRatio, maxRatio);
+                                      _dividerRatio = (newLeft / totalW).clamp(
+                                        minRatio,
+                                        maxRatio,
+                                      );
                                     }
                                   });
                                 },
@@ -1375,6 +1680,40 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 }
 
+class _StoreSalesMonthRow {
+  final DateTime month;
+  int documents = 0;
+  double total = 0;
+  double paid = 0;
+  double remaining = 0;
+  int purchaseDocuments = 0;
+  double purchaseTotal = 0;
+  double purchasePaid = 0;
+  double purchaseRemaining = 0;
+
+  _StoreSalesMonthRow({required this.month});
+}
+
+class _RecentBusinessActivity {
+  final String kind;
+  final String document;
+  final String party;
+  final DateTime date;
+  final String user;
+  final IconData icon;
+  final Color color;
+
+  const _RecentBusinessActivity({
+    required this.kind,
+    required this.document,
+    required this.party,
+    required this.date,
+    required this.user,
+    required this.icon,
+    required this.color,
+  });
+}
+
 class _SalesChartPoint {
   final DateTime month;
   double total = 0;
@@ -1388,11 +1727,13 @@ class _SalesChartPainter extends CustomPainter {
   final List<_SalesChartPoint> points;
   final bool isDark;
   final String chartType; // 'bar' | 'line'
+  final bool showPaid;
 
   const _SalesChartPainter({
     required this.points,
     required this.isDark,
     required this.chartType,
+    this.showPaid = false,
   });
 
   static const _totalColor = Color(0xFF2563EB);
@@ -1477,16 +1818,18 @@ class _SalesChartPainter extends CustomPainter {
   }
 
   void _drawLine(Canvas canvas, List<Offset> pts, Color color) {
-    if (pts.length < 2) return;
+    if (pts.isEmpty) return;
     final paint = Paint()
       ..color = color
       ..strokeWidth = 2.5
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
-    final path = Path()..moveTo(pts.first.dx, pts.first.dy);
-    for (final p in pts.skip(1)) path.lineTo(p.dx, p.dy);
-    canvas.drawPath(path, paint);
+    if (pts.length > 1) {
+      final path = Path()..moveTo(pts.first.dx, pts.first.dy);
+      for (final p in pts.skip(1)) path.lineTo(p.dx, p.dy);
+      canvas.drawPath(path, paint);
+    }
     for (final p in pts) {
       canvas.drawCircle(p, 3.5, Paint()..color = color);
       canvas.drawCircle(p, 2.0, Paint()..color = Colors.white);
@@ -1505,10 +1848,14 @@ class _SalesChartPainter extends CustomPainter {
     final chartHeight = size.height - top - bottom;
     if (chartWidth <= 0 || chartHeight <= 0) return;
 
-    final maxValue = points.fold<double>(
-      0,
-      (m, p) => p.total > m ? p.total : m,
-    );
+    final maxValue = points.fold<double>(0, (maximum, point) {
+      final pointMaximum = [
+        point.total,
+        point.confirmed,
+        if (showPaid) point.paid,
+      ].reduce((a, b) => a > b ? a : b);
+      return pointMaximum > maximum ? pointMaximum : maximum;
+    });
     if (maxValue <= 0) return;
 
     final labelColor = isDark ? Colors.white54 : Colors.blueGrey.shade500;
@@ -1518,8 +1865,7 @@ class _SalesChartPainter extends CustomPainter {
 
     if (chartType == 'bar') {
       // ── أعمدة بيانية ──
-      final barWidth = (slotWidth * 0.58).clamp(12.0, 58.0).toDouble();
-      final paidCenters = <Offset>[];
+      final barWidth = (slotWidth * 0.28).clamp(7.0, 28.0).toDouble();
 
       for (var i = 0; i < points.length; i++) {
         final pt = points[i];
@@ -1527,34 +1873,16 @@ class _SalesChartPainter extends CustomPainter {
         final baseline = top + chartHeight;
         final tH = chartHeight * pt.total / maxValue;
         final cH = chartHeight * pt.confirmed / maxValue;
-        final pH = chartHeight * pt.paid / maxValue;
 
         canvas.drawRect(
-          Rect.fromLTWH(cx - barWidth / 2, baseline - tH, barWidth, tH),
+          Rect.fromLTWH(cx - barWidth - 2, baseline - tH, barWidth, tH),
           Paint()..color = _totalColor,
         );
         canvas.drawRect(
-          Rect.fromLTWH(
-            cx - barWidth * 0.36,
-            baseline - cH,
-            barWidth * 0.72,
-            cH,
-          ),
+          Rect.fromLTWH(cx + 2, baseline - cH, barWidth, cH),
           Paint()..color = _confirmedColor,
         );
-        canvas.drawRect(
-          Rect.fromLTWH(
-            cx - barWidth * 0.20,
-            baseline - pH,
-            barWidth * 0.40,
-            pH,
-          ),
-          Paint()..color = _paidColor,
-        );
-        paidCenters.add(Offset(cx, baseline - pH));
       }
-      // خط فوق عمود المدفوعات
-      _drawLine(canvas, paidCenters, _paidColor);
     } else {
       // ── منحنى بياني ──
       final totalPts = <Offset>[];
@@ -1569,7 +1897,9 @@ class _SalesChartPainter extends CustomPainter {
         confirmedPts.add(
           Offset(cx, baseline - chartHeight * pt.confirmed / maxValue),
         );
-        paidPts.add(Offset(cx, baseline - chartHeight * pt.paid / maxValue));
+        if (showPaid) {
+          paidPts.add(Offset(cx, baseline - chartHeight * pt.paid / maxValue));
+        }
       }
 
       // رسم ظل خفيف تحت خط الإجمالي
@@ -1586,7 +1916,7 @@ class _SalesChartPainter extends CustomPainter {
 
       _drawLine(canvas, totalPts, _totalColor);
       _drawLine(canvas, confirmedPts, _confirmedColor);
-      _drawLine(canvas, paidPts, _paidColor);
+      if (showPaid) _drawLine(canvas, paidPts, _paidColor);
     }
   }
 
@@ -1594,5 +1924,6 @@ class _SalesChartPainter extends CustomPainter {
   bool shouldRepaint(covariant _SalesChartPainter old) =>
       old.isDark != isDark ||
       old.points != points ||
-      old.chartType != chartType;
+      old.chartType != chartType ||
+      old.showPaid != showPaid;
 }

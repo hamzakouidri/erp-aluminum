@@ -6,10 +6,7 @@ SlidingMontantCounts slidingMontantCounts({
   required int tracks,
   required bool faceToFace,
 }) {
-  final meetsInCenter =
-      sashes >= 4 &&
-      sashes.isEven &&
-      (faceToFace || tracks == 2 || tracks == 0);
+  final meetsInCenter = faceToFace && tracks >= 2 && sashes == tracks * 2;
 
   if (meetsInCenter) {
     return (lateral: 4, central: sashes == 4 ? 4 : 8, meetsInCenter: true);

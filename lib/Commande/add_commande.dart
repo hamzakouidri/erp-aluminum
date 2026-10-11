@@ -1,6 +1,6 @@
 import 'Systeme/selling_price_calculator.dart';
 // Force compile sync trigger
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import 'package:intl/intl.dart';
 import '../sql_database.dart';
 import '../services/cloud_sync_service.dart';
@@ -2433,291 +2433,300 @@ class _CommandePageState extends State<CommandePage> {
     try {
       route = DialogRoute<GlassSpecification>(
         context: context,
-        builder: (ctx) => StatefulBuilder(
-          builder: (context, setDialogState) {
-            final outerValue = double.tryParse(
-              outerThickness.text.replaceAll(',', '.'),
-            );
-            final innerValue = double.tryParse(
-              innerThickness.text.replaceAll(',', '.'),
-            );
-            final spacerChoices =
-                products.first.availableIntercalls
-                    .map((row) => num.tryParse('${row['thickness']}')?.toInt())
-                    .whereType<int>()
-                    .where(
-                      (value) =>
-                          value > 0 &&
-                          products.every((product) {
-                            if (outerValue == null || innerValue == null)
-                              return false;
-                            if (!product.availableIntercalls.any(
-                              (row) =>
-                                  num.tryParse('${row['thickness']}') == value,
-                            ))
-                              return false;
-                            return product.zones.every((zone) {
-                              final capacity = product
-                                  .glazingCapacityForStructure(
-                                    GlassStructure.double,
-                                    sliding:
-                                        zone.content == ZoneContent.slidingSash,
-                                  );
-                              final pack = base.copyWith(
-                                structure: GlassStructure.double,
-                                thicknessOuter: outerValue,
-                                thicknessInner: innerValue,
-                                intercallThickness: value,
-                              );
-                              return capacity == null ||
-                                  product.glassPackThicknessIncludingVitrageJoint(
-                                        pack,
-                                        sliding:
-                                            zone.content ==
-                                            ZoneContent.slidingSash,
-                                      ) <=
-                                      capacity + 1;
-                            });
-                          }),
-                    )
-                    .toSet()
-                    .toList()
-                  ..sort();
-            if (!spacerChoices.contains(intercall)) {
-              intercall = spacerChoices.isEmpty ? null : spacerChoices.first;
-            }
-            Widget enumDropdown<T>({
-              required String label,
-              required T value,
-              required List<T> values,
-              required ValueChanged<T?> onChanged,
-            }) {
-              return Padding(
-                key: ValueKey(label),
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: DropdownButtonFormField<T>(
-                  isExpanded: true,
-                  value: value,
-                  decoration: InputDecoration(labelText: label),
-                  items: values
-                      .map(
-                        (item) => DropdownMenuItem<T>(
-                          value: item,
-                          child: Text(item.toString().split('.').last),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: onChanged,
-                ),
+        builder: (ctx) => DesktopDraggableDialog(
+          child: StatefulBuilder(
+            builder: (context, setDialogState) {
+              final outerValue = double.tryParse(
+                outerThickness.text.replaceAll(',', '.'),
               );
-            }
+              final innerValue = double.tryParse(
+                innerThickness.text.replaceAll(',', '.'),
+              );
+              final spacerChoices =
+                  products.first.availableIntercalls
+                      .map(
+                        (row) => num.tryParse('${row['thickness']}')?.toInt(),
+                      )
+                      .whereType<int>()
+                      .where(
+                        (value) =>
+                            value > 0 &&
+                            products.every((product) {
+                              if (outerValue == null || innerValue == null)
+                                return false;
+                              if (!product.availableIntercalls.any(
+                                (row) =>
+                                    num.tryParse('${row['thickness']}') ==
+                                    value,
+                              ))
+                                return false;
+                              return product.zones.every((zone) {
+                                final capacity = product
+                                    .glazingCapacityForStructure(
+                                      GlassStructure.double,
+                                      sliding:
+                                          zone.content ==
+                                          ZoneContent.slidingSash,
+                                    );
+                                final pack = base.copyWith(
+                                  structure: GlassStructure.double,
+                                  thicknessOuter: outerValue,
+                                  thicknessInner: innerValue,
+                                  intercallThickness: value,
+                                );
+                                return capacity == null ||
+                                    product.glassPackThicknessIncludingVitrageJoint(
+                                          pack,
+                                          sliding:
+                                              zone.content ==
+                                              ZoneContent.slidingSash,
+                                        ) <=
+                                        capacity + 1;
+                              });
+                            }),
+                      )
+                      .toSet()
+                      .toList()
+                    ..sort();
+              if (!spacerChoices.contains(intercall)) {
+                intercall = spacerChoices.isEmpty ? null : spacerChoices.first;
+              }
+              Widget enumDropdown<T>({
+                required String label,
+                required T value,
+                required List<T> values,
+                required ValueChanged<T?> onChanged,
+              }) {
+                return Padding(
+                  key: ValueKey(label),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: DropdownButtonFormField<T>(
+                    isExpanded: true,
+                    value: value,
+                    decoration: InputDecoration(labelText: label),
+                    items: values
+                        .map(
+                          (item) => DropdownMenuItem<T>(
+                            value: item,
+                            child: Text(item.toString().split('.').last),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: onChanged,
+                  ),
+                );
+              }
 
-            return AlertDialog(
-              title: Text(t('تغيير زجاج العناصر المحددة')),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      enumDropdown(
-                        label: t('نوع الزجاج'),
-                        value: structure,
-                        values: GlassStructure.values,
-                        onChanged: (value) {
-                          if (value != null) {
-                            setDialogState(() => structure = value);
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: outerThickness,
-                        onChanged: (_) => setDialogState(() {}),
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
+              return AlertDialog(
+                title: Text(t('تغيير زجاج العناصر المحددة')),
+                content: SizedBox(
+                  width: double.maxFinite,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        enumDropdown(
+                          label: t('نوع الزجاج'),
+                          value: structure,
+                          values: GlassStructure.values,
+                          onChanged: (value) {
+                            if (value != null) {
+                              setDialogState(() => structure = value);
+                            }
+                          },
                         ),
-                        decoration: InputDecoration(
-                          labelText: t('سمك الزجاج الخارجي (مم)'),
-                        ),
-                      ),
-                      if (structure == GlassStructure.double) ...[
                         const SizedBox(height: 8),
                         TextField(
-                          controller: innerThickness,
+                          controller: outerThickness,
                           onChanged: (_) => setDialogState(() {}),
                           keyboardType: const TextInputType.numberWithOptions(
                             decimal: true,
                           ),
                           decoration: InputDecoration(
-                            labelText: t('سمك الزجاج الداخلي (مم)'),
+                            labelText: t('سمك الزجاج الخارجي (مم)'),
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        DropdownButtonFormField<int>(
-                          key: ValueKey('spacer-$intercall'),
-                          value: intercall,
-                          isExpanded: true,
-                          items: spacerChoices
-                              .map(
-                                (value) => DropdownMenuItem<int>(
-                                  value: value,
-                                  child: Text('$value mm'),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (value) =>
-                              setDialogState(() => intercall = value),
-                          decoration: InputDecoration(
-                            labelText: t('سمك الأنتركال (مم)'),
+                        if (structure == GlassStructure.double) ...[
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: innerThickness,
+                            onChanged: (_) => setDialogState(() {}),
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: InputDecoration(
+                              labelText: t('سمك الزجاج الداخلي (مم)'),
+                            ),
                           ),
-                        ),
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(t('مع غاز')),
-                          value: hasGas,
-                          onChanged: (value) =>
-                              setDialogState(() => hasGas = value),
-                        ),
-                      ],
-                      enumDropdown(
-                        label: t('معالجة الوجه الخارجي'),
-                        value: processingOuter,
-                        values: GlassProcessing.values,
-                        onChanged: (value) {
-                          if (value != null) {
-                            setDialogState(() => processingOuter = value);
-                          }
-                        },
-                      ),
-                      enumDropdown(
-                        label: t('نوع الوجه الخارجي'),
-                        value: finishOuter,
-                        values: GlassFinish.values,
-                        onChanged: (value) {
-                          if (value != null) {
-                            setDialogState(() => finishOuter = value);
-                          }
-                        },
-                      ),
-                      if (finishOuter != GlassFinish.clair)
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<int>(
+                            key: ValueKey('spacer-$intercall'),
+                            value: intercall,
+                            isExpanded: true,
+                            items: spacerChoices
+                                .map(
+                                  (value) => DropdownMenuItem<int>(
+                                    value: value,
+                                    child: Text('$value mm'),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (value) =>
+                                setDialogState(() => intercall = value),
+                            decoration: InputDecoration(
+                              labelText: t('سمك الأنتركال (مم)'),
+                            ),
+                          ),
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(t('مع غاز')),
+                            value: hasGas,
+                            onChanged: (value) =>
+                                setDialogState(() => hasGas = value),
+                          ),
+                        ],
                         enumDropdown(
-                          label: t('لون الوجه الخارجي'),
-                          value: colorOuter,
-                          values: GlassColor.values,
-                          onChanged: (value) {
-                            if (value != null) {
-                              setDialogState(() => colorOuter = value);
-                            }
-                          },
-                        ),
-                      if (structure == GlassStructure.double) ...[
-                        enumDropdown(
-                          label: t('معالجة الوجه الداخلي'),
-                          value: processingInner,
+                          label: t('معالجة الوجه الخارجي'),
+                          value: processingOuter,
                           values: GlassProcessing.values,
                           onChanged: (value) {
                             if (value != null) {
-                              setDialogState(() => processingInner = value);
+                              setDialogState(() => processingOuter = value);
                             }
                           },
                         ),
                         enumDropdown(
-                          label: t('نوع الوجه الداخلي'),
-                          value: finishInner,
+                          label: t('نوع الوجه الخارجي'),
+                          value: finishOuter,
                           values: GlassFinish.values,
                           onChanged: (value) {
                             if (value != null) {
-                              setDialogState(() => finishInner = value);
+                              setDialogState(() => finishOuter = value);
                             }
                           },
                         ),
-                        if (finishInner != GlassFinish.clair)
+                        if (finishOuter != GlassFinish.clair)
                           enumDropdown(
-                            label: t('لون الوجه الداخلي'),
-                            value: colorInner,
+                            label: t('لون الوجه الخارجي'),
+                            value: colorOuter,
                             values: GlassColor.values,
                             onChanged: (value) {
                               if (value != null) {
-                                setDialogState(() => colorInner = value);
+                                setDialogState(() => colorOuter = value);
                               }
                             },
                           ),
+                        if (structure == GlassStructure.double) ...[
+                          enumDropdown(
+                            label: t('معالجة الوجه الداخلي'),
+                            value: processingInner,
+                            values: GlassProcessing.values,
+                            onChanged: (value) {
+                              if (value != null) {
+                                setDialogState(() => processingInner = value);
+                              }
+                            },
+                          ),
+                          enumDropdown(
+                            label: t('نوع الوجه الداخلي'),
+                            value: finishInner,
+                            values: GlassFinish.values,
+                            onChanged: (value) {
+                              if (value != null) {
+                                setDialogState(() => finishInner = value);
+                              }
+                            },
+                          ),
+                          if (finishInner != GlassFinish.clair)
+                            enumDropdown(
+                              label: t('لون الوجه الداخلي'),
+                              value: colorInner,
+                              values: GlassColor.values,
+                              onChanged: (value) {
+                                if (value != null) {
+                                  setDialogState(() => colorInner = value);
+                                }
+                              },
+                            ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: Text(t('إلغاء')),
-                ),
-                FilledButton(
-                  onPressed:
-                      (outerValue == null ||
-                          outerValue <= 0 ||
-                          (structure == GlassStructure.double &&
-                              (innerValue == null ||
-                                  innerValue <= 0 ||
-                                  intercall == null)))
-                      ? null
-                      : () {
-                          final outer =
-                              double.tryParse(
-                                outerThickness.text.replaceAll(',', '.'),
-                              ) ??
-                              4.0;
-                          final inner =
-                              double.tryParse(
-                                innerThickness.text.replaceAll(',', '.'),
-                              ) ??
-                              4.0;
-                          Navigator.pop(
-                            ctx,
-                            GlassSpecification(
-                              structure: structure,
-                              finishOuter: finishOuter,
-                              finishInner: structure == GlassStructure.double
-                                  ? finishInner
-                                  : finishOuter,
-                              colorOuter: finishOuter == GlassFinish.clair
-                                  ? GlassColor.transparent
-                                  : colorOuter,
-                              colorInner: structure == GlassStructure.double
-                                  ? (finishInner == GlassFinish.clair
-                                        ? GlassColor.transparent
-                                        : colorInner)
-                                  : (finishOuter == GlassFinish.clair
-                                        ? GlassColor.transparent
-                                        : colorOuter),
-                              processingOuter: processingOuter,
-                              processingInner:
-                                  structure == GlassStructure.double
-                                  ? processingInner
-                                  : GlassProcessing.none,
-                              temperedOuter:
-                                  processingOuter == GlassProcessing.tempered,
-                              temperedInner:
-                                  processingInner == GlassProcessing.tempered,
-                              hasGas:
-                                  structure == GlassStructure.double && hasGas,
-                              intercallThickness:
-                                  intercall ?? base.intercallThickness,
-                              thicknessOuter: outer,
-                              thicknessInner: structure == GlassStructure.double
-                                  ? inner
-                                  : null,
-                              panneauSubtype: base.panneauSubtype,
-                              panneauColor: base.panneauColor,
-                              panneauProductId: base.panneauProductId,
-                            ),
-                          );
-                        },
-                  child: Text(t('تطبيق')),
-                ),
-              ],
-            );
-          },
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: Text(t('إلغاء')),
+                  ),
+                  FilledButton(
+                    onPressed:
+                        (outerValue == null ||
+                            outerValue <= 0 ||
+                            (structure == GlassStructure.double &&
+                                (innerValue == null ||
+                                    innerValue <= 0 ||
+                                    intercall == null)))
+                        ? null
+                        : () {
+                            final outer =
+                                double.tryParse(
+                                  outerThickness.text.replaceAll(',', '.'),
+                                ) ??
+                                4.0;
+                            final inner =
+                                double.tryParse(
+                                  innerThickness.text.replaceAll(',', '.'),
+                                ) ??
+                                4.0;
+                            Navigator.pop(
+                              ctx,
+                              GlassSpecification(
+                                structure: structure,
+                                finishOuter: finishOuter,
+                                finishInner: structure == GlassStructure.double
+                                    ? finishInner
+                                    : finishOuter,
+                                colorOuter: finishOuter == GlassFinish.clair
+                                    ? GlassColor.transparent
+                                    : colorOuter,
+                                colorInner: structure == GlassStructure.double
+                                    ? (finishInner == GlassFinish.clair
+                                          ? GlassColor.transparent
+                                          : colorInner)
+                                    : (finishOuter == GlassFinish.clair
+                                          ? GlassColor.transparent
+                                          : colorOuter),
+                                processingOuter: processingOuter,
+                                processingInner:
+                                    structure == GlassStructure.double
+                                    ? processingInner
+                                    : GlassProcessing.none,
+                                temperedOuter:
+                                    processingOuter == GlassProcessing.tempered,
+                                temperedInner:
+                                    processingInner == GlassProcessing.tempered,
+                                hasGas:
+                                    structure == GlassStructure.double &&
+                                    hasGas,
+                                intercallThickness:
+                                    intercall ?? base.intercallThickness,
+                                thicknessOuter: outer,
+                                thicknessInner:
+                                    structure == GlassStructure.double
+                                    ? inner
+                                    : null,
+                                panneauSubtype: base.panneauSubtype,
+                                panneauColor: base.panneauColor,
+                                panneauProductId: base.panneauProductId,
+                                decorDesignCode: base.decorDesignCode,
+                              ),
+                            );
+                          },
+                    child: Text(t('تطبيق')),
+                  ),
+                ],
+              );
+            },
+          ),
         ),
       );
       return await Navigator.of(context, rootNavigator: true).push(route);
@@ -3107,7 +3116,8 @@ class _CommandePageState extends State<CommandePage> {
     final double calculatedTax = isTaxPercentage
         ? ((finalTotal * taxInput) / 100)
         : taxInput;
-    final double totalWithRemiseTax = finalTotal - calculatedRemise + calculatedTax;
+    final double totalWithRemiseTax =
+        finalTotal - calculatedRemise + calculatedTax;
     final bool showPaymentSummary = _showEditPaymentSummary;
     final double remainingPayment = showPaymentSummary
         ? (totalWithRemiseTax - _editAdvancePayment)
@@ -3563,12 +3573,14 @@ class _CommandePageState extends State<CommandePage> {
                     : Icons.payments_outlined,
                 onIconTap: () => _toggleRemiseType(rawTotal),
                 iconTooltip: isRemisePercentage
-                    ? (Provider.of<AppSettingsProvider>(context).language == 'ar'
-                        ? 'نسبة مئوية (%) - اضغط للتحويل لقيمة عادية (DZD)'
-                        : 'Pourcentage (%) - Cliquez pour valeur fixe (DZD)')
-                    : (Provider.of<AppSettingsProvider>(context).language == 'ar'
-                        ? 'قيمة عادية (DZD) - اضغط للتحويل لنسبة مئوية (%)'
-                        : 'Valeur fixe (DZD) - Cliquez pour pourcentage (%)'),
+                    ? (Provider.of<AppSettingsProvider>(context).language ==
+                              'ar'
+                          ? 'نسبة مئوية (%) - اضغط للتحويل لقيمة عادية (DZD)'
+                          : 'Pourcentage (%) - Cliquez pour valeur fixe (DZD)')
+                    : (Provider.of<AppSettingsProvider>(context).language ==
+                              'ar'
+                          ? 'قيمة عادية (DZD) - اضغط للتحويل لنسبة مئوية (%)'
+                          : 'Valeur fixe (DZD) - Cliquez pour pourcentage (%)'),
                 suffixWidget: Padding(
                   padding: const EdgeInsetsDirectional.only(end: 12.0),
                   child: Row(
@@ -3616,17 +3628,17 @@ class _CommandePageState extends State<CommandePage> {
                 label:
                     '${Localization.translate('Tax Tva', Provider.of<AppSettingsProvider>(context).language)} (${isTaxPercentage ? "%" : "DZD"})',
                 controller: taxController,
-                icon: isTaxPercentage
-                    ? Icons.percent
-                    : Icons.payments_outlined,
+                icon: isTaxPercentage ? Icons.percent : Icons.payments_outlined,
                 onIconTap: () => _toggleTaxType(rawTotal),
                 iconTooltip: isTaxPercentage
-                    ? (Provider.of<AppSettingsProvider>(context).language == 'ar'
-                        ? 'نسبة مئوية (%) - اضغط للتحويل لقيمة عادية (DZD)'
-                        : 'Pourcentage (%) - Cliquez pour valeur fixe (DZD)')
-                    : (Provider.of<AppSettingsProvider>(context).language == 'ar'
-                        ? 'قيمة عادية (DZD) - اضغط للتحويل لنسبة مئوية (%)'
-                        : 'Valeur fixe (DZD) - Cliquez pour pourcentage (%)'),
+                    ? (Provider.of<AppSettingsProvider>(context).language ==
+                              'ar'
+                          ? 'نسبة مئوية (%) - اضغط للتحويل لقيمة عادية (DZD)'
+                          : 'Pourcentage (%) - Cliquez pour valeur fixe (DZD)')
+                    : (Provider.of<AppSettingsProvider>(context).language ==
+                              'ar'
+                          ? 'قيمة عادية (DZD) - اضغط للتحويل لنسبة مئوية (%)'
+                          : 'Valeur fixe (DZD) - Cliquez pour pourcentage (%)'),
                 suffixWidget: Padding(
                   padding: const EdgeInsetsDirectional.only(end: 12.0),
                   child: Row(
@@ -3968,14 +3980,15 @@ class _CommandePageState extends State<CommandePage> {
                   onPressed: onIconTap,
                 )
               : Icon(icon, color: Colors.blueAccent),
-          suffixIcon: suffixWidget ??
+          suffixIcon:
+              suffixWidget ??
               (suffix != null
                   ? (onSuffixTap != null
-                      ? IconButton(
-                          icon: Icon(suffix, color: Colors.blueAccent),
-                          onPressed: onSuffixTap,
-                        )
-                      : Icon(suffix, color: Colors.blueAccent))
+                        ? IconButton(
+                            icon: Icon(suffix, color: Colors.blueAccent),
+                            onPressed: onSuffixTap,
+                          )
+                        : Icon(suffix, color: Colors.blueAccent))
                   : null),
           filled: true,
           fillColor: Colors.transparent,

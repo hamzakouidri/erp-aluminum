@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
@@ -247,6 +247,36 @@ class _LoginScreenState extends State<LoginScreen>
       return '${_t('حدث خطأ')}: ${e.message}';
     }
     final errorText = e.toString().toLowerCase();
+    if (errorText.contains('account_not_registered_use_create_account')) {
+      return _t(
+        'هذا البريد غير مسجل. انتقل إلى إنشاء حساب وأكمل بيانات الورشة أولاً.',
+      );
+    }
+    if (errorText.contains('workshop_invite_required')) {
+      return _t(
+        'هذا البريد غير مدعو إلى الورشة. اطلب من مدير الورشة إضافته أولاً.',
+      );
+    }
+    if (errorText.contains('workshop_not_found')) {
+      return _t('كود الورشة غير صحيح أو الورشة غير موجودة.');
+    }
+    if (errorText.contains('workshop_name_required')) {
+      return _t('اسم الورشة مطلوب لإنشاء حساب المدير.');
+    }
+    if (errorText.contains('workshop_code_required')) {
+      return _t('كود الورشة مطلوب لإنشاء حساب العامل.');
+    }
+    if (errorText.contains('person_name_required')) {
+      return _t('الاسم الكامل مطلوب قبل إنشاء الحساب.');
+    }
+    if (errorText.contains('workshop_name_already_exists')) {
+      return _t('اسم الورشة محجوز وموجود مسبقاً! يرجى اختيار اسم آخر فريد.');
+    }
+    if (errorText.contains('prepare_workshop_signup')) {
+      return _t(
+        'حماية إنشاء الحساب غير مفعلة على Supabase. طبّق ملف signup_admission_hook.sql أولاً.',
+      );
+    }
     if (errorText.contains('workshop name already exists') ||
         errorText.contains('name already exists')) {
       return _t('اسم الورشة محجوز وموجود مسبقاً! يرجى اختيار اسم آخر فريد.');
@@ -292,6 +322,12 @@ class _LoginScreenState extends State<LoginScreen>
   Future<void> _saveSupabaseAccountContext(
     SupabaseAccountSnapshot account,
   ) async {
+    if (!_hasUsableWorkshopMembership(account)) {
+      throw const AppAuthException(
+        'account-not-configured',
+        'هذا الحساب غير مرتبط بورشة صالحة.',
+      );
+    }
     final prefs = await SharedPreferences.getInstance();
     // Keep the person's account name separate from the workshop name. The
     // latter is used for document headers, while the former is used by
@@ -334,6 +370,30 @@ class _LoginScreenState extends State<LoginScreen>
             debugPrint('Post-login synchronization startup failed: $error');
           }),
     );
+  }
+
+  bool _hasUsableWorkshopMembership(SupabaseAccountSnapshot? account) {
+    if (account == null) return false;
+    if (account.isApplicationAdminWorkspace) return true;
+    return account.userId.trim().isNotEmpty &&
+        account.workshopId.trim().isNotEmpty &&
+        account.workshopCode.trim().isNotEmpty;
+  }
+
+  Future<bool> _rejectUnconfiguredAccount() async {
+    var authRowDeleted = true;
+    try {
+      // The server RPC deletes only auth users that have no workshop
+      // membership, so a valid account cannot be removed accidentally.
+      await SupabaseAccountService().deleteCurrentUnconfiguredAuthUser();
+    } catch (error) {
+      authRowDeleted = false;
+      debugPrint('Unconfigured account cleanup skipped: $error');
+    }
+    SupabaseAccountService().invalidateCurrentAccountCache();
+    await CloudSyncService().clearCachedWorkshopContext();
+    await _auth.signOut();
+    return authRowDeleted;
   }
 
   /// Completes the one-time bridge after the old Firebase identity has been
@@ -552,6 +612,15 @@ class _LoginScreenState extends State<LoginScreen>
         await _auth.signOutLegacyFirebase();
         return false;
       }
+      await SupabaseAccountService().prepareWorkshopSignup(
+        email: email,
+        personName: legacyUser.displayName?.trim().isNotEmpty == true
+            ? legacyUser.displayName!.trim()
+            : email.split('@').first,
+        worker: !legacy.isManager,
+        workshopName: legacy.workshopName,
+        workshopCode: legacy.workshopCode,
+      );
       await _createOrSignInSupabasePasswordAccount(
         email: email,
         password: password,
@@ -628,24 +697,34 @@ class _LoginScreenState extends State<LoginScreen>
           account = await SupabaseAccountService().loadCurrentAccount();
         }
       }
-      if (account == null) {
+      if (!_hasUsableWorkshopMembership(account)) {
+        final authRowDeleted = await _rejectUnconfiguredAccount();
+        if (!authRowDeleted) {
+          throw const AppAuthException(
+            'orphan-auth-delete-failed',
+            'الحساب غير مرتبط بورشة، وتعذر حذفه من Supabase Authentication. يجب تطبيق ملف delete_orphan_auth_accounts.sql على Supabase.',
+          );
+        }
         throw const AppAuthException(
           'account-not-configured',
-          'لم يتم ربط الحساب بورشة في Supabase بعد.',
+          'لا يمكن الدخول: هذا البريد غير مرتبط بأي ورشة. أنشئ ورشة أو اطلب دعوة صالحة من مدير الورشة.',
         );
       }
-      if (account.role == 'admin' && _needsWorkshopNameRepair(account)) {
+      var verifiedAccount = account!;
+      if (verifiedAccount.role == 'admin' &&
+          _needsWorkshopNameRepair(verifiedAccount)) {
         // Older migrations could transfer all business rows but miss the
         // workshop profile. Retry the legacy read once while the user has
         // supplied the old manager credentials, without blocking normal login
         // if the old Firebase account is no longer available.
         final repaired = await _tryLegacyPasswordMigration();
         if (repaired) {
-          account =
-              await SupabaseAccountService().loadCurrentAccount() ?? account;
+          verifiedAccount =
+              await SupabaseAccountService().loadCurrentAccount() ??
+              verifiedAccount;
         }
       }
-      if (account.blocked) {
+      if (verifiedAccount.blocked) {
         await _auth.signOut();
         throw const AppAuthException(
           'user-disabled',
@@ -653,7 +732,7 @@ class _LoginScreenState extends State<LoginScreen>
         );
       }
 
-      await _saveSupabaseAccountContext(account);
+      await _saveSupabaseAccountContext(verifiedAccount);
 
       debugPrint(
         'LOGIN SYNC: uid=${user.uid}, '
@@ -692,6 +771,7 @@ class _LoginScreenState extends State<LoginScreen>
       _errorMessage = '';
     });
 
+    var unconfiguredAuthUser = false;
     try {
       // Registration may follow a previous account on the same device.
       // Never let its cached workshop identity participate in this account's
@@ -699,6 +779,13 @@ class _LoginScreenState extends State<LoginScreen>
       await CloudSyncService().clearCachedWorkshopContext();
       final workshopName = _workshopNameController.text.trim();
       final workshopCode = _workshopCodeController.text.trim();
+      final personName = _nameController.text.trim();
+      if (personName.isEmpty) {
+        throw const AppAuthException(
+          'name-required',
+          'يرجى إدخال الاسم الكامل.',
+        );
+      }
       if (!_isWorkerSignup && workshopName.isEmpty) {
         throw const AppAuthException(
           'workshop-name-required',
@@ -718,14 +805,24 @@ class _LoginScreenState extends State<LoginScreen>
         );
       }
 
+      // Authorize this exact email before touching Supabase Auth. The
+      // Before User Created hook consumes this short-lived permit; login
+      // attempts never create one and therefore cannot create new users.
+      await SupabaseAccountService().prepareWorkshopSignup(
+        email: _emailController.text,
+        personName: personName,
+        worker: _isWorkerSignup,
+        workshopName: workshopName,
+        workshopCode: workshopCode,
+      );
+
       final user = await _auth.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
+      unconfiguredAuthUser = true;
       await _auth.updateProfile(
-        displayName: _nameController.text.trim().isEmpty
-            ? (_isWorkerSignup ? 'عامل' : 'مدير الورشة')
-            : _nameController.text.trim(),
+        displayName: personName,
       );
 
       final prefs = await SharedPreferences.getInstance();
@@ -742,32 +839,53 @@ class _LoginScreenState extends State<LoginScreen>
         timeout: const Duration(seconds: 20),
       );
       if (!ready) {
-        await _auth.signOut();
         throw const AppAuthException(
           'workshop-not-configured',
           'تعذر ربط الحساب بالورشة. تأكد من كود الورشة أو من دعوة المدير.',
         );
       }
       final account = await SupabaseAccountService().loadCurrentAccount();
-      if (account == null || account.userId != user.uid) {
-        await _auth.signOut();
+      if (!_hasUsableWorkshopMembership(account) ||
+          account!.userId != user.uid) {
         throw const AppAuthException(
           'membership-not-created',
           'تم إنشاء الحساب، لكن لم يتم إنشاء عضوية الورشة.',
         );
       }
-      await prefs.setString('workshop_code', account.workshopCode);
-      await prefs.setString('workshop_name', account.workshopName);
-      await prefs.setString('user_role', account.role);
+      final verifiedAccount = account!;
+      await prefs.setString(
+        'workshop_code',
+        verifiedAccount.workshopCode,
+      );
+      await prefs.setString('workshop_name', verifiedAccount.workshopName);
+      await prefs.setString('user_role', verifiedAccount.role);
       await prefs.setString(
         'permissions_json',
-        jsonEncode(account.permissions),
+        jsonEncode(verifiedAccount.permissions),
       );
+      unconfiguredAuthUser = false;
       SupabaseWorkshopSyncService().start();
       _auth.publishCurrentSession();
     } catch (error) {
-      if (mounted)
-        setState(() => _errorMessage = _getFriendlyErrorMessage(error));
+      Object? authCleanupError;
+      if (unconfiguredAuthUser) {
+        try {
+          await SupabaseAccountService().deleteCurrentUnconfiguredAuthUser();
+        } catch (cleanupError) {
+          authCleanupError = cleanupError;
+          debugPrint('Unconfigured email account cleanup failed: $cleanupError');
+        }
+        try {
+          await _auth.signOut();
+        } catch (_) {}
+      }
+      if (mounted) {
+        setState(() {
+          _errorMessage = authCleanupError == null
+              ? _getFriendlyErrorMessage(error)
+              : 'فشل ربط الحساب بالورشة، وتعذر حذف البريد من Supabase Authentication. يجب تطبيق ملف delete_orphan_auth_accounts.sql على Supabase.';
+        });
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -1122,8 +1240,16 @@ class _LoginScreenState extends State<LoginScreen>
     // prevents Google from creating an Auth user when the workshop identity
     // (name for an owner, code for a worker) is missing.
     if (!_isLoginMode) {
+      if (!_requireGmailAddress()) return;
       final workshopName = _workshopNameController.text.trim();
       final workshopCode = _workshopCodeController.text.trim();
+      final personName = _nameController.text.trim();
+      if (personName.isEmpty) {
+        setState(() {
+          _errorMessage = 'أدخل الاسم الكامل قبل التسجيل بواسطة Google.';
+        });
+        return;
+      }
       if (!_isWorkerSignup && workshopName.isEmpty) {
         setState(() {
           _errorMessage = 'أدخل اسم الورشة قبل التسجيل بواسطة Google.';
@@ -1136,12 +1262,27 @@ class _LoginScreenState extends State<LoginScreen>
         });
         return;
       }
+      try {
+        await SupabaseAccountService().prepareWorkshopSignup(
+          email: _emailController.text,
+          personName: personName,
+          worker: _isWorkerSignup,
+          workshopName: workshopName,
+          workshopCode: workshopCode,
+        );
+      } catch (error) {
+        setState(() {
+          _errorMessage = _getFriendlyErrorMessage(error);
+        });
+        return;
+      }
     }
     setState(() {
       _isLoading = true;
       _errorMessage = '';
     });
 
+    var unconfiguredGoogleSession = false;
     try {
       // Google may switch accounts without recreating the Flutter singletons.
       // Clear the previous account's local workshop hint before OAuth starts.
@@ -1180,11 +1321,16 @@ class _LoginScreenState extends State<LoginScreen>
           accessToken: accessToken,
         );
       }
+      unconfiguredGoogleSession = true;
       // Google can switch the Supabase session without recreating the Flutter
       // singletons. Reset the old workshop context before resolving this
       // Google account's membership.
       CloudSyncService().reset();
       var account = await SupabaseAccountService().loadCurrentAccount();
+      if (account != null &&
+          !_isSyntheticApplicationAdminAccount(user, account)) {
+        unconfiguredGoogleSession = false;
+      }
       if (_isLoginMode) {
         if (account == null ||
             _isSyntheticApplicationAdminAccount(user, account)) {
@@ -1241,7 +1387,6 @@ class _LoginScreenState extends State<LoginScreen>
             ? _workshopCodeController.text.trim()
             : _generateJoinCode();
         if (_isWorkerSignup && code.isEmpty) {
-          await _auth.signOut();
           throw const AppAuthException(
             'workshop-code-required',
             'يرجى إدخال كود الورشة.',
@@ -1251,7 +1396,6 @@ class _LoginScreenState extends State<LoginScreen>
         if (!_isWorkerSignup) {
           final name = _workshopNameController.text.trim();
           if (name.isEmpty) {
-            await _auth.signOut();
             throw const AppAuthException(
               'workshop-name-required',
               'يرجى إدخال اسم المصنع أو الورشة.',
@@ -1267,7 +1411,6 @@ class _LoginScreenState extends State<LoginScreen>
           timeout: const Duration(seconds: 20),
         );
         if (!ready) {
-          await _auth.signOut();
           throw const AppAuthException(
             'workshop-not-configured',
             'تعذر ربط الحساب بالورشة. تأكد من كود الورشة أو من دعوة المدير.',
@@ -1277,18 +1420,35 @@ class _LoginScreenState extends State<LoginScreen>
       }
 
       if (account == null) {
-        await _auth.signOut();
         throw const AppAuthException(
           'membership-not-created',
           'تمت المصادقة، لكن لم يتم إنشاء عضوية الورشة.',
         );
       }
+      if (!_isLoginMode) {
+        await _auth.updateProfile(displayName: _nameController.text.trim());
+      }
+      unconfiguredGoogleSession = false;
       await _saveSupabaseAccountContext(account);
       SupabaseWorkshopSyncService().start();
+      _auth.publishCurrentSession();
       debugPrint('Google Supabase login completed for ${user.email}');
     } on WindowsGoogleSignInException catch (error) {
       if (mounted) setState(() => _errorMessage = error.userMessage);
     } catch (error) {
+      if (unconfiguredGoogleSession) {
+        try {
+          // OAuth creates an auth.users row as soon as an email is selected.
+          // Remove it when workshop creation/joining did not complete, so the
+          // account can never remain registered without a workshop.
+          await SupabaseAccountService().deleteCurrentUnconfiguredAuthUser();
+        } catch (cleanupError) {
+          debugPrint('Unconfigured Google account cleanup failed: $cleanupError');
+        }
+        try {
+          await _auth.signOut();
+        } catch (_) {}
+      }
       if (mounted)
         setState(() => _errorMessage = _getFriendlyErrorMessage(error));
     } finally {

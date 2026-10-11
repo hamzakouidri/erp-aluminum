@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:provider/provider.dart';
 import '../sql_database.dart';
@@ -9,6 +10,8 @@ import '../settings/localization.dart';
 import 'material_sale_editor_screen.dart';
 import '../services/material_sale_pdf_service.dart';
 import 'inventory_screen.dart';
+import 'app_workspace_shell.dart';
+import '../widgets/resizable_columns_table.dart';
 
 enum _SalesSection {
   dashboard,
@@ -20,6 +23,8 @@ enum _SalesSection {
   journal,
   stock,
 }
+
+enum _SalesViewMode { cards, table }
 
 class MaterialSalesScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -44,12 +49,16 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
   String _searchQuery = '';
   bool _showSearch = false;
   final TextEditingController _searchCtrl = TextEditingController();
+  _SalesViewMode _viewMode = _SalesViewMode.cards;
+  int? _selectedSaleId;
 
   List<Map<String, dynamic>> _sales = [];
   bool _loading = true;
   String? _error;
 
   StreamSubscription<String>? _syncSub;
+  Timer? _syncRefreshDebounce;
+  bool _loadInProgress = false;
 
   // ─── Formatters ───────────────────────────────────────────────────────────
   final _amountFmt = NumberFormat('#,##0.00');
@@ -63,29 +72,45 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
 
     // Subscribe to cloud sync events and refresh on data changes
     _syncSub = CloudSyncService().dbUpdateStream.listen((_) {
-      if (mounted) _refresh();
+      if (!mounted) return;
+      _syncRefreshDebounce?.cancel();
+      _syncRefreshDebounce = Timer(
+        const Duration(seconds: 1),
+        () => _loadSales(showLoading: false),
+      );
     });
   }
 
   @override
   void dispose() {
     _syncSub?.cancel();
+    _syncRefreshDebounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
 
   // ─── Data helpers ─────────────────────────────────────────────────────────
-  Future<void> _loadSales() async {
+  Future<void> _loadSales({bool showLoading = true}) async {
     if (!mounted) return;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    // Desktop sync may emit many global database notifications at once.
+    // Ignore overlapping reads instead of keeping an endless refresh queue.
+    if (_loadInProgress) return;
+    _loadInProgress = true;
+    if (showLoading) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final data = await _db.readMaterialSales();
       if (mounted)
         setState(() {
           _sales = data;
+          if (_selectedSaleId != null &&
+              !data.any((row) => row['id'] == _selectedSaleId)) {
+            _selectedSaleId = null;
+          }
           _loading = false;
         });
     } catch (e) {
@@ -94,10 +119,20 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
           _error = e.toString();
           _loading = false;
         });
+    } finally {
+      _loadInProgress = false;
     }
   }
 
   void _refresh() => _loadSales();
+
+  Map<String, dynamic>? get _selectedSale {
+    if (_selectedSaleId == null) return null;
+    for (final sale in _visibleSales) {
+      if (sale['id'] == _selectedSaleId) return sale;
+    }
+    return null;
+  }
 
   // ─── Stats ────────────────────────────────────────────────────────────────
   List<Map<String, dynamic>> get _visibleSales {
@@ -137,24 +172,25 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
     return rows.toList();
   }
 
-  double _sumField(String field, {bool? externalOnly}) => _visibleSales.fold(
-    0.0,
-    (s, r) {
-      if (externalOnly == true && r['is_internal'] == 1) return s;
-      return s + ((r[field] as num?) ?? 0).toDouble();
-    },
-  );
+  double _sumField(
+    List<Map<String, dynamic>> rows,
+    String field, {
+    bool? externalOnly,
+  }) => rows.fold(0.0, (s, r) {
+    if (externalOnly == true && r['is_internal'] == 1) return s;
+    return s + ((r[field] as num?) ?? 0).toDouble();
+  });
 
   // ─── Actions ─────────────────────────────────────────────────────────────
   Future<void> _createNew() async {
-    await Navigator.push(
+    final docType = _initialDocTypeForSection();
+    final uniqueId = DateTime.now().microsecondsSinceEpoch;
+    openAdaptiveScreen(
       context,
-      MaterialPageRoute(
-        builder: (_) => MaterialSaleEditorScreen(
-          db: _db,
-          initialDocType: _initialDocTypeForSection(),
-        ),
-      ),
+      title: '${_t('وثيقة جديدة')} • ${_docTypeLabel(docType)}',
+      icon: Icons.description_rounded,
+      entryId: 'material_sale_new_$uniqueId',
+      screen: MaterialSaleEditorScreen(db: _db, initialDocType: docType),
     );
     _refresh();
   }
@@ -173,11 +209,15 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
   }
 
   Future<void> _openEditor(Map<String, dynamic> sale) async {
-    await Navigator.push(
+    final saleId = (sale['id'] as num).toInt();
+    final clientName = (sale['client_name'] ?? _t('بدون اسم')).toString();
+    final saleCode = (sale['sale_code'] ?? '').toString();
+    openAdaptiveScreen(
       context,
-      MaterialPageRoute(
-        builder: (_) => MaterialSaleEditorScreen(db: _db, saleId: sale['id']),
-      ),
+      title: '$clientName • $saleCode',
+      icon: Icons.description_rounded,
+      entryId: 'material_sale_$saleId',
+      screen: MaterialSaleEditorScreen(db: _db, saleId: saleId),
     );
     _refresh();
   }
@@ -213,7 +253,10 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
       builder: (ctx) => AlertDialog(
         title: Text(
           _t('تأكيد الحذف'),
-          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+          style: const TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.bold,
+          ),
         ),
         content: Text(
           '${_t('هل أنت متأكد من حذف الوثيقة')} ${sale['sale_code']}؟',
@@ -259,7 +302,10 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
   }
 
   String _t(String key) {
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     return Localization.translate(key, lang);
   }
 
@@ -351,37 +397,43 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
   // ─── Build ────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: _buildAppBar(),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final desktop = constraints.maxWidth >= 850;
-          if (desktop) {
-            return Row(
-              children: [
-                _buildDesktopNavigation(),
-                const VerticalDivider(width: 1),
-                Expanded(child: _buildSectionContent()),
-              ],
-            );
-          }
-          return Column(
-            children: [
-              _buildMobileNavigation(),
-              Expanded(child: _buildSectionContent()),
-            ],
-          );
-        },
+    return CallbackShortcuts(
+      bindings: {const SingleActivator(LogicalKeyboardKey.insert): _createNew},
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          appBar: _buildAppBar(),
+          body: LayoutBuilder(
+            builder: (context, constraints) {
+              final desktop = constraints.maxWidth >= 850;
+              if (desktop) {
+                return Row(
+                  children: [
+                    _buildDesktopNavigation(),
+                    const VerticalDivider(width: 1),
+                    Expanded(child: _buildSectionContent()),
+                  ],
+                );
+              }
+              return Column(
+                children: [
+                  _buildMobileNavigation(),
+                  Expanded(child: _buildSectionContent()),
+                ],
+              );
+            },
+          ),
+          floatingActionButton: _section == _SalesSection.stock
+              ? null
+              : FloatingActionButton(
+                  backgroundColor: _cyan,
+                  onPressed: _createNew,
+                  tooltip: '${_t('إنشاء وثيقة')} (Insert)',
+                  child: const Icon(Icons.add, color: Colors.white),
+                ),
+        ),
       ),
-      floatingActionButton: _section == _SalesSection.stock
-          ? null
-          : FloatingActionButton(
-              backgroundColor: _cyan,
-              onPressed: _createNew,
-              tooltip: _t('إنشاء وثيقة'),
-              child: const Icon(Icons.add, color: Colors.white),
-            ),
     );
   }
 
@@ -441,7 +493,10 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
                 fontWeight: selected ? FontWeight.bold : FontWeight.normal,
               ),
             ),
-            onTap: () => setState(() => _section = section),
+            onTap: () => setState(() {
+              _section = section;
+              _selectedSaleId = null;
+            }),
           );
         }).toList(),
       ),
@@ -479,7 +534,10 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
               ),
               selectedColor: _cyan,
               backgroundColor: Colors.white,
-              onSelected: (_) => setState(() => _section = section),
+              onSelected: (_) => setState(() {
+                _section = section;
+                _selectedSaleId = null;
+              }),
             );
           },
         ),
@@ -491,11 +549,110 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
     if (_section == _SalesSection.stock) return _buildStockSection();
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) return _buildError();
+    final visibleSales = _visibleSales;
     return Column(
       children: [
-        _buildStatsRow(),
-        Expanded(child: _buildSalesList()),
+        _buildStatsRow(visibleSales),
+        _buildViewControls(),
+        if (_viewMode == _SalesViewMode.table && _selectedSale != null)
+          _buildSelectedSaleActions(_selectedSale!),
+        Expanded(
+          child: _viewMode == _SalesViewMode.cards
+              ? _buildSalesList(visibleSales)
+              : _buildSalesTable(visibleSales),
+        ),
       ],
+    );
+  }
+
+  Widget _buildViewControls() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(color: Theme.of(context).dividerColor),
+        ),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SegmentedButton<_SalesViewMode>(
+            segments: [
+              ButtonSegment(
+                value: _SalesViewMode.cards,
+                icon: const Icon(Icons.view_agenda_rounded, size: 18),
+                label: Text(_t('عرض كبطاقات')),
+              ),
+              ButtonSegment(
+                value: _SalesViewMode.table,
+                icon: const Icon(Icons.table_rows_rounded, size: 18),
+                label: Text(_t('عرض كجدول')),
+              ),
+            ],
+            selected: {_viewMode},
+            onSelectionChanged: (selection) {
+              setState(() {
+                _viewMode = selection.first;
+                if (_viewMode == _SalesViewMode.cards) _selectedSaleId = null;
+              });
+            },
+          ),
+          Text(
+            '${_t('إضافة وثيقة جديدة')}: Insert',
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 11,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSelectedSaleActions(Map<String, dynamic> sale) {
+    return Material(
+      color: _blue.withOpacity(0.06),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                sale['sale_code']?.toString() ?? '—',
+                style: const TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            _actionBtn(
+              icon: Icons.edit_rounded,
+              label: _t('تعديل'),
+              color: _cyan,
+              onTap: () => _openEditor(sale),
+            ),
+            const SizedBox(width: 6),
+            _actionBtn(
+              icon: Icons.print_rounded,
+              label: _t('طباعة'),
+              color: _blue,
+              onTap: () => _printPdf(sale),
+            ),
+            const SizedBox(width: 6),
+            _actionBtn(
+              icon: Icons.delete_rounded,
+              label: _t('حذف'),
+              color: _red,
+              onTap: () => _confirmDelete(sale),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -523,7 +680,9 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
               ),
               const SizedBox(height: 8),
               Text(
-                _t('يعرض نفس مخزون الورشة المتاح للبيع، دون إنشاء مخزون منفصل.'),
+                _t(
+                  'يعرض نفس مخزون الورشة المتاح للبيع، دون إنشاء مخزون منفصل.',
+                ),
                 style: TextStyle(
                   fontFamily: 'Cairo',
                   color: colors.onSurfaceVariant,
@@ -601,12 +760,20 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
   }
 
   // ─── Stats row ────────────────────────────────────────────────────────────
-  Widget _buildStatsRow() {
-    final count = _visibleSales.length;
-    final externalRevenue = _sumField('net_total', externalOnly: true);
-    final paid = _sumField('paid_amount', externalOnly: true);
-    final remaining = _sumField('remaining_amount', externalOnly: true);
-    final internalTransfers = _visibleSales
+  Widget _buildStatsRow(List<Map<String, dynamic>> visibleSales) {
+    final count = visibleSales.length;
+    final externalRevenue = _sumField(
+      visibleSales,
+      'net_total',
+      externalOnly: true,
+    );
+    final paid = _sumField(visibleSales, 'paid_amount', externalOnly: true);
+    final remaining = _sumField(
+      visibleSales,
+      'remaining_amount',
+      externalOnly: true,
+    );
+    final internalTransfers = visibleSales
         .where((r) => r['is_internal'] == 1)
         .fold(0.0, (s, r) => s + ((r['net_total'] as num?) ?? 0).toDouble());
 
@@ -707,8 +874,174 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
   }
 
   // ─── Sales list ───────────────────────────────────────────────────────────
-  Widget _buildSalesList() {
-    final sales = _visibleSales;
+  String _linkedDocumentLabel(Map<String, dynamic> sale) {
+    final codes = <String>{
+      (sale['linked_source_code'] ?? '').toString().trim(),
+      (sale['linked_target_code'] ?? '').toString().trim(),
+    }..removeWhere((code) => code.isEmpty);
+    return codes.isEmpty ? '—' : codes.join(' ↔ ');
+  }
+
+  Widget _buildSalesTable(List<Map<String, dynamic>> sales) {
+    if (sales.isEmpty) return _buildSalesList(sales);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final headerStyle = TextStyle(
+      color: isDark ? Colors.white : const Color(0xFF18233B),
+      fontWeight: FontWeight.bold,
+      fontSize: 12,
+      fontFamily: 'Cairo',
+    );
+    bool wasModified(Map<String, dynamic> sale) {
+      final created = DateTime.tryParse(sale['created_at']?.toString() ?? '');
+      final updated = DateTime.tryParse(sale['updated_at']?.toString() ?? '');
+      if (created == null || updated == null) return false;
+      return updated.difference(created).abs() > const Duration(seconds: 5);
+    }
+    return ResizableColumnsTable(
+      persistenceKey: 'material_sales_documents_v2',
+      headerColor: isDark ? Colors.grey.shade900 : Colors.blueGrey.shade800,
+      borderColor: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+      rowColor: isDark ? const Color(0xFF171721) : Colors.white,
+      headerMinHeight: 52,
+      rowMinHeight: 64,
+      maxBodyHeight: MediaQuery.sizeOf(context).height - 330,
+      columns: [
+        ResizableTableColumn(
+          id: 'code',
+          label: Text(_t('رقم الوثيقة'), style: headerStyle),
+          initialWidth: 150,
+        ),
+        ResizableTableColumn(
+          id: 'client',
+          label: Text(_t('العميل'), style: headerStyle),
+          initialWidth: 240,
+        ),
+        ResizableTableColumn(
+          id: 'created_at',
+          label: Text(_t('تاريخ الإنشاء'), style: headerStyle),
+          initialWidth: 180,
+        ),
+        ResizableTableColumn(
+          id: 'created_by',
+          label: Text(_t('أدخل من طرف'), style: headerStyle),
+          initialWidth: 170,
+        ),
+        ResizableTableColumn(
+          id: 'updated_at',
+          label: Text(_t('تاريخ التعديل'), style: headerStyle),
+          initialWidth: 180,
+        ),
+        ResizableTableColumn(
+          id: 'updated_by',
+          label: Text(_t('عُدل من طرف'), style: headerStyle),
+          initialWidth: 170,
+        ),
+        ResizableTableColumn(
+          id: 'type',
+          label: Text(_t('نوع الوثيقة'), style: headerStyle),
+          initialWidth: 170,
+        ),
+        ResizableTableColumn(
+          id: 'status',
+          label: Text(_t('الحالة'), style: headerStyle),
+          initialWidth: 130,
+        ),
+        ResizableTableColumn(
+          id: 'amount',
+          label: Text(_t('المبلغ'), style: headerStyle),
+          initialWidth: 160,
+        ),
+        ResizableTableColumn(
+          id: 'link',
+          label: Text(_t('الربط'), style: headerStyle),
+          initialWidth: 210,
+          alignment: Alignment.center,
+        ),
+        ResizableTableColumn(
+          id: 'actions',
+          label: Text(_t('إجراء'), style: headerStyle),
+          initialWidth: 170,
+          alignment: Alignment.center,
+        ),
+      ],
+      rows: sales.map((sale) {
+        final id = (sale['id'] as num).toInt();
+        final linkLabel = _linkedDocumentLabel(sale);
+        final modified = wasModified(sale);
+        return ResizableTableRow(
+          reorderId: id.toString(),
+          color: id == _selectedSaleId ? _cyan.withOpacity(0.10) : null,
+          onTap: () => setState(() => _selectedSaleId = id),
+          onDoubleTap: () => _openEditor(sale),
+          cells: [
+            Text(
+              sale['sale_code']?.toString() ?? '—',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            Text(
+              sale['client_name']?.toString() ?? '—',
+              overflow: TextOverflow.ellipsis,
+            ),
+            Text(_fmtDate(sale['created_at']?.toString())),
+            Text((sale['created_by'] ?? '—').toString()),
+            Text(modified ? _fmtDate(sale['updated_at']?.toString()) : '—'),
+            Text(modified ? (sale['updated_by'] ?? '—').toString() : '—'),
+            Text(_docTypeLabel(sale['doc_type'] as String?)),
+            _chip(
+              _statusLabel(sale['status'] as String?),
+              _statusColor(sale['status'] as String?),
+            ),
+            Text(
+              _fmtAmount(sale['net_total']),
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  linkLabel == '—'
+                      ? Icons.link_off_rounded
+                      : Icons.link_rounded,
+                  color: linkLabel == '—' ? Colors.grey : _cyan,
+                  size: 20,
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(linkLabel, overflow: TextOverflow.ellipsis),
+                ),
+              ],
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  tooltip: _t('تعديل'),
+                  onPressed: () => _openEditor(sale),
+                  icon: const Icon(Icons.edit_rounded, size: 19),
+                ),
+                IconButton(
+                  tooltip: _t('طباعة'),
+                  onPressed: () => _printPdf(sale),
+                  icon: const Icon(Icons.print_rounded, size: 19),
+                ),
+                IconButton(
+                  tooltip: _t('حذف'),
+                  onPressed: () => _confirmDelete(sale),
+                  icon: const Icon(
+                    Icons.delete_outline_rounded,
+                    size: 19,
+                    color: _red,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildSalesList(List<Map<String, dynamic>> sales) {
     if (sales.isEmpty) {
       return Center(
         child: Column(
@@ -739,6 +1072,10 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
   Widget _buildSaleCard(Map<String, dynamic> sale) {
     final docType = sale['doc_type'] as String?;
     final status = sale['status'] as String?;
+    final linkedCodes = <String>[
+      (sale['linked_source_code'] ?? '').toString().trim(),
+      (sale['linked_target_code'] ?? '').toString().trim(),
+    ].where((code) => code.isNotEmpty).toList();
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 5),
@@ -808,14 +1145,61 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
+                const SizedBox(width: 16),
+                SizedBox(
+                  width: 150,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _t('الربط'),
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 10,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      if (linkedCodes.isNotEmpty)
+                        Wrap(
+                          spacing: 5,
+                          runSpacing: 2,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            for (final code in linkedCodes) ...[
+                              const Icon(
+                                Icons.link_rounded,
+                                size: 16,
+                                color: _cyan,
+                              ),
+                              Text(
+                                code,
+                                style: const TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: _cyan,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ],
+                        )
+                      else
+                        const SizedBox(height: 16),
+                    ],
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 8),
             const Divider(height: 1),
             const SizedBox(height: 4),
             // ── Row 3: action buttons ────────────────────────────────────
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 6,
+              runSpacing: 6,
               children: [
                 _actionBtn(
                   icon: Icons.print_rounded,
@@ -823,14 +1207,12 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
                   color: _blue,
                   onTap: () => _printPdf(sale),
                 ),
-                const SizedBox(width: 6),
                 _actionBtn(
                   icon: Icons.edit_rounded,
                   label: _t('تعديل'),
                   color: _cyan,
                   onTap: () => _openEditor(sale),
                 ),
-                const SizedBox(width: 6),
                 _actionBtn(
                   icon: Icons.delete_rounded,
                   label: _t('حذف'),

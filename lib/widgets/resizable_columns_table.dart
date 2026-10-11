@@ -121,6 +121,18 @@ class ResizableColumnsTable extends StatefulWidget {
     this.emptyPlaceholder,
   });
 
+  /// The shared visual language used by every interactive table in the app.
+  /// Keeping these colors here prevents individual screens from drifting into
+  /// unrelated table designs.
+  static const lightHeaderColor = Color(0xFFE7EEFC);
+  static const lightFilterColor = Color(0xFFF5F8FE);
+  static const lightRowColor = Color(0xFFFFFFFF);
+  static const lightBorderColor = Color(0xFFE5EAF3);
+  static const darkHeaderColor = Color(0xFF25324A);
+  static const darkFilterColor = Color(0xFF1E293B);
+  static const darkRowColor = Color(0xFF171B24);
+  static const darkBorderColor = Color(0xFF303B50);
+
   @override
   State<ResizableColumnsTable> createState() => _ResizableColumnsTableState();
 }
@@ -134,6 +146,7 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
   late final FocusNode _tableFocusNode;
   List<String> _rowOrder = [];
   List<String> _columnOrder = [];
+  final Set<String> _hiddenColumnIds = <String>{};
   int _preferencesLoadGeneration = 0;
   Future<void> _persistenceQueue = Future<void>.value();
   Future<SharedPreferences>? _preferencesFuture;
@@ -177,6 +190,7 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
     if (namespaceChanged) {
       _widths.clear();
       _columnOrder = [];
+      _hiddenColumnIds.clear();
     }
     _syncRowOrder();
     _syncColumnOrder();
@@ -264,6 +278,7 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
       final widthStoragePrefix = 'resizable_table_widths_${namespace}_';
       final savedWidths = <String, double>{};
       var savedOrder = <String>[];
+      final savedHidden = <String>{};
       final savedLayout = prefs.getString('resizable_table_layout_$namespace');
       if (savedLayout != null && savedLayout.trim().isNotEmpty) {
         try {
@@ -282,6 +297,12 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
             final rawOrder = decoded['order'];
             if (rawOrder is List) {
               savedOrder = rawOrder.map((id) => id.toString()).toList();
+            }
+            final rawHidden = decoded['hidden'];
+            if (rawHidden is List) {
+              savedHidden.addAll(
+                rawHidden.map((id) => id.toString()).where(availableIds.contains),
+              );
             }
           }
         } catch (_) {
@@ -305,6 +326,12 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
       }
       setState(() {
         _widths.addAll(savedWidths);
+        _hiddenColumnIds
+          ..clear()
+          ..addAll(savedHidden);
+        if (_hiddenColumnIds.length >= availableIds.length) {
+          _hiddenColumnIds.remove(columns.first.id);
+        }
         _columnOrder = [
           ...savedOrder.where(availableIds.contains),
           ...columns
@@ -330,12 +357,17 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
     final layoutKey = 'resizable_table_layout_$namespace';
     final widths = <String, double>{..._widths};
     final order = List<String>.from(_columnOrder);
+    final hidden = _hiddenColumnIds.toList(growable: false);
     _enqueuePersistence(() async {
       try {
         final prefs = await _getPreferences();
         await prefs.setString(
           layoutKey,
-          jsonEncode(<String, dynamic>{'widths': widths, 'order': order}),
+          jsonEncode(<String, dynamic>{
+            'widths': widths,
+            'order': order,
+            'hidden': hidden,
+          }),
         );
       } catch (_) {
         // Persistence is optional; the current table state remains live.
@@ -353,16 +385,20 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
     });
   }
 
-  List<ResizableTableColumn> _orderedColumns() {
+  List<ResizableTableColumn> _orderedColumns({bool includeHidden = false}) {
     final byId = <String, ResizableTableColumn>{
       for (final column in widget.columns) column.id: column,
     };
-    return [
+    final ordered = [
       for (final id in _columnOrder)
         if (byId[id] != null) byId[id]!,
       for (final column in widget.columns)
         if (!_columnOrder.contains(column.id)) column,
     ];
+    if (includeHidden) return ordered;
+    return ordered
+        .where((column) => !_hiddenColumnIds.contains(column.id))
+        .toList(growable: false);
   }
 
   void _syncColumnOrder() {
@@ -376,7 +412,53 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
   }
 
   double get _tableWidth =>
-      widget.columns.fold<double>(0, (sum, column) => sum + _widthFor(column));
+      _orderedColumns().fold<double>(0, (sum, column) => sum + _widthFor(column));
+
+  void _toggleColumnVisibility(String columnId) {
+    final isHidden = _hiddenColumnIds.contains(columnId);
+    if (!isHidden && _orderedColumns().length <= 1) return;
+    _preferencesLoadGeneration++;
+    setState(() {
+      if (isHidden) {
+        _hiddenColumnIds.remove(columnId);
+      } else {
+        _hiddenColumnIds.add(columnId);
+      }
+    });
+    _persistLayout();
+  }
+
+  Future<void> _showColumnVisibilityMenu(Offset globalPosition) async {
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final selectedId = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        Rect.fromPoints(globalPosition, globalPosition),
+        Offset.zero & overlay.size,
+      ),
+      items: [
+        for (final column in _orderedColumns(includeHidden: true))
+          PopupMenuItem<String>(
+            value: column.id,
+            enabled: _hiddenColumnIds.contains(column.id) || _orderedColumns().length > 1,
+            child: Row(
+              children: [
+                IgnorePointer(
+                  child: Checkbox(
+                    value: !_hiddenColumnIds.contains(column.id),
+                    onChanged: (_) {},
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(child: column.label),
+              ],
+            ),
+          ),
+      ],
+    );
+    if (selectedId != null && mounted) _toggleColumnVisibility(selectedId);
+  }
 
   void _resize(ResizableTableColumn column, double delta) {
     final next = (_widthFor(column) + delta)
@@ -591,16 +673,12 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final borderColor =
-        widget.borderColor ?? (isDark ? Colors.white12 : Colors.black12);
-    final headerColor =
-        widget.headerColor ??
-        (isDark ? const Color(0xFF1E1E2C) : Colors.blueGrey.shade800);
-    final filterRowColor =
-        widget.filterRowColor ??
-        (isDark ? const Color(0xFF1A1A26) : const Color(0xFFF1F5F9));
-    final rowColor =
-        widget.rowColor ?? (isDark ? const Color(0xFF171721) : Colors.white);
+    // Deliberately use one palette everywhere. The legacy color arguments are
+    // kept for source compatibility, but table styling is now centralized.
+    final borderColor = isDark ? ResizableColumnsTable.darkBorderColor : ResizableColumnsTable.lightBorderColor;
+    final headerColor = isDark ? ResizableColumnsTable.darkHeaderColor : ResizableColumnsTable.lightHeaderColor;
+    final filterRowColor = isDark ? ResizableColumnsTable.darkFilterColor : ResizableColumnsTable.lightFilterColor;
+    final rowColor = isDark ? ResizableColumnsTable.darkRowColor : ResizableColumnsTable.lightRowColor;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -704,29 +782,34 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
           ),
         );
 
-        return MouseRegion(
-          onEnter: (_) {
-            if (!_tableFocusNode.hasFocus) _tableFocusNode.requestFocus();
-          },
-          child: Focus(
-            focusNode: _tableFocusNode,
-            onKeyEvent: _handleTableKeyEvent,
-            child: ScrollConfiguration(
-              behavior: ScrollConfiguration.of(context).copyWith(
-                dragDevices: {
-                  PointerDeviceKind.touch,
-                  PointerDeviceKind.mouse,
-                  PointerDeviceKind.trackpad,
-                  PointerDeviceKind.stylus,
-                },
-              ),
-              child: SingleChildScrollView(
-                controller: _horizontalController,
-                scrollDirection: Axis.horizontal,
-                primary: false,
-                child: bodyIsBounded
-                    ? SizedBox(height: bodyHeight, child: tableContent)
-                    : tableContent,
+        // Column order is always visualized from left to right, independently
+        // from the language used by the surrounding screen.
+        return Directionality(
+          textDirection: TextDirection.ltr,
+          child: MouseRegion(
+            onEnter: (_) {
+              if (!_tableFocusNode.hasFocus) _tableFocusNode.requestFocus();
+            },
+            child: Focus(
+              focusNode: _tableFocusNode,
+              onKeyEvent: _handleTableKeyEvent,
+              child: ScrollConfiguration(
+                behavior: ScrollConfiguration.of(context).copyWith(
+                  dragDevices: {
+                    PointerDeviceKind.touch,
+                    PointerDeviceKind.mouse,
+                    PointerDeviceKind.trackpad,
+                    PointerDeviceKind.stylus,
+                  },
+                ),
+                child: SingleChildScrollView(
+                  controller: _horizontalController,
+                  scrollDirection: Axis.horizontal,
+                  primary: false,
+                  child: bodyIsBounded
+                      ? SizedBox(height: bodyHeight, child: tableContent)
+                      : tableContent,
+                ),
               ),
             ),
           ),
@@ -769,7 +852,7 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
       padding: widget.cellPadding,
       decoration: BoxDecoration(
         border: BorderDirectional(
-          end: BorderSide(color: borderColor, width: 1.0),
+          bottom: BorderSide(color: borderColor, width: 1.0),
         ),
       ),
       alignment: column.alignment,
@@ -786,9 +869,9 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
                 constraints: BoxConstraints(minHeight: widget.headerMinHeight),
                 padding: widget.cellPadding,
                 decoration: BoxDecoration(
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? const Color(0xFF334155)
-                      : Colors.blueGrey.shade700,
+                      color: Theme.of(context).brightness == Brightness.dark
+                      ? ResizableColumnsTable.darkHeaderColor
+                      : ResizableColumnsTable.lightHeaderColor,
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: column.label,
@@ -802,7 +885,12 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
     final baseHeaderContent = Stack(
       clipBehavior: Clip.none,
       children: [
-        draggableLabel,
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onSecondaryTapDown: (details) =>
+              _showColumnVisibilityMenu(details.globalPosition),
+          child: draggableLabel,
+        ),
         if (!isLast)
           Positioned.directional(
             textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
@@ -848,7 +936,9 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
                     decoration: BoxDecoration(
                       color: (isHovered || isDragging)
                           ? const Color(0xFF38BDF8)
-                          : Colors.white.withValues(alpha: 0.3),
+                          : (Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white24
+                              : const Color(0xFFB9C7E5)),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -979,7 +1069,6 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
                 decoration: BoxDecoration(
                   border: BorderDirectional(
                     bottom: BorderSide(color: borderColor, width: 1.0),
-                    end: BorderSide(color: borderColor, width: 1.0),
                   ),
                 ),
                 alignment: columns[i].alignment,
@@ -1090,7 +1179,6 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
       decoration: BoxDecoration(
         border: BorderDirectional(
           bottom: BorderSide(color: borderColor, width: 1.0),
-          end: BorderSide(color: borderColor, width: 1.0),
         ),
       ),
       alignment: column.alignment,

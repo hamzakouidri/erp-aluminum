@@ -7,7 +7,7 @@ import 'package:database_data/sql_database.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/gestures.dart';
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import 'package:provider/provider.dart';
 
 String _orderWorkspaceText(BuildContext context, String key) {

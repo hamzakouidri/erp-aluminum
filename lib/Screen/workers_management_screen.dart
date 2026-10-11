@@ -1,10 +1,11 @@
 import 'dart:convert';
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/supabase_workshop_sync_service.dart';
+import '../services/cloud_sync_service.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../sql_database.dart';
@@ -477,7 +478,12 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'لكي ينضم إليك أي عامل، اطلب منه تحميل التطبيق والتسجيل كعامل، ثم إدخال "كود الورشة" الخاص بك:\n$_joinCode',
+                      _tr(
+                        'لكي ينضم إليك أي عامل، اطلب منه تحميل التطبيق والتسجيل كعامل، ثم إدخال "كود الورشة" الخاص بك:\n$_joinCode',
+                        'Pour qu\'un ouvrier vous rejoigne, demandez-lui de télécharger l\'application, de s\'inscrire comme ouvrier, puis de saisir votre "Code Atelier" :\n${_joinCode == 'جاري التحميل...' ? 'Chargement...' : _joinCode}',
+                        'To have a worker join you, ask them to download the app, register as a worker, then enter your "Workshop Code":\n${_joinCode == 'جاري التحميل...' ? 'Loading...' : _joinCode}',
+                        Provider.of<AppSettingsProvider>(context).language,
+                      ),
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.bold,
@@ -497,6 +503,7 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
                     itemBuilder: (context, index) {
                       final worker = _workers[index];
                       return WorkerCard(
+                        key: ValueKey(worker['uid']?.toString() ?? index),
                         worker: worker,
                         db: widget.db,
                         isDeputyManager: isDeputy,
@@ -597,6 +604,7 @@ class _WorkerCardState extends State<WorkerCard> {
   int _selectedCategoryIndex = 0;
   double _splitRatio = 0.35;
   bool _useSplitView = true;
+  Future<void> _permissionSaveChain = Future<void>.value();
 
   Future<void> _loadPreferences() async {
     final prefs = await SharedPreferences.getInstance();
@@ -645,7 +653,13 @@ class _WorkerCardState extends State<WorkerCard> {
   @override
   void didUpdateWidget(WorkerCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.worker != widget.worker) {
+    final oldUid = oldWidget.worker['uid']?.toString();
+    final newUid = widget.worker['uid']?.toString();
+    // Parent refreshes rebuild the employee maps even for the same worker.
+    // Re-reading permissions here used to replace the just-toggled local
+    // state with the previous cloud snapshot, making every switch jump back.
+    // A card is keyed by uid, so only initialise again for a different worker.
+    if (oldUid != newUid) {
       _initPerms();
     }
   }
@@ -774,12 +788,12 @@ class _WorkerCardState extends State<WorkerCard> {
         : 'worker';
   }
 
-  Future<void> _syncSupabaseWorkerPermissions(
+  Future<bool> _syncSupabaseWorkerPermissions(
     Map<String, dynamic> permissions, {
     String? role,
   }) async {
     final email = widget.worker['email']?.toString().trim() ?? '';
-    if (email.isEmpty) return;
+    if (email.isEmpty) return false;
 
     try {
       await SupabaseWorkshopSyncService().updateMemberPermissionsByEmail(
@@ -787,9 +801,83 @@ class _WorkerCardState extends State<WorkerCard> {
         role: role ?? _roleForPermissions(permissions),
         permissions: permissions,
       );
+      return true;
     } catch (error) {
-      debugPrint('Supabase worker permissions sync skipped: $error');
+      debugPrint('Supabase worker permissions sync failed: $error');
+      return false;
     }
+  }
+
+  void _cachePermissionsOnWorker(Map<String, dynamic> updatedPerms) {
+    // Keep the model handed to this card in sync with its state. Otherwise a
+    // parent rebuild can call didUpdateWidget with the old JSON and visually
+    // undo a switch that was already saved in SQLite.
+    widget.worker['permissions'] = Map<String, dynamic>.from(updatedPerms);
+    widget.worker['permissions_json'] = jsonEncode(updatedPerms);
+  }
+
+  Future<void> _persistPermissionsInOrder(
+    Map<String, dynamic> updatedPerms, {
+    String? role,
+  }) {
+    final snapshot = Map<String, dynamic>.from(updatedPerms);
+    final operation = _permissionSaveChain.then((_) async {
+      final workerUid = widget.worker['uid']?.toString() ?? '';
+      if (workerUid.isEmpty) return;
+      final isFirebaseWorker =
+          !workerUid.startsWith('supabase_') &&
+          !workerUid.startsWith('pending_supabase_');
+      final prefs = await SharedPreferences.getInstance();
+      final workshopId = prefs.getString('workshop_code') ?? '';
+
+      final changedRows = await widget.db.updateEmployeePermissions(
+        workerUid,
+        jsonEncode(snapshot),
+      );
+      if (changedRows == 0) {
+        throw StateError('لم يتم العثور على العامل محلياً: $workerUid');
+      }
+
+      var firebaseSaved = false;
+      if (isFirebaseWorker) {
+        try {
+          await FirebaseFirestore.instance.collection('users').doc(workerUid).set({
+            'role': role ?? _roleForPermissions(snapshot),
+            'isBlocked': snapshot['isBlocked'] ?? false,
+            'permissions': snapshot,
+            'permissions_json': jsonEncode(snapshot),
+            'permissions_updated_at': FieldValue.serverTimestamp(),
+            if (workshopId.isNotEmpty) 'workshopId': workshopId,
+          }, SetOptions(merge: true));
+          firebaseSaved = true;
+        } catch (error) {
+          debugPrint('Firebase permission sync failed: $error');
+        }
+      }
+
+      final supabaseSaved = await _syncSupabaseWorkerPermissions(
+        snapshot,
+        role: role,
+      );
+      // Employees is also a synchronized workshop table. Upload it now so
+      // another desktop/phone receives the same JSON even before reopening.
+      try {
+        await CloudSyncService().notifyChangeImmediate();
+      } catch (error) {
+        debugPrint('Immediate employee permission upload failed: $error');
+      }
+
+      if (!firebaseSaved && !supabaseSaved) {
+        throw StateError('تعذر رفع الصلاحيات إلى حساب المستخدم');
+      }
+    });
+    _permissionSaveChain = operation.then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stackTrace) {
+        debugPrint('Queued permission save failed: $error');
+      },
+    );
+    return operation;
   }
 
   String _dateOnly(DateTime date) {
@@ -838,49 +926,14 @@ class _WorkerCardState extends State<WorkerCard> {
   Future<void> _saveInventoryAdjustmentPermission(
     Map<String, dynamic> updatedPerms,
   ) async {
-    final workerUid = widget.worker['uid'].toString();
-    final isFirebaseWorker =
-        !workerUid.startsWith('supabase_') &&
-        !workerUid.startsWith('pending_supabase_');
-    final workerRef = isFirebaseWorker
-        ? FirebaseFirestore.instance.collection('users').doc(workerUid)
-        : null;
-    final previousPerms = Map<String, dynamic>.from(perms);
-    final prefs = await SharedPreferences.getInstance();
-    final workshopId = prefs.getString('workshop_code') ?? '';
     setState(() {
       perms = updatedPerms;
     });
+    _cachePermissionsOnWorker(updatedPerms);
     try {
-      if (workerRef != null) {
-        await workerRef.set({
-          'isBlocked': updatedPerms['isBlocked'] ?? false,
-          'permissions': updatedPerms,
-          'permissions_json': jsonEncode(updatedPerms),
-          'permissions_updated_at': FieldValue.serverTimestamp(),
-          if (workshopId.isNotEmpty) 'workshopId': workshopId,
-        }, SetOptions(merge: true));
-      }
-      await widget.db.updateEmployeePermissions(
-        workerUid,
-        jsonEncode(updatedPerms),
-      );
-      await _syncSupabaseWorkerPermissions(updatedPerms);
+      await _persistPermissionsInOrder(updatedPerms);
     } catch (e) {
-      debugPrint('Error updating inventory adjustment permission: $e');
-      if (mounted) {
-        setState(() {
-          perms = previousPerms;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _t('تعذر حفظ صلاحية الجرد في السحابة؛ لم يتم تغييرها.'),
-            ),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      debugPrint('Cloud sync failed for inventory adjustment (local saved): $e');
     }
   }
 
@@ -934,15 +987,6 @@ class _WorkerCardState extends State<WorkerCard> {
   }
 
   Future<void> _updatePermission(String key, bool val) async {
-    final workerUid = widget.worker['uid'].toString();
-    final isFirebaseWorker =
-        !workerUid.startsWith('supabase_') &&
-        !workerUid.startsWith('pending_supabase_');
-    final workerRef = isFirebaseWorker
-        ? FirebaseFirestore.instance.collection('users').doc(workerUid)
-        : null;
-
-    final previousPerms = Map<String, dynamic>.from(perms);
     final updatedPerms = Map<String, dynamic>.from(perms)..[key] = val;
 
     // A co-manager can be converted to a limited manager by turning off an
@@ -956,37 +1000,18 @@ class _WorkerCardState extends State<WorkerCard> {
       updatedPerms['co_manager'] = false;
     }
 
-    final prefs = await SharedPreferences.getInstance();
-    final workshopId = prefs.getString('workshop_code') ?? '';
     setState(() {
       perms = updatedPerms;
     });
-
+    _cachePermissionsOnWorker(updatedPerms);
     try {
-      if (workerRef != null) {
-        await workerRef.set({
-          'isBlocked': updatedPerms['isBlocked'] ?? false,
-          'permissions': updatedPerms,
-          'permissions_json': jsonEncode(updatedPerms),
-          'permissions_updated_at': FieldValue.serverTimestamp(),
-          if (workshopId.isNotEmpty) 'workshopId': workshopId,
-        }, SetOptions(merge: true));
-      }
-      await widget.db.updateEmployeePermissions(
-        workerUid,
-        jsonEncode(updatedPerms),
-      );
-      await _syncSupabaseWorkerPermissions(updatedPerms);
-    } catch (e) {
-      debugPrint('Error updating permissions in Firebase: $e');
+      await _persistPermissionsInOrder(updatedPerms);
+    } catch (error) {
       if (mounted) {
-        setState(() {
-          perms = previousPerms;
-        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_t('تعذر حفظ الصلاحية في السحابة؛ لم يتم تغييرها.')),
-            backgroundColor: Colors.red,
+            content: Text('تم الحفظ محلياً، لكن تعذرت مزامنة الصلاحية: $error'),
+            backgroundColor: Colors.orange.shade800,
           ),
         );
       }
@@ -997,15 +1022,6 @@ class _WorkerCardState extends State<WorkerCard> {
     Iterable<String> keys,
     Iterable<String> enabledKeys,
   ) async {
-    final workerUid = widget.worker['uid'].toString();
-    final isFirebaseWorker =
-        !workerUid.startsWith('supabase_') &&
-        !workerUid.startsWith('pending_supabase_');
-    final workerRef = isFirebaseWorker
-        ? FirebaseFirestore.instance.collection('users').doc(workerUid)
-        : null;
-
-    final previousPerms = Map<String, dynamic>.from(perms);
     final enabled = enabledKeys.toSet();
     final updatedPerms = Map<String, dynamic>.from(perms);
     for (final key in keys) {
@@ -1028,37 +1044,19 @@ class _WorkerCardState extends State<WorkerCard> {
       updatedPerms['co_manager'] = false;
     }
 
-    final prefs = await SharedPreferences.getInstance();
-    final workshopId = prefs.getString('workshop_code') ?? '';
     setState(() {
       perms = updatedPerms;
     });
+    _cachePermissionsOnWorker(updatedPerms);
 
     try {
-      if (workerRef != null) {
-        await workerRef.set({
-          'isBlocked': updatedPerms['isBlocked'] ?? false,
-          'permissions': updatedPerms,
-          'permissions_json': jsonEncode(updatedPerms),
-          'permissions_updated_at': FieldValue.serverTimestamp(),
-          if (workshopId.isNotEmpty) 'workshopId': workshopId,
-        }, SetOptions(merge: true));
-      }
-      await widget.db.updateEmployeePermissions(
-        workerUid,
-        jsonEncode(updatedPerms),
-      );
-      await _syncSupabaseWorkerPermissions(updatedPerms);
-    } catch (e) {
-      debugPrint('Error updating permission group: $e');
+      await _persistPermissionsInOrder(updatedPerms);
+    } catch (error) {
       if (mounted) {
-        setState(() {
-          perms = previousPerms;
-        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_t('تعذر حفظ الصلاحيات في السحابة؛ لم يتم تغييرها.')),
-            backgroundColor: Colors.red,
+            content: Text('تم الحفظ محلياً، لكن تعذرت مزامنة المجموعة: $error'),
+            backgroundColor: Colors.orange.shade800,
           ),
         );
       }
@@ -1155,7 +1153,6 @@ class _WorkerCardState extends State<WorkerCard> {
 
   /// 👑 منح أو إلغاء صلاحيات كمدير بالكامل لهذا الشخص
   Future<void> _toggleFullManagerPermissions(bool grant) async {
-    final previousPerms = Map<String, dynamic>.from(perms);
     final Map<String, dynamic> updatedPerms = Map<String, dynamic>.from(perms);
 
     updatedPerms['full_manager_permissions'] = grant;
@@ -1189,29 +1186,17 @@ class _WorkerCardState extends State<WorkerCard> {
     setState(() {
       perms = updatedPerms;
     });
+    _cachePermissionsOnWorker(updatedPerms);
 
     final uid = widget.worker['uid'].toString();
     final isFirebaseWorker =
         !uid.startsWith('supabase_') && !uid.startsWith('pending_supabase_');
-    final prefs = await SharedPreferences.getInstance();
-    final workshopId = prefs.getString('workshop_code') ?? '';
     final currentJobRole = widget.worker['job_role']?.toString().trim() ?? '';
     final nextJobRole = grant
         ? _fullManagerJobRole
         : (currentJobRole == _fullManagerJobRole ? '' : currentJobRole);
 
     try {
-      if (isFirebaseWorker) {
-        await FirebaseFirestore.instance.collection('users').doc(uid).set({
-          'role': grant ? 'co_manager' : 'worker',
-          'permissions': updatedPerms,
-          'permissions_json': jsonEncode(updatedPerms),
-          'permissions_updated_at': FieldValue.serverTimestamp(),
-          'job_role': nextJobRole,
-          if (workshopId.isNotEmpty) 'workshopId': workshopId,
-        }, SetOptions(merge: true));
-      }
-      await widget.db.updateEmployeePermissions(uid, jsonEncode(updatedPerms));
       await widget.db.updateEmployeeFullInfo(
         uid,
         name: widget.worker['name']?.toString() ?? '',
@@ -1220,29 +1205,30 @@ class _WorkerCardState extends State<WorkerCard> {
         address: widget.worker['address']?.toString() ?? '',
         jobRole: nextJobRole,
       );
-      await _syncSupabaseWorkerPermissions(
+    } catch (e) {
+      debugPrint('Error updating local co-manager records: $e');
+    }
+
+    var cloudSaved = false;
+    try {
+      await _persistPermissionsInOrder(
         updatedPerms,
         role: grant ? 'co_manager' : 'worker',
       );
-    } catch (e) {
-      debugPrint('Error updating co_manager in Firebase: $e');
-      if (mounted) {
-        setState(() {
-          perms = previousPerms;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'تعذر حفظ صلاحيات المدير في السحابة؛ لم يتم تغييرها.',
-            ),
-            backgroundColor: Colors.red,
-          ),
-        );
+      cloudSaved = true;
+      if (isFirebaseWorker) {
+        await FirebaseFirestore.instance.collection('users').doc(uid).set({
+          'job_role': nextJobRole,
+        }, SetOptions(merge: true));
       }
-      return;
+    } catch (e) {
+      debugPrint('Cloud sync failed for co-manager (local saved): $e');
     }
 
-    widget.onRefresh();
+    // A Supabase refresh replaces the local row with the server row. Do not
+    // refresh after a failed upload, because that immediately restores the
+    // old permissions and makes the switch appear unable to stay enabled.
+    if (cloudSaved) widget.onRefresh();
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

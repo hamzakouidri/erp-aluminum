@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import 'package:provider/provider.dart';
 import '../sql_database.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
+import 'dart:async';
 
 class AchatItemPicker extends StatefulWidget {
   final int achatId;
@@ -42,6 +43,7 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
   List<Map<String, dynamic>> _items = [];
   bool _isLoading = false;
   bool _itemsAdded = false;
+  Timer? _searchDebounce;
 
   // Filters (مبدئياً null تعني غير مفعلة / الكل)
   int? _selectedProfileId;
@@ -65,6 +67,7 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -220,22 +223,8 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
             final colorName = c['name']?.toString() ?? '';
 
             // السعر الافتراضي = آخر سعر اشترينا به لهذا المقطع واللون تحديداً
-            double price = 0.0;
-            final latest = await _db.getLatestPurchasePrice(
-              itemId: s['id'] as int,
-              itemType: 'Sections',
-              colorId: colorId,
-            );
-
-            if (latest != null && latest > 0) {
-              price = latest;
-            } else if (colorId != null) {
-              price = await _db.getSectionColorPrice(s['id'] as int, colorId);
-              if (price == 0.0 && seriesId != null) {
-                final sp = await _db.getSeriesColorPrice(seriesId, colorId);
-                if (sp > 0) price = sp * barLength;
-              }
-            }
+            // إلغاء الاستعلامات المتكررة لتسريع الفتح، وسيتم جلب السعر عند الضغط على الصنف
+            double price = (s['purchase_price'] as num?)?.toDouble() ?? 0.0;
 
             resultItems.add({
               'id': s['id'],
@@ -305,13 +294,7 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
           pId = await _getProfileIdForSeries(sId);
         }
         final colors = await _getProfileColors(pId);
-        final latest = await _db.getLatestPurchasePrice(
-          itemId: a['id'] as int,
-          itemType: 'Accessories',
-        );
-        final price = (latest != null && latest > 0)
-            ? latest
-            : ((a['price'] as num?)?.toDouble() ?? 0.0);
+        final price = ((a['price'] as num?)?.toDouble() ?? 0.0);
 
         resultItems.add({
           'id': a['id'],
@@ -330,7 +313,8 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
     }
 
     // ── 3. مركبات الستائر (Shutter Components) ──────────────────────────────
-    if (_selectedCategory == 'All' || _selectedCategory == 'ShutterComponents') {
+    if (_selectedCategory == 'All' ||
+        _selectedCategory == 'ShutterComponents') {
       var rawShutters = await _db.readShutterComponents();
       if (query.isNotEmpty) {
         rawShutters = rawShutters.where((sc) {
@@ -382,8 +366,8 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
         final price = (latest != null && latest > 0)
             ? latest
             : ((g['price_per_sqm'] as num?)?.toDouble() ??
-                (g['price'] as num?)?.toDouble() ??
-                0.0);
+                  (g['price'] as num?)?.toDouble() ??
+                  0.0);
 
         resultItems.add({
           'id': g['id'],
@@ -416,8 +400,8 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
         final price = (latest != null && latest > 0)
             ? latest
             : ((j['price_per_meter'] as num?)?.toDouble() ??
-                (j['price'] as num?)?.toDouble() ??
-                0.0);
+                  (j['price'] as num?)?.toDouble() ??
+                  0.0);
 
         resultItems.add({
           'id': j['id'],
@@ -453,8 +437,7 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
       selectedColorId = colors.first['id'] as int?;
     }
 
-    double defaultPrice =
-        (item['default_price'] as num?)?.toDouble() ?? 0.0;
+    double defaultPrice = (item['default_price'] as num?)?.toDouble() ?? 0.0;
 
     // تأكيد السعر من آخر عملية شراء إذا كان 0
     if (defaultPrice <= 0) {
@@ -523,7 +506,8 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       // قائمة الألوان: تظهر فقط ألوان السلسلة المحددة + خام
-                      if ((itemType == 'Sections' || itemType == 'Accessories') &&
+                      if ((itemType == 'Sections' ||
+                              itemType == 'Accessories') &&
                           colors.isNotEmpty) ...[
                         DropdownButtonFormField<int>(
                           isExpanded: true,
@@ -543,9 +527,7 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
                             if (colorHex != null && colorHex.startsWith('#')) {
                               try {
                                 chipColor = Color(
-                                  int.parse(
-                                    colorHex.replaceAll('#', '0xFF'),
-                                  ),
+                                  int.parse(colorHex.replaceAll('#', '0xFF')),
                                 );
                               } catch (_) {}
                             }
@@ -591,16 +573,17 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
                                   setDialogState(() => selectedColorId = val);
                                   if (val != null) {
                                     // التحقق أولاً من آخر سعر شراء مسجل لهذا اللون
-                                    final latest =
-                                        await _db.getLatestPurchasePrice(
-                                      itemId: item['id'] as int,
-                                      itemType: itemType,
-                                      colorId: val,
-                                    );
+                                    final latest = await _db
+                                        .getLatestPurchasePrice(
+                                          itemId: item['id'] as int,
+                                          itemType: itemType,
+                                          colorId: val,
+                                        );
                                     if (latest != null && latest > 0) {
                                       setDialogState(() {
-                                        priceCtrl.text =
-                                            latest.toStringAsFixed(2);
+                                        priceCtrl.text = latest.toStringAsFixed(
+                                          2,
+                                        );
                                       });
                                       return;
                                     }
@@ -608,14 +591,17 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
                                     // إذا لم يوجد سعر شراء سابق للمقطع، نحسب من الكتالوج
                                     if (itemType == 'Sections') {
                                       double newP = await _db
-                                          .getSectionColorPrice(item['id'], val);
+                                          .getSectionColorPrice(
+                                            item['id'],
+                                            val,
+                                          );
                                       if (newP == 0.0 &&
                                           item['series_id'] != null) {
                                         double seriesPrice = await _db
                                             .getSeriesColorPrice(
-                                          item['series_id'],
-                                          val,
-                                        );
+                                              item['series_id'],
+                                              val,
+                                            );
                                         if (seriesPrice > 0.0) {
                                           double length =
                                               (item['bar_length'] as num?)
@@ -626,8 +612,9 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
                                       }
                                       if (newP > 0) {
                                         setDialogState(() {
-                                          priceCtrl.text =
-                                              newP.toStringAsFixed(2);
+                                          priceCtrl.text = newP.toStringAsFixed(
+                                            2,
+                                          );
                                         });
                                       }
                                     }
@@ -645,12 +632,21 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
                         ),
                         decoration: InputDecoration(
                           labelText: itemType == 'Sections'
-                              ? Localization.translate('الكمية (عدد القضبان)', lang)
+                              ? Localization.translate(
+                                  'الكمية (عدد القضبان)',
+                                  lang,
+                                )
                               : itemType == 'Glass'
-                                  ? Localization.translate('الكمية (ألواح / م²)', lang)
-                                  : itemType == 'Joints'
-                                      ? Localization.translate('الكمية (أمتار / بكرة)', lang)
-                                      : Localization.translate('الكمية', lang),
+                              ? Localization.translate(
+                                  'الكمية (ألواح / م²)',
+                                  lang,
+                                )
+                              : itemType == 'Joints'
+                              ? Localization.translate(
+                                  'الكمية (أمتار / بكرة)',
+                                  lang,
+                                )
+                              : Localization.translate('الكمية', lang),
                           border: const OutlineInputBorder(),
                           prefixIcon: const Icon(Icons.format_list_numbered),
                         ),
@@ -664,7 +660,10 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
                           decimal: true,
                         ),
                         decoration: InputDecoration(
-                          labelText: Localization.translate('سعر الوحدة (دج)', lang),
+                          labelText: Localization.translate(
+                            'سعر الوحدة (دج)',
+                            lang,
+                          ),
                           helperText: Localization.translate(
                             'السعر تلقائياً هو آخر سعر شراء مسجل',
                             lang,
@@ -703,11 +702,13 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
                           if (isSubmitting) return;
                           setDialogState(() => isSubmitting = true);
 
-                          final double qty = double.tryParse(
+                          final double qty =
+                              double.tryParse(
                                 qtyCtrl.text.replaceAll(',', '.'),
                               ) ??
                               1.0;
-                          final double price = double.tryParse(
+                          final double price =
+                              double.tryParse(
                                 priceCtrl.text.replaceAll(',', '.'),
                               ) ??
                               0.0;
@@ -751,7 +752,9 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
                                         'هذا العنصر موجود بالفعل في الفاتورة',
                                         lang,
                                       ),
-                                      style: const TextStyle(fontFamily: 'Cairo'),
+                                      style: const TextStyle(
+                                        fontFamily: 'Cairo',
+                                      ),
                                     ),
                                     backgroundColor: Colors.orange,
                                     duration: const Duration(seconds: 2),
@@ -764,7 +767,8 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
                             // حفظ العنصر في قاعدة البيانات
                             await _db.insertAchatItem(
                               achatId: widget.achatId,
-                              itemCode: item['code'] ??
+                              itemCode:
+                                  item['code'] ??
                                   item['name'] ??
                                   item['type'] ??
                                   'Item',
@@ -786,8 +790,7 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
                             );
                             if (achatRows.isNotEmpty) {
                               final achat = achatRows.first;
-                              final status =
-                                  achat['status'] as String? ?? '';
+                              final status = achat['status'] as String? ?? '';
                               final locationId =
                                   achat['location_id'] as int? ?? 1;
                               double currentTotal =
@@ -1028,10 +1031,7 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
                     value: s['id'] as int?,
                     child: Text(
                       s['name'] ?? '',
-                      style: const TextStyle(
-                        fontFamily: 'Cairo',
-                        fontSize: 12,
-                      ),
+                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
                       overflow: TextOverflow.ellipsis,
                     ),
                   );
@@ -1059,7 +1059,11 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
               prefixIcon: Icon(Icons.search, color: _blue, size: 20),
               suffixIcon: _searchCtrl.text.isNotEmpty
                   ? IconButton(
-                      icon: const Icon(Icons.clear, color: Colors.grey, size: 18),
+                      icon: const Icon(
+                        Icons.clear,
+                        color: Colors.grey,
+                        size: 18,
+                      ),
                       onPressed: () {
                         _searchCtrl.clear();
                         _loadItems();
@@ -1077,7 +1081,12 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
                 borderSide: BorderSide(color: Colors.grey.shade300),
               ),
             ),
-            onChanged: (val) => _loadItems(),
+            onChanged: (val) {
+              _searchDebounce?.cancel();
+              _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+                _loadItems();
+              });
+            },
           ),
         ),
 
@@ -1086,194 +1095,184 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
               : _items.isEmpty
-                  ? Center(
-                      child: Text(
-                        Localization.translate('لا توجد مواد مطابقة للبحث', lang),
-                        style: TextStyle(
-                          fontFamily: 'Cairo',
-                          color: Colors.grey.shade600,
+              ? Center(
+                  child: Text(
+                    Localization.translate('لا توجد مواد مطابقة للبحث', lang),
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
+                  itemCount: _items.length,
+                  itemBuilder: (context, index) {
+                    final item = _items[index];
+                    final itemType = item['item_type'] as String? ?? 'Other';
+                    final categoryLabel =
+                        item['category_label'] as String? ?? '';
+                    final profileName = item['profile_name'] ?? '';
+                    final colorName = item['expanded_color_name'] as String?;
+                    final colorHex = item['expanded_color_hex'] as String?;
+                    final double price =
+                        (item['default_price'] as num?)?.toDouble() ?? 0.0;
+
+                    String title = Localization.translate(
+                      item['name'] ?? item['type'] ?? '',
+                      lang,
+                    );
+                    if (profileName.isNotEmpty && itemType == 'Sections') {
+                      title = '$profileName - $title';
+                    }
+
+                    Color? dotColor;
+                    if (colorHex != null && colorHex.startsWith('#')) {
+                      try {
+                        dotColor = Color(
+                          int.parse(colorHex.replaceAll('#', '0xFF')),
+                        );
+                      } catch (_) {}
+                    }
+
+                    return Card(
+                      elevation: 0.5,
+                      margin: const EdgeInsets.only(bottom: 6),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        side: BorderSide(
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.grey.shade800
+                              : Colors.grey.shade200,
                         ),
                       ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 4,
-                      ),
-                      itemCount: _items.length,
-                      itemBuilder: (context, index) {
-                        final item = _items[index];
-                        final itemType =
-                            item['item_type'] as String? ?? 'Other';
-                        final categoryLabel =
-                            item['category_label'] as String? ?? '';
-                        final profileName = item['profile_name'] ?? '';
-                        final colorName =
-                            item['expanded_color_name'] as String?;
-                        final colorHex =
-                            item['expanded_color_hex'] as String?;
-                        final double price =
-                            (item['default_price'] as num?)?.toDouble() ?? 0.0;
-
-                        String title = Localization.translate(
-                          item['name'] ?? item['type'] ?? '',
-                          lang,
-                        );
-                        if (profileName.isNotEmpty &&
-                            itemType == 'Sections') {
-                          title = '$profileName - $title';
-                        }
-
-                        Color? dotColor;
-                        if (colorHex != null && colorHex.startsWith('#')) {
-                          try {
-                            dotColor = Color(
-                              int.parse(colorHex.replaceAll('#', '0xFF')),
-                            );
-                          } catch (_) {}
-                        }
-
-                        return Card(
-                          elevation: 0.5,
-                          margin: const EdgeInsets.only(bottom: 6),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            side: BorderSide(
-                              color: Theme.of(context).brightness ==
-                                      Brightness.dark
-                                  ? Colors.grey.shade800
-                                  : Colors.grey.shade200,
+                      child: ListTile(
+                        dense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
+                        title: Row(
+                          children: [
+                            // شارة نوع الصنف
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _blue.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                Localization.translate(categoryLabel, lang),
+                                style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: _blue,
+                                ),
+                              ),
                             ),
-                          ),
-                          child: ListTile(
-                            dense: true,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 4,
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                title,
+                                style: const TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                            title: Row(
-                              children: [
-                                // شارة نوع الصنف
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: _blue.withValues(alpha: 0.08),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    categoryLabel,
-                                    style: TextStyle(
-                                      fontFamily: 'Cairo',
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                      color: _blue,
-                                    ),
+                            // شارة اللون إذا كان مقطع موسع بلون معين
+                            if (colorName != null && colorName.isNotEmpty) ...[
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: (dotColor ?? Colors.blueGrey)
+                                      .withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: dotColor ?? Colors.blueGrey,
+                                    width: 1,
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    title,
-                                    style: const TextStyle(
-                                      fontFamily: 'Cairo',
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                // شارة اللون إذا كان مقطع موسع بلون معين
-                                if (colorName != null &&
-                                    colorName.isNotEmpty) ...[
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: (dotColor ?? Colors.blueGrey)
-                                          .withValues(alpha: 0.15),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: dotColor ?? Colors.blueGrey,
-                                        width: 1,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        if (dotColor != null) ...[
-                                          Container(
-                                            width: 8,
-                                            height: 8,
-                                            decoration: BoxDecoration(
-                                              color: dotColor,
-                                              shape: BoxShape.circle,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 4),
-                                        ],
-                                        Text(
-                                          colorName,
-                                          style: const TextStyle(
-                                            fontFamily: 'Cairo',
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                          ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (dotColor != null) ...[
+                                      Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: BoxDecoration(
+                                          color: dotColor,
+                                          shape: BoxShape.circle,
                                         ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                            subtitle: Padding(
-                              padding: const EdgeInsets.only(top: 4.0),
-                              child: Row(
-                                children: [
-                                  if ((item['code'] ?? '').toString().isNotEmpty)
+                                      ),
+                                      const SizedBox(width: 4),
+                                    ],
                                     Text(
-                                      '${item['code']} • ',
-                                      style: TextStyle(
+                                      Localization.translate(colorName, lang),
+                                      style: const TextStyle(
+                                        fontFamily: 'Cairo',
                                         fontSize: 11,
-                                        color: Colors.grey.shade600,
+                                        fontWeight: FontWeight.bold,
                                       ),
                                     ),
-                                  Text(
-                                    price > 0
-                                        ? '${price.toStringAsFixed(2)} دج'
-                                        : 'السعر: --',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: price > 0
-                                          ? const Color(0xFF10B981)
-                                          : Colors.grey.shade500,
-                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 4.0),
+                          child: Row(
+                            children: [
+                              if ((item['code'] ?? '').toString().isNotEmpty)
+                                Text(
+                                  '${item['code']} • ',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey.shade600,
                                   ),
-                                ],
+                                ),
+                              Text(
+                                price > 0
+                                    ? '${price.toStringAsFixed(2)} ${Localization.translate('دج', lang)}'
+                                    : Localization.translate('السعر: --', lang),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: price > 0
+                                      ? const Color(0xFF10B981)
+                                      : Colors.grey.shade500,
+                                ),
                               ),
-                            ),
-                            trailing: IconButton(
-                              icon: Icon(
-                                Icons.add_circle,
-                                color: _blue,
-                                size: 28,
-                              ),
-                              tooltip: Localization.translate(
-                                'إضافة للفاتورة',
-                                lang,
-                              ),
-                              onPressed: () => _showAddItemDialog(item),
-                            ),
+                            ],
                           ),
-                        );
-                      },
-                    ),
+                        ),
+                        trailing: IconButton(
+                          icon: Icon(Icons.add_circle, color: _blue, size: 28),
+                          tooltip: Localization.translate(
+                            'إضافة للفاتورة',
+                            lang,
+                          ),
+                          onPressed: () => _showAddItemDialog(item),
+                        ),
+                      ),
+                    );
+                  },
+                ),
         ),
       ],
     );

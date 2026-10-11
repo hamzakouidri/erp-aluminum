@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'dart:async';
 import 'dart:convert';
 import 'package:intl/intl.dart' hide TextDirection;
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
 import 'package:flutter_file_dialog/flutter_file_dialog.dart';
@@ -2752,12 +2752,22 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
           }
         }
       } else {
-        // Android/iOS: write to temp then use system dialog
-        final tempDir = await getTemporaryDirectory();
-        final tempFile = File('${tempDir.path}/$filename');
-        await tempFile.writeAsBytes(bytes);
-        final params = SaveFileDialogParams(sourceFilePath: tempFile.path);
-        finalPath = await FlutterFileDialog.saveFile(params: params);
+        // Android/iOS: write to temp then use system dialog, with Printing.sharePdf as safe fallback
+        try {
+          final tempDir = await getTemporaryDirectory();
+          final tempFile = File('${tempDir.path}/$filename');
+          await tempFile.writeAsBytes(bytes);
+          final params = SaveFileDialogParams(sourceFilePath: tempFile.path);
+          finalPath = await FlutterFileDialog.saveFile(params: params);
+        } catch (_) {
+          final shared = await Printing.sharePdf(
+            bytes: bytes,
+            filename: filename,
+          );
+          if (shared) {
+            finalPath = filename;
+          }
+        }
       }
 
       if (finalPath != null && context.mounted) {

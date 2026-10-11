@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:database_data/settings/localization.dart';
 import '../sql_database.dart';

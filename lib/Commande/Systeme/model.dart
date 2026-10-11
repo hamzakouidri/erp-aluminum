@@ -972,6 +972,7 @@ class GlassSpecification {
   final bool isVerticalBardage;
   final bool bardageUsesFrameColor;
   final int? panneauProductId;
+  final String? decorDesignCode;
   final int rosetteShape;
   final bool jointTwoSides;
   final List<Map<String, dynamic>> fittedJoints;
@@ -1004,6 +1005,7 @@ class GlassSpecification {
     this.isVerticalBardage = false,
     this.bardageUsesFrameColor = true,
     this.panneauProductId,
+    this.decorDesignCode,
     this.thicknessOuter,
     this.thicknessInner,
     this.laminatedColorOuter = 'transparent',
@@ -1041,6 +1043,7 @@ class GlassSpecification {
     isVerticalBardage: isVerticalBardage,
     bardageUsesFrameColor: bardageUsesFrameColor,
     panneauProductId: panneauProductId,
+    decorDesignCode: decorDesignCode,
     thicknessOuter: thicknessOuter,
     thicknessInner: thicknessInner,
     laminatedColorOuter: laminatedColorOuter,
@@ -1078,6 +1081,7 @@ class GlassSpecification {
     bool? isVerticalBardage,
     bool? bardageUsesFrameColor,
     int? panneauProductId,
+    String? decorDesignCode,
     double? thicknessOuter,
     double? thicknessInner,
     String? laminatedColorOuter,
@@ -1113,6 +1117,7 @@ class GlassSpecification {
     isVerticalBardage: isVerticalBardage ?? this.isVerticalBardage,
     bardageUsesFrameColor: bardageUsesFrameColor ?? this.bardageUsesFrameColor,
     panneauProductId: panneauProductId ?? this.panneauProductId,
+    decorDesignCode: decorDesignCode ?? this.decorDesignCode,
     thicknessOuter: thicknessOuter ?? this.thicknessOuter,
     thicknessInner: thicknessInner ?? this.thicknessInner,
     laminatedColorOuter: laminatedColorOuter ?? this.laminatedColorOuter,
@@ -1157,6 +1162,7 @@ class GlassSpecification {
         isVerticalBardage == other.isVerticalBardage &&
         bardageUsesFrameColor == other.bardageUsesFrameColor &&
         panneauProductId == other.panneauProductId &&
+        decorDesignCode == other.decorDesignCode &&
         rosetteShape == other.rosetteShape &&
         jointTwoSides == other.jointTwoSides;
   }
@@ -1408,21 +1414,24 @@ class WindowZone {
     Map<String, GlassSpecification>? cellGlassSpec,
   }) : slidingFaceToFace =
            slidingFaceToFace ??
-           (slidingSashesCount >= 4 &&
-               (slidingTrackCount == 2 || slidingTrackCount == 0) &&
-               slidingSashesCount % 2 == 0),
+           isSlidingFaceToFaceLayout(
+             trackCount: slidingTrackCount,
+             sashCount: slidingSashesCount,
+           ),
        slidingCentralHandle =
            slidingCentralHandle ??
            (slidingFaceToFace ??
-               (slidingSashesCount >= 4 &&
-                   (slidingTrackCount == 2 || slidingTrackCount == 0) &&
-                   slidingSashesCount % 2 == 0)),
+               isSlidingFaceToFaceLayout(
+                 trackCount: slidingTrackCount,
+                 sashCount: slidingSashesCount,
+               )),
        slidingSecondCentralHandle =
            slidingSecondCentralHandle ??
            (slidingFaceToFace ??
-               (slidingSashesCount >= 4 &&
-                   (slidingTrackCount == 2 || slidingTrackCount == 0) &&
-                   slidingSashesCount % 2 == 0)),
+               isSlidingFaceToFaceLayout(
+                 trackCount: slidingTrackCount,
+                 sashCount: slidingSashesCount,
+               )),
        glass = glass ?? globalDefaultGlass,
        cellGlassSpec = cellGlassSpec ?? const {},
        slidingMontantReinforced = Map<String, bool>.from(
@@ -3831,14 +3840,16 @@ class WindowModel extends ChangeNotifier {
         const <int>{};
     if (configuredIds.isEmpty) {
       if (roleKey.trim() == 'face_to_face') {
-        return series.sections.where((section) {
-          final type = section.type.trim().toLowerCase();
-          final name = section.name.trim().toLowerCase();
-          return type == 'face_to_face' ||
-              type == 'face to face' ||
-              name.contains('face to face') ||
-              name.contains('face-to-face');
-        }).toList(growable: false);
+        return series.sections
+            .where((section) {
+              final type = section.type.trim().toLowerCase();
+              final name = section.name.trim().toLowerCase();
+              return type == 'face_to_face' ||
+                  type == 'face to face' ||
+                  name.contains('face to face') ||
+                  name.contains('face-to-face');
+            })
+            .toList(growable: false);
       }
       return const <AluminumSection>[];
     }
@@ -4630,7 +4641,11 @@ class WindowModel extends ChangeNotifier {
       );
       final sashes = zone.slidingSashesCount > 0 ? zone.slidingSashesCount : 2;
       final bool hasMeetingInCenter =
-          zone.slidingFaceToFace && sashes >= 4 && sashes % 2 == 0;
+          zone.slidingFaceToFace &&
+          isSlidingFaceToFaceLayout(
+            trackCount: zone.slidingTrackCount,
+            sashCount: sashes,
+          );
       if (central) {
         final centralCount = hasMeetingInCenter
             ? (sashes == 4 ? 4 : 8)
@@ -4807,11 +4822,41 @@ class WindowModel extends ChangeNotifier {
   }
 
   Map<String, dynamic>? get selectedSlimMontantProfile {
+    if (!hasActiveSlidingMontantSlim) return null;
     final override = componentOverrides['قائم وسطي سليم (Montant Slim)'];
     if (override is Map<String, dynamic>) return override;
     if (override is Map) return Map<String, dynamic>.from(override);
     final candidates = getSlidingSlimCandidates();
     return candidates.isNotEmpty ? candidates.first : null;
+  }
+
+  bool get hasActiveSlidingMontantSlim => zones.any((zone) {
+    if (zone.content != ZoneContent.slidingSash) return false;
+    return slidingCentralEdgeKeys(
+      zone: zone,
+      sashesCount: zone.slidingSashesCount,
+    ).any((key) => zone.slidingMontantSlim[key] == true);
+  });
+
+  void clearSlidingMontantSlimOverrideIfInactive() {
+    // Old drawings and leaf-count changes may leave obsolete central keys in
+    // the map. They are invisible on canvas but used to keep Slim alive in
+    // the BOM after the user had unchecked every visible edge.
+    for (final zone in zones) {
+      final activeKeys = zone.content == ZoneContent.slidingSash
+          ? slidingCentralEdgeKeys(
+              zone: zone,
+              sashesCount: zone.slidingSashesCount,
+            ).toSet()
+          : const <String>{};
+      zone.slidingMontantSlim.removeWhere(
+        (key, _) => !activeKeys.contains(key),
+      );
+    }
+    if (hasActiveSlidingMontantSlim) return;
+    componentOverrides.remove('قائم وسطي سليم (Montant Slim)');
+    componentOverrides.remove('قائم وسطي سليم (Sash Central Slim)');
+    notifyListeners();
   }
 
   void applySlidingMontantSlimOverride(
@@ -11088,8 +11133,10 @@ class WindowModel extends ChangeNotifier {
     if (hasFaceToFaceRule && seriesChanged) {
       for (final zone in zones) {
         if (zone.content == ZoneContent.slidingSash &&
-            zone.slidingSashesCount >= 4 &&
-            zone.slidingSashesCount % 2 == 0 &&
+            isSlidingFaceToFaceLayout(
+              trackCount: zone.slidingTrackCount,
+              sashCount: zone.slidingSashesCount,
+            ) &&
             zone.slidingFaceToFace) {
           // فقط إذا كانت الخاصية مفعلة بالفعل، لا نجبرها بالقوة إذا ألغاها المستخدم
           zone.slidingCentralHandle = true;
@@ -12849,7 +12896,10 @@ class WindowModel extends ChangeNotifier {
         zone.lockType = LockType.none;
         zone.useOctoHandle = false;
         zone.usePvcHandleOnAlu = false;
-        if (zone.slidingSashesCount < 4 || zone.slidingSashesCount % 2 != 0) {
+        if (!isSlidingFaceToFaceLayout(
+          trackCount: zone.slidingTrackCount,
+          sashCount: zone.slidingSashesCount,
+        )) {
           zone.slidingFaceToFace = false;
           zone.slidingCentralHandle = false;
           zone.slidingSecondCentralHandle = false;
@@ -17222,6 +17272,31 @@ class WindowModel extends ChangeNotifier {
 
   bool get hasBavetteSupport => hasFrameRole('bavette');
 
+  /// Whether the currently selected opening series actually provides a
+  /// plinthe profile. Drawing controls must not offer a plinthe merely because
+  /// the window has an opening sash; the profile also has to belong to the
+  /// selected series configuration.
+  bool get hasPlintheSupport {
+    final series = activeSeries;
+    if (series == null || isPVC) return false;
+    if (getConfiguredSectionForRole('plant', useSlidingSeries: false) != null) {
+      return true;
+    }
+    if (_hasLoadedRoleMetadata(series)) return false;
+    return series.sections.any((section) {
+      final type = section.type.trim().toLowerCase();
+      final name = section.name.trim().toLowerCase();
+      return type.contains('plinthe') ||
+          type.contains('plinth') ||
+          type.contains('plant') ||
+          type.contains('بلانت') ||
+          name.contains('plinthe') ||
+          name.contains('plinth') ||
+          name.contains('plant') ||
+          name.contains('بلانت');
+    });
+  }
+
   bool get usesBavette => optionalBavetteMode > 0 && hasBavetteSupport;
 
   void setOptionalBavetteMode(int mode) {
@@ -19279,12 +19354,17 @@ class WindowModel extends ChangeNotifier {
   void setSlidingSashesCount(int count) {
     if (selectedZone == null) return;
     _saveSnapshot();
-    selectedZone!.slidingSashesCount = count.clamp(2, 7).toInt();
-    if (selectedZone!.slidingSashesCount < 4 ||
-        selectedZone!.slidingSashesCount % 2 != 0) {
-      selectedZone!.slidingFaceToFace = false;
-      selectedZone!.slidingCentralHandle = false;
-      selectedZone!.slidingSecondCentralHandle = false;
+    final zone = selectedZone!;
+    final oldSashesCount = zone.slidingSashesCount;
+    zone.slidingSashesCount = count.clamp(2, 7).toInt();
+    _resizeSlidingMontantSlimSelection(zone, oldSashesCount: oldSashesCount);
+    if (!isSlidingFaceToFaceLayout(
+      trackCount: zone.slidingTrackCount,
+      sashCount: zone.slidingSashesCount,
+    )) {
+      zone.slidingFaceToFace = false;
+      zone.slidingCentralHandle = false;
+      zone.slidingSecondCentralHandle = false;
     }
     notifyListeners();
   }
@@ -19296,9 +19376,14 @@ class WindowModel extends ChangeNotifier {
     if (!supportedSlidingTrackCounts.contains(count)) return;
     zone.slidingTrackCount = count.clamp(2, 7).toInt();
     if (zone.slidingSashesCount < zone.slidingTrackCount) {
+      final oldSashesCount = zone.slidingSashesCount;
       zone.slidingSashesCount = zone.slidingTrackCount;
+      _resizeSlidingMontantSlimSelection(zone, oldSashesCount: oldSashesCount);
     }
-    if (zone.slidingSashesCount < 4 || zone.slidingSashesCount % 2 != 0) {
+    if (!isSlidingFaceToFaceLayout(
+      trackCount: zone.slidingTrackCount,
+      sashCount: zone.slidingSashesCount,
+    )) {
       zone.slidingFaceToFace = false;
       zone.slidingCentralHandle = false;
       zone.slidingSecondCentralHandle = false;
@@ -19345,8 +19430,13 @@ class WindowModel extends ChangeNotifier {
         count < zone.slidingTrackCount) {
       return;
     }
+    final oldSashesCount = zone.slidingSashesCount;
     zone.slidingSashesCount = count.clamp(2, 7).toInt();
-    if (zone.slidingSashesCount < 4 || zone.slidingSashesCount % 2 != 0) {
+    _resizeSlidingMontantSlimSelection(zone, oldSashesCount: oldSashesCount);
+    if (!isSlidingFaceToFaceLayout(
+      trackCount: zone.slidingTrackCount,
+      sashCount: zone.slidingSashesCount,
+    )) {
       zone.slidingFaceToFace = false;
       zone.slidingCentralHandle = false;
       zone.slidingSecondCentralHandle = false;
@@ -19375,6 +19465,35 @@ class WindowModel extends ChangeNotifier {
     _activateSlidingProfilesForDrawing();
     updateProfileThickness();
     notifyListeners();
+  }
+
+  /// Keeps the Montant Slim drawing state coherent when the leaf count is
+  /// changed. If every old central edge was Slim (the drawer's "select all"
+  /// state), newly appended leaves must also receive square 90-degree ends.
+  /// Individual selections remain attached to their existing physical edges.
+  void _resizeSlidingMontantSlimSelection(
+    WindowZone zone, {
+    required int oldSashesCount,
+  }) {
+    final oldCentralKeys = slidingCentralEdgeKeys(
+      zone: zone,
+      sashesCount: oldSashesCount,
+    );
+    final newCentralKeys = slidingCentralEdgeKeys(
+      zone: zone,
+      sashesCount: zone.slidingSashesCount,
+    );
+    final allOldCentralEdgesWereSlim =
+        oldCentralKeys.isNotEmpty &&
+        oldCentralKeys.every((key) => zone.slidingMontantSlim[key] == true);
+
+    final resized = <String, bool>{};
+    for (final key in newCentralKeys) {
+      resized[key] =
+          zone.slidingMontantSlim[key] ??
+          (allOldCentralEdgesWereSlim && !oldCentralKeys.contains(key));
+    }
+    zone.slidingMontantSlim = resized;
   }
 
   void _activateSlidingProfilesForDrawing() {
@@ -19499,14 +19618,20 @@ class WindowModel extends ChangeNotifier {
   bool get supportsSlidingFaceToFace {
     final zone = selectedZone;
     if (zone == null || zone.content != ZoneContent.slidingSash) return false;
-    return zone.slidingSashesCount >= 4 && zone.slidingSashesCount % 2 == 0;
+    return isSlidingFaceToFaceLayout(
+      trackCount: zone.slidingTrackCount,
+      sashCount: zone.slidingSashesCount,
+    );
   }
 
   void setSelectedZoneSlidingFaceToFace(bool value) {
     final zone = selectedZone;
     if (zone == null || zone.content != ZoneContent.slidingSash) return;
     if (value &&
-        (zone.slidingSashesCount < 4 || zone.slidingSashesCount % 2 != 0)) {
+        !isSlidingFaceToFaceLayout(
+          trackCount: zone.slidingTrackCount,
+          sashCount: zone.slidingSashesCount,
+        )) {
       return;
     }
     if (zone.slidingFaceToFace == value) return;
@@ -19532,7 +19657,10 @@ class WindowModel extends ChangeNotifier {
     final zone = selectedZone;
     if (zone == null || zone.content != ZoneContent.slidingSash) return;
     if (value &&
-        (zone.slidingSashesCount < 4 || zone.slidingSashesCount % 2 != 0)) {
+        !isSlidingFaceToFaceLayout(
+          trackCount: zone.slidingTrackCount,
+          sashCount: zone.slidingSashesCount,
+        )) {
       return;
     }
     if (value && !zone.slidingFaceToFace) return;
@@ -19555,8 +19683,10 @@ class WindowModel extends ChangeNotifier {
     final zone = selectedZone;
     if (zone == null || zone.content != ZoneContent.slidingSash) return;
     if (value &&
-        (zone.slidingSashesCount < 4 ||
-            zone.slidingSashesCount % 2 != 0 ||
+        (!isSlidingFaceToFaceLayout(
+              trackCount: zone.slidingTrackCount,
+              sashCount: zone.slidingSashesCount,
+            ) ||
             !zone.slidingFaceToFace)) {
       return;
     }
@@ -19621,6 +19751,7 @@ class WindowModel extends ChangeNotifier {
     bool? isVerticalBardage,
     bool? bardageUsesFrameColor,
     int? panneauProductId,
+    String? decorDesignCode,
     double? thicknessOuter,
     double? thicknessInner,
     String? laminatedColorOuter,
@@ -19747,6 +19878,7 @@ class WindowModel extends ChangeNotifier {
         isVerticalBardage: isVerticalBardage,
         bardageUsesFrameColor: bardageUsesFrameColor,
         panneauProductId: panneauProductId,
+        decorDesignCode: decorDesignCode,
         thicknessOuter: effectiveThicknessOuter,
         thicknessInner: effectiveThicknessInner,
         laminatedColorOuter: laminatedColorOuter,
@@ -19781,6 +19913,7 @@ class WindowModel extends ChangeNotifier {
         isVerticalBardage: isVerticalBardage,
         bardageUsesFrameColor: bardageUsesFrameColor,
         panneauProductId: panneauProductId,
+        decorDesignCode: decorDesignCode,
         thicknessOuter: effectiveThicknessOuter,
         thicknessInner: effectiveThicknessInner,
         laminatedColorOuter: laminatedColorOuter,
@@ -19829,6 +19962,7 @@ class WindowModel extends ChangeNotifier {
             isVerticalBardage: isVerticalBardage,
             bardageUsesFrameColor: bardageUsesFrameColor,
             panneauProductId: panneauProductId,
+            decorDesignCode: decorDesignCode,
             thicknessOuter: effectiveThicknessOuter,
             thicknessInner: effectiveThicknessInner,
             laminatedColorOuter: laminatedColorOuter,
@@ -24835,4 +24969,40 @@ String? getComponentSize(Map<String, dynamic> component) {
     return meas.replaceAll('.', '').replaceAll(',', '');
   }
   return extractSizeDigits(component['name'].toString());
+}
+
+/// Face-to-face is physically valid only when every rail carries two leaves:
+/// two rails/four leaves or three rails/six leaves. Higher rail counts cannot
+/// qualify because the drawing currently supports at most seven leaves.
+bool isSlidingFaceToFaceLayout({
+  required int trackCount,
+  required int sashCount,
+}) => trackCount >= 2 && sashCount == trackCount * 2;
+
+/// Keys of the actual internal sash edges. In a face-to-face layout the two
+/// meeting edges are intentionally omitted: they belong to the meeting joint,
+/// not to Montant Slim. For six leaves this yields 0,1,2,3,6,7,8,9.
+List<String> slidingCentralEdgeKeys({
+  required WindowZone zone,
+  required int sashesCount,
+}) {
+  final hasCentralMeeting =
+      zone.slidingFaceToFace &&
+      isSlidingFaceToFaceLayout(
+        trackCount: zone.slidingTrackCount,
+        sashCount: sashesCount,
+      );
+  final halfSashes = sashesCount ~/ 2;
+  final keys = <String>[];
+  for (var sash = 0; sash < sashesCount; sash++) {
+    final meetingLeft = hasCentralMeeting && sash == halfSashes;
+    final meetingRight = hasCentralMeeting && sash == halfSashes - 1;
+    if (sash > 0 && !meetingLeft) {
+      keys.add('central_${(sash - 1) * 2 + 1}');
+    }
+    if (sash < sashesCount - 1 && !meetingRight) {
+      keys.add('central_${sash * 2}');
+    }
+  }
+  return keys;
 }

@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'dart:ui' as ui;
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
@@ -1403,8 +1403,8 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
 
   Widget _buildAchatItemsDesktopTable(bool canEditInvoice, AppLanguage lang) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final headerStyle = const TextStyle(
-      color: Colors.white,
+    final headerStyle = TextStyle(
+      color: isDark ? Colors.white : const Color(0xFF18233B),
       fontWeight: FontWeight.bold,
       fontSize: 12,
       fontFamily: 'Cairo',
@@ -2314,11 +2314,12 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                   children: [
                     // شريط العنوان بإطار يشبه الويندوز وقابل للسحب والتحريك
                     GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onPanUpdate: (details) {
                         setState(() {
                           _pickerOffset = Offset(
-                            _pickerOffset.dx + details.delta.dx,
-                            _pickerOffset.dy + details.delta.dy,
+                            (_pickerOffset.dx + details.delta.dx).clamp(0.0, maxLeft),
+                            (_pickerOffset.dy + details.delta.dy).clamp(0.0, maxTop),
                           );
                         });
                       },

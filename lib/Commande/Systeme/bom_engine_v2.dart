@@ -1254,10 +1254,14 @@ class BomEngineV2 {
 
       final openBottom =
           (role == 'frame' || role == 'frame_extension') &&
-          !window.hasBottomFrame;
+          (!window.effectiveHasBottomFrame ||
+              window.usesSeuil ||
+              !window.hasBottomFrame ||
+              (role == 'frame_extension' &&
+                  pieceCount % 3 == 0 &&
+                  pieceCount % 4 != 0));
 
-      // 2. معالجة إطار الإضافة (frame_extension):
-      // يحسب زوايا الإطار الإضافي حسب قواعد الزاوية 45° وعدد الزوايا
+      // 2. معالجة إطار الإضافة (frame_extension / Complément):
       if (role == 'frame_extension') {
         int extTopMiter = 2;
         int extBottomMiter = openBottom ? 0 : 2;
@@ -1268,7 +1272,8 @@ class BomEngineV2 {
           extTopMiter = 0;
           extBottomMiter = 0;
         }
-        final extRectangles = (pieceCount ~/ (openBottom ? 3 : 4)).clamp(1, 100);
+        final extTracks = pieceCount ~/ (openBottom ? 3 : 4);
+        final extRectangles = extTracks.clamp(1, 100);
         demands.add(
           AssemblyDemand(
             target: 'frame',
@@ -1277,6 +1282,24 @@ class BomEngineV2 {
             bottomCorners: openBottom ? 0 : extRectangles * 2,
             topMiterCorners: extRectangles * extTopMiter,
             bottomMiterCorners: extRectangles * extBottomMiter,
+            sectionId: sectionId,
+            isExtension: true,
+          ),
+        );
+        continue;
+      }
+
+      // 3. معالجة عمودي الالتقاء الوسطي للضلف (face_to_face / Rencontre):
+      // يقصان بزاوية 45° في الأعلى والأسفل، ويأخذان كامات تجميع الضلفة (2 في الأعلى + 2 في الأسفل = 4 كامات)
+      if (role == 'face_to_face') {
+        demands.add(
+          AssemblyDemand(
+            target: 'sash',
+            sliding: sliding,
+            topCorners: pieceCount,
+            bottomCorners: pieceCount,
+            topMiterCorners: pieceCount,
+            bottomMiterCorners: pieceCount,
             sectionId: sectionId,
           ),
         );
@@ -1796,8 +1819,7 @@ class BomEngineV2 {
       // 3.9×50 Batmo screw as PVC). If there is no strict same-material
       // candidate, an explicitly flagged screw with no series restriction is
       // still an authoritative catalogue link and must not remain orange.
-      if (resolvedCandidates.isEmpty &&
-          _hasLegacyFlaggedScrewRole(ruleKeys)) {
+      if (resolvedCandidates.isEmpty && _hasLegacyFlaggedScrewRole(ruleKeys)) {
         resolvedCandidates = await _legacyFlaggedAccessoryCandidates(
           database,
           ruleKeys,

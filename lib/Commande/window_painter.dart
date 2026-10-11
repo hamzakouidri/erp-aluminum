@@ -4899,9 +4899,12 @@ class WindowPainter extends CustomPainter {
       final selectedProduct = effectiveSpec == null
           ? null
           : model.getPanneauProductForSpec(effectiveSpec);
+      final savedDesignCode = effectiveSpec?.decorDesignCode?.trim();
       final directDesignCode =
           selectedProduct?['decor_design_code']?.toString().trim();
-      final designCode = DecorPanelDesignCatalog.isSupported(directDesignCode)
+      final designCode = DecorPanelDesignCatalog.isSupported(savedDesignCode)
+          ? savedDesignCode
+          : DecorPanelDesignCatalog.isSupported(directDesignCode)
           ? directDesignCode
           : DecorPanelDesignCatalog.resolveForProduct(
               productId: effectiveSpec?.panneauProductId,
@@ -5289,10 +5292,14 @@ class WindowPainter extends CustomPainter {
               ) ??
               model.getSlidingSectionByType('face_to_face'))
         : null;
-    // Central meeting is driven by zone.slidingFaceToFace for even sashes (4 or 6).
+    // Central meeting is valid only for two leaves per track (2/4 or 3/6).
     // When disabled by user, sashes become normal telescopic overlapping sashes.
     final bool hasCentralMeeting =
-        zone.slidingFaceToFace && count >= 4 && count % 2 == 0;
+        zone.slidingFaceToFace &&
+        isSlidingFaceToFaceLayout(
+          trackCount: trackCount,
+          sashCount: count,
+        );
     final double meetingCenterX = r.left + r.width / 2.0;
 
     // sashWidth is calculated using chicaneT (overlap).
@@ -5420,8 +5427,9 @@ class WindowPainter extends CustomPainter {
           (i < count - 1) &&
           (zone.slidingMontantSlim['central_${i * 2}'] ?? false);
 
-      final bool isLeftSquare = isLeftSlim || isMeetingJunctionLeft;
-      final bool isRightSquare = isRightSlim || isMeetingJunctionRight;
+      // الزاوية القائمة 90° تكون فقط عند تفعيل المونو سليم؛ الالتقاء الوسطي يبقى 45°
+      final bool isLeftSquare = isLeftSlim;
+      final bool isRightSquare = isRightSlim;
 
       final bool leftReinforced = (i == 0)
           ? leftLateralReinforced
@@ -6811,6 +6819,13 @@ class WindowPainter extends CustomPainter {
         if (sec.visibleWidth > 0) return sec.visibleWidth;
         if (sec.thickness > 0) return sec.thickness;
       }
+    }
+    // 3. Fallback to main sash section visible width if available
+    final sashSection = model.getSlidingSectionByType('sash') ??
+        model.getSectionByType('sash');
+    if (sashSection != null) {
+      if (sashSection.visibleWidth > 0) return sashSection.visibleWidth;
+      if (sashSection.thickness > 0) return sashSection.thickness;
     }
     return defaultVal;
   }

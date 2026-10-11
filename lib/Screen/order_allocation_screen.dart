@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:async' show unawaited;
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../sql_database.dart';

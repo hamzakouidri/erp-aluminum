@@ -27,7 +27,7 @@ import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:database_data/services/supabase_workshop_sync_service.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:database_data/sql_database.dart';
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import 'package:provider/provider.dart';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -380,12 +380,19 @@ class DesktopCommandBar extends StatelessWidget {
             english: 'Customers',
           ),
           icon: Icons.groups_rounded,
-          onSelected: () =>
-              onOpen('clients', Icons.groups_rounded, Customers()),
+          onSelected: () => onOpen(
+            'clients',
+            Icons.groups_rounded,
+            Customers(
+              storeOnly:
+                  settings.workingSection == WorkingSection.materialsStore,
+            ),
+          ),
         ),
       );
     }
-    if (settings.canViewClientLedger()) {
+    if (settings.workingSection != WorkingSection.materialsStore &&
+        settings.canViewClientLedger()) {
       customerActions.add(
         _DesktopCommandAction(
           title: _label(

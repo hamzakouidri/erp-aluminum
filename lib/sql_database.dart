@@ -65,6 +65,8 @@ class SqlDatabase {
   static Future<void>? _advancedKitSchemaTask;
   static Object? _accessoryLinksSchemaOwner;
   static Future<void>? _accessoryLinksSchemaTask;
+  static Object? _remnantInventorySchemaOwner;
+  static Future<void>? _remnantInventorySchemaTask;
   static bool _knownColorsRepaired = false;
   static final Random _distributedIdRandom = Random.secure();
   static int _lastDistributedId = 0;
@@ -354,6 +356,8 @@ class SqlDatabase {
     _advancedKitSchemaTask = null;
     _accessoryLinksSchemaOwner = null;
     _accessoryLinksSchemaTask = null;
+    _remnantInventorySchemaOwner = null;
+    _remnantInventorySchemaTask = null;
   }
 
   /// Clears only the workshop-specific transactional rows (orders, customers, stock, finances),
@@ -589,27 +593,75 @@ class SqlDatabase {
 
     // Migrations for Achats (workshop vs store separation & internal purchases)
     try {
-      await db.execute("ALTER TABLE Achats ADD COLUMN activity_type TEXT NOT NULL DEFAULT 'workshop';");
+      await db.execute(
+        "ALTER TABLE Achats ADD COLUMN activity_type TEXT NOT NULL DEFAULT 'workshop';",
+      );
     } catch (_) {}
     try {
-      await db.execute("ALTER TABLE Achats ADD COLUMN is_workshop INTEGER NOT NULL DEFAULT 1;");
+      await db.execute(
+        "ALTER TABLE Achats ADD COLUMN is_workshop INTEGER NOT NULL DEFAULT 1;",
+      );
     } catch (_) {}
     try {
-      await db.execute("ALTER TABLE Achats ADD COLUMN is_internal INTEGER NOT NULL DEFAULT 0;");
+      await db.execute(
+        "ALTER TABLE Achats ADD COLUMN is_internal INTEGER NOT NULL DEFAULT 0;",
+      );
     } catch (_) {}
     try {
       await db.execute("ALTER TABLE Achats ADD COLUMN linked_sale_id INTEGER;");
     } catch (_) {}
+    for (final statement in [
+      "ALTER TABLE Achats ADD COLUMN created_by TEXT NOT NULL DEFAULT '';",
+      "ALTER TABLE Achats ADD COLUMN updated_by TEXT NOT NULL DEFAULT '';",
+      "ALTER TABLE Achats ADD COLUMN inserted_at TEXT NOT NULL DEFAULT '';",
+      "ALTER TABLE MaterialSales ADD COLUMN created_by TEXT NOT NULL DEFAULT '';",
+      "ALTER TABLE MaterialSales ADD COLUMN updated_by TEXT NOT NULL DEFAULT '';",
+    ]) {
+      try {
+        await db.execute(statement);
+      } catch (_) {}
+    }
 
     // Migrations for MaterialSales (internal sales to workshop)
     try {
-      await db.execute("ALTER TABLE MaterialSales ADD COLUMN is_internal INTEGER NOT NULL DEFAULT 0;");
+      await db.execute(
+        "ALTER TABLE MaterialSales ADD COLUMN is_internal INTEGER NOT NULL DEFAULT 0;",
+      );
     } catch (_) {}
     try {
-      await db.execute("ALTER TABLE MaterialSales ADD COLUMN dest_location_id INTEGER;");
+      await db.execute(
+        "ALTER TABLE MaterialSales ADD COLUMN dest_location_id INTEGER;",
+      );
     } catch (_) {}
     try {
-      await db.execute("ALTER TABLE MaterialSales ADD COLUMN linked_achat_id INTEGER;");
+      await db.execute(
+        "ALTER TABLE MaterialSales ADD COLUMN linked_achat_id INTEGER;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE MaterialSales ADD COLUMN source_sale_id INTEGER;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE MaterialSales ADD COLUMN converted_to_sale_id INTEGER;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE MaterialSaleItems ADD COLUMN tax_rate REAL NOT NULL DEFAULT 0.0;",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE MaterialSaleItems ADD COLUMN series_name TEXT NOT NULL DEFAULT '';",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE MaterialSaleItems ADD COLUMN system_name TEXT NOT NULL DEFAULT '';",
+      );
     } catch (_) {}
 
     try {
@@ -1457,6 +1509,9 @@ class SqlDatabase {
             status TEXT NOT NULL DEFAULT 'نشطة',
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            created_by TEXT NOT NULL DEFAULT '',
+            updated_by TEXT NOT NULL DEFAULT '',
+            inserted_at TEXT NOT NULL DEFAULT (datetime('now')),
             FOREIGN KEY (supplier_id) REFERENCES Suppliers(id) ON DELETE SET NULL,
             FOREIGN KEY (location_id) REFERENCES Locations(id) ON DELETE SET NULL
           )
@@ -2112,6 +2167,7 @@ class SqlDatabase {
       "ALTER TABLE KitBundles ADD COLUMN compatibility_group_1_name TEXT NOT NULL DEFAULT 'Console Quissonnel Standard';",
       "ALTER TABLE KitBundles ADD COLUMN compatibility_group_2_name TEXT NOT NULL DEFAULT 'Console Quissonnel Spécial';",
       "ALTER TABLE KitBundles ADD COLUMN price REAL NOT NULL DEFAULT 0.0;",
+      "ALTER TABLE KitBundles ADD COLUMN material_type TEXT NOT NULL DEFAULT 'all';",
     ]) {
       try {
         await db.execute(statement);
@@ -5084,9 +5140,7 @@ class SqlDatabase {
     final inList = allowedSegments.map((s) => "'$s'").join(', ');
     return myDb.query(
       'Client',
-      where: includeWindowClients
-          ? null
-          : "business_segment IN ($inList)",
+      where: includeWindowClients ? null : "business_segment IN ($inList)",
       orderBy: 'firstname COLLATE NOCASE, lastname COLLATE NOCASE',
     );
   }
@@ -5123,7 +5177,51 @@ class SqlDatabase {
       }),
     );
     CloudSyncService().notifyChangeImmediate();
-    final created = await myDb.query('Client', where: 'id = ?', whereArgs: [newId]);
+    final created = await myDb.query(
+      'Client',
+      where: 'id = ?',
+      whereArgs: [newId],
+    );
+    return created.isNotEmpty ? created.first : {};
+  }
+
+  /// Generic material-store customer for walk-in sales without a buyer name.
+  Future<Map<String, dynamic>> ensureDiversMaterialClient() async {
+    final myDb = await db;
+    if (myDb == null) return {};
+    await _ensureClientBusinessSegment(myDb);
+    final existing = await myDb.query(
+      'Client',
+      where:
+          "LOWER(TRIM(firstname)) = 'divers' AND business_segment IN ('materials', 'both')",
+      limit: 1,
+    );
+    if (existing.isNotEmpty) return existing.first;
+
+    final now = DateTime.now().toUtc().toIso8601String();
+    final clientCode = await _reserveNextClientCode(myDb);
+    final newId = await myDb.insert(
+      'Client',
+      _withDistributedId({
+        'client_code': clientCode,
+        'firstname': 'Divers',
+        'lastname': '',
+        'phone1': '',
+        'phone2': '',
+        'email': '',
+        'address': '',
+        'business_segment': 'materials',
+        'created_at': now,
+        'updated_at': now,
+        'creation_platform': 'desktop',
+      }),
+    );
+    CloudSyncService().notifyChangeImmediate();
+    final created = await myDb.query(
+      'Client',
+      where: 'id = ?',
+      whereArgs: [newId],
+    );
     return created.isNotEmpty ? created.first : {};
   }
 
@@ -5131,7 +5229,13 @@ class SqlDatabase {
     final myDb = await db;
     if (myDb == null) return;
     await _ensureClientBusinessSegment(myDb);
-    final normalized = const {'windows', 'materials', 'both', 'internal_workshop'}.contains(segment)
+    final normalized =
+        const {
+          'windows',
+          'materials',
+          'both',
+          'internal_workshop',
+        }.contains(segment)
         ? segment
         : 'windows';
     await myDb.update(
@@ -10574,6 +10678,7 @@ class SqlDatabase {
     }
 
     final now = DateTime.now().toUtc().toIso8601String();
+    final author = await _currentOrderEditor();
     var res = await myDb.insert(
       'Achats',
       _withDistributedId({
@@ -10590,7 +10695,10 @@ class SqlDatabase {
         'is_internal': isInternal ? 1 : 0,
         'linked_sale_id': linkedSaleId,
         'created_at': createdAt ?? now,
+        'inserted_at': now,
         'updated_at': now,
+        'created_by': author,
+        'updated_by': author,
       }),
     );
     CloudSyncService().notifyChange();
@@ -10773,6 +10881,7 @@ class SqlDatabase {
       {
         'status': status,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
+        'updated_by': await _currentOrderEditor(),
       },
       where: 'id = ?',
       whereArgs: [id],
@@ -10794,6 +10903,7 @@ class SqlDatabase {
     if (status != null) data['status'] = status;
     if (data.isEmpty) return 0;
     data['updated_at'] = DateTime.now().toUtc().toIso8601String();
+    data['updated_by'] = await _currentOrderEditor();
     var res = await myDb!.update(
       'Achats',
       data,
@@ -10816,6 +10926,7 @@ class SqlDatabase {
         'invoice_number': invoiceNumber,
         'supplier_name': supplierName,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
+        'updated_by': await _currentOrderEditor(),
       },
       where: 'id = ?',
       whereArgs: [id],
@@ -10831,6 +10942,7 @@ class SqlDatabase {
       {
         'created_at': createdAt,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
+        'updated_by': await _currentOrderEditor(),
       },
       where: 'id = ?',
       whereArgs: [id],
@@ -10850,6 +10962,7 @@ class SqlDatabase {
     if (pdfPath != null) data['pdf_path'] = pdfPath;
     if (data.isEmpty) return 0;
     data['updated_at'] = DateTime.now().toUtc().toIso8601String();
+    data['updated_by'] = await _currentOrderEditor();
     var res = await myDb!.update(
       'Achats',
       data,
@@ -14343,11 +14456,15 @@ class SqlDatabase {
       row.remove('drawing_image_path');
       final partitionsJson = row['partitions_json']?.toString().trim() ?? '';
       final base64Img = row['drawing_image_base64']?.toString() ?? '';
+      final hasDecorPanel =
+          partitionsJson.contains('paneauSandwitchDecore') ||
+          partitionsJson.contains('decorDesignCode');
       // If partitions_json is present, the drawing is fully defined as a vector model
       // and will be rendered dynamically locally. Strip huge base64 strings (>100KB)
       // to keep sync fast, lightweight, and prevent PostgREST timeouts.
       if (partitionsJson.length > 20 &&
           partitionsJson != '{}' &&
+          !hasDecorPanel &&
           base64Img.length > 100000) {
         row.remove('drawing_image_base64');
       }
@@ -15865,13 +15982,43 @@ class SqlDatabase {
   }
 
   Future<void> _ensureRemnantInventorySchema(DatabaseExecutor db) async {
+    // This schema is already checked while the database is opened. Several
+    // inventory and material-sales reads call this helper defensively as well,
+    // so cache the work per connection instead of repeatedly issuing the same
+    // CREATE/ALTER/INDEX statements. Re-running those statements on every
+    // sales refresh can monopolise SQLite's executor and make the screen look
+    // frozen, especially while cloud-sync events are arriving.
+    if (_remnantInventorySchemaOwner != db) {
+      _remnantInventorySchemaOwner = db;
+      _remnantInventorySchemaTask = null;
+    }
+    final task = _remnantInventorySchemaTask ??=
+        _createOrMigrateRemnantInventorySchema(db);
+    try {
+      await task;
+    } catch (_) {
+      // Do not permanently cache a failed migration. A transient database
+      // lock should be recoverable on the next access.
+      if (_remnantInventorySchemaOwner == db &&
+          identical(_remnantInventorySchemaTask, task)) {
+        _remnantInventorySchemaTask = null;
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _createOrMigrateRemnantInventorySchema(
+    DatabaseExecutor db,
+  ) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS InventorySettings (
         id INTEGER PRIMARY KEY,
         setting_key TEXT NOT NULL UNIQUE,
         numeric_value REAL,
         text_value TEXT,
-        updated_at TEXT NOT NULL
+        updated_at TEXT NOT NULL,
+        created_by TEXT NOT NULL DEFAULT '',
+        updated_by TEXT NOT NULL DEFAULT ''
       )
     ''');
     await db.execute('''
@@ -16001,10 +16148,14 @@ class SqlDatabase {
         remaining_amount REAL NOT NULL DEFAULT 0.0,
         location_id INTEGER NOT NULL DEFAULT 1,
         stock_deducted INTEGER NOT NULL DEFAULT 0,
+        source_sale_id INTEGER,
+        converted_to_sale_id INTEGER,
         notes TEXT NOT NULL DEFAULT '',
         sale_date TEXT NOT NULL,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
+        updated_at TEXT NOT NULL,
+        created_by TEXT NOT NULL DEFAULT '',
+        updated_by TEXT NOT NULL DEFAULT ''
       )
     ''');
     await db.execute('''
@@ -16015,6 +16166,8 @@ class SqlDatabase {
         item_id INTEGER NOT NULL DEFAULT 0,
         item_code TEXT NOT NULL DEFAULT '',
         item_name TEXT NOT NULL,
+        system_name TEXT NOT NULL DEFAULT '',
+        series_name TEXT NOT NULL DEFAULT '',
         color_id INTEGER,
         color_name TEXT NOT NULL DEFAULT '',
         unit TEXT NOT NULL DEFAULT 'pcs',
@@ -16022,11 +16175,22 @@ class SqlDatabase {
         width_mm REAL NOT NULL DEFAULT 0.0,
         quantity REAL NOT NULL DEFAULT 1.0,
         unit_price REAL NOT NULL DEFAULT 0.0,
+        tax_rate REAL NOT NULL DEFAULT 0.0,
         total_price REAL NOT NULL DEFAULT 0.0,
         notes TEXT NOT NULL DEFAULT '',
         FOREIGN KEY (sale_id) REFERENCES MaterialSales(id) ON DELETE CASCADE
       )
     ''');
+    try {
+      await db.execute(
+        "ALTER TABLE MaterialSaleItems ADD COLUMN series_name TEXT NOT NULL DEFAULT '';",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        "ALTER TABLE MaterialSaleItems ADD COLUMN system_name TEXT NOT NULL DEFAULT '';",
+      );
+    } catch (_) {}
     try {
       await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_material_sales_date '
@@ -18166,6 +18330,7 @@ class SqlDatabase {
     required String name,
     String? description,
     bool perLeaf = false,
+    String materialType = 'all',
   }) async {
     final database = await db;
     if (database == null) return -1;
@@ -18173,6 +18338,7 @@ class SqlDatabase {
       'name': name,
       'description': description,
       'per_leaf': perLeaf ? 1 : 0,
+      'material_type': materialType,
       'is_active': 1,
     });
   }
@@ -18183,15 +18349,19 @@ class SqlDatabase {
     required String name,
     String? description,
     required bool perLeaf,
+    String? materialType,
   }) async {
     final database = await db;
     if (database == null) return;
-    await database.update(
-      'KitBundles',
-      {'name': name, 'description': description, 'per_leaf': perLeaf ? 1 : 0},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    final data = <String, dynamic>{
+      'name': name,
+      'description': description,
+      'per_leaf': perLeaf ? 1 : 0,
+    };
+    if (materialType != null) {
+      data['material_type'] = materialType;
+    }
+    await database.update('KitBundles', data, where: 'id = ?', whereArgs: [id]);
   }
 
   /// Ø­Ø°Ù  Kit (Ù†Ø§Ø¹Ù…)
@@ -21551,6 +21721,7 @@ class SqlDatabase {
     if (myDb == null) return 0;
     await _ensureRemnantInventorySchema(myDb);
     final now = DateTime.now().toUtc().toIso8601String();
+    final author = await _currentOrderEditor();
     final id = await myDb.insert(
       'MaterialSales',
       _withDistributedId({
@@ -21571,6 +21742,8 @@ class SqlDatabase {
         'sale_date': saleDate ?? now,
         'created_at': now,
         'updated_at': now,
+        'created_by': author,
+        'updated_by': author,
       }),
     );
     CloudSyncService().notifyChange();
@@ -21598,6 +21771,7 @@ class SqlDatabase {
     if (myDb == null) return;
     final data = <String, dynamic>{
       'updated_at': DateTime.now().toUtc().toIso8601String(),
+      'updated_by': await _currentOrderEditor(),
     };
     if (clientName != null) data['client_name'] = clientName;
     if (clientPhone != null) data['client_phone'] = clientPhone;
@@ -21625,6 +21799,23 @@ class SqlDatabase {
   Future<void> deleteMaterialSale(int saleId) async {
     final myDb = await db;
     if (myDb == null) return;
+    final rows = await myDb.query(
+      'MaterialSales',
+      columns: ['source_sale_id'],
+      where: 'id = ?',
+      whereArgs: [saleId],
+    );
+    final sourceId = rows.isEmpty
+        ? null
+        : (rows.first['source_sale_id'] as num?)?.toInt();
+    if (sourceId != null) {
+      await myDb.update(
+        'MaterialSales',
+        {'converted_to_sale_id': null},
+        where: 'id = ? AND converted_to_sale_id = ?',
+        whereArgs: [sourceId, saleId],
+      );
+    }
     await myDb.delete(
       'MaterialSaleItems',
       where: 'sale_id = ?',
@@ -21632,6 +21823,88 @@ class SqlDatabase {
     );
     await myDb.delete('MaterialSales', where: 'id = ?', whereArgs: [saleId]);
     CloudSyncService().notifyChange();
+  }
+
+  /// Creates the next official sales document while preserving the source.
+  /// Commande -> Bon de livraison -> Facture. The source is never overwritten.
+  Future<int> transferMaterialSaleDocument(int sourceSaleId) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    await _ensureRemnantInventorySchema(myDb);
+    return myDb
+        .transaction<int>((txn) async {
+          final rows = await txn.query(
+            'MaterialSales',
+            where: 'id = ?',
+            whereArgs: [sourceSaleId],
+          );
+          if (rows.isEmpty) throw StateError('Source document not found');
+          final source = rows.first;
+          final existing = (source['converted_to_sale_id'] as num?)?.toInt();
+          if (existing != null) return existing;
+          final sourceType = source['doc_type']?.toString() ?? '';
+          final targetType = sourceType == 'bon_commande'
+              ? 'bon_livraison'
+              : (sourceType == 'bon_livraison' || sourceType == 'devis')
+              ? 'facture'
+              : null;
+          if (targetType == null) {
+            throw StateError('This document cannot be transferred further');
+          }
+          final now = DateTime.now().toUtc().toIso8601String();
+          final year2 = (DateTime.now().year % 100).toString().padLeft(2, '0');
+          final prefix = targetType == 'bon_livraison' ? 'BL' : 'FV';
+          final countRows = await txn.rawQuery(
+            "SELECT COUNT(*) AS cnt FROM MaterialSales WHERE sale_code LIKE '$prefix-$year2-%'",
+          );
+          final count = (countRows.first['cnt'] as num?)?.toInt() ?? 0;
+          final targetCode =
+              '$prefix-$year2-${(count + 1).toString().padLeft(3, '0')}';
+          final target = Map<String, dynamic>.from(source)
+            ..remove('id')
+            ..remove('distributed_id')
+            ..['sale_code'] = targetCode
+            ..['doc_type'] = targetType
+            ..['status'] = targetType == 'bon_livraison'
+                ? 'confirmed'
+                : 'delivered'
+            ..['source_sale_id'] = sourceSaleId
+            ..['converted_to_sale_id'] = null
+            ..['stock_deducted'] = 0
+            ..['linked_achat_id'] = null
+            ..['created_at'] = now
+            ..['updated_at'] = now;
+          final targetId = await txn.insert('MaterialSales', target);
+          final items = await txn.query(
+            'MaterialSaleItems',
+            where: 'sale_id = ?',
+            whereArgs: [sourceSaleId],
+          );
+          for (final row in items) {
+            final copy = Map<String, dynamic>.from(row)
+              ..remove('id')
+              ..remove('distributed_id')
+              ..['sale_id'] = targetId;
+            await txn.insert('MaterialSaleItems', copy);
+          }
+          await txn.update(
+            'MaterialSales',
+            {
+              'converted_to_sale_id': targetId,
+              'status': sourceType == 'bon_livraison'
+                  ? 'delivered'
+                  : 'confirmed',
+              'updated_at': now,
+            },
+            where: 'id = ?',
+            whereArgs: [sourceSaleId],
+          );
+          return targetId;
+        })
+        .then((id) {
+          CloudSyncService().notifyChange();
+          return id;
+        });
   }
 
   /// Read all MaterialSale rows, newest first.
@@ -21642,29 +21915,36 @@ class SqlDatabase {
   }) async {
     final myDb = await db;
     if (myDb == null) return [];
-    await _ensureRemnantInventorySchema(myDb);
     final conditions = <String>[];
     final args = <dynamic>[];
     if (docType != null && docType.isNotEmpty) {
-      conditions.add('doc_type = ?');
+      conditions.add('sale.doc_type = ?');
       args.add(docType);
     }
     if (status != null && status.isNotEmpty) {
-      conditions.add('status = ?');
+      conditions.add('sale.status = ?');
       args.add(status);
     }
     if (searchQuery != null && searchQuery.isNotEmpty) {
-      conditions.add('(client_name LIKE ? OR sale_code LIKE ?)');
+      conditions.add('(sale.client_name LIKE ? OR sale.sale_code LIKE ?)');
       args.add('%$searchQuery%');
       args.add('%$searchQuery%');
     }
     final where = conditions.isEmpty ? null : conditions.join(' AND ');
-    return myDb.query(
-      'MaterialSales',
-      where: where,
-      whereArgs: args.isEmpty ? null : args,
-      orderBy: 'sale_date DESC, id DESC',
-    );
+    final whereSql = where == null ? '' : 'WHERE $where';
+    return myDb.rawQuery('''
+      SELECT
+        sale.*,
+        source_document.sale_code AS linked_source_code,
+        target_document.sale_code AS linked_target_code
+      FROM MaterialSales AS sale
+      LEFT JOIN MaterialSales AS source_document
+        ON source_document.id = sale.source_sale_id
+      LEFT JOIN MaterialSales AS target_document
+        ON target_document.id = sale.converted_to_sale_id
+      $whereSql
+      ORDER BY sale.sale_date DESC, sale.id DESC
+    ''', args);
   }
 
   /// Read a single MaterialSale by id.
@@ -21683,11 +21963,21 @@ class SqlDatabase {
   Future<List<Map<String, dynamic>>> readMaterialSaleItems(int saleId) async {
     final myDb = await db;
     if (myDb == null) return [];
-    return myDb.query(
-      'MaterialSaleItems',
-      where: 'sale_id = ?',
-      whereArgs: [saleId],
-      orderBy: 'id ASC',
+    return myDb.rawQuery(
+      '''
+      SELECT msi.*,
+             COALESCE(NULLIF(msi.system_name, ''), pro.name, '') AS system_name,
+             COALESCE(NULLIF(msi.series_name, ''), ser.name, '') AS series_name
+      FROM MaterialSaleItems msi
+      LEFT JOIN Sections sec
+        ON msi.item_type IN ('Section', 'Sections')
+       AND sec.id = msi.item_id
+      LEFT JOIN Series ser ON ser.id = sec.series_id
+      LEFT JOIN Profile pro ON pro.id = ser.profile_id
+      WHERE msi.sale_id = ?
+      ORDER BY msi.id ASC
+      ''',
+      [saleId],
     );
   }
 
@@ -21698,6 +21988,8 @@ class SqlDatabase {
     required int itemId,
     required String itemCode,
     required String itemName,
+    String systemName = '',
+    String seriesName = '',
     int? colorId,
     String colorName = '',
     required String unit,
@@ -21716,6 +22008,8 @@ class SqlDatabase {
       'item_id': itemId,
       'item_code': itemCode,
       'item_name': itemName,
+      'system_name': systemName,
+      'series_name': seriesName,
       'color_id': colorId,
       'color_name': colorName,
       'unit': unit,
@@ -21754,6 +22048,7 @@ class SqlDatabase {
     final myDb = await db;
     if (myDb == null) return;
     final now = DateTime.now().toUtc().toIso8601String();
+    final editor = await _currentOrderEditor();
     await myDb.transaction((txn) async {
       await txn.delete(
         'MaterialSaleItems',
@@ -21767,6 +22062,8 @@ class SqlDatabase {
           'item_id': item['item_id'] ?? 0,
           'item_code': item['item_code'] ?? '',
           'item_name': item['item_name'] ?? '',
+          'system_name': item['system_name'] ?? '',
+          'series_name': item['series_name'] ?? '',
           'color_id': item['color_id'],
           'color_name': item['color_name'] ?? '',
           'unit': item['unit'] ?? 'pcs',
@@ -21774,6 +22071,7 @@ class SqlDatabase {
           'width_mm': (item['width_mm'] as num?)?.toDouble() ?? 0.0,
           'quantity': (item['quantity'] as num?)?.toDouble() ?? 1.0,
           'unit_price': (item['unit_price'] as num?)?.toDouble() ?? 0.0,
+          'tax_rate': (item['tax_rate'] as num?)?.toDouble() ?? 0.0,
           'total_price': (item['total_price'] as num?)?.toDouble() ?? 0.0,
           'notes': item['notes'] ?? '',
         });
@@ -21790,6 +22088,7 @@ class SqlDatabase {
             double.infinity,
           ),
           'updated_at': now,
+          'updated_by': editor,
         },
         where: 'id = ?',
         whereArgs: [saleId],
@@ -22098,7 +22397,8 @@ class SqlDatabase {
                 'color_id': colorId,
                 'location_id': storeLocationId,
                 'quantity': qty,
-                'transaction_type': 'Reversal: Internal Return (Workshop -> Store)',
+                'transaction_type':
+                    'Reversal: Internal Return (Workshop -> Store)',
                 'reference_id': saleId,
                 'created_at': now,
               }),
@@ -22124,10 +22424,7 @@ class SqlDatabase {
 
       await txn.update(
         'MaterialSales',
-        {
-          'status': 'cancelled',
-          'updated_at': now,
-        },
+        {'status': 'cancelled', 'updated_at': now},
         where: 'id = ?',
         whereArgs: [saleId],
       );
@@ -22135,10 +22432,7 @@ class SqlDatabase {
       if (linkedAchatId != null) {
         await txn.update(
           'Achats',
-          {
-            'status': 'Cancelled',
-            'updated_at': now,
-          },
+          {'status': 'Cancelled', 'updated_at': now},
           where: 'id = ?',
           whereArgs: [linkedAchatId],
         );
@@ -22233,7 +22527,8 @@ class SqlDatabase {
     double workshopOrdersAdvances = 0.0;
 
     for (final row in orderRows) {
-      final net = (row['net_payable'] as num?)?.toDouble() ??
+      final net =
+          (row['net_payable'] as num?)?.toDouble() ??
           (row['total'] as num?)?.toDouble() ??
           0.0;
       final adv = (row['advance_payment'] as num?)?.toDouble() ?? 0.0;
@@ -22241,7 +22536,10 @@ class SqlDatabase {
       workshopOrdersAdvances += adv;
     }
     final workshopOrdersUnpaid =
-        (workshopOrdersRevenue - workshopOrdersAdvances).clamp(0.0, double.infinity);
+        (workshopOrdersRevenue - workshopOrdersAdvances).clamp(
+          0.0,
+          double.infinity,
+        );
 
     // 3. Purchases (Achats)
     final achatRows = await myDb.rawQuery(
@@ -22268,8 +22566,10 @@ class SqlDatabase {
 
     // 4. Consolidated Enterprise Figures (Eliminating internal transactions)
     final consolidatedRevenue = storeExternalSales + workshopOrdersRevenue;
-    final consolidatedCashCollected = storeExternalPaid + workshopOrdersAdvances;
-    final consolidatedExternalPurchases = storePurchases + workshopExternalPurchases;
+    final consolidatedCashCollected =
+        storeExternalPaid + workshopOrdersAdvances;
+    final consolidatedExternalPurchases =
+        storePurchases + workshopExternalPurchases;
     final consolidatedNetCashFlow =
         consolidatedCashCollected - consolidatedExternalPurchases;
 

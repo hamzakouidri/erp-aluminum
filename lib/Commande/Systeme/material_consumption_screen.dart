@@ -8,7 +8,7 @@ import 'selling_price_calculator.dart';
 import 'dart:math' as math; // لاستخدام math.max عند حساب سعر القطعة الواحدة
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import 'package:flutter/gestures.dart'
     show PointerScrollEvent, PointerSignalEvent;
 import 'package:database_data/sql_database.dart'; // كائن الوصول لقاعدة بيانات SQLite

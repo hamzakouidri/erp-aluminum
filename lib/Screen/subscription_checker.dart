@@ -547,6 +547,7 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
   RealtimeChannel? _subscriptionChannel;
   String? _subscriptionWorkshopId;
   late Future<SupabaseAccountSnapshot?> _accountFuture;
+  bool _rejectingUnconfiguredAccount = false;
 
   @override
   void initState() {
@@ -559,6 +560,31 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
   }
 
   String? get _currentUserId => AppAuthService().currentUser?.uid;
+
+  bool _hasUsableWorkshopMembership(SupabaseAccountSnapshot? account) {
+    if (account == null) return false;
+    if (account.isApplicationAdminWorkspace) return true;
+    return account.userId.trim().isNotEmpty &&
+        account.workshopId.trim().isNotEmpty &&
+        account.workshopCode.trim().isNotEmpty;
+  }
+
+  Future<void> _rejectUnconfiguredAccount() async {
+    if (_rejectingUnconfiguredAccount) return;
+    _rejectingUnconfiguredAccount = true;
+    try {
+      await SupabaseAccountService().deleteCurrentUnconfiguredAuthUser();
+    } catch (error) {
+      debugPrint('Unconfigured session cleanup skipped: $error');
+    }
+    try {
+      SupabaseAccountService().invalidateCurrentAccountCache();
+      await CloudSyncService().clearCachedWorkshopContext();
+      await AppAuthService().signOut();
+    } finally {
+      _rejectingUnconfiguredAccount = false;
+    }
+  }
 
   Future<SupabaseAccountSnapshot?> _loadCachedAccountFirst() async {
     final userId = _currentUserId;
@@ -799,7 +825,10 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
         }
 
         final account = snapshot.data;
-        if (account == null) {
+        if (!_hasUsableWorkshopMembership(account)) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) unawaited(_rejectUnconfiguredAccount());
+          });
           return _message(
             context,
             icon: Icons.error_outline,
@@ -807,11 +836,12 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
             title: _t(context, 'الحساب غير مرتبط بورشة'),
             body: _t(
               context,
-              'أكمل التسجيل أو اطلب من مدير الورشة إرسال دعوة قبل الدخول.',
+              'تم رفض الجلسة وتسجيل الخروج لأن الحساب غير مرتبط بورشة صالحة.',
             ),
           );
         }
-        if (account.blocked) {
+        final verifiedAccount = account!;
+        if (verifiedAccount.blocked) {
           return _message(
             context,
             icon: Icons.block,
@@ -826,19 +856,19 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
 
         WidgetsBinding.instance.addPostFrameCallback((_) async {
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('workshop_code', account.workshopCode);
-          final accountName = account.workshopName.trim();
-          final accountCode = account.workshopCode.trim();
+          await prefs.setString('workshop_code', verifiedAccount.workshopCode);
+          final accountName = verifiedAccount.workshopName.trim();
+          final accountCode = verifiedAccount.workshopCode.trim();
           if (accountName.isNotEmpty && accountName != accountCode) {
             await prefs.setString('workshop_name', accountName);
           } else if ((prefs.getString('workshop_name') ?? '').trim() ==
               accountCode) {
             await prefs.remove('workshop_name');
           }
-          await prefs.setString('user_role', account.role);
+          await prefs.setString('user_role', verifiedAccount.role);
           await prefs.setString(
             'permissions_json',
-            jsonEncode(account.permissions),
+            jsonEncode(verifiedAccount.permissions),
           );
           if (context.mounted) {
             await Provider.of<AppSettingsProvider>(
@@ -848,14 +878,14 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
           }
         });
 
-        if (_isActive(account)) {
-          final isGlobalAdmin = account.isApplicationAdminWorkspace ||
-              isApplicationAdminEmail(account.email);
+        if (_isActive(verifiedAccount)) {
+          final isGlobalAdmin = verifiedAccount.isApplicationAdminWorkspace ||
+              isApplicationAdminEmail(verifiedAccount.email);
           return SubscriptionDeadline(
             endsAt: isGlobalAdmin
                 ? null
                 : DateTime.tryParse(
-                    account.subscription['ends_at']?.toString() ?? '',
+                    verifiedAccount.subscription['ends_at']?.toString() ?? '',
                   ),
             expired: const SubscriptionExpiredScreen(),
             child: SyncGateway(
@@ -864,11 +894,11 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
               // changes; keying it by the user alone would keep the previous
               // workshop's local database and synchronization state alive.
               key: ValueKey(
-                'supabase_sync_gateway:${account.userId}:${account.workshopId}',
+                'supabase_sync_gateway:${verifiedAccount.userId}:${verifiedAccount.workshopId}',
               ),
-              initialWorkshopId: account.workshopCode,
-              initialWorkshopName: account.workshopName,
-              initialUserRole: account.role,
+              initialWorkshopId: verifiedAccount.workshopCode,
+              initialWorkshopName: verifiedAccount.workshopName,
+              initialUserRole: verifiedAccount.role,
             ),
           );
         }

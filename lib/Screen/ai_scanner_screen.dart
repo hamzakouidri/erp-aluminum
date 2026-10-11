@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -34,6 +34,7 @@ class _AiScannerScreenState extends State<AiScannerScreen>
 
   // خريطة مطابقة السلعة بقاعدة البيانات: {مؤشر السلعة: معرف القسم المطابق أو "new" أو "ignore"}
   final Map<int, dynamic> _itemMappings = {};
+
   // لحفظ بيانات المقاطع الجديدة التي سيتم إنشاؤها: {مؤشر السلعة: خريطة خصائص المقطع الجديد}
   final Map<int, Map<String, dynamic>> _newSectionsData = {};
 
@@ -45,11 +46,22 @@ class _AiScannerScreenState extends State<AiScannerScreen>
   static const _green = Color(0xFF10B981);
   static const _red = Color(0xFFEF4444);
   static const _orange = Color(0xFFF59E0B);
-  Color get _text => Theme.of(context).brightness == Brightness.dark ? Colors.white70 : const Color(0xFF1E293B);
-  Color get _textDim => Theme.of(context).brightness == Brightness.dark ? Colors.white54 : const Color(0xFF64748B);
+
+  Color get _text => Theme.of(context).brightness == Brightness.dark
+      ? Colors.white70
+      : const Color(0xFF1E293B);
+
+  Color get _textDim => Theme.of(context).brightness == Brightness.dark
+      ? Colors.white54
+      : const Color(0xFF64748B);
+
   Color get _bg => Theme.of(context).scaffoldBackgroundColor;
+
   Color get _cardBg => Theme.of(context).cardColor;
-  Color get _divider => Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : const Color(0xFFE2E8F0);
+
+  Color get _divider => Theme.of(context).brightness == Brightness.dark
+      ? Colors.grey.shade800
+      : const Color(0xFFE2E8F0);
 
   // شريط المسح الضوئي
   late AnimationController _scanController;
@@ -81,7 +93,7 @@ class _AiScannerScreenState extends State<AiScannerScreen>
         _catalogSeries = series;
         // هنا يمكن حفظ واسترجاع الـ API Key من قاعدة البيانات أو الشيرد بريفرنسز
         // للسهولة، سنسمح للمستخدم بإدخاله في الشاشة أو استخدام المحاكي المدمج مباشرة
-        _apiKey = '';
+        _apiKey = 'AQ.Ab8RN6K0VzsqO944GLUZOKqevI4ncAbuewu7Cx8pEUg3O-xVaA';
       });
     } catch (_) {}
   }
@@ -131,7 +143,10 @@ class _AiScannerScreenState extends State<AiScannerScreen>
 
     try {
       final bytes = await _imageFile!.readAsBytes();
-      final apiKey = Provider.of<AppSettingsProvider>(context, listen: false).geminiApiKey;
+      final apiKey = Provider.of<AppSettingsProvider>(
+        context,
+        listen: false,
+      ).geminiApiKey;
       final invoice = await AiInvoiceService.analyzeInvoice(
         bytes,
         apiKey: apiKey,
@@ -241,7 +256,9 @@ class _AiScannerScreenState extends State<AiScannerScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: isDark ? Colors.amber.shade900.withOpacity(0.2) : Colors.amber.shade50,
+              color: isDark
+                  ? Colors.amber.shade900.withOpacity(0.2)
+                  : Colors.amber.shade50,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: _orange.withOpacity(0.3)),
             ),
@@ -250,7 +267,11 @@ class _AiScannerScreenState extends State<AiScannerScreen>
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.auto_awesome_rounded, color: _orange, size: 20),
+                    const Icon(
+                      Icons.auto_awesome_rounded,
+                      color: _orange,
+                      size: 20,
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       Localization.translate(
@@ -275,7 +296,9 @@ class _AiScannerScreenState extends State<AiScannerScreen>
                   style: TextStyle(
                     fontFamily: 'Cairo',
                     fontSize: 11,
-                    color: isDark ? Colors.amber.shade200 : Colors.amber.shade900,
+                    color: isDark
+                        ? Colors.amber.shade200
+                        : Colors.amber.shade900,
                     height: 1.4,
                   ),
                 ),
@@ -308,7 +331,11 @@ class _AiScannerScreenState extends State<AiScannerScreen>
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.document_scanner_rounded, size: 64, color: _blue),
+                  const Icon(
+                    Icons.document_scanner_rounded,
+                    size: 64,
+                    color: _blue,
+                  ),
                   const SizedBox(height: 16),
                   Text(
                     Localization.translate(
@@ -1487,8 +1514,8 @@ class _AiScannerScreenState extends State<AiScannerScreen>
             achatId: achatId,
             itemCode: item.itemCode,
             itemName: item.itemName,
-            itemType:
-                'Sections', // AI Scanner specifically handles aluminum sections for now
+            itemType: 'Sections',
+            // AI Scanner specifically handles aluminum sections for now
             itemId: mapping as int,
             quantity: item.quantity,
             price: item.price,

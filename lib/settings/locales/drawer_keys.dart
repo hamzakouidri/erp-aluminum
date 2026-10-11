@@ -616,4 +616,19 @@ const Map<String, Map<AppLanguage, String>> drawerKeys = {
     AppLanguage.french: 'Gauche [←]',
     AppLanguage.english: 'Left [←]',
   },
+  'بيع المواد': {
+    AppLanguage.arabic: 'بيع المواد',
+    AppLanguage.french: 'Vente de matières',
+    AppLanguage.english: 'Material Sales',
+  },
+  'شراء المواد': {
+    AppLanguage.arabic: 'شراء المواد',
+    AppLanguage.french: 'Achat de matières',
+    AppLanguage.english: 'Material Purchases',
+  },
+  'مشتريات محل المواد': {
+    AppLanguage.arabic: 'مشتريات محل المواد',
+    AppLanguage.french: 'Achats du magasin',
+    AppLanguage.english: 'Store Purchases',
+  },
 };

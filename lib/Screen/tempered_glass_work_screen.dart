@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
@@ -16,6 +16,7 @@ enum GlassWorkType {
   showerCabin,
   vitrineSingleDoor,
   vitrineDoubleDoor,
+  vitrineComposite,
   slidingShowerCabin,
   singleDoorShowerCabin,
 }
@@ -442,6 +443,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
       GlassWorkType.singleDoorShowerCabin => 'cabine_porte',
       GlassWorkType.vitrineSingleDoor => 'vitrine_1p',
       GlassWorkType.vitrineDoubleDoor => 'vitrine_2p',
+      GlassWorkType.vitrineComposite => 'vitrine_composite_5p',
     };
   }
 
@@ -476,6 +478,9 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     }
     if (code == 'cabine_l' || code == 'cabine_u') {
       return GlassWorkType.showerCabin;
+    }
+    if (code == 'vitrine_composite_5p' || code.contains('composite')) {
+      return GlassWorkType.vitrineComposite;
     }
     if (code == 'vitrine_2p' || code.contains('double')) {
       return GlassWorkType.vitrineDoubleDoor;
@@ -1133,6 +1138,162 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     });
   }
 
+  /// Swap panel layout horizontally (Inverser l'ordre des panneaux ⇄)
+  void _swapPanelsOrder() {
+    if (_panels.length < 2) return;
+    _pushHistory();
+    setState(() {
+      // If sliding cabin, reuse specialized sliding flip
+      if (_isSlidingStraight) {
+        _toggleSlidingSides();
+        return;
+      }
+
+      // Check if there is an imposte (transom) on top
+      final imposte = _panels.where((p) => p.role.contains('imposte')).firstOrNull;
+      final bottomPanels = _panels.where((p) => !p.role.contains('imposte')).toList();
+
+      if (bottomPanels.length < 2) return;
+
+      // Reverse bottom panels order horizontally
+      final minLeft = bottomPanels.map((p) => p.rect.left).reduce(math.min);
+      final maxRight = bottomPanels.map((p) => p.rect.right).reduce(math.max);
+      final totalWidth = maxRight - minLeft;
+
+      final reversed = bottomPanels.reversed.toList();
+      double curX = minLeft;
+      for (final panel in reversed) {
+        final w = panel.rect.width;
+        final h = panel.rect.height;
+        final t = panel.rect.top;
+        panel.rect = Rect.fromLTWH(curX, t, w, h);
+        curX += w + 3.0;
+
+        // Invert horizontal hole positions
+        for (final hole in panel.holes) {
+          hole.xMm = (panel.widthMm - hole.xMm).clamp(0.0, panel.widthMm);
+        }
+        // Invert hinge sides
+        for (final hinge in panel.hinges) {
+          hinge.side = hinge.side == 'left' ? 'right' : 'left';
+        }
+      }
+
+      _panels.clear();
+      _panels.addAll(reversed);
+      if (imposte != null) _panels.add(imposte);
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          _tr(
+            'تم قلب ترتيب الألواح وتحديث الإحداثيات بنجاح',
+            'Ordre des panneaux inversé avec succès',
+            'Panels order inverted successfully',
+          ),
+        ),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  /// Toggle hinge side and synchronize notches between Door and adjacent panel
+  void _toggleHingeSide() {
+    // Find the currently selected panel or the first door
+    _GlassPanel? targetDoor;
+    if (_selectedPanelIndex != null &&
+        _selectedPanelIndex! >= 0 &&
+        _selectedPanelIndex! < _panels.length) {
+      final sel = _panels[_selectedPanelIndex!];
+      if (sel.isDoor) targetDoor = sel;
+    }
+    targetDoor ??= _panels.where((p) => p.isDoor).firstOrNull;
+
+    if (targetDoor == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _tr(
+              'يرجى تحديد لوح باب لتغيير جهة المفصلات',
+              'Sélectionnez une porte pour changer le côté des charnières',
+              'Select a door to change hinge side',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    _pushHistory();
+    setState(() {
+      // Toggle hinges side
+      final oldSide = targetDoor!.hinges.isNotEmpty ? targetDoor.hinges.first.side : 'left';
+      final newSide = oldSide == 'left' ? 'right' : 'left';
+
+      // Determine adjacent panel on newSide
+      _GlassPanel? adjacentPanel;
+      if (newSide == 'left') {
+        adjacentPanel = _panels
+            .where((p) => p != targetDoor && p.rect.right <= targetDoor!.rect.left + 15 && !p.role.contains('imposte'))
+            .firstOrNull;
+      } else {
+        adjacentPanel = _panels
+            .where((p) => p != targetDoor && p.rect.left >= targetDoor!.rect.right - 15 && !p.role.contains('imposte'))
+            .firstOrNull;
+      }
+
+      final isAdjacentToGlass = adjacentPanel != null;
+      final hingeType = isAdjacentToGlass ? 'glass_glass_180' : 'wall_glass';
+
+      // Clear any prior matching hinges from adjacent panel
+      for (final p in _panels) {
+        if (!p.isDoor) {
+          p.hinges.removeWhere((h) => h.hingeType == 'glass_glass_180');
+        }
+      }
+
+      if (targetDoor.hinges.isEmpty) {
+        targetDoor.ensureDoorHinges(hingeSide: newSide);
+      } else {
+        for (final h in targetDoor.hinges) {
+          h.side = newSide;
+          h.hingeType = hingeType;
+        }
+      }
+
+      // If hinged to adjacent glass panel, add synchronized notches / hinges to adjacent fixed panel
+      if (adjacentPanel != null) {
+        final adjHingeSide = newSide == 'left' ? 'right' : 'left';
+        adjacentPanel.hinges.clear();
+        for (final doorHinge in targetDoor.hinges) {
+          adjacentPanel.hinges.add(
+            _GlassHinge(
+              yMm: doorHinge.yMm.clamp(0.0, adjacentPanel.heightMm),
+              side: adjHingeSide,
+              widthMm: doorHinge.widthMm,
+              heightMm: doorHinge.heightMm,
+              hingeType: 'glass_glass_180',
+            ),
+          );
+        }
+      }
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          _tr(
+            'تم تبديل جهة المفصلات وتحديث تفريغات الزجاج المتزامنة',
+            'Côté des charnières modifié (encoches synchronisées)',
+            'Hinge side changed with synchronized glass notches',
+          ),
+        ),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   String _tr(String ar, String fr, String en) {
     final language = Provider.of<AppSettingsProvider>(
       context,
@@ -1171,6 +1332,11 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
         'كابين دوش بباب واحد',
         'Cabine de douche à une porte',
         'One-door shower cabin',
+      ),
+      GlassWorkType.vitrineComposite => _tr(
+        'فيترين مجمعة (5 ألواح)',
+        'Vitrine composite (5 panneaux)',
+        'Composite storefront (5 panels)',
       ),
     };
   }
@@ -2077,7 +2243,8 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     }
 
     // Individual panel width:
-    for (final panel in _panels) {
+    for (var i = 0; i < _panels.length; i++) {
+      final panel = _panels[i];
       final panelTopWidthBox = Rect.fromLTRB(
         panel.rect.left - 4,
         panel.rect.top - 30,
@@ -2085,11 +2252,231 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
         panel.rect.top,
       );
       if (panelTopWidthBox.contains(position)) {
-        _editMeasurements(focusHeight: false);
+        if (_workType == GlassWorkType.vitrineComposite && _panels.length >= 4) {
+          _editVitrinePanelWidthWithCompensation(i);
+        } else {
+          _editMeasurements(focusHeight: false);
+        }
         return true;
       }
     }
     return false;
+  }
+
+  /// Interactive compensation dialog for Vitrine Composite panels
+  Future<void> _editVitrinePanelWidthWithCompensation(int panelIndex) async {
+    if (panelIndex >= _panels.length) return;
+    final targetPanel = _panels[panelIndex];
+    final oldWidth = targetPanel.widthMm;
+    final widthController = TextEditingController(text: oldWidth.toStringAsFixed(0));
+    String targetOption = 'doors_equal'; // 'doors_equal', 'door_1', 'door_2', 'opposite_fixe'
+    String? error;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                const Icon(Icons.tune_rounded, color: Colors.cyan),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _tr(
+                      'تعديل عرض اللوح وتعويض الفارق',
+                      'Modifier la largeur et compenser',
+                      'Edit panel width & compensate',
+                    ),
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 440,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.blueGrey.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        _tr(
+                          'اللوح المحدد: ${targetPanel.role} (العرض الحالي: ${oldWidth.toStringAsFixed(0)} مم)',
+                          'Panneau sélectionné : ${targetPanel.role} (${oldWidth.toStringAsFixed(0)} mm)',
+                          'Selected panel: ${targetPanel.role} (${oldWidth.toStringAsFixed(0)} mm)',
+                        ),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.blueGrey.shade800,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: widthController,
+                      autofocus: true,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: false),
+                      decoration: InputDecoration(
+                        labelText: _tr('العرض الجديد', 'Nouvelle largeur', 'New width'),
+                        suffixText: 'mm',
+                        border: const OutlineInputBorder(),
+                        helperText: targetPanel.isDoor
+                            ? _tr('تنبيه: عرض الباب لا يتجاوز 900 مم', 'Max 900 mm pour la porte', 'Door max 900 mm')
+                            : null,
+                      ),
+                      onChanged: (_) => setDialogState(() => error = null),
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      _tr(
+                        'أين يضاف / ينقص مقدار هذا التغيير؟',
+                        'Où appliquer la compensation du delta ?',
+                        'Where should the dimension delta be compensated?',
+                      ),
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    RadioListTile<String>(
+                      value: 'doors_equal',
+                      groupValue: targetOption,
+                      title: Text(_tr('من البابين بالتساوي', 'Des 2 portes équitablement', 'Both doors equally')),
+                      onChanged: (val) => setDialogState(() => targetOption = val!),
+                      dense: true,
+                    ),
+                    RadioListTile<String>(
+                      value: 'door_1',
+                      groupValue: targetOption,
+                      title: Text(_tr('من الباب الأول فقط', 'De la première porte seulement', 'Door 1 only')),
+                      onChanged: (val) => setDialogState(() => targetOption = val!),
+                      dense: true,
+                    ),
+                    RadioListTile<String>(
+                      value: 'door_2',
+                      groupValue: targetOption,
+                      title: Text(_tr('من الباب الثاني فقط', 'De la 2ème porte seulement', 'Door 2 only')),
+                      onChanged: (val) => setDialogState(() => targetOption = val!),
+                      dense: true,
+                    ),
+                    RadioListTile<String>(
+                      value: 'opposite_fixe',
+                      groupValue: targetOption,
+                      title: Text(_tr('من الثابت المقابل', 'Du panneau fixe opposé', 'Opposite fixed panel')),
+                      onChanged: (val) => setDialogState(() => targetOption = val!),
+                      dense: true,
+                    ),
+                    if (error != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        error!,
+                        style: TextStyle(color: Theme.of(ctx).colorScheme.error, fontSize: 12),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogCtx, false),
+                child: Text(_tr('إلغاء', 'Annuler', 'Cancel')),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final newW = _parseMillimeters(widthController.text);
+                  if (newW == null || newW <= 50) {
+                    setDialogState(() => error = _tr('يرجى إدخال عرض صحيح', 'Largeur invalide', 'Invalid width'));
+                    return;
+                  }
+                  if (targetPanel.isDoor && newW > 900) {
+                    setDialogState(() => error = _tr('عرض الباب لا يمكن أن يتجاوز 900 مم', 'Max porte 900 mm', 'Door width max 900 mm'));
+                    return;
+                  }
+                  Navigator.pop(dialogCtx, true);
+                },
+                child: Text(_tr('تطبيق التعويض', 'Appliquer', 'Apply')),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (saved == true && mounted) {
+      final newW = _parseMillimeters(widthController.text)!;
+      final delta = newW - oldWidth;
+      if (delta == 0) return;
+
+      _pushHistory();
+      setState(() {
+        targetPanel.widthMm = newW;
+
+        final doors = _panels.where((p) => p.isDoor).toList();
+        final fixes = _panels.where((p) => !p.isDoor && !p.role.contains('imposte')).toList();
+
+        if (targetOption == 'doors_equal' && doors.isNotEmpty) {
+          final deltaPerDoor = delta / doors.length;
+          for (final d in doors) {
+            d.widthMm = (d.widthMm - deltaPerDoor).clamp(100.0, 900.0);
+          }
+        } else if (targetOption == 'door_1' && doors.isNotEmpty) {
+          doors.first.widthMm = (doors.first.widthMm - delta).clamp(100.0, 900.0);
+        } else if (targetOption == 'door_2' && doors.length > 1) {
+          doors[1].widthMm = (doors[1].widthMm - delta).clamp(100.0, 900.0);
+        } else if (targetOption == 'opposite_fixe' && fixes.isNotEmpty) {
+          final oppFixe = fixes.lastWhere((p) => p != targetPanel, orElse: () => fixes.first);
+          oppFixe.widthMm = (oppFixe.widthMm - delta).clamp(100.0, 4000.0);
+        }
+
+        // Re-align canvas display rects horizontally
+        final bottomPanels = _panels.where((p) => !p.role.contains('imposte')).toList();
+        if (bottomPanels.isNotEmpty) {
+          final totalBottomW = bottomPanels.fold<double>(0.0, (s, p) => s + p.widthMm);
+          final minLeft = bottomPanels.map((p) => p.rect.left).reduce(math.min);
+          final maxRight = bottomPanels.map((p) => p.rect.right).reduce(math.max);
+          final displayTotalW = maxRight - minLeft;
+          final scale = displayTotalW / totalBottomW;
+
+          double curX = minLeft;
+          const gap = 3.0;
+          for (final p in bottomPanels) {
+            final dispW = p.widthMm * scale;
+            p.rect = Rect.fromLTWH(curX, p.rect.top, dispW, p.rect.height);
+            curX += dispW + gap;
+          }
+
+          // Top imposte spans the whole width if present
+          final imposte = _panels.where((p) => p.role.contains('imposte')).firstOrNull;
+          if (imposte != null) {
+            imposte.widthMm = totalBottomW;
+            imposte.rect = Rect.fromLTWH(minLeft, imposte.rect.top, curX - minLeft - gap, imposte.rect.height);
+          }
+
+          _overallWidthMmValue = totalBottomW;
+        }
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _tr(
+              'تم تعويض أبعاد الفاترينة بنجاح',
+              'Dimensions compensées avec succès',
+              'Vitrine dimensions compensated successfully',
+            ),
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   void _handleCanvasTap(TapUpDetails details) {
@@ -2755,6 +3142,51 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                       _tr('قطر الثقب', 'Diamètre du trou', 'Hole diameter'),
                       textInputAction: TextInputAction.done,
                     ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              setDialogState(() {
+                                xController.text = (panel.widthMm / 2).toStringAsFixed(0);
+                              });
+                            },
+                            icon: const Icon(Icons.align_horizontal_center, size: 16),
+                            label: Text(
+                              _tr('توسيط X', 'Centrer X', 'Center X'),
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              setDialogState(() {
+                                yController.text = (panel.heightMm / 2).toStringAsFixed(0);
+                              });
+                            },
+                            icon: const Icon(Icons.align_vertical_center, size: 16),
+                            label: Text(
+                              _tr('توسيط Y', 'Centrer Y', 'Center Y'),
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        IconButton.filledTonal(
+                          tooltip: _tr('توسيط كامل في المنتصف', 'Centrer au milieu', 'Center completely'),
+                          onPressed: () {
+                            setDialogState(() {
+                              xController.text = (panel.widthMm / 2).toStringAsFixed(0);
+                              yController.text = (panel.heightMm / 2).toStringAsFixed(0);
+                            });
+                          },
+                          icon: const Icon(Icons.filter_center_focus, size: 18),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 8),
                     Text(
                       _tr(
@@ -2975,22 +3407,215 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
   }
 
   Future<void> _editHandleFromToolbar() async {
-    if (!_isSlidingStraight || _panels.isEmpty) {
+    if (_panels.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             _tr(
-              'اختر كابين دوش منزلقة وارسمها أولاً.',
-              'Choisissez une cabine coulissante et dessinez-la d’abord.',
-              'Choose a sliding shower cabin and draw it first.',
+              'يرجى إنشاء أو رسم ألواح الزجاج أولاً.',
+              'Veuillez d’abord créer les panneaux de verre.',
+              'Please create or draw glass panels first.',
             ),
           ),
         ),
       );
       return;
     }
-    final target = _findHoleByPurpose('handle_top');
-    if (target != null) await _editMovableHole(target);
+
+    final door = _panels.where((p) => p.isDoor).firstOrNull;
+    if (door == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _tr(
+              'لا يوجد باب في النظام الحالي لإضافة مقبض له.',
+              'Aucune porte trouvée dans le système actuel.',
+              'No door found in the current system.',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final handleHole = door.holes.where((h) => h.purpose.startsWith('handle_')).firstOrNull;
+    if (handleHole != null) {
+      final pIdx = _panels.indexOf(door);
+      final hIdx = door.holes.indexOf(handleHole);
+      await _editMovableHole(
+        _MovableHoleTarget(
+          panelIndex: pIdx,
+          holeIndex: hIdx,
+          purpose: handleHole.purpose,
+        ),
+      );
+    } else {
+      // Prompt parametric handle creation dialog
+      final spacingCtrl = TextEditingController(text: _handleSpacingMm.toStringAsFixed(0));
+      final edgeCtrl = TextEditingController(text: _handleEdgeOffsetMm.toStringAsFixed(0));
+      final diaCtrl = TextEditingController(text: _holeDiameterMm.toStringAsFixed(0));
+      int holeCount = 2; // 1, 2, 3
+      bool isCenterY = true;
+
+      final saved = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (dCtx, setDialogState) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                const Icon(Icons.pan_tool_outlined, color: Colors.cyan),
+                const SizedBox(width: 8),
+                Text(
+                  _tr(
+                    'تخصيص ثقوب المقبض البارامتري',
+                    'Personnalisation poignée',
+                    'Parametric handle customization',
+                  ),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 380,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Text(_tr('عدد الثقوب:', 'Nombre de trous :', 'Holes count:')),
+                        const Spacer(),
+                        SegmentedButton<int>(
+                          segments: const [
+                            ButtonSegment(value: 1, label: Text('1')),
+                            ButtonSegment(value: 2, label: Text('2')),
+                            ButtonSegment(value: 3, label: Text('3')),
+                          ],
+                          selected: {holeCount},
+                          onSelectionChanged: (set) => setDialogState(() => holeCount = set.first),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: diaCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: _tr('قطر الثقب', 'Diamètre', 'Diameter'),
+                        suffixText: 'mm',
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                    if (holeCount > 1) ...[
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: spacingCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: _tr('المسافة بين الثقوب (Entraxe)', 'Entraxe', 'Spacing'),
+                          suffixText: 'mm',
+                          border: const OutlineInputBorder(),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: edgeCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: _tr('المسافة عن الحافة X', 'Distance bord X', 'Edge distance X'),
+                        suffixText: 'mm',
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SwitchListTile(
+                      value: isCenterY,
+                      title: Text(_tr('توسيط تلقائي على المحور Y', 'Centrage auto Y', 'Center on Y axis')),
+                      onChanged: (val) => setDialogState(() => isCenterY = val),
+                      dense: true,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dCtx, false),
+                child: Text(_tr('إلغاء', 'Annuler', 'Cancel')),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dCtx, true),
+                child: Text(_tr('تطبيق', 'Appliquer', 'Apply')),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (saved == true && mounted) {
+        _pushHistory();
+        setState(() {
+          final dia = _parseMillimeters(diaCtrl.text) ?? 12.0;
+          final spacing = _parseMillimeters(spacingCtrl.text) ?? 200.0;
+          final edge = _parseMillimeters(edgeCtrl.text) ?? 60.0;
+
+          _handleSpacingMm = spacing;
+          _handleEdgeOffsetMm = edge;
+          _showDoorHandle = true;
+
+          door.holes.removeWhere((h) => h.purpose.startsWith('handle_'));
+          final centerY = door.heightMm / 2;
+
+          if (holeCount == 1) {
+            door.holes.add(
+              _GlassHole(
+                xMm: edge,
+                yMm: isCenterY ? centerY : centerY,
+                diameterMm: dia,
+                purpose: 'handle_center',
+              ),
+            );
+          } else if (holeCount == 2) {
+            door.holes.addAll([
+              _GlassHole(
+                xMm: edge,
+                yMm: centerY - spacing / 2,
+                diameterMm: dia,
+                purpose: 'handle_top',
+              ),
+              _GlassHole(
+                xMm: edge,
+                yMm: centerY + spacing / 2,
+                diameterMm: dia,
+                purpose: 'handle_bottom',
+              ),
+            ]);
+          } else if (holeCount == 3) {
+            door.holes.addAll([
+              _GlassHole(
+                xMm: edge,
+                yMm: centerY - spacing,
+                diameterMm: dia,
+                purpose: 'handle_top',
+              ),
+              _GlassHole(
+                xMm: edge,
+                yMm: centerY,
+                diameterMm: dia,
+                purpose: 'handle_mid',
+              ),
+              _GlassHole(
+                xMm: edge,
+                yMm: centerY + spacing,
+                diameterMm: dia,
+                purpose: 'handle_bottom',
+              ),
+            ]);
+          }
+        });
+      }
+    }
   }
 
   _MovableHoleTarget? _findHoleByPurpose(String purpose) {
@@ -3631,6 +4256,18 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
         'defaultH': 2100.0,
       },
       {
+        'code': 'vitrine_composite_5p',
+        'title_ar': 'واجهة فيترين مجمعة (ثوابت + بابين + إمبوست)',
+        'title_fr': 'Vitrine composite (Fixes + 2 Portes + Imposte)',
+        'title_en': 'Composite Vitrine (Fixed + 2 Doors + Transom)',
+        'desc_ar': 'واجهة هندسية كاملة: ثابت أيسر + باب أيسر + باب أيمن + ثابت أيمن + إمبوست علوي',
+        'desc_fr': 'Façade 5 panneaux : 2 fixes latéraux, 2 portes centrales et imposte supérieure',
+        'workType': GlassWorkType.vitrineComposite,
+        'doorOnLeft': true,
+        'defaultW': 3600.0,
+        'defaultH': 2600.0,
+      },
+      {
         'code': 'paroi_fixe',
         'title_ar': 'حاجز دوش ثابت (Paroi fixe)',
         'title_fr': 'Paroi de douche fixe',
@@ -3961,6 +4598,146 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
         _panels.clear();
         _panels.addAll([leftDoor, rightDoor]);
         _selectedPanelIndex = 0;
+      } else if (workType == GlassWorkType.vitrineComposite) {
+        _overallDrawingRect = null;
+        final screenCenter = _canvasSize == Size.zero
+            ? const Offset(250, 200)
+            : _canvasSize.center(Offset.zero);
+
+        // Standard Storefront Vitrine Composite proportions:
+        // Door height standard: 2100mm, max width 900mm.
+        final doorHeight = math.min(2100.0, defaultH > 500 ? defaultH - 500 : defaultH * 0.8);
+        final imposteHeight = math.max(0.0, defaultH - doorHeight);
+        final doorWidth = math.min(900.0, defaultW / 4);
+        final fixedWidth = math.max(100.0, (defaultW - (doorWidth * 2)) / 2);
+
+        // Canvas display coordinates scaling
+        final displayTotalW = 420.0;
+        final displayTotalH = 260.0;
+        final scaleX = displayTotalW / defaultW;
+        final scaleY = displayTotalH / defaultH;
+
+        final displayImposteH = imposteHeight * scaleY;
+        final displayBottomH = doorHeight * scaleY;
+        final displayFixedW = fixedWidth * scaleX;
+        final displayDoorW = doorWidth * scaleX;
+
+        const gap = 3.0;
+        final leftOriginX = screenCenter.dx - displayTotalW / 2;
+        final topOriginY = screenCenter.dy - displayTotalH / 2;
+        final bottomTopY = topOriginY + displayImposteH + (imposteHeight > 0 ? gap : 0.0);
+
+        // 1. Top Imposte (Transom) if height allows
+        _GlassPanel? impostePanel;
+        if (imposteHeight > 0) {
+          impostePanel = _GlassPanel(
+            rect: Rect.fromLTWH(
+              leftOriginX,
+              topOriginY,
+              displayTotalW,
+              displayImposteH,
+            ),
+            widthMm: defaultW,
+            heightMm: imposteHeight,
+            role: 'vitrine_imposte',
+          );
+        }
+
+        // 2. Fixed Left Panel
+        final curX0 = leftOriginX;
+        final fixedLeft = _GlassPanel(
+          rect: Rect.fromLTWH(
+            curX0,
+            bottomTopY,
+            displayFixedW,
+            displayBottomH,
+          ),
+          widthMm: fixedWidth,
+          heightMm: doorHeight,
+          role: 'vitrine_fixe_left',
+        );
+
+        // 3. Left Door
+        final curX1 = curX0 + displayFixedW + gap;
+        final doorLeft = _GlassPanel(
+          rect: Rect.fromLTWH(
+            curX1,
+            bottomTopY,
+            displayDoorW,
+            displayBottomH,
+          ),
+          widthMm: doorWidth,
+          heightMm: doorHeight,
+          role: 'vitrine_door_left',
+        );
+        doorLeft.ensureDoorHinges(hingeSide: 'left');
+        doorLeft.holes.addAll([
+          _GlassHole(
+            xMm: doorWidth - 60,
+            yMm: doorHeight / 2 - 150,
+            diameterMm: _holeDiameterMm,
+            purpose: 'handle_top',
+          ),
+          _GlassHole(
+            xMm: doorWidth - 60,
+            yMm: doorHeight / 2 + 150,
+            diameterMm: _holeDiameterMm,
+            purpose: 'handle_bottom',
+          ),
+        ]);
+
+        // 4. Right Door
+        final curX2 = curX1 + displayDoorW + gap;
+        final doorRight = _GlassPanel(
+          rect: Rect.fromLTWH(
+            curX2,
+            bottomTopY,
+            displayDoorW,
+            displayBottomH,
+          ),
+          widthMm: doorWidth,
+          heightMm: doorHeight,
+          role: 'vitrine_door_right',
+        );
+        doorRight.ensureDoorHinges(hingeSide: 'right');
+        doorRight.holes.addAll([
+          _GlassHole(
+            xMm: 60,
+            yMm: doorHeight / 2 - 150,
+            diameterMm: _holeDiameterMm,
+            purpose: 'handle_top',
+          ),
+          _GlassHole(
+            xMm: 60,
+            yMm: doorHeight / 2 + 150,
+            diameterMm: _holeDiameterMm,
+            purpose: 'handle_bottom',
+          ),
+        ]);
+
+        // 5. Fixed Right Panel
+        final curX3 = curX2 + displayDoorW + gap;
+        final fixedRight = _GlassPanel(
+          rect: Rect.fromLTWH(
+            curX3,
+            bottomTopY,
+            displayFixedW,
+            displayBottomH,
+          ),
+          widthMm: fixedWidth,
+          heightMm: doorHeight,
+          role: 'vitrine_fixe_right',
+        );
+
+        _panels.clear();
+        _panels.addAll([
+          fixedLeft,
+          doorLeft,
+          doorRight,
+          fixedRight,
+          if (impostePanel != null) impostePanel,
+        ]);
+        _selectedPanelIndex = 1;
       } else {
         _overallDrawingRect = null;
         final screenCenter = _canvasSize == Size.zero
@@ -5329,6 +6106,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
               GlassWorkType.singleDoorShowerCabin => 'cabine_porte',
               GlassWorkType.vitrineSingleDoor => 'vitrine_1p',
               GlassWorkType.vitrineDoubleDoor => 'vitrine_2p',
+              GlassWorkType.vitrineComposite => 'vitrine_composite_5p',
             };
             return PopupMenuItem<Map<String, dynamic>>(
               value: {'code': code},
@@ -5460,6 +6238,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                       GlassWorkType.singleDoorShowerCabin => 'cabine_porte',
                       GlassWorkType.vitrineSingleDoor => 'vitrine_1p',
                       GlassWorkType.vitrineDoubleDoor => 'vitrine_2p',
+                      GlassWorkType.vitrineComposite => 'vitrine_composite_5p',
                     };
                     return ListTile(
                       title: Text(_workTypeLabel(type)),
@@ -7802,6 +8581,58 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                     ),
                   ),
                 ],
+                if (!_isSlidingStraight && _panels.length >= 2) ...[
+                  const SizedBox(width: 4),
+                  Container(
+                    height: 38,
+                    width: 38,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: Colors.blueGrey.shade200),
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      tooltip: _tr(
+                        'قلب ترتيب الألواح',
+                        'Inverser les panneaux',
+                        'Swap panels',
+                      ),
+                      onPressed: _swapPanelsOrder,
+                      icon: const Icon(
+                        Icons.swap_horiz_rounded,
+                        color: Colors.cyan,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ],
+                if (_panels.any((p) => p.isDoor)) ...[
+                  const SizedBox(width: 4),
+                  Container(
+                    height: 38,
+                    width: 38,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: Colors.blueGrey.shade200),
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      tooltip: _tr(
+                        'تغيير جهة المفصلات (حائط ⇄ زجاج)',
+                        'Changer côté charnières',
+                        'Toggle hinge side',
+                      ),
+                      onPressed: _toggleHingeSide,
+                      icon: const Icon(
+                        Icons.flip_to_back_rounded,
+                        color: Colors.deepOrange,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(width: 6),
                 Builder(
                   builder: (btnCtx) => _buildToolbarDropdownField(
@@ -9145,9 +9976,10 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       final hY = panel.rect.top + hinge.yMm.clamp(0.0, panel.heightMm) * scaleY;
       final hX = isLeft ? panel.rect.left : panel.rect.right;
 
-      const pW = 16.0;
+      final is180 = hinge.hingeType == 'glass_glass_180';
+      final pW = is180 ? 28.0 : 16.0;
       const pH = 34.0;
-      final center = Offset(isLeft ? hX + pW * 0.25 : hX - pW * 0.25, hY);
+      final center = Offset(isLeft ? hX + (is180 ? 0.0 : pW * 0.25) : hX - (is180 ? 0.0 : pW * 0.25), hY);
       final plateRect = Rect.fromCenter(center: center, width: pW, height: pH);
       final rrect = RRect.fromRectAndRadius(
         plateRect,
@@ -9179,19 +10011,28 @@ class _GlassPanelDrawingPainter extends CustomPainter {
         ..strokeWidth = 1.0;
       canvas.drawRRect(rrect, border);
 
-      final pivotX = isLeft ? plateRect.left + 2.0 : plateRect.right - 2.0;
+      // Central pivot line for 180° hinge or side pivot line
+      final pivotX = is180 ? plateRect.center.dx : (isLeft ? plateRect.left + 2.0 : plateRect.right - 2.0);
       canvas.drawLine(
         Offset(pivotX, plateRect.top + 3),
         Offset(pivotX, plateRect.bottom - 3),
         Paint()
           ..color = const Color(0xFF263238)
-          ..strokeWidth = 2.0,
+          ..strokeWidth = is180 ? 2.5 : 2.0,
       );
 
-      final screwX = isLeft ? plateRect.right - 4.0 : plateRect.left + 4.0;
       final screwPaint = Paint()..color = const Color(0xFF263238);
-      canvas.drawCircle(Offset(screwX, plateRect.top + 8), 1.7, screwPaint);
-      canvas.drawCircle(Offset(screwX, plateRect.bottom - 8), 1.7, screwPaint);
+      if (is180) {
+        // Double screws on left and right plates
+        canvas.drawCircle(Offset(plateRect.left + 5.0, plateRect.top + 8), 1.6, screwPaint);
+        canvas.drawCircle(Offset(plateRect.left + 5.0, plateRect.bottom - 8), 1.6, screwPaint);
+        canvas.drawCircle(Offset(plateRect.right - 5.0, plateRect.top + 8), 1.6, screwPaint);
+        canvas.drawCircle(Offset(plateRect.right - 5.0, plateRect.bottom - 8), 1.6, screwPaint);
+      } else {
+        final screwX = isLeft ? plateRect.right - 4.0 : plateRect.left + 4.0;
+        canvas.drawCircle(Offset(screwX, plateRect.top + 8), 1.7, screwPaint);
+        canvas.drawCircle(Offset(screwX, plateRect.bottom - 8), 1.7, screwPaint);
+      }
 
       final fromTop = hinge.yMm <= panel.heightMm / 2;
       final distMm = fromTop ? hinge.yMm : panel.heightMm - hinge.yMm;
@@ -10772,21 +11613,29 @@ class _GlassHinge {
     this.side = 'left',
     this.widthMm = 45.0,
     this.heightMm = 90.0,
+    this.hingeType = 'wall_glass',
   });
 
   double yMm;
   String side;
   double widthMm;
   double heightMm;
+  String hingeType; // 'wall_glass', 'glass_glass_180', 'glass_glass_90'
 
-  _GlassHinge copy() =>
-      _GlassHinge(yMm: yMm, side: side, widthMm: widthMm, heightMm: heightMm);
+  _GlassHinge copy() => _GlassHinge(
+        yMm: yMm,
+        side: side,
+        widthMm: widthMm,
+        heightMm: heightMm,
+        hingeType: hingeType,
+      );
 
   Map<String, dynamic> toMap() => {
     'yMm': yMm,
     'side': side,
     'widthMm': widthMm,
     'heightMm': heightMm,
+    'hingeType': hingeType,
   };
 
   factory _GlassHinge.fromMap(Map map) => _GlassHinge(
@@ -10794,6 +11643,7 @@ class _GlassHinge {
     side: map['side']?.toString() ?? 'left',
     widthMm: (map['widthMm'] as num?)?.toDouble() ?? 45.0,
     heightMm: (map['heightMm'] as num?)?.toDouble() ?? 90.0,
+    hingeType: map['hingeType']?.toString() ?? 'wall_glass',
   );
 }
 

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:database_data/Cliente/show_client.dart';
 import '../Screen/client_ledger_screen.dart';
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import '../sql_database.dart';
 import '../services/cloud_sync_service.dart';
 import 'package:intl/intl.dart';
@@ -24,8 +24,14 @@ class Customers extends StatefulWidget {
   /// When this page is opened from the dashboard's "Add client" action,
   /// display the existing client form as soon as the page is ready.
   final bool openAddClientOnStart;
+  /// Limits the page to store customers (`materials` and `both`).
+  final bool storeOnly;
 
-  const Customers({super.key, this.openAddClientOnStart = false});
+  const Customers({
+    super.key,
+    this.openAddClientOnStart = false,
+    this.storeOnly = false,
+  });
 
   @override
   State<Customers> createState() => _CustomersState();
@@ -318,12 +324,21 @@ class _CustomersState extends State<Customers> {
         ? db.readClientsForDisplay()
         : db.searchClientsForDisplay(_searchQuery);
     _data = future.then((list) {
+      final scoped = widget.storeOnly
+          ? list.where((client) {
+              final segment = (client['business_segment'] ?? 'windows')
+                  .toString()
+                  .trim()
+                  .toLowerCase();
+              return segment == 'materials' || segment == 'both';
+            }).toList(growable: false)
+          : list;
       if (mounted) {
         setState(() {
-          _cachedClients = list;
+          _cachedClients = scoped;
         });
       }
-      return list;
+      return scoped;
     });
   }
 
@@ -367,6 +382,9 @@ class _CustomersState extends State<Customers> {
               final latitude = values['latitude'] as double?;
               final longitude = values['longitude'] as double?;
               await db.updateClientCoordinates(clientId, latitude, longitude);
+              if (widget.storeOnly) {
+                await db.setClientBusinessSegment(clientId, 'materials');
+              }
             } catch (e) {
               debugPrint('Error inserting client: $e');
             }
@@ -466,9 +484,7 @@ class _CustomersState extends State<Customers> {
                 onChanged: (val) {
                   setState(() {
                     _searchQuery = val;
-                    _data = val.isEmpty
-                        ? db.readClientsForDisplay()
-                        : db.searchClientsForDisplay(val);
+                    _refreshData();
                   });
                 },
               )
@@ -487,7 +503,7 @@ class _CustomersState extends State<Customers> {
                   _isSearching = false;
                   searchController.clear();
                   _searchQuery = '';
-                  _data = db.readClientsForDisplay();
+                  _refreshData();
                 } else {
                   _isSearching = true;
                 }

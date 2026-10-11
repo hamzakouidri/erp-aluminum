@@ -353,7 +353,11 @@ class ShortcutBindings {
           break;
         case 'treasury':
           if (settings.canAccessTreasury())
-            screen = TreasuryScreen(db: SqlDatabase());
+            screen = TreasuryScreen(
+              db: SqlDatabase(),
+              storeOnly:
+                  settings.workingSection == WorkingSection.materialsStore,
+            );
           break;
         case 'inventory':
           if (settings.canAccessInventory())
@@ -364,7 +368,11 @@ class ShortcutBindings {
           break;
         case 'purchases':
           if (settings.canRegisterPurchases())
-            screen = AchatScreen(db: SqlDatabase());
+            screen = AchatScreen(
+              db: SqlDatabase(),
+              isWorkshop:
+                  settings.workingSection != WorkingSection.materialsStore,
+            );
           break;
         case 'suppliers':
           if (settings.canViewSuppliers())
@@ -375,10 +383,16 @@ class ShortcutBindings {
             screen = ProductsMenuScreen(db: SqlDatabase());
           break;
         case 'customers':
-          if (settings.canViewClients()) screen = Customers();
+          if (settings.canViewClients()) {
+            screen = Customers(
+              storeOnly:
+                  settings.workingSection == WorkingSection.materialsStore,
+            );
+          }
           break;
         case 'customer_ledger':
-          if (settings.canViewClientLedger())
+          if (settings.workingSection != WorkingSection.materialsStore &&
+              settings.canViewClientLedger())
             screen = const ClientChronoSearchScreen();
           break;
         case 'measurements':

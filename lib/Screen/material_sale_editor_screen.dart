@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
+
+import 'package:database_data/widgets/app_material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
@@ -7,6 +9,7 @@ import '../sql_database.dart';
 import '../services/cloud_sync_service.dart';
 import '../services/material_sale_pdf_service.dart';
 import '../utils/decimal_text_input_formatter.dart';
+import '../widgets/resizable_columns_table.dart';
 
 class MaterialSaleEditorScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -26,7 +29,7 @@ class MaterialSaleEditorScreen extends StatefulWidget {
 }
 
 class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
-  static const _blue = Color(0xFF1E3A8A);
+  static const _blue = Color(0xFF2563EB); // Modern Royal Blue
   static const _cyan = Color(0xFF06B6D4);
   static const _green = Color(0xFF10B981);
   static const _red = Color(0xFFEF4444);
@@ -40,6 +43,18 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
     ).language;
     return Localization.translate(key, lang);
   }
+
+  String _trans(String ar, String fr, [String? en]) {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    if (lang == AppLanguage.french) return fr;
+    if (lang == AppLanguage.english) return en ?? fr;
+    return ar;
+  }
+
+  bool _forceEditing = false;
 
   // ── Sale header fields ────────────────────────────────────────────────────
   String _saleCode = '';
@@ -55,6 +70,8 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
   int? _destLocationId;
   bool _isInternal = false;
   int? _linkedAchatId;
+  int? _sourceSaleId;
+  int? _convertedToSaleId;
   List<Map<String, dynamic>> _storeLocations = [];
   List<Map<String, dynamic>> _workshopLocations = [];
 
@@ -75,6 +92,10 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
   final _notesCtrl = TextEditingController();
   final _discountCtrl = TextEditingController(text: '0');
   final _paidCtrl = TextEditingController(text: '0');
+  final _horizontalTableScrollCtrl = ScrollController();
+  final _itemsListScrollCtrl = ScrollController();
+  final _headerActionsScrollCtrl = ScrollController();
+  final _totalsChipsScrollCtrl = ScrollController();
 
   // ── Clients list ─────────────────────────────────────────────────────────
   List<Map<String, dynamic>> _clients = [];
@@ -104,6 +125,10 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
     _notesCtrl.dispose();
     _discountCtrl.dispose();
     _paidCtrl.dispose();
+    _horizontalTableScrollCtrl.dispose();
+    _itemsListScrollCtrl.dispose();
+    _headerActionsScrollCtrl.dispose();
+    _totalsChipsScrollCtrl.dispose();
     super.dispose();
   }
 
@@ -111,6 +136,7 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
     setState(() => _isLoading = true);
     try {
       final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+      await widget.db.ensureDiversMaterialClient();
       _storeLocations = await widget.db.readStoreLocations();
       if (_storeLocations.isNotEmpty) {
         final defaultStoreId = settings.defaultStoreLocationId;
@@ -123,7 +149,9 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
 
       if (settings.isDualActivity) {
         await widget.db.ensureInternalWorkshopClient();
-        _clients = await widget.db.readMaterialClients(includeInternalWorkshop: true);
+        _clients = await widget.db.readMaterialClients(
+          includeInternalWorkshop: true,
+        );
         _workshopLocations = await widget.db.readWorkshopLocations();
         if (_workshopLocations.isNotEmpty) {
           final defaultWsId = settings.defaultWorkshopLocationId;
@@ -134,7 +162,9 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
           _destLocationId ??= match['id'];
         }
       } else {
-        _clients = await widget.db.readMaterialClients(includeInternalWorkshop: false);
+        _clients = await widget.db.readMaterialClients(
+          includeInternalWorkshop: false,
+        );
       }
 
       if (widget.saleId != null) {
@@ -151,9 +181,12 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
               (sale['discount_amount'] as num?)?.toDouble() ?? 0.0;
           _paidAmount = (sale['paid_amount'] as num?)?.toDouble() ?? 0.0;
           _locationId = (sale['location_id'] as num?)?.toInt() ?? _locationId;
-          _destLocationId = (sale['dest_location_id'] as num?)?.toInt() ?? _destLocationId;
+          _destLocationId =
+              (sale['dest_location_id'] as num?)?.toInt() ?? _destLocationId;
           _isInternal = (sale['is_internal'] as num?)?.toInt() == 1;
           _linkedAchatId = (sale['linked_achat_id'] as num?)?.toInt();
+          _sourceSaleId = (sale['source_sale_id'] as num?)?.toInt();
+          _convertedToSaleId = (sale['converted_to_sale_id'] as num?)?.toInt();
           final saleDateStr = sale['sale_date'] as String? ?? '';
           if (saleDateStr.isNotEmpty) {
             _saleDate = DateTime.tryParse(saleDateStr) ?? DateTime.now();
@@ -166,6 +199,7 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
 
           final items = await widget.db.readMaterialSaleItems(widget.saleId!);
           _items.addAll(items.map((i) => Map<String, dynamic>.from(i)));
+          await _refreshItemAvailability();
         }
       } else {
         _saleCode = await widget.db.nextMaterialSaleCode();
@@ -180,6 +214,13 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
     0.0,
     (s, i) => s + ((i['total_price'] as num?)?.toDouble() ?? 0.0),
   );
+
+  double get _subtotalHT => _items.fold(
+    0.0,
+    (s, i) => s + ((i['total_ht'] as num?)?.toDouble() ?? 0.0),
+  );
+
+  double get _totalTax => (_subtotal - _subtotalHT).clamp(0.0, double.infinity);
 
   double get _netTotal =>
       (_subtotal - _discountAmount).clamp(0.0, double.infinity);
@@ -199,6 +240,489 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
         double.tryParse(_discountCtrl.text.replaceAll(',', '.')) ?? 0.0;
     _paidAmount = double.tryParse(_paidCtrl.text.replaceAll(',', '.')) ?? 0.0;
   });
+
+  bool get _isLocked =>
+      ((_convertedToSaleId != null || _status == 'delivered') &&
+      !_forceEditing);
+
+  void _updateItemCalculations(Map<String, dynamic> item) {
+    final qty = (item['quantity'] as num?)?.toDouble() ?? 1.0;
+    final unitPriceHT = (item['unit_price'] as num?)?.toDouble() ?? 0.0;
+    final taxRate = (item['tax_rate'] as num?)?.toDouble() ?? 0.0;
+
+    // Parse remise (% or flat DA)
+    final discountInput = item['discount_input']?.toString().trim() ?? '';
+    double itemDiscount = 0.0;
+    if (discountInput.endsWith('%')) {
+      final cleanPercent = discountInput
+          .replaceAll('%', '')
+          .replaceAll(',', '.')
+          .trim();
+      final percent = double.tryParse(cleanPercent) ?? 0.0;
+      itemDiscount = (qty * unitPriceHT) * (percent / 100.0);
+    } else if (discountInput.isNotEmpty) {
+      itemDiscount = double.tryParse(discountInput.replaceAll(',', '.')) ?? 0.0;
+    } else {
+      itemDiscount = (item['discount_amount'] as num?)?.toDouble() ?? 0.0;
+    }
+    item['discount_amount'] = itemDiscount;
+
+    final lineBaseHT = ((qty * unitPriceHT) - itemDiscount).clamp(
+      0.0,
+      double.infinity,
+    );
+    final lineTotalTTC = lineBaseHT * (1.0 + (taxRate / 100.0));
+    final unitPriceTTC = unitPriceHT * (1.0 + (taxRate / 100.0));
+
+    item['total_price'] = lineTotalTTC;
+    item['total_ht'] = lineBaseHT;
+    item['unit_price_ttc'] = unitPriceTTC;
+  }
+
+  Future<void> _refreshItemAvailability() async {
+    if (_locationId == null || _items.isEmpty) return;
+    final stock = await widget.db.readCurrentStock(_locationId!);
+    final Map<String, double> stockMap = {};
+    for (final row in stock) {
+      final key = "${row['item_id']}_${row['item_type']}_${row['color_id']}";
+      stockMap[key] =
+          (stockMap[key] ?? 0.0) +
+          ((row['quantity'] as num?)?.toDouble() ?? 0.0);
+    }
+    for (final item in _items) {
+      final itemId = (item['item_id'] as num?)?.toInt() ?? 0;
+      final itemType = item['item_type']?.toString() ?? '';
+      final colorId = (item['color_id'] as num?)?.toInt();
+      final key = "${itemId}_${itemType}_${colorId}";
+      item['available_quantity'] = stockMap[key] ?? 0.0;
+      item['reserved_quantity'] ??= 0.0;
+      item['blocked_quantity'] ??= 0.0;
+      item['discount_amount'] ??= 0.0;
+      _updateItemCalculations(item);
+    }
+    if (mounted) setState(() {});
+  }
+
+  bool _validateBeforePersist() {
+    if (_clientName.trim().isEmpty) {
+      _showSnack(_t('يرجى اختيار العميل'), isError: true);
+      return false;
+    }
+    if (_hasDuplicateItems) {
+      _showSnack(
+        _t('يوجد عنصر مكرر. احتفظ بسطر واحد وعدّل كميته.'),
+        isError: true,
+      );
+      return false;
+    }
+    return true;
+  }
+
+  Future<int?> _createCurrentDocument({required String status}) async {
+    if (!_validateBeforePersist()) return null;
+    final saleId = await widget.db.insertMaterialSale(
+      saleCode: _saleCode,
+      clientId: _clientId,
+      clientName: _clientName,
+      clientPhone: _clientPhone,
+      docType: _docType,
+      status: status,
+      subtotal: _subtotal,
+      discountAmount: _discountAmount,
+      netTotal: _netTotal,
+      paidAmount: _paidAmount,
+      remainingAmount: _remainingAmount,
+      locationId: _locationId ?? 1,
+      notes: _notes,
+      saleDate: _saleDate.toUtc().toIso8601String(),
+    );
+    if (saleId <= 0) return null;
+    await widget.db.saveMaterialSaleWithItems(
+      saleId: saleId,
+      items: _items,
+      subtotal: _subtotal,
+      discountAmount: _discountAmount,
+      netTotal: _netTotal,
+      paidAmount: _paidAmount,
+    );
+    final deductsStock =
+        (status == 'confirmed' || status == 'delivered') &&
+        (_docType == 'bon_livraison' ||
+            _docType == 'bon_route' ||
+            _docType == 'facture');
+    if (_isInternalClient && _destLocationId != null && deductsStock) {
+      await widget.db.executeInternalMaterialSaleTransfer(
+        saleId: saleId,
+        destLocationId: _destLocationId!,
+      );
+    } else if (deductsStock) {
+      await widget.db.deductStockForMaterialSale(
+        saleId,
+        locationId: _locationId ?? 1,
+      );
+    }
+    CloudSyncService().notifyChange();
+    return saleId;
+  }
+
+  Future<void> _validateDocument() async {
+    if (_convertedToSaleId != null) return;
+    final nextStatus = _docType == 'bon_livraison' ? 'delivered' : 'confirmed';
+    setState(() => _isSaving = true);
+    try {
+      if (widget.saleId == null) {
+        final newId = await _createCurrentDocument(status: nextStatus);
+        if (newId == null || !mounted) return;
+        _showSnack('${_t('تم تأكيد الوثيقة')} ✔', isError: false);
+        await Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                MaterialSaleEditorScreen(db: widget.db, saleId: newId),
+          ),
+        );
+      } else {
+        await widget.db.updateMaterialSale(widget.saleId!, status: nextStatus);
+        if (!mounted) return;
+        setState(() => _status = nextStatus);
+        _showSnack('${_t('تم تأكيد الوثيقة')} ✔', isError: false);
+      }
+    } catch (e) {
+      _showSnack('${_t('خطأ في الحفظ')}: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _transferDocument() async {
+    if (_convertedToSaleId != null) return;
+    if (_docType != 'bon_commande' &&
+        _docType != 'bon_livraison' &&
+        _docType != 'devis') {
+      return;
+    }
+    setState(() => _isSaving = true);
+    try {
+      final sourceId =
+          widget.saleId ?? await _createCurrentDocument(status: _status);
+      if (sourceId == null) return;
+      final targetId = await widget.db.transferMaterialSaleDocument(sourceId);
+      if (!mounted) return;
+      setState(() => _convertedToSaleId = targetId);
+      _showSnack(
+        '${_t('تم تحويل الوثيقة وإنشاء الوثيقة التالية')} ✔',
+        isError: false,
+      );
+      await Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              MaterialSaleEditorScreen(db: widget.db, saleId: targetId),
+        ),
+      );
+    } catch (e) {
+      _showSnack('${_t('تعذر تحويل الوثيقة')}: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  // ── Régler / Encaissement (صندوق المحل) ──────────────────────────────────────
+  Future<void> _showPaymentDialog() async {
+    if (widget.saleId == null) {
+      _showSnack(
+        _trans(
+          'يرجى حفظ الوثيقة أولاً قبل تسجيل الدفعة في الصندوق',
+          'Veuillez enregistrer le document avant d\'enregistrer le paiement',
+        ),
+        isError: true,
+      );
+      return;
+    }
+
+    final remaining = _remainingAmount;
+    final defaultAmount = remaining > 0 ? remaining : _netTotal;
+    final amountCtrl = TextEditingController(
+      text: defaultAmount > 0 ? defaultAmount.toStringAsFixed(2) : '',
+    );
+    final notesCtrl = TextEditingController(
+      text: 'دفعة لوثيقة $_saleCode - $_clientName',
+    );
+    String selectedMethod = 'نقداً / Espèce';
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            title: Row(
+              children: [
+                const Icon(
+                  Icons.point_of_sale_rounded,
+                  color: _green,
+                  size: 24,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _trans('تسجيل دفعة (صندوق المحل)', 'Régler / Encaissement'),
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: _blue.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: _blue.withValues(alpha: 0.3)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${_trans('الوثيقة', 'Document')}: $_saleCode | ${_trans('الزبون', 'Client')}: $_clientName',
+                          style: const TextStyle(
+                            fontFamily: 'Cairo',
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              '${_trans('الصافي', 'Net')}: ${_fmt.format(_netTotal)} DA',
+                              style: const TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 11,
+                              ),
+                            ),
+                            Text(
+                              '${_trans('المدفوع', 'Payé')}: ${_fmt.format(_paidAmount)} DA',
+                              style: const TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 11,
+                                color: _green,
+                              ),
+                            ),
+                            Text(
+                              '${_trans('المتبقي', 'Reste')}: ${_fmt.format(_remainingAmount)} DA',
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: _remainingAmount > 0 ? _red : _green,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  // Amount field
+                  TextField(
+                    controller: amountCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: const [DecimalTextInputFormatter()],
+                    decoration: InputDecoration(
+                      labelText: _trans(
+                        'المبلغ المسدد (DA)',
+                        'Montant payé (DA)',
+                      ),
+                      labelStyle: const TextStyle(fontFamily: 'Cairo'),
+                      isDense: true,
+                      prefixIcon: const Icon(
+                        Icons.attach_money_rounded,
+                        color: _green,
+                      ),
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  // Payment method dropdown
+                  DropdownButtonFormField<String>(
+                    value: selectedMethod,
+                    decoration: InputDecoration(
+                      labelText: _trans('طريقة الدفع', 'Mode de paiement'),
+                      labelStyle: const TextStyle(fontFamily: 'Cairo'),
+                      isDense: true,
+                      border: const OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'نقداً / Espèce',
+                        child: Text(
+                          'نقداً / Espèce',
+                          style: TextStyle(fontFamily: 'Cairo'),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'شيك / Chèque',
+                        child: Text(
+                          'شيك / Chèque',
+                          style: TextStyle(fontFamily: 'Cairo'),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'تحويل بنكي / Virement',
+                        child: Text(
+                          'تحويل بنكي / Virement',
+                          style: TextStyle(fontFamily: 'Cairo'),
+                        ),
+                      ),
+                    ],
+                    onChanged: (val) {
+                      if (val != null)
+                        setDialogState(() => selectedMethod = val);
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  // Caisse name (dedicated store cashbox)
+                  InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: _trans('الصندوق المستهدف', 'Caisse cible'),
+                      labelStyle: const TextStyle(fontFamily: 'Cairo'),
+                      isDense: true,
+                      border: const OutlineInputBorder(),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.store_rounded,
+                          size: 18,
+                          color: Colors.teal,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _trans(
+                            'صندوق المحل (Caisse Magasin)',
+                            'Caisse Magasin',
+                          ),
+                          style: const TextStyle(
+                            fontFamily: 'Cairo',
+                            fontWeight: FontWeight.bold,
+                            color: Colors.teal,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  // Notes
+                  TextField(
+                    controller: notesCtrl,
+                    decoration: InputDecoration(
+                      labelText: _trans(
+                        'البيان / ملاحظات الدفعة',
+                        'Description / Notes',
+                      ),
+                      labelStyle: const TextStyle(fontFamily: 'Cairo'),
+                      isDense: true,
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogCtx, false),
+                child: Text(
+                  _trans('إلغاء', 'Annuler'),
+                  style: const TextStyle(fontFamily: 'Cairo'),
+                ),
+              ),
+              FilledButton.icon(
+                style: FilledButton.styleFrom(backgroundColor: _green),
+                icon: const Icon(Icons.check_rounded, size: 18),
+                label: Text(
+                  _trans('تأكيد الدفع', 'Valider paiement'),
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                onPressed: () {
+                  final amount =
+                      double.tryParse(amountCtrl.text.replaceAll(',', '.')) ??
+                      0.0;
+                  if (amount <= 0) return;
+                  Navigator.pop(dialogCtx, true);
+                },
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (result != true) return;
+    final payAmount =
+        double.tryParse(amountCtrl.text.replaceAll(',', '.')) ?? 0.0;
+    if (payAmount <= 0) return;
+
+    try {
+      setState(() => _isSaving = true);
+      await widget.db.insertTreasury(
+        'encaissement',
+        payAmount,
+        notesCtrl.text.trim().isNotEmpty
+            ? notesCtrl.text.trim()
+            : 'دفعة مبيعات مواد: $_saleCode (${_clientName})',
+        referenceId: widget.saleId,
+        recordedBy: 'user',
+        entityType: 'Client',
+        entityId: _clientId,
+        phone: _clientPhone,
+        caisseName: 'صندوق المحل',
+        paymentMethod: selectedMethod,
+      );
+
+      final newPaid = _paidAmount + payAmount;
+      final newRemaining = (_netTotal - newPaid).clamp(0.0, double.infinity);
+      _paidAmount = newPaid;
+      _paidCtrl.text = _paidAmount.toStringAsFixed(2);
+
+      await widget.db.updateMaterialSale(
+        widget.saleId!,
+        paidAmount: _paidAmount,
+        remainingAmount: newRemaining,
+      );
+
+      CloudSyncService().notifyChange();
+      _showSnack(
+        _trans(
+          'تم تسجيل الدفعة (${_fmt.format(payAmount)} DA) في صندوق المحل بنجاح ✔',
+          'Paiement (${_fmt.format(payAmount)} DA) enregistré dans la Caisse Magasin ✔',
+        ),
+        isError: false,
+      );
+      setState(() {});
+    } catch (e) {
+      _showSnack(
+        '${_trans('خطأ أثناء تسجيل الدفعة', 'Erreur de paiement')}: $e',
+        isError: true,
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
 
   String _statusHelpText() {
     switch (_status) {
@@ -355,7 +879,9 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         content: Text(
-          _t('هل أنت متأكد من إلغاء هذا التحويل الداخلي؟ سيتم إرجاع المواد من مستودع الورشة إلى مستودع المحل وتوثيق حركة عكسية دون حذف السجل التاريخي.'),
+          _t(
+            'هل أنت متأكد من إلغاء هذا التحويل الداخلي؟ سيتم إرجاع المواد من مستودع الورشة إلى مستودع المحل وتوثيق حركة عكسية دون حذف السجل التاريخي.',
+          ),
         ),
         actions: [
           TextButton(
@@ -363,7 +889,10 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
             child: Text(_t('تراجع')),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: _red, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _red,
+              foregroundColor: Colors.white,
+            ),
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(_t('تأكيد الإرجاع للمحل')),
           ),
@@ -374,9 +903,14 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
     if (confirm != true) return;
     setState(() => _isSaving = true);
     try {
-      await widget.db.cancelOrReverseInternalMaterialSaleTransfer(saleId: widget.saleId!);
+      await widget.db.cancelOrReverseInternalMaterialSaleTransfer(
+        saleId: widget.saleId!,
+      );
       if (mounted) {
-        _showSnack('${_t('تم إرجاع المواد وإلغاء التحويل الداخلي بنجاح')} ✔', isError: false);
+        _showSnack(
+          '${_t('تم إرجاع المواد وإلغاء التحويل الداخلي بنجاح')} ✔',
+          isError: false,
+        );
         Navigator.pop(context, true);
       }
     } catch (e) {
@@ -469,6 +1003,9 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
     final priceCtrl = TextEditingController(
       text: (item['unit_price'] as num?)?.toStringAsFixed(2) ?? '0',
     );
+    final taxCtrl = TextEditingController(
+      text: (item['tax_rate'] as num?)?.toStringAsFixed(2) ?? '0',
+    );
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -489,6 +1026,18 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
               ],
               decoration: InputDecoration(
                 labelText: _t('الكمية'),
+                labelStyle: const TextStyle(fontFamily: 'Cairo'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: taxCtrl,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              inputFormatters: const [DecimalTextInputFormatter()],
+              decoration: InputDecoration(
+                labelText: '${_t('الضريبة')} (%)',
                 labelStyle: const TextStyle(fontFamily: 'Cairo'),
               ),
             ),
@@ -521,10 +1070,13 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
                   double.tryParse(qtyCtrl.text.replaceAll(',', '.')) ?? 1.0;
               final price =
                   double.tryParse(priceCtrl.text.replaceAll(',', '.')) ?? 0.0;
+              final tax =
+                  double.tryParse(taxCtrl.text.replaceAll(',', '.')) ?? 0.0;
               setState(() {
                 _items[index]['quantity'] = qty;
                 _items[index]['unit_price'] = price;
-                _items[index]['total_price'] = qty * price;
+                _items[index]['tax_rate'] = tax;
+                _items[index]['total_price'] = qty * price * (1 + tax / 100);
               });
               Navigator.pop(context);
             },
@@ -551,12 +1103,16 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
   String _clientPhoneOf(Map<String, dynamic> client) =>
       (client['phone1'] ?? client['phone'] ?? '').toString();
 
-  Future<Map<String, dynamic>?> _addMaterialClient() async {
+  Future<Map<String, dynamic>?> _addMaterialClient(
+    BuildContext parentContext,
+  ) async {
     final firstNameCtrl = TextEditingController();
     final lastNameCtrl = TextEditingController();
     final phoneCtrl = TextEditingController();
     final result = await showDialog<Map<String, String>>(
-      context: context,
+      context: parentContext,
+      barrierDismissible: true,
+      useRootNavigator: false,
       builder: (dialogContext) => AlertDialog(
         title: Text(
           _t('إضافة زبون مواد جديد'),
@@ -620,11 +1176,29 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
     return null;
   }
 
-  void _openClientPicker() {
-    showDialog(
+  Future<void> _selectMaterialClient(Map<String, dynamic> client) async {
+    final isInternal = client['business_segment'] == 'internal_workshop';
+    if (client['business_segment'] == 'windows') {
+      await widget.db.setClientBusinessSegment(client['id'] as int, 'both');
+    }
+    if (!mounted) return;
+    setState(() {
+      _clientId = client['id'] as int?;
+      _clientName = _clientDisplayName(client);
+      _clientPhone = _clientPhoneOf(client);
+      _isInternal = isInternal;
+      _clientCtrl.text = _clientName;
+      _clientPhoneCtrl.text = _clientPhone;
+    });
+  }
+
+  Future<void> _openClientPicker() async {
+    final search = TextEditingController();
+    await showDialog<void>(
       context: context,
-      builder: (_) {
-        final search = TextEditingController();
+      barrierDismissible: true,
+      useRootNavigator: false,
+      builder: (pickerContext) {
         List<Map<String, dynamic>> filtered = List.from(_clients);
         var includeWindowClients = false;
         return StatefulBuilder(
@@ -707,33 +1281,19 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
                               style: TextStyle(
                                 fontFamily: 'Cairo',
                                 fontSize: 10,
-                                fontWeight: c['business_segment'] == 'internal_workshop'
+                                fontWeight:
+                                    c['business_segment'] == 'internal_workshop'
                                     ? FontWeight.bold
                                     : FontWeight.normal,
-                                color: c['business_segment'] == 'internal_workshop'
+                                color:
+                                    c['business_segment'] == 'internal_workshop'
                                     ? Colors.amber.shade800
                                     : null,
                               ),
                             ),
                             onTap: () async {
-                              final isInternalSeg =
-                                  c['business_segment'] == 'internal_workshop';
-                              if (c['business_segment'] == 'windows') {
-                                await widget.db.setClientBusinessSegment(
-                                  c['id'] as int,
-                                  'both',
-                                );
-                              }
-                              if (!mounted) return;
-                              setState(() {
-                                _clientId = c['id'] as int?;
-                                _clientName = _clientDisplayName(c);
-                                _clientPhone = _clientPhoneOf(c);
-                                _isInternal = isInternalSeg;
-                                _clientCtrl.text = _clientName;
-                                _clientPhoneCtrl.text = _clientPhone;
-                              });
-                              Navigator.pop(ctx);
+                              await _selectMaterialClient(c);
+                              if (ctx.mounted) Navigator.of(ctx).pop();
                             },
                           );
                         },
@@ -745,15 +1305,16 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
               actions: [
                 TextButton.icon(
                   onPressed: () async {
-                    final client = await _addMaterialClient();
+                    final client = await _addMaterialClient(ctx);
                     if (client == null || !ctx.mounted) return;
-                    setS(() => applySearch(_clients));
+                    await _selectMaterialClient(client);
+                    if (ctx.mounted) Navigator.of(ctx).pop();
                   },
                   icon: const Icon(Icons.person_add_alt_1_rounded),
                   label: Text(_t('زبون مواد جديد')),
                 ),
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () => Navigator.of(ctx).pop(),
                   child: Text(
                     _t('إلغاء'),
                     style: const TextStyle(fontFamily: 'Cairo'),
@@ -765,6 +1326,7 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
         );
       },
     );
+    search.dispose();
   }
 
   // ── BUILD ─────────────────────────────────────────────────────────────────
@@ -776,24 +1338,57 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
       appBar: AppBar(
         backgroundColor: _blue,
         foregroundColor: Colors.white,
+        iconTheme: const IconThemeData(color: Colors.white),
+        actionsIconTheme: const IconThemeData(color: Colors.white),
         title: Text(
-          isNew ? _t('وثيقة جديدة') : '${_t('تعديل الوثيقة')} / $_saleCode',
+          isNew
+              ? _trans('وثيقة جديدة', 'Nouveau document')
+              : '${_trans('تعديل الوثيقة', 'Document')} / $_saleCode',
           style: const TextStyle(
             fontFamily: 'Cairo',
             fontSize: 15,
+            fontWeight: FontWeight.bold,
             color: Colors.white,
           ),
         ),
         actions: [
+          if (widget.saleId != null &&
+              (_convertedToSaleId != null || _status == 'delivered'))
+            IconButton(
+              icon: Icon(
+                _forceEditing
+                    ? Icons.lock_open_rounded
+                    : Icons.edit_note_rounded,
+                color: Colors.white,
+              ),
+              tooltip: _forceEditing
+                  ? _trans('إلغاء وضع التعديل', 'Verrouiller')
+                  : _trans('تعديل الوثيقة', 'Éditer'),
+              onPressed: () {
+                setState(() => _forceEditing = !_forceEditing);
+                _showSnack(
+                  _forceEditing
+                      ? _trans(
+                          'تم تفعيل وضع التعديل على الوثيقة ✔',
+                          'Mode édition déverrouillé ✔',
+                        )
+                      : _trans('تم قفل الوثيقة مجددًا', 'Document verrouillé'),
+                  isError: false,
+                );
+              },
+            ),
           if (widget.saleId != null && _isInternal && _status == 'delivered')
             IconButton(
               icon: const Icon(Icons.undo_rounded, color: Colors.orangeAccent),
-              tooltip: _t('إرجاع المواد وإلغاء التحويل'),
+              tooltip: _trans(
+                'إرجاع المواد وإلغاء التحويل',
+                'Annuler le transfert interne',
+              ),
               onPressed: _reverseInternalTransfer,
             ),
           IconButton(
-            icon: const Icon(Icons.print_rounded),
-            tooltip: _t('طباعة'),
+            icon: const Icon(Icons.print_rounded, color: Colors.white),
+            tooltip: _trans('طباعة', 'Imprimer'),
             onPressed: _printDoc,
           ),
           if (_isSaving)
@@ -810,8 +1405,8 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
             )
           else
             IconButton(
-              icon: const Icon(Icons.save_rounded),
-              tooltip: _t('حفظ'),
+              icon: const Icon(Icons.save_rounded, color: Colors.white),
+              tooltip: _trans('حفظ', 'Enregistrer'),
               onPressed: _save,
             ),
         ],
@@ -820,70 +1415,95 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // ── Header form ────────────────────────────────────────────
+                // ── Header form (Compact Single Row) ─────────────────────────
                 _buildHeaderCard(),
-                // ── Items header ───────────────────────────────────────────
-                _buildItemsHeader(),
-                // ── Items list ─────────────────────────────────────────────
-                Expanded(child: _buildItemsList()),
-                // ── Totals footer ──────────────────────────────────────────
+                // ── Unified Horizontal Scrollable Table ───────────────────────
+                Expanded(
+                  child: ResizableColumnsTable(
+                    persistenceKey: 'material_sale_editor_items',
+                    horizontalController: _horizontalTableScrollCtrl,
+                    verticalController: _itemsListScrollCtrl,
+                    headerMinHeight: 48,
+                    rowMinHeight: 52,
+                    cellPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 5,
+                    ),
+                    columns: _buildResizableItemColumns(),
+                    rows: _buildResizableItemRows(),
+                    emptyPlaceholder: _buildItemsList(),
+                  ),
+                ),
+                // ── Totals footer + Notes ────────────────────────────────────
                 _buildTotalsBar(),
               ],
             ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: _cyan,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add),
-        label: Text(
-          _t('إضافة عنصر'),
-          style: const TextStyle(fontFamily: 'Cairo'),
-        ),
-        onPressed: _openItemPicker,
-      ),
+      floatingActionButton: _isLocked
+          ? null
+          : FloatingActionButton(
+              mini: true,
+              backgroundColor: _cyan,
+              foregroundColor: Colors.white,
+              tooltip: _trans('إضافة عنصر', 'Ajouter un article'),
+              onPressed: _openItemPicker,
+              child: const Icon(Icons.add_rounded, color: Colors.white),
+            ),
     );
   }
 
-  // ── Header card ───────────────────────────────────────────────────────────
+  // ── Header card (Compact Layout) ──────────────────────────────────────────
   Widget _buildHeaderCard() {
     final fieldTextColor = Theme.of(context).colorScheme.onSurface;
     final surfaceColor = Theme.of(context).colorScheme.surface;
-    return Card(
-      margin: const EdgeInsets.fromLTRB(8, 8, 8, 4),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Row 1: sale code + date
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _saleCode,
-                    style: const TextStyle(
-                      fontFamily: 'Cairo',
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: _blue,
-                    ),
+    final isLocked = _isLocked;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 6, 10, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.5),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Row 1: Sale Code + Date + Quick Actions (Valider / Transférer / Régler)
+          LayoutBuilder(
+            builder: (context, headerConstraints) {
+              final isNarrow = headerConstraints.maxWidth < 750;
+              final rowChildren = <Widget>[
+                Text(
+                  _saleCode,
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
+                    color: _blue,
                   ),
                 ),
+                const SizedBox(width: 14),
                 InkWell(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: _saleDate,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2030),
-                    );
-                    if (picked != null) setState(() => _saleDate = picked);
-                  },
+                  onTap: isLocked
+                      ? null
+                      : () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: _saleDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2030),
+                          );
+                          if (picked != null)
+                            setState(() => _saleDate = picked);
+                        },
                   child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       const Icon(
                         Icons.calendar_today_rounded,
-                        size: 16,
+                        size: 14,
                         color: _blue,
                       ),
                       const SizedBox(width: 4),
@@ -891,397 +1511,869 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
                         DateFormat('dd/MM/yyyy').format(_saleDate),
                         style: const TextStyle(
                           fontFamily: 'Cairo',
-                          fontSize: 13,
+                          fontSize: 12,
                         ),
                       ),
                     ],
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            // Row 2: doc type + status
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: _docType,
-                    dropdownColor: surfaceColor,
-                    iconEnabledColor: fieldTextColor,
-                    decoration: InputDecoration(
-                      labelText: _t('نوع الوثيقة'),
-                      labelStyle: const TextStyle(
+                if (!isNarrow) const Spacer() else const SizedBox(width: 16),
+                if (widget.saleId != null &&
+                    (_convertedToSaleId != null || _status == 'delivered')) ...[
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      foregroundColor: _forceEditing
+                          ? Colors.orange.shade800
+                          : _blue,
+                      side: BorderSide(
+                        color: _forceEditing ? Colors.orange : _blue,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                    ),
+                    icon: Icon(
+                      _forceEditing
+                          ? Icons.lock_open_rounded
+                          : Icons.edit_note_rounded,
+                      size: 16,
+                    ),
+                    label: Text(
+                      _forceEditing
+                          ? _trans('إلغاء وضع التعديل', 'Verrouiller')
+                          : _trans('تعديل الوثيقة (Éditer)', 'Éditer'),
+                      style: const TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    onPressed: () {
+                      setState(() => _forceEditing = !_forceEditing);
+                      _showSnack(
+                        _forceEditing
+                            ? _trans(
+                                'تم فتح الوثيقة للتعديل ✔',
+                                'Mode édition actif ✔',
+                              )
+                            : _trans('تم قفل الوثيقة', 'Document verrouillé'),
+                        isError: false,
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                if (_convertedToSaleId == null && !isLocked) ...[
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      foregroundColor: _blue,
+                      side: const BorderSide(color: _blue),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 2,
+                      ),
+                    ),
+                    icon: const Icon(
+                      Icons.check_circle_outline_rounded,
+                      size: 16,
+                    ),
+                    label: Text(
+                      _trans('Valider (تأكيد)', 'Valider'),
+                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                    ),
+                    onPressed: _validateDocument,
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                if (_convertedToSaleId == null &&
+                    (_docType == 'bon_commande' ||
+                        _docType == 'bon_livraison' ||
+                        _docType == 'devis')) ...[
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      backgroundColor: _green,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 2,
+                      ),
+                    ),
+                    icon: const Icon(Icons.swap_horiz_rounded, size: 16),
+                    label: Text(
+                      _trans('Transférer (تحويل)', 'Transférer'),
+                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                    ),
+                    onPressed: _transferDocument,
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                // Payment is recorded from the delivery note, not the order.
+                if (_docType == 'bon_livraison')
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      backgroundColor: const Color(0xFF059669),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 2,
+                      ),
+                    ),
+                    icon: const Icon(
+                      Icons.payments_rounded,
+                      size: 16,
+                      color: Colors.white,
+                    ),
+                    label: Text(
+                      _trans('دفع (صندوق المحل)', 'Régler (Caisse)'),
+                      style: const TextStyle(
                         fontFamily: 'Cairo',
                         fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
                       ),
-                      isDense: true,
-                      border: const OutlineInputBorder(),
                     ),
-                    style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 12,
-                      color: fieldTextColor,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    items: [
-                      DropdownMenuItem(
-                        value: 'bon_commande',
-                        child: Text(
-                          _t('طلب مواد'),
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            color: fieldTextColor,
-                          ),
-                        ),
-                      ),
-                      DropdownMenuItem(
-                        value: 'bon_livraison',
-                        child: Text(
-                          _t('وصل تسليم مواد'),
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            color: fieldTextColor,
-                          ),
-                        ),
-                      ),
-                      DropdownMenuItem(
-                        value: 'bon_route',
-                        child: Text(
-                          _t('وصل مسار مواد'),
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            color: fieldTextColor,
-                          ),
-                        ),
-                      ),
-                      DropdownMenuItem(
-                        value: 'facture',
-                        child: Text(
-                          _t('فاتورة مواد'),
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            color: fieldTextColor,
-                          ),
-                        ),
-                      ),
-                      DropdownMenuItem(
-                        value: 'devis',
-                        child: Text(
-                          _t('فاتورة أولية مواد'),
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            color: fieldTextColor,
-                          ),
-                        ),
-                      ),
-                    ],
-                    onChanged: (v) => setState(() => _docType = v ?? _docType),
+                    onPressed: _showPaymentDialog,
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: _status,
-                    dropdownColor: surfaceColor,
-                    iconEnabledColor: fieldTextColor,
-                    decoration: InputDecoration(
-                      labelText: _t('الحالة'),
-                      labelStyle: const TextStyle(
+              ];
+
+              if (isNarrow) {
+                return SingleChildScrollView(
+                  controller: _headerActionsScrollCtrl,
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: rowChildren,
+                  ),
+                );
+              }
+              return Row(children: rowChildren);
+            },
+          ),
+          const SizedBox(height: 6),
+          // Document data becomes two columns on phones, with the client on a
+          // full-width row so long names remain readable.
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 720;
+              final halfWidth = (constraints.maxWidth - 8) / 2;
+              final desktopClientWidth =
+                  (constraints.maxWidth -
+                          230 -
+                          110 -
+                          (_storeLocations.isEmpty ? 0 : 170) -
+                          24)
+                      .clamp(180.0, constraints.maxWidth)
+                      .toDouble();
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  // 1. Doc Type
+                  SizedBox(
+                    width: compact ? halfWidth : 230,
+                    child: DropdownButtonFormField<String>(
+                      value: _docType,
+                      isExpanded: true,
+                      dropdownColor: surfaceColor,
+                      iconEnabledColor: fieldTextColor,
+                      decoration: InputDecoration(
+                        labelText: _trans('نوع الوثيقة', 'Type de document'),
+                        labelStyle: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 11,
+                        ),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        border: const OutlineInputBorder(),
+                      ),
+                      style: TextStyle(
                         fontFamily: 'Cairo',
                         fontSize: 12,
+                        color: fieldTextColor,
+                        fontWeight: FontWeight.w600,
                       ),
-                      isDense: true,
-                      border: const OutlineInputBorder(),
-                    ),
-                    style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 12,
-                      color: fieldTextColor,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    items: [
-                      DropdownMenuItem(
-                        value: 'draft',
-                        child: Text(
-                          _t('مسودة'),
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            color: fieldTextColor,
+                      items: [
+                        DropdownMenuItem(
+                          value: 'bon_commande',
+                          child: Text(
+                            _trans('طلب مواد (Commande)', 'Commande Matériaux'),
                           ),
                         ),
-                      ),
-                      DropdownMenuItem(
-                        value: 'reserved',
-                        child: Text(
-                          _t('محجوز'),
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            color: fieldTextColor,
+                        DropdownMenuItem(
+                          value: 'bon_livraison',
+                          child: Text(
+                            _trans(
+                              'وصل تسليم مواد (Livraison)',
+                              'Bon de Livraison',
+                            ),
                           ),
                         ),
-                      ),
-                      DropdownMenuItem(
-                        value: 'confirmed',
-                        child: Text(
-                          _t('مؤكد'),
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            color: fieldTextColor,
+                        DropdownMenuItem(
+                          value: 'bon_route',
+                          child: Text(
+                            _trans('وصل مسار مواد (Route)', 'Bon de Route'),
                           ),
                         ),
-                      ),
-                      DropdownMenuItem(
-                        value: 'delivered',
-                        child: Text(
-                          _t('تم التسليم'),
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            color: fieldTextColor,
+                        DropdownMenuItem(
+                          value: 'facture',
+                          child: Text(
+                            _trans(
+                              'فاتورة مواد (Facture)',
+                              'Facture Matériaux',
+                            ),
                           ),
                         ),
-                      ),
-                      DropdownMenuItem(
-                        value: 'paid',
-                        child: Text(
-                          _t('مدفوع'),
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            color: fieldTextColor,
-                          ),
-                        ),
-                      ),
-                      DropdownMenuItem(
-                        value: 'cancelled',
-                        child: Text(
-                          _t('ملغى'),
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            color: fieldTextColor,
-                          ),
-                        ),
-                      ),
-                    ],
-                    onChanged: (v) => setState(() => _status = v ?? _status),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 5),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.info_outline_rounded,
-                  size: 15,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                const SizedBox(width: 5),
-                Expanded(
-                  child: Text(
-                    _statusHelpText(),
-                    style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 10.5,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            // Row 3: client
-            GestureDetector(
-              onTap: _openClientPicker,
-              child: AbsorbPointer(
-                child: TextField(
-                  controller: _clientCtrl,
-                  decoration: InputDecoration(
-                    labelText: _t('العميل'),
-                    labelStyle: const TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 12,
-                    ),
-                    isDense: true,
-                    border: const OutlineInputBorder(),
-                    suffixIcon: const Icon(
-                      Icons.person_search_rounded,
-                      color: _blue,
-                    ),
-                  ),
-                  style: const TextStyle(fontFamily: 'Cairo'),
-                  onChanged: (v) => setState(() => _clientName = v),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            // Row 4: phone + notes
-            TextField(
-              controller: _notesCtrl,
-              decoration: InputDecoration(
-                labelText: _t('ملاحظات'),
-                labelStyle: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
-                isDense: true,
-                border: const OutlineInputBorder(),
-              ),
-              style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
-              onChanged: (v) => _notes = v,
-              maxLines: 1,
-            ),
-            if (_storeLocations.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              DropdownButtonFormField<int>(
-                value: _locationId,
-                isDense: true,
-                decoration: InputDecoration(
-                  labelText: _t('مستودع المحل (المصدر)'),
-                  labelStyle: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
-                  prefixIcon: const Icon(Icons.storefront_rounded, size: 18),
-                  border: const OutlineInputBorder(),
-                ),
-                items: _storeLocations.map((loc) {
-                  return DropdownMenuItem<int>(
-                    value: (loc['id'] as num).toInt(),
-                    child: Text(
-                      loc['name']?.toString() ?? '',
-                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
-                    ),
-                  );
-                }).toList(),
-                onChanged: (val) => setState(() => _locationId = val),
-              ),
-            ],
-            if (_isInternalClient) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.amber.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.amber.shade700),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.swap_horiz_rounded, color: Colors.amber.shade800, size: 20),
-                        const SizedBox(width: 8),
-                        Text(
-                          _t('بيع داخلي للورشة (تحويل مخزون تلقائي)'),
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12.5,
-                            color: Colors.amber.shade900,
+                        DropdownMenuItem(
+                          value: 'devis',
+                          child: Text(
+                            _trans('فاتورة أولية (Devis)', 'Devis Matériaux'),
                           ),
                         ),
                       ],
+                      onChanged: isLocked
+                          ? null
+                          : (v) => setState(() => _docType = v ?? _docType),
                     ),
-                    const SizedBox(height: 8),
-                    if (_workshopLocations.isNotEmpty)
-                      DropdownButtonFormField<int>(
-                        value: _destLocationId,
+                  ),
+                  // 2. Status
+                  SizedBox(
+                    width: compact ? halfWidth : 110,
+                    child: InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: _trans('الحالة', 'Statut'),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        border: const OutlineInputBorder(),
+                      ),
+                      child: Text(
+                        _t(_status),
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          color: fieldTextColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                  // 3. Client: always full width on a phone.
+                  SizedBox(
+                    width: compact ? constraints.maxWidth : desktopClientWidth,
+                    child: GestureDetector(
+                      onTap: isLocked ? null : _openClientPicker,
+                      child: AbsorbPointer(
+                        child: TextField(
+                          controller: _clientCtrl,
+                          minLines: 1,
+                          maxLines: compact ? 2 : 1,
+                          decoration: InputDecoration(
+                            labelText: _trans('العميل', 'Client'),
+                            labelStyle: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 11,
+                            ),
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                            border: const OutlineInputBorder(),
+                            suffixIcon: const Icon(
+                              Icons.person_search_rounded,
+                              color: _blue,
+                              size: 20,
+                            ),
+                          ),
+                          style: const TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          onChanged: (v) => setState(() => _clientName = v),
+                        ),
+                      ),
+                    ),
+                  ),
+                  // 4. Warehouse location
+                  if (_storeLocations.isNotEmpty)
+                    SizedBox(
+                      width: compact ? constraints.maxWidth : 170,
+                      child: DropdownButtonFormField<int>(
+                        value: _locationId,
                         isDense: true,
                         decoration: InputDecoration(
-                          labelText: _t('مستودع الورشة (المستلم)'),
-                          labelStyle: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
-                          prefixIcon: const Icon(Icons.precision_manufacturing_rounded, size: 18),
+                          labelText: _trans('مستودع المحل', 'Dépôt'),
+                          labelStyle: const TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 11,
+                          ),
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
                           border: const OutlineInputBorder(),
                         ),
-                        items: _workshopLocations.map((loc) {
+                        items: _storeLocations.map((loc) {
                           return DropdownMenuItem<int>(
                             value: (loc['id'] as num).toInt(),
                             child: Text(
                               loc['name']?.toString() ?? '',
-                              style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                              style: const TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 12,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           );
                         }).toList(),
-                        onChanged: (val) => setState(() => _destLocationId = val),
+                        onChanged: isLocked
+                            ? null
+                            : (val) async {
+                                setState(() => _locationId = val);
+                                await _refreshItemAvailability();
+                              },
                       ),
-                  ],
+                    ),
+                ],
+              );
+            },
+          ),
+          // Locked Notice
+          if (_convertedToSaleId != null || _status == 'delivered') ...[
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: _forceEditing
+                    ? Colors.orange.shade50
+                    : Colors.amber.shade50,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: _forceEditing
+                      ? Colors.orange.shade400
+                      : Colors.amber.shade400,
                 ),
               ),
-            ],
+              child: Row(
+                children: [
+                  Icon(
+                    _forceEditing
+                        ? Icons.lock_open_rounded
+                        : Icons.lock_rounded,
+                    size: 16,
+                    color: _forceEditing
+                        ? Colors.orange.shade800
+                        : Colors.amber.shade900,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      _forceEditing
+                          ? _trans(
+                              'وضع التعديل مفعل: يمكنك تعديل المنتجات والأسعار والكميات بحرية.',
+                              'Mode édition actif: vous pouvez modifier les lignes.',
+                            )
+                          : (_convertedToSaleId != null
+                                ? '${_trans('هذه الطلبية مرتبطة بوصل تسليم رقم', 'Liée au bon de livraison')} (#$_convertedToSaleId) - ${_trans('مقفلة ضد التعديل.', 'Verrouillé.')}'
+                                : _trans(
+                                    'تم تسليم هذه الوثيقة - مقفلة ضد التعديل.',
+                                    'Document livré - Verrouillé.',
+                                  )),
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.bold,
+                        color: _forceEditing
+                            ? Colors.orange.shade900
+                            : Colors.amber.shade900,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    onPressed: () {
+                      setState(() => _forceEditing = !_forceEditing);
+                    },
+                    child: Text(
+                      _forceEditing
+                          ? _trans('قفل الوثيقة', 'Verrouiller')
+                          : _trans('فتح للتعديل (Éditer)', 'Éditer'),
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11.5,
+                        color: _forceEditing ? Colors.red : _blue,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
-        ),
-      ),
-    );
-  }
-
-  // ── Items header ──────────────────────────────────────────────────────────
-  Widget _buildItemsHeader() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      color: _blue.withOpacity(0.08),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 4,
-            child: Text(
-              _t('المنتج'),
-              style: const TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          SizedBox(
-            width: 60,
-            child: Text(
-              _t('الوحدة'),
-              style: const TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          SizedBox(
-            width: 60,
-            child: Text(
-              _t('الكمية'),
-              style: const TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          SizedBox(
-            width: 80,
-            child: Text(
-              _t('السعر'),
-              style: const TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.right,
-            ),
-          ),
-          SizedBox(
-            width: 90,
-            child: Text(
-              _t('المجموع'),
-              style: const TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.right,
-            ),
-          ),
-          const SizedBox(width: 40),
         ],
       ),
     );
   }
 
-  // ── Items list ────────────────────────────────────────────────────────────
+  // ── Items header (Synchronized Columns with HT & TTC) ─────────────────────
+  List<ResizableTableColumn> _buildResizableItemColumns() {
+    Widget title(String ar, String fr, {Color? color, TextAlign? align}) => Text(
+      _trans(ar, fr),
+      textAlign: align,
+      style: TextStyle(
+        fontFamily: 'Cairo',
+        fontSize: 11.5,
+        fontWeight: FontWeight.bold,
+        color: color,
+      ),
+    );
+
+    return [
+      ResizableTableColumn(
+        id: 'article',
+        label: title('المنتج', 'Article'),
+        initialWidth: 240,
+        minWidth: 150,
+      ),
+      ResizableTableColumn(
+        id: 'code',
+        label: title('الرمز', 'Code', align: TextAlign.center),
+        initialWidth: 85,
+        minWidth: 65,
+        alignment: Alignment.center,
+      ),
+      ResizableTableColumn(
+        id: 'unit',
+        label: title('الوحدة', 'Unité', align: TextAlign.center),
+        initialWidth: 70,
+        minWidth: 55,
+        alignment: Alignment.center,
+      ),
+      ResizableTableColumn(
+        id: 'available',
+        label: title('المتوفر', 'Dispo', color: Colors.blueGrey),
+        initialWidth: 85,
+        alignment: Alignment.center,
+      ),
+      ResizableTableColumn(
+        id: 'reserved',
+        label: title('محجوز', 'Réservé', color: Colors.deepOrange),
+        initialWidth: 90,
+        alignment: Alignment.center,
+      ),
+      ResizableTableColumn(
+        id: 'blocked',
+        label: title('معطل', 'Bloqué', color: Colors.redAccent),
+        initialWidth: 80,
+        alignment: Alignment.center,
+      ),
+      ResizableTableColumn(
+        id: 'quantity',
+        label: title('الكمية المطلوبة', 'Qté demandée', color: _blue),
+        initialWidth: 110,
+        minWidth: 90,
+        alignment: Alignment.center,
+      ),
+      ResizableTableColumn(
+        id: 'discount',
+        label: title('الخصم (%/DA)', 'Remise (%/DA)', color: Colors.purple),
+        initialWidth: 105,
+        minWidth: 85,
+        alignment: Alignment.center,
+      ),
+      ResizableTableColumn(
+        id: 'tax',
+        label: title('الضريبة', 'TVA %'),
+        initialWidth: 75,
+        alignment: Alignment.center,
+      ),
+      ResizableTableColumn(
+        id: 'price_ht',
+        label: title('سعر HT', 'Prix HT'),
+        initialWidth: 110,
+        alignment: Alignment.centerRight,
+      ),
+      ResizableTableColumn(
+        id: 'price_ttc',
+        label: title('سعر TTC', 'Prix TTC', color: Colors.indigo),
+        initialWidth: 110,
+        alignment: Alignment.centerRight,
+      ),
+      ResizableTableColumn(
+        id: 'total_ht',
+        label: title('إجمالي HT', 'Total HT'),
+        initialWidth: 125,
+        alignment: Alignment.centerRight,
+      ),
+      ResizableTableColumn(
+        id: 'total_ttc',
+        label: title('إجمالي TTC', 'Total TTC', color: _blue),
+        initialWidth: 130,
+        alignment: Alignment.centerRight,
+      ),
+      ResizableTableColumn(
+        id: 'actions',
+        label: const Icon(Icons.more_horiz_rounded, size: 18),
+        initialWidth: 58,
+        minWidth: 48,
+        maxWidth: 90,
+        alignment: Alignment.center,
+      ),
+    ];
+  }
+
+  List<ResizableTableRow> _buildResizableItemRows() {
+    final isLocked = _isLocked;
+    return List<ResizableTableRow>.generate(_items.length, (i) {
+      final item = _items[i];
+      final total = (item['total_price'] as num?)?.toDouble() ?? 0.0;
+      final totalHT = (item['total_ht'] as num?)?.toDouble() ?? 0.0;
+      final unitPriceTTC =
+          (item['unit_price_ttc'] as num?)?.toDouble() ?? 0.0;
+      final qty = (item['quantity'] as num?)?.toDouble() ?? 1.0;
+      final price = (item['unit_price'] as num?)?.toDouble() ?? 0.0;
+      final tax = (item['tax_rate'] as num?)?.toDouble() ?? 0.0;
+      final remise = (item['discount_amount'] as num?)?.toDouble() ?? 0.0;
+      final available =
+          (item['available_quantity'] as num?)?.toDouble() ?? 0.0;
+      final reserved =
+          (item['reserved_quantity'] as num?)?.toDouble() ?? 0.0;
+      final blocked =
+          (item['blocked_quantity'] as num?)?.toDouble() ?? 0.0;
+      final colorName = item['color_name'] as String? ?? '';
+      final systemName = (item['system_name'] ?? '').toString().trim();
+      final seriesName = (item['series_name'] ?? '').toString().trim();
+      final systemAndSeries = <String>[
+        if (systemName.isNotEmpty) systemName,
+        if (seriesName.isNotEmpty && seriesName != systemName) seriesName,
+      ].join(' / ');
+      final hasShortage = qty > (available - reserved - blocked);
+
+      const regular = TextStyle(fontFamily: 'Cairo', fontSize: 11.5);
+      Widget centered(String value, {Color? color, FontWeight? weight}) => Text(
+        value,
+        textAlign: TextAlign.center,
+        style: regular.copyWith(color: color, fontWeight: weight),
+      );
+      Widget numericField({
+        required String initialValue,
+        required ValueChanged<String> onChanged,
+        TextInputType keyboardType = TextInputType.text,
+        Color? color,
+        bool shortage = false,
+        TextAlign textAlign = TextAlign.center,
+      }) => TextFormField(
+        key: ValueKey('${item['id'] ?? i}-$initialValue'),
+        initialValue: initialValue,
+        textAlign: textAlign,
+        keyboardType: keyboardType,
+        inputFormatters: keyboardType == TextInputType.text
+            ? null
+            : const [DecimalTextInputFormatter()],
+        decoration: InputDecoration(
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 5, vertical: 7),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+          filled: shortage,
+          fillColor: shortage ? Colors.red.withValues(alpha: 0.08) : null,
+        ),
+        style: regular.copyWith(
+          color: shortage ? Colors.red : color,
+          fontWeight: FontWeight.bold,
+        ),
+        onChanged: onChanged,
+      );
+
+      return ResizableTableRow(
+        reorderId: (item['id'] ?? 'new_$i').toString(),
+        color: i.isEven ? null : Theme.of(context).colorScheme.surfaceContainerLowest,
+        cells: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                item['item_name'] ?? '',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: regular.copyWith(fontSize: 12.5, fontWeight: FontWeight.w600),
+              ),
+              if (systemAndSeries.isNotEmpty)
+                Text(
+                  systemAndSeries,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: regular.copyWith(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                    color: _blue,
+                  ),
+                ),
+              if (colorName.isNotEmpty)
+                Text(colorName, style: regular.copyWith(fontSize: 10.5, color: Colors.blueGrey)),
+            ],
+          ),
+          centered((item['item_code'] ?? '—').toString()),
+          centered(item['unit'] ?? ''),
+          centered(
+            _fmt.format(available),
+            color: available <= 0 ? Colors.red : Colors.blueGrey,
+            weight: FontWeight.bold,
+          ),
+          centered(_fmt.format(reserved), color: Colors.deepOrange),
+          centered(_fmt.format(blocked), color: blocked > 0 ? Colors.red : Colors.grey),
+          isLocked
+              ? centered(_fmt.format(qty), weight: FontWeight.bold)
+              : numericField(
+                  initialValue: qty.toStringAsFixed(2),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  shortage: hasShortage,
+                  onChanged: (value) {
+                    item['quantity'] = double.tryParse(value.replaceAll(',', '.')) ?? 0.0;
+                    setState(() => _updateItemCalculations(item));
+                  },
+                ),
+          isLocked
+              ? centered(item['discount_input']?.toString() ?? _fmt.format(remise))
+              : numericField(
+                  initialValue: item['discount_input']?.toString() ??
+                      (remise > 0 ? remise.toStringAsFixed(2) : '0'),
+                  color: Colors.purple,
+                  onChanged: (value) {
+                    item['discount_input'] = value;
+                    setState(() => _updateItemCalculations(item));
+                  },
+                ),
+          centered(_fmt.format(tax)),
+          isLocked
+              ? Text(_fmt.format(price), textAlign: TextAlign.right, style: regular)
+              : numericField(
+                  initialValue: price.toStringAsFixed(2),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  textAlign: TextAlign.right,
+                  onChanged: (value) {
+                    item['unit_price'] = double.tryParse(value.replaceAll(',', '.')) ?? 0.0;
+                    setState(() => _updateItemCalculations(item));
+                  },
+                ),
+          Text(
+            _fmt.format(unitPriceTTC),
+            textAlign: TextAlign.right,
+            style: regular.copyWith(fontWeight: FontWeight.w600, color: Colors.indigo),
+          ),
+          Text(
+            '${_fmt.format(totalHT)} DA',
+            textAlign: TextAlign.right,
+            style: regular.copyWith(color: Colors.blueGrey),
+          ),
+          Text(
+            '${_fmt.format(total)} DA',
+            textAlign: TextAlign.right,
+            style: regular.copyWith(fontSize: 12.5, fontWeight: FontWeight.bold, color: _blue),
+          ),
+          isLocked
+              ? const SizedBox.shrink()
+              : IconButton(
+                  icon: const Icon(Icons.remove_circle_outline_rounded, color: Colors.red, size: 18),
+                  onPressed: () => _removeItem(i),
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                ),
+        ],
+      );
+    });
+  }
+
+  Widget _buildItemsHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: _blue.withValues(alpha: 0.08),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 200,
+            child: Text(
+              _trans('المنتج', 'Article'),
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 65,
+            child: Text(
+              _trans('الرمز', 'Code'),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 50,
+            child: Text(
+              _trans('الوحدة', 'Unité'),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 65,
+            child: Text(
+              _trans('المتوفر', 'Dispo'),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Colors.blueGrey,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 70,
+            child: Text(
+              _trans('محجوز', 'Réservé'),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 11.5,
+                fontWeight: FontWeight.bold,
+                color: Colors.deepOrange,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 60,
+            child: Text(
+              _trans('معطل', 'Bloqué'),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 11.5,
+                fontWeight: FontWeight.bold,
+                color: Colors.redAccent,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 85,
+            child: Text(
+              _trans('الكمية المطلوبة', 'Qté demandée'),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: _blue,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 80,
+            child: Text(
+              _trans('الخصم (%/DA)', 'Remise (%/DA)'),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: Colors.purple,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 60,
+            child: Text(
+              '${_trans('الضريبة', 'TVA')} %',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 90,
+            child: Text(
+              _trans('سعر HT', 'Prix HT'),
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 90,
+            child: Text(
+              _trans('سعر TTC', 'Prix TTC'),
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Colors.indigo,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 100,
+            child: Text(
+              _trans('إجمالي HT', 'Total HT'),
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 105,
+            child: Text(
+              _trans('إجمالي TTC', 'Total TTC'),
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: _blue,
+              ),
+            ),
+          ),
+          const SizedBox(width: 45),
+        ],
+      ),
+    );
+  }
+
+  // ── Items list (Inline Editing + HT/TTC calculations) ─────────────────────
   Widget _buildItemsList() {
     if (_items.isEmpty) {
       return Center(
@@ -1290,28 +2382,48 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
           children: [
             Icon(
               Icons.inventory_2_outlined,
-              size: 64,
+              size: 54,
               color: Colors.grey.shade300,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Text(
-              '${_t('لا توجد عناصر')}\n${_t('أضف منتجات من الزر في الأسفل')}',
+              '${_trans('لا توجد عناصر مضافة بعد', 'Aucun article ajouté')}\n${_trans('أضف منتجات من الزر في الأسفل (+)', 'Ajoutez des articles avec le bouton (+)')}',
               textAlign: TextAlign.center,
-              style: const TextStyle(fontFamily: 'Cairo', color: Colors.grey),
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                color: Colors.grey,
+                fontSize: 13,
+              ),
             ),
           ],
         ),
       );
     }
+
+    final isLocked = _isLocked;
+
     return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 80),
+      controller: _itemsListScrollCtrl,
+      primary: false,
+      padding: const EdgeInsets.only(bottom: 12),
       itemCount: _items.length,
       itemBuilder: (_, i) {
         final item = _items[i];
         final total = (item['total_price'] as num?)?.toDouble() ?? 0.0;
+        final totalHT = (item['total_ht'] as num?)?.toDouble() ?? 0.0;
+        final unitPriceTTC =
+            (item['unit_price_ttc'] as num?)?.toDouble() ?? 0.0;
         final qty = (item['quantity'] as num?)?.toDouble() ?? 1.0;
         final price = (item['unit_price'] as num?)?.toDouble() ?? 0.0;
+        final tax = (item['tax_rate'] as num?)?.toDouble() ?? 0.0;
+        final remise = (item['discount_amount'] as num?)?.toDouble() ?? 0.0;
+        final available =
+            (item['available_quantity'] as num?)?.toDouble() ?? 0.0;
+        final reserved = (item['reserved_quantity'] as num?)?.toDouble() ?? 0.0;
+        final blocked = (item['blocked_quantity'] as num?)?.toDouble() ?? 0.0;
         final colorName = item['color_name'] as String? ?? '';
+        final hasShortage = qty > (available - reserved - blocked);
+
         return Container(
           decoration: BoxDecoration(
             color: i.isEven
@@ -1319,110 +2431,322 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
                 : Theme.of(context).colorScheme.surfaceContainerLow,
             border: Border(
               bottom: BorderSide(
-                color: Theme.of(context).dividerColor,
+                color: Theme.of(context).dividerColor.withValues(alpha: 0.5),
                 width: 0.5,
               ),
             ),
           ),
-          child: InkWell(
-            onTap: () => _editItemDialog(i),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 4,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          item['item_name'] ?? '',
-                          style: const TextStyle(
-                            fontFamily: 'Cairo',
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        if (colorName.isNotEmpty)
-                          Text(
-                            colorName,
-                            style: const TextStyle(
-                              fontFamily: 'Cairo',
-                              fontSize: 11,
-                              color: Colors.blueGrey,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(
-                    width: 60,
-                    child: Text(
-                      item['unit'] ?? '',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 60,
-                    child: Text(
-                      _fmt.format(qty),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 80,
-                    child: Text(
-                      _fmt.format(price),
-                      textAlign: TextAlign.right,
-                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 90,
-                    child: Text(
-                      '${_fmt.format(total)} DA',
-                      textAlign: TextAlign.right,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Row(
+            children: [
+              // 1. Article & Color
+              SizedBox(
+                width: 200,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      item['item_name'] ?? '',
                       style: const TextStyle(
                         fontFamily: 'Cairo',
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: _blue,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                  SizedBox(
-                    width: 40,
-                    child: IconButton(
-                      icon: const Icon(
-                        Icons.remove_circle_outline_rounded,
-                        color: _red,
-                        size: 20,
+                    if (colorName.isNotEmpty)
+                      Text(
+                        colorName,
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 10.5,
+                          color: Colors.blueGrey,
+                        ),
                       ),
-                      onPressed: () => _removeItem(i),
-                      padding: EdgeInsets.zero,
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
+              // 2. Code
+              SizedBox(
+                width: 65,
+                child: Text(
+                  (item['item_code'] ?? '—').toString(),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 11),
+                ),
+              ),
+              // 3. Unit
+              SizedBox(
+                width: 50,
+                child: Text(
+                  item['unit'] ?? '',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 11),
+                ),
+              ),
+              // 4. Available Stock
+              SizedBox(
+                width: 65,
+                child: Text(
+                  _fmt.format(available),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.bold,
+                    color: available <= 0 ? Colors.red : Colors.blueGrey,
+                  ),
+                ),
+              ),
+              // 5. Reserved "محجوز"
+              SizedBox(
+                width: 70,
+                child: Text(
+                  _fmt.format(reserved),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 11,
+                    color: Colors.deepOrange,
+                  ),
+                ),
+              ),
+              // 6. Blocked "معطل"
+              SizedBox(
+                width: 60,
+                child: Text(
+                  _fmt.format(blocked),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 11,
+                    color: blocked > 0 ? Colors.red : Colors.grey,
+                  ),
+                ),
+              ),
+              // 7. Quantity (Inline Editable)
+              SizedBox(
+                width: 85,
+                child: isLocked
+                    ? Text(
+                        _fmt.format(qty),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      )
+                    : TextFormField(
+                        initialValue: qty.toStringAsFixed(2),
+                        textAlign: TextAlign.center,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: const [DecimalTextInputFormatter()],
+                        decoration: InputDecoration(
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 6,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          fillColor: hasShortage
+                              ? Colors.red.withValues(alpha: 0.08)
+                              : null,
+                          filled: hasShortage,
+                        ),
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: hasShortage ? Colors.red : null,
+                        ),
+                        onChanged: (val) {
+                          final parsed =
+                              double.tryParse(val.replaceAll(',', '.')) ?? 0.0;
+                          setState(() {
+                            item['quantity'] = parsed;
+                            _updateItemCalculations(item);
+                          });
+                        },
+                      ),
+              ),
+              // 8. Remise Ligne (% or flat DA, Inline Editable)
+              SizedBox(
+                width: 80,
+                child: isLocked
+                    ? Text(
+                        item['discount_input']?.toString() ??
+                            _fmt.format(remise),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 11,
+                        ),
+                      )
+                    : TextFormField(
+                        initialValue:
+                            item['discount_input']?.toString() ??
+                            (remise > 0 ? remise.toStringAsFixed(2) : '0'),
+                        textAlign: TextAlign.center,
+                        keyboardType: TextInputType.text,
+                        decoration: InputDecoration(
+                          isDense: true,
+                          hintText: '0 / %',
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 6,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        ),
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 11.5,
+                          color: Colors.purple,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        onChanged: (val) {
+                          setState(() {
+                            item['discount_input'] = val;
+                            _updateItemCalculations(item);
+                          });
+                        },
+                      ),
+              ),
+              // 9. Tax %
+              SizedBox(
+                width: 60,
+                child: Text(
+                  _fmt.format(tax),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 11),
+                ),
+              ),
+              // 10. Unit Price HT (Inline Editable)
+              SizedBox(
+                width: 90,
+                child: isLocked
+                    ? Text(
+                        _fmt.format(price),
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 12,
+                        ),
+                      )
+                    : TextFormField(
+                        initialValue: price.toStringAsFixed(2),
+                        textAlign: TextAlign.right,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: const [DecimalTextInputFormatter()],
+                        decoration: InputDecoration(
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 6,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        ),
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 12,
+                        ),
+                        onChanged: (val) {
+                          final parsed =
+                              double.tryParse(val.replaceAll(',', '.')) ?? 0.0;
+                          setState(() {
+                            item['unit_price'] = parsed;
+                            _updateItemCalculations(item);
+                          });
+                        },
+                      ),
+              ),
+              // 11. Unit Price TTC (Calculated)
+              SizedBox(
+                width: 90,
+                child: Text(
+                  _fmt.format(unitPriceTTC),
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.indigo,
+                  ),
+                ),
+              ),
+              // 12. Line Total HT
+              SizedBox(
+                width: 100,
+                child: Text(
+                  '${_fmt.format(totalHT)} DA',
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 12,
+                    color: Colors.blueGrey,
+                  ),
+                ),
+              ),
+              // 13. Line Total TTC
+              SizedBox(
+                width: 105,
+                child: Text(
+                  '${_fmt.format(total)} DA',
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.bold,
+                    color: _blue,
+                  ),
+                ),
+              ),
+              // 14. Delete Action
+              SizedBox(
+                width: 45,
+                child: isLocked
+                    ? null
+                    : IconButton(
+                        icon: const Icon(
+                          Icons.remove_circle_outline_rounded,
+                          color: Colors.red,
+                          size: 18,
+                        ),
+                        onPressed: () => _removeItem(i),
+                        padding: EdgeInsets.zero,
+                      ),
+              ),
+            ],
           ),
         );
       },
     );
   }
 
-  // ── Totals footer ─────────────────────────────────────────────────────────
+  // ── Totals footer + Notes (Enlarged Notes & Full HT/TTC Summary) ───────────
   Widget _buildTotalsBar() {
+    final isLocked = _isLocked;
+
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).shadowColor.withOpacity(0.12),
-            blurRadius: 8,
+            color: Theme.of(context).shadowColor.withValues(alpha: 0.10),
+            blurRadius: 6,
             offset: const Offset(0, -2),
           ),
         ],
@@ -1430,77 +2754,152 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Discount + paid
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _discountCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
+          // Row 1: Notes (Larger multiline flex 3) + Global Discount + Paid amount
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 700;
+              final notesField = TextField(
+                controller: _notesCtrl,
+                readOnly: isLocked,
+                minLines: 2,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: _trans('ملاحظات الوثيقة', 'Notes / Remarques'),
+                  labelStyle: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 11,
                   ),
-                  inputFormatters: const [DecimalTextInputFormatter()],
-                  decoration: InputDecoration(
-                    labelText: '${_t('خصم')} (DA)',
-                    labelStyle: const TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 12,
-                    ),
-                    isDense: true,
-                    border: const OutlineInputBorder(),
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
                   ),
-                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
-                  onChanged: (_) => _recalc(),
+                  border: const OutlineInputBorder(),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _paidCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  inputFormatters: const [DecimalTextInputFormatter()],
-                  decoration: InputDecoration(
-                    labelText: _t('المبلغ المدفوع'),
-                    labelStyle: const TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 12,
-                    ),
-                    isDense: true,
-                    border: const OutlineInputBorder(),
-                  ),
-                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
-                  onChanged: (_) => _recalc(),
+                style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                onChanged: (v) => _notes = v,
+              );
+              final discountField = TextField(
+                controller: _discountCtrl,
+                readOnly: isLocked,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
                 ),
-              ),
-            ],
+                inputFormatters: const [DecimalTextInputFormatter()],
+                decoration: InputDecoration(
+                  labelText: '${_trans('خصم إجمالي', 'Remise')} (DA)',
+                  labelStyle: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 11,
+                  ),
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  border: const OutlineInputBorder(),
+                ),
+                style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                onChanged: (_) => _recalc(),
+              );
+              final paidField = TextField(
+                controller: _paidCtrl,
+                readOnly: isLocked,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                inputFormatters: const [DecimalTextInputFormatter()],
+                decoration: InputDecoration(
+                  labelText: _trans('المبلغ المسدد', 'Montant payé'),
+                  labelStyle: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 11,
+                  ),
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  border: const OutlineInputBorder(),
+                ),
+                style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                onChanged: (_) => _recalc(),
+              );
+
+              if (isNarrow) {
+                return Column(
+                  children: [
+                    notesField,
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(child: discountField),
+                        const SizedBox(width: 8),
+                        Expanded(child: paidField),
+                      ],
+                    ),
+                  ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(flex: 3, child: notesField),
+                  const SizedBox(width: 8),
+                  Expanded(child: discountField),
+                  const SizedBox(width: 8),
+                  Expanded(child: paidField),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 8),
-          // Totals display
-          Row(
-            children: [
-              _totalChip(
-                _t('المجموع الإجمالي'),
-                _fmt.format(_subtotal),
-                Colors.grey.shade700,
-              ),
-              const SizedBox(width: 8),
-              _totalChip(_t('خصم'), _fmt.format(_discountAmount), _red),
-              const SizedBox(width: 8),
-              _totalChip(
-                _t('المبلغ الصافي'),
-                _fmt.format(_netTotal),
-                _blue,
-                isBold: true,
-              ),
-              const SizedBox(width: 8),
-              _totalChip(
-                _t('المبلغ المتبقي'),
-                _fmt.format(_remainingAmount),
-                _remainingAmount > 0 ? _red : _green,
-              ),
-            ],
+          // Row 2: Totals Chips (Total HT, TVA, Total TTC, Remise, Net TTC, Reste)
+          SingleChildScrollView(
+            controller: _totalsChipsScrollCtrl,
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _totalChip(
+                  _trans('إجمالي بدون ضريبة (HT)', 'Total HT'),
+                  _fmt.format(_subtotalHT),
+                  Colors.grey.shade700,
+                ),
+                const SizedBox(width: 8),
+                _totalChip(
+                  _trans('مجموع الضريبة (TVA)', 'Total TVA'),
+                  _fmt.format(_totalTax),
+                  Colors.teal.shade700,
+                ),
+                const SizedBox(width: 8),
+                _totalChip(
+                  _trans('المجموع الشامل (TTC)', 'Total TTC'),
+                  _fmt.format(_subtotal),
+                  Colors.indigo.shade800,
+                ),
+                const SizedBox(width: 8),
+                _totalChip(
+                  _trans('الخصم الإجمالي', 'Remise'),
+                  _fmt.format(_discountAmount),
+                  _red,
+                ),
+                const SizedBox(width: 8),
+                _totalChip(
+                  _trans('المبلغ الصافي', 'Net à payer'),
+                  _fmt.format(_netTotal),
+                  _blue,
+                  isBold: true,
+                ),
+                const SizedBox(width: 8),
+                _totalChip(
+                  _trans('المبلغ المتبقي', 'Reste à payer'),
+                  _fmt.format(_remainingAmount),
+                  _remainingAmount > 0 ? _red : _green,
+                  isBold: true,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -1513,7 +2912,8 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
     Color color, {
     bool isBold = false,
   }) {
-    return Expanded(
+    return SizedBox(
+      width: 190,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
         decoration: BoxDecoration(
@@ -1569,9 +2969,10 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
     return Localization.translate(key, lang);
   }
 
-  String _selectedCategory = 'Sections';
+  String _selectedCategory = 'All';
   String _selectedProfile = '';
   final _searchCtrl = TextEditingController();
+  final _searchFocus = FocusNode();
   List<Map<String, dynamic>> _items = [];
   List<String> _profileNames = [];
   final Map<int, List<Map<String, dynamic>>> _sectionColorsByProfile = {};
@@ -1584,8 +2985,11 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
   final _priceCtrl = TextEditingController(text: '0.00');
   bool _loading = false;
   bool _stockLoaded = false;
+  bool _showSearchResults = false;
+  Timer? _searchDebounce;
 
   List<Map<String, String>> get _categories => [
+    {'id': 'All', 'label': _t('كل شيء'), 'icon': 'apps'},
     {'id': 'Sections', 'label': _t('مقاطع'), 'icon': 'architecture'},
     {'id': 'Accessories', 'label': _t('إكسسوارات'), 'icon': 'handyman'},
     {'id': 'Glass', 'label': _t('زجاج'), 'icon': 'window'},
@@ -1602,7 +3006,9 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchCtrl.dispose();
+    _searchFocus.dispose();
     _quantityCtrl.dispose();
     _priceCtrl.dispose();
     super.dispose();
@@ -1624,6 +3030,9 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
   String _stockKey(String category, int itemId, int? colorId) =>
       '${_canonicalStockType(category)}_${itemId}_${colorId ?? 0}';
 
+  String _categoryForItem(Map<String, dynamic> item) =>
+      item['_picker_category']?.toString() ?? _selectedCategory;
+
   Future<void> _loadStockQuantities() async {
     if (_stockLoaded) return;
     final rows = await widget.db.readAllPossibleStock(1);
@@ -1641,37 +3050,167 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
     final id = (item['id'] as num?)?.toInt() ?? 0;
     final selectedColor =
         colorId ?? (item['_selected_color_id'] as num?)?.toInt();
-    return _stockQuantities[_stockKey(_selectedCategory, id, selectedColor)] ??
+    return _stockQuantities[_stockKey(
+          _categoryForItem(item),
+          id,
+          selectedColor,
+        )] ??
         0.0;
   }
 
-  Future<void> _loadItems() async {
+  Future<List<Map<String, dynamic>>> _readCategoryItems(String category) async {
+    final List<Map<String, dynamic>> rows;
+    switch (category) {
+      case 'Sections':
+        rows = await widget.db.searchSectionsWithProfile('');
+        break;
+      case 'Accessories':
+        rows = await widget.db.readAccessories();
+        break;
+      case 'Glass':
+        rows = await widget.db.readGlass();
+        break;
+      case 'Joints':
+        rows = await widget.db.readJoints();
+        break;
+      case 'ShutterComponents':
+        rows = await widget.db.readShutterComponents();
+        break;
+      case 'Sheets':
+        rows = await widget.db.readStandardSheets();
+        break;
+      default:
+        rows = <Map<String, dynamic>>[];
+    }
+    return rows
+        .map((row) => <String, dynamic>{...row, '_picker_category': category})
+        .toList();
+  }
+
+  String _normalizeSearch(String value) {
+    var normalized = value.toLowerCase();
+    const replacements = <String, String>{
+      'à': 'a',
+      'á': 'a',
+      'â': 'a',
+      'ä': 'a',
+      'ã': 'a',
+      'ç': 'c',
+      'è': 'e',
+      'é': 'e',
+      'ê': 'e',
+      'ë': 'e',
+      'ì': 'i',
+      'í': 'i',
+      'î': 'i',
+      'ï': 'i',
+      'ò': 'o',
+      'ó': 'o',
+      'ô': 'o',
+      'ö': 'o',
+      'õ': 'o',
+      'ù': 'u',
+      'ú': 'u',
+      'û': 'u',
+      'ü': 'u',
+      'ÿ': 'y',
+      'أ': 'ا',
+      'إ': 'ا',
+      'آ': 'ا',
+      'ى': 'ي',
+      'ة': 'ه',
+      'ؤ': 'و',
+      'ئ': 'ي',
+    };
+    replacements.forEach((from, to) {
+      normalized = normalized.replaceAll(from, to);
+    });
+    normalized = normalized.replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '');
+    return normalized
+        .replaceAll(RegExp(r'[^a-z0-9\u0600-\u06ff]+'), ' ')
+        .trim()
+        .replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  int _editDistance(String a, String b) {
+    if (a == b) return 0;
+    if (a.isEmpty) return b.length;
+    if (b.isEmpty) return a.length;
+    var previous = List<int>.generate(b.length + 1, (i) => i);
+    for (var i = 0; i < a.length; i++) {
+      final current = <int>[i + 1];
+      for (var j = 0; j < b.length; j++) {
+        current.add(
+          [
+            current[j] + 1,
+            previous[j + 1] + 1,
+            previous[j] + (a.codeUnitAt(i) == b.codeUnitAt(j) ? 0 : 1),
+          ].reduce((x, y) => x < y ? x : y),
+        );
+      }
+      previous = current;
+    }
+    return previous.last;
+  }
+
+  bool _smartSearchMatch(Map<String, dynamic> item, String query) {
+    final searchable = _normalizeSearch(
+      [
+        item['name'],
+        item['type'],
+        item['code'],
+        item['profile_name'],
+        item['series_name'],
+        item['_selected_color_name'],
+      ].where((value) => value != null).join(' '),
+    );
+    final normalizedQuery = _normalizeSearch(query);
+    if (normalizedQuery.isEmpty) return true;
+
+    final compactText = searchable.replaceAll(' ', '');
+    final compactQuery = normalizedQuery.replaceAll(' ', '');
+    if (searchable.contains(normalizedQuery) ||
+        compactText.contains(compactQuery)) {
+      return true;
+    }
+
+    final words = searchable.split(' ').where((word) => word.isNotEmpty);
+    return normalizedQuery.split(' ').where((word) => word.isNotEmpty).every((
+      queryWord,
+    ) {
+      return words.any((word) {
+        if (word.contains(queryWord) || queryWord.contains(word)) {
+          return true;
+        }
+        final allowedErrors = queryWord.length >= 7
+            ? 2
+            : queryWord.length >= 4
+            ? 1
+            : 0;
+        return allowedErrors > 0 &&
+            (word.length - queryWord.length).abs() <= allowedErrors &&
+            _editDistance(word, queryWord) <= allowedErrors;
+      });
+    });
+  }
+
+  Future<void> _loadItems({bool showAll = false}) async {
     setState(() => _loading = true);
     try {
       await _loadStockQuantities();
-      final q = _searchCtrl.text.trim().toLowerCase();
+      final q = _searchCtrl.text.trim();
       List<Map<String, dynamic>> items = [];
-      switch (_selectedCategory) {
-        case 'Sections':
-          items = await widget.db.searchSectionsWithProfile('');
-          break;
-        case 'Accessories':
-          items = await widget.db.readAccessories();
-          break;
-        case 'Glass':
-          items = await widget.db.readGlass();
-          break;
-        case 'Joints':
-          items = await widget.db.readJoints();
-          break;
-        case 'ShutterComponents':
-          items = await widget.db.readShutterComponents();
-          break;
-        case 'Sheets':
-          items = await widget.db.readStandardSheets();
-          break;
+      if (_selectedCategory == 'All') {
+        final groups = await Future.wait(
+          _categories
+              .where((category) => category['id'] != 'All')
+              .map((category) => _readCategoryItems(category['id']!)),
+        );
+        items = groups.expand((group) => group).toList();
+      } else {
+        items = await _readCategoryItems(_selectedCategory);
       }
-      if (_selectedCategory == 'Sections') {
+      if (_selectedCategory == 'Sections' || _selectedCategory == 'All') {
         final profiles =
             items
                 .map((item) => item['profile_name']?.toString().trim() ?? '')
@@ -1684,7 +3223,7 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
             !_profileNames.contains(_selectedProfile)) {
           _selectedProfile = '';
         }
-        if (_selectedProfile.isNotEmpty) {
+        if (_selectedCategory == 'Sections' && _selectedProfile.isNotEmpty) {
           items = items
               .where(
                 (item) => item['profile_name']?.toString() == _selectedProfile,
@@ -1697,6 +3236,10 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
         // explicit before the quantity dialog is opened.
         final expanded = <Map<String, dynamic>>[];
         for (final item in items) {
+          if (_categoryForItem(item) != 'Sections') {
+            expanded.add(item);
+            continue;
+          }
           final profileId = (item['source_profile_id'] as num?)?.toInt();
           if (profileId == null) {
             expanded.add(item);
@@ -1723,19 +3266,8 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
         _profileNames = [];
       }
       if (q.isNotEmpty) {
-        items = items.where((item) {
-          final name = (item['name'] ?? item['type'] ?? '')
-              .toString()
-              .toLowerCase();
-          final code = (item['code'] ?? '').toString().toLowerCase();
-          final profile = (item['profile_name'] ?? '').toString().toLowerCase();
-          final series = (item['series_name'] ?? '').toString().toLowerCase();
-          return name.contains(q) ||
-              code.contains(q) ||
-              profile.contains(q) ||
-              series.contains(q);
-        }).toList();
-      } else {
+        items = items.where((item) => _smartSearchMatch(item, q)).toList();
+      } else if (!showAll) {
         items = [];
       }
       if (mounted) setState(() => _items = items);
@@ -1751,11 +3283,11 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
     final itemId = (item['id'] as num?)?.toInt() ?? 0;
     final latest = await widget.db.getLatestPurchasePrice(
       itemId: itemId,
-      itemType: _selectedCategory,
+      itemType: _categoryForItem(item),
       colorId: colorId,
     );
     if (latest != null && latest > 0) return latest;
-    if (_selectedCategory == 'Sections' && colorId != null) {
+    if (_categoryForItem(item) == 'Sections' && colorId != null) {
       final catalogue = await widget.db.getSectionColorPrice(itemId, colorId);
       if (catalogue > 0) return catalogue;
     }
@@ -1779,7 +3311,19 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
       _selectedColorName = colorName;
       _quantityCtrl.text = '1';
       _priceCtrl.text = initialPrice.toStringAsFixed(2);
+      _searchCtrl.text = (item['name'] ?? item['type'] ?? '').toString();
+      _searchCtrl.selection = TextSelection.collapsed(
+        offset: _searchCtrl.text.length,
+      );
+      _showSearchResults = false;
+      _items = [];
     });
+    _searchFocus.unfocus();
+  }
+
+  void _hideSearchResults() {
+    if (!_showSearchResults) return;
+    setState(() => _showSearchResults = false);
   }
 
   void _addSelectedItem() {
@@ -1788,17 +3332,23 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
     final qty = double.tryParse(_quantityCtrl.text.replaceAll(',', '.')) ?? 1.0;
     final price = double.tryParse(_priceCtrl.text.replaceAll(',', '.')) ?? 0.0;
     widget.onItemSelected({
-      'item_type': _selectedCategory,
+      'item_type': _categoryForItem(item),
       'item_id': item['id'] ?? 0,
       'item_code': item['code'] ?? item['name'] ?? '',
       'item_name': item['name'] ?? item['type'] ?? '',
+      'system_name':
+          item['system_name'] ?? item['profile_name'] ?? item['gamme_name'] ?? '',
+      'series_name':
+          item['series_name'] ?? item['system_name'] ?? item['gamme_name'] ?? '',
       'color_id': _selectedColorId,
       'color_name': _selectedColorName,
-      'unit': _getUnit(),
+      'unit': _getUnit(item),
       'length_mm': (item['length_mm'] as num?)?.toDouble() ?? 0.0,
       'width_mm': (item['width_mm'] as num?)?.toDouble() ?? 0.0,
       'quantity': qty,
       'unit_price': price,
+      'tax_rate': 0.0,
+      'available_quantity': _stockFor(item, colorId: _selectedColorId),
       'total_price': qty * price,
       'notes': '',
     });
@@ -1828,8 +3378,8 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
     return (p as num?)?.toDouble() ?? 0.0;
   }
 
-  String _getUnit() {
-    switch (_selectedCategory) {
+  String _getUnit([Map<String, dynamic>? item]) {
+    switch (item == null ? _selectedCategory : _categoryForItem(item)) {
       case 'Sections':
         return 'barre';
       case 'Accessories':
@@ -1881,6 +3431,7 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final isDesktop = MediaQuery.of(context).size.width >= 800;
     final selected = _selectedItem;
     final selectedStock = selected == null
         ? 0.0
@@ -1895,11 +3446,15 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
         ),
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 14, 12, 8),
+            Container(
+              color: isDesktop ? const Color(0xFF111111) : Colors.transparent,
+              padding: const EdgeInsets.fromLTRB(20, 10, 12, 10),
               child: Row(
                 children: [
-                  const Icon(Icons.inventory_2_outlined, color: _blue),
+                  Icon(
+                    Icons.inventory_2_outlined,
+                    color: isDesktop ? Colors.white : _blue,
+                  ),
                   const SizedBox(width: 8),
                   Text(
                     _t('اختر منتجاً'),
@@ -1907,12 +3462,15 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
                       fontFamily: 'Cairo',
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
-                      color: Theme.of(context).colorScheme.onSurface,
+                      color: isDesktop ? Colors.white : colors.onSurface,
                     ),
                   ),
                   const Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.close),
+                    icon: Icon(
+                      Icons.close,
+                      color: isDesktop ? Colors.white : colors.onSurface,
+                    ),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -1920,10 +3478,11 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 210,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact = constraints.maxWidth < 600;
+                  final categoryField = SizedBox(
+                    width: compact ? constraints.maxWidth : 210,
                     child: DropdownButtonFormField<String>(
                       initialValue: _selectedCategory,
                       isExpanded: true,
@@ -1950,42 +3509,78 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
                           _selectedCategory = value;
                           _selectedProfile = '';
                           _selectedItem = null;
+                          _searchCtrl.clear();
+                          _showSearchResults = true;
                         });
-                        _loadItems();
+                        _loadItems(showAll: true);
                       },
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                      controller: _searchCtrl,
-                      autofocus: true,
-                      decoration: InputDecoration(
-                        hintText: _t('اكتب الاسم أو الرمز للبحث...'),
-                        hintStyle: const TextStyle(fontFamily: 'Cairo'),
-                        prefixIcon: const Icon(Icons.search, color: _blue),
-                        suffixIcon: _searchCtrl.text.isEmpty
-                            ? null
-                            : IconButton(
-                                icon: const Icon(Icons.clear),
-                                onPressed: () {
-                                  _searchCtrl.clear();
-                                  setState(() {
-                                    _items = [];
-                                    _selectedItem = null;
-                                  });
-                                },
-                              ),
-                        border: const OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      onChanged: (_) {
-                        setState(() {});
-                        _loadItems();
-                      },
+                  );
+                  final searchField = TextField(
+                    focusNode: _searchFocus,
+                    controller: _searchCtrl,
+                    autofocus: !compact,
+                    decoration: InputDecoration(
+                      hintText: _t('اكتب الاسم أو الرمز للبحث...'),
+                      hintStyle: const TextStyle(fontFamily: 'Cairo'),
+                      prefixIcon: const Icon(Icons.search, color: _blue),
+                      suffixIcon: _searchCtrl.text.isEmpty
+                          ? const Icon(Icons.arrow_drop_down_rounded)
+                          : IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                _searchCtrl.clear();
+                                setState(() {
+                                  _selectedItem = null;
+                                  _showSearchResults = true;
+                                });
+                                _loadItems(showAll: true);
+                              },
+                            ),
+                      border: const OutlineInputBorder(),
+                      isDense: true,
                     ),
-                  ),
-                ],
+                    onTap: () {
+                      if (!_showSearchResults) {
+                        setState(() => _showSearchResults = true);
+                        _loadItems(
+                          showAll:
+                              _selectedItem != null ||
+                              _searchCtrl.text.trim().isEmpty,
+                        );
+                      }
+                    },
+                    onChanged: (_) {
+                      setState(() {
+                        _selectedItem = null;
+                        _showSearchResults = true;
+                      });
+                      _searchDebounce?.cancel();
+                      _searchDebounce = Timer(
+                        const Duration(milliseconds: 180),
+                        () => _loadItems(
+                          showAll: _searchCtrl.text.trim().isEmpty,
+                        ),
+                      );
+                    },
+                  );
+                  if (compact) {
+                    return Column(
+                      children: [
+                        categoryField,
+                        const SizedBox(height: 10),
+                        searchField,
+                      ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      categoryField,
+                      const SizedBox(width: 10),
+                      Expanded(child: searchField),
+                    ],
+                  );
+                },
               ),
             ),
             const SizedBox(height: 10),
@@ -1997,26 +3592,17 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
                     border: Border.all(color: colors.outlineVariant),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: _loading
-                      ? const Center(child: CircularProgressIndicator())
-                      : _searchCtrl.text.trim().isEmpty
+                  child: !_showSearchResults
                       ? Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.manage_search_rounded,
-                                size: 54,
-                                color: colors.outlineVariant,
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                _t('ابدأ بكتابة اسم المنتج أو رمزه'),
-                                style: const TextStyle(fontFamily: 'Cairo'),
-                              ),
-                            ],
+                          child: Text(
+                            selected == null
+                                ? _t('اضغط على حقل البحث لاختيار منتج')
+                                : _t('تم اختيار المنتج'),
+                            style: const TextStyle(fontFamily: 'Cairo'),
                           ),
                         )
+                      : _loading
+                      ? const Center(child: CircularProgressIndicator())
                       : _items.isEmpty
                       ? Center(
                           child: Text(
@@ -2049,7 +3635,7 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
                                   : CircleAvatar(
                                       backgroundColor: _blue.withOpacity(0.1),
                                       child: Text(
-                                        _selectedCategory.substring(0, 1),
+                                        _categoryForItem(item).substring(0, 1),
                                         style: const TextStyle(
                                           color: _blue,
                                           fontWeight: FontWeight.bold,
@@ -2144,7 +3730,7 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
                                 ),
                               ),
                               Text(
-                                '${_t('المتوفر')}: ${NumberFormat('#,##0.##').format(selectedStock)} ${_getUnit()}',
+                                '${_t('المتوفر')}: ${NumberFormat('#,##0.##').format(selectedStock)} ${_getUnit(selected)}',
                                 style: TextStyle(
                                   fontFamily: 'Cairo',
                                   color: selectedStock > 0
@@ -2156,113 +3742,133 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
                             ],
                           ),
                           const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              if (_selectedItemColors.isNotEmpty) ...[
-                                Expanded(
-                                  flex: 2,
-                                  child: DropdownButtonFormField<int>(
-                                    initialValue: _selectedColorId,
-                                    isExpanded: true,
-                                    decoration: InputDecoration(
-                                      labelText: _t('اللون'),
-                                      border: const OutlineInputBorder(),
-                                      isDense: true,
-                                    ),
-                                    items: _selectedItemColors.map((color) {
-                                      final id = (color['id'] as num).toInt();
-                                      return DropdownMenuItem<int>(
-                                        value: id,
-                                        child: Row(
-                                          children: [
-                                            _colorSwatch(
-                                              color['hex_code']?.toString(),
-                                            ),
-                                            const SizedBox(width: 6),
-                                            Flexible(
-                                              child: Text(
-                                                color['name']?.toString() ?? '',
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                          ],
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              final compact = constraints.maxWidth < 620;
+                              final halfWidth = (constraints.maxWidth - 10) / 2;
+                              return Wrap(
+                                spacing: 10,
+                                runSpacing: 10,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  if (_selectedItemColors.isNotEmpty) ...[
+                                    SizedBox(
+                                      width: compact
+                                          ? constraints.maxWidth
+                                          : 260,
+                                      child: DropdownButtonFormField<int>(
+                                        initialValue: _selectedColorId,
+                                        isExpanded: true,
+                                        decoration: InputDecoration(
+                                          labelText: _t('اللون'),
+                                          border: const OutlineInputBorder(),
+                                          isDense: true,
                                         ),
-                                      );
-                                    }).toList(),
-                                    onChanged: (value) async {
-                                      if (value == null) return;
-                                      final color = _selectedItemColors
-                                          .firstWhere(
-                                            (entry) =>
-                                                (entry['id'] as num).toInt() ==
-                                                value,
+                                        items: _selectedItemColors.map((color) {
+                                          final id = (color['id'] as num)
+                                              .toInt();
+                                          return DropdownMenuItem<int>(
+                                            value: id,
+                                            child: Row(
+                                              children: [
+                                                _colorSwatch(
+                                                  color['hex_code']?.toString(),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Flexible(
+                                                  child: Text(
+                                                    color['name']?.toString() ??
+                                                        '',
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
                                           );
-                                      final price = await _resolvePrice(
-                                        selected,
-                                        colorId: value,
-                                      );
-                                      if (!mounted) return;
-                                      setState(() {
-                                        _selectedColorId = value;
-                                        _selectedColorName =
-                                            color['name']?.toString() ?? '';
-                                        _priceCtrl.text = price.toStringAsFixed(
-                                          2,
-                                        );
-                                      });
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                              ],
-                              Expanded(
-                                child: TextField(
-                                  controller: _quantityCtrl,
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
+                                        }).toList(),
+                                        onChanged: (value) async {
+                                          _hideSearchResults();
+                                          if (value == null) return;
+                                          final color = _selectedItemColors
+                                              .firstWhere(
+                                                (entry) =>
+                                                    (entry['id'] as num)
+                                                        .toInt() ==
+                                                    value,
+                                              );
+                                          final price = await _resolvePrice(
+                                            selected,
+                                            colorId: value,
+                                          );
+                                          if (!mounted) return;
+                                          setState(() {
+                                            _selectedColorId = value;
+                                            _selectedColorName =
+                                                color['name']?.toString() ?? '';
+                                            _priceCtrl.text = price
+                                                .toStringAsFixed(2);
+                                          });
+                                        },
                                       ),
-                                  inputFormatters: const [
-                                    DecimalTextInputFormatter(decimalDigits: 3),
+                                    ),
                                   ],
-                                  decoration: InputDecoration(
-                                    labelText: _t('الكمية'),
-                                    border: const OutlineInputBorder(),
-                                    isDense: true,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: TextField(
-                                  controller: _priceCtrl,
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
+                                  SizedBox(
+                                    width: compact ? halfWidth : 150,
+                                    child: TextField(
+                                      controller: _quantityCtrl,
+                                      onTap: _hideSearchResults,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      inputFormatters: const [
+                                        DecimalTextInputFormatter(
+                                          decimalDigits: 3,
+                                        ),
+                                      ],
+                                      decoration: InputDecoration(
+                                        labelText: _t('الكمية'),
+                                        border: const OutlineInputBorder(),
+                                        isDense: true,
                                       ),
-                                  inputFormatters: const [
-                                    DecimalTextInputFormatter(),
-                                  ],
-                                  decoration: InputDecoration(
-                                    labelText: _t('سعر الوحدة'),
-                                    suffixText: 'DA',
-                                    border: const OutlineInputBorder(),
-                                    isDense: true,
+                                    ),
                                   ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              FilledButton.icon(
-                                onPressed: _addSelectedItem,
-                                icon: const Icon(
-                                  Icons.add_shopping_cart_rounded,
-                                ),
-                                label: Text(
-                                  _t('إضافة'),
-                                  style: const TextStyle(fontFamily: 'Cairo'),
-                                ),
-                              ),
-                            ],
+                                  SizedBox(
+                                    width: compact ? halfWidth : 170,
+                                    child: TextField(
+                                      controller: _priceCtrl,
+                                      onTap: _hideSearchResults,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      inputFormatters: const [
+                                        DecimalTextInputFormatter(),
+                                      ],
+                                      decoration: InputDecoration(
+                                        labelText: _t('سعر الوحدة'),
+                                        suffixText: 'DA',
+                                        border: const OutlineInputBorder(),
+                                        isDense: true,
+                                      ),
+                                    ),
+                                  ),
+                                  FilledButton.icon(
+                                    onPressed: _addSelectedItem,
+                                    icon: const Icon(
+                                      Icons.add_shopping_cart_rounded,
+                                    ),
+                                    label: Text(
+                                      _t('إضافة'),
+                                      style: const TextStyle(
+                                        fontFamily: 'Cairo',
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
                           ),
                         ],
                       ),

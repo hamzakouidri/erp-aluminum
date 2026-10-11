@@ -4,7 +4,7 @@ import 'dart:async';
 // unused import removed
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import '../sql_database.dart';
 import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
@@ -833,12 +833,15 @@ class TreasuryScreen extends StatefulWidget {
   /// وضع العرض فقط — يخفي أزرار الإضافة والحذف
   final bool readOnly;
   final int? initialTransactionId;
+  /// When true, workshop cashboxes and their movements are never loaded.
+  final bool storeOnly;
 
   const TreasuryScreen({
     super.key,
     required this.db,
     this.readOnly = false,
     this.initialTransactionId,
+    this.storeOnly = false,
   });
 
   static const Map<int, int> _unicodeToWin1252 = <int, int>{
@@ -1698,6 +1701,15 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   List<Map<String, dynamic>> _suppliers = [];
   StreamSubscription? _syncSub;
 
+  bool _isStoreCaisseName(dynamic value) {
+    final name = (value ?? '').toString().trim().toLowerCase();
+    return name == 'صندوق المحل' ||
+        name == 'caisse magasin' ||
+        name.contains('المحل') ||
+        name.contains('magasin') ||
+        name.contains('store');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1725,8 +1737,12 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   }
 
   Future<void> _loadEntities() async {
-    final clients = await widget.db.readClient();
-    final workers = await widget.db.readEmployees();
+    final clients = widget.storeOnly
+        ? await widget.db.readMaterialClients()
+        : await widget.db.readClient();
+    final workers = widget.storeOnly
+        ? <Map<String, dynamic>>[]
+        : await widget.db.readEmployees();
     final suppliers = await widget.db.readSuppliers();
     if (mounted) {
       setState(() {
@@ -1803,13 +1819,18 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
           'recorded_by': widget._readableText(row['recorded_by']),
         },
       )
+          .where(
+            (row) =>
+                !widget.storeOnly || _isStoreCaisseName(row['caisse_name']),
+          )
           .toList();
       final caisses = await widget.db.readCaisses();
       final caisseNames = caisses
           .map((c) => widget._readableText(c['name']))
+          .where((name) => !widget.storeOnly || _isStoreCaisseName(name))
           .toList();
       if (caisseNames.isEmpty) {
-        caisseNames.add('الصندوق الرئيسي');
+        caisseNames.add(widget.storeOnly ? 'صندوق المحل' : 'الصندوق الرئيسي');
       }
 
       double balance = 0.0;
@@ -2650,7 +2671,15 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                               child: CircularProgressIndicator(),
                             );
                           }
-                          final list = snapshot.data!;
+                          final list = widget.storeOnly
+                              ? snapshot.data!
+                                    .where(
+                                      (caisse) => _isStoreCaisseName(
+                                        caisse['name'],
+                                      ),
+                                    )
+                                    .toList(growable: false)
+                              : snapshot.data!;
                           return ListView.builder(
                             shrinkWrap: true,
                             itemCount: list.length,
@@ -3001,28 +3030,6 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                                   _loadData();
                                 });
                               },
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isDark
-                                ? Colors.tealAccent.shade700
-                                : Colors.teal,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            '${formatter.format(_totalBalance)} $currency',
-                            style: TextStyle(
-                              color: isDark ? Colors.black : Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontFamily: 'Cairo',
-                              fontSize: 12,
                             ),
                           ),
                         ),

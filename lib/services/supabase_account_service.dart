@@ -96,10 +96,51 @@ class SupabaseAccountService {
     _cachedAccountAt = null;
   }
 
+  Future<void> prepareWorkshopSignup({
+    required String email,
+    required String personName,
+    required bool worker,
+    String workshopName = '',
+    String workshopCode = '',
+  }) async {
+    final admitted = await _client.rpc(
+      'prepare_workshop_signup',
+      params: {
+        'requested_email': email.trim().toLowerCase(),
+        'requested_kind': worker ? 'worker' : 'manager',
+        'requested_person_name': personName.trim(),
+        'requested_workshop_name': workshopName.trim(),
+        'requested_workshop_code': workshopCode.trim(),
+      },
+    );
+    if (admitted != true) {
+      throw StateError('تعذر اعتماد بيانات إنشاء الحساب.');
+    }
+  }
+
   /// Removes an OAuth account created by Auth when workshop registration was
   /// not completed. The RPC refuses deletion for configured users.
   Future<void> deleteCurrentUnconfiguredAuthUser() async {
-    await _client.rpc('delete_unconfigured_auth_user');
+    try {
+      final deleted = await _client.rpc('delete_current_orphan_auth_user');
+      if (deleted != true) {
+        throw StateError('Supabase Auth orphan was not deleted.');
+      }
+    } catch (primaryError) {
+      // Compatibility with databases that have catalog_sync.sql but have not
+      // yet applied delete_orphan_auth_accounts.sql.
+      try {
+        await _client.rpc('delete_unconfigured_auth_user');
+      } catch (legacyError) {
+        throw StateError(
+          'تعذر حذف الحساب غير المرتبط من Supabase Authentication. '
+          'طبّق supabase/delete_orphan_auth_accounts.sql. '
+          'Primary: $primaryError; legacy: $legacyError',
+        );
+      }
+    } finally {
+      invalidateCurrentAccountCache();
+    }
   }
 
   Future<void> setSubscriptionForOwnerUid({

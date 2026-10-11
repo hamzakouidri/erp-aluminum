@@ -260,13 +260,10 @@ class OrderNotificationService {
     final orderCode = data['order_code']?.toString() ?? '';
     final orderId = int.tryParse(data['order_id']?.toString() ?? '');
     if (action == 'deleted') {
-      _handleDeletedOrderEvent({
-        'order_code': orderCode,
-        'client_name': data['client_name']?.toString() ?? '',
-        'author': data['author']?.toString() ?? '',
-      });
+      _handleDeletedOrderEvent(data);
       return;
     }
+    if (_isSelfEvent(data)) return;
     if (action != 'created' && action != 'updated') return;
     _dispatchNotification(
       clientName: data['client_name']?.toString() ?? '',
@@ -343,8 +340,7 @@ class OrderNotificationService {
     Map<String, dynamic> payload, {
     required bool isNew,
   }) {
-    final senderDeviceId = payload['sender_device_id']?.toString() ?? '';
-    if (senderDeviceId.isNotEmpty && senderDeviceId == _myDeviceId) {
+    if (_isSelfEvent(payload)) {
       return;
     }
 
@@ -383,9 +379,27 @@ class OrderNotificationService {
     }
   }
 
-  void _handleDeletedOrderEvent(Map<String, dynamic> payload) {
+  bool _isSelfEvent(Map<String, dynamic> payload) {
     final senderDeviceId = payload['sender_device_id']?.toString() ?? '';
-    if (senderDeviceId.isNotEmpty && senderDeviceId == _myDeviceId) return;
+    if (senderDeviceId.isNotEmpty && senderDeviceId == _myDeviceId) {
+      return true;
+    }
+    final senderUserId = payload['sender_user_id']?.toString() ?? '';
+    try {
+      final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+      if (currentUserId != null &&
+          currentUserId.isNotEmpty &&
+          senderUserId.isNotEmpty &&
+          currentUserId == senderUserId) {
+        return true;
+      }
+    } catch (_) {}
+
+    return false;
+  }
+
+  void _handleDeletedOrderEvent(Map<String, dynamic> payload) {
+    if (_isSelfEvent(payload)) return;
     final orderCode = payload['order_code']?.toString() ?? '';
     final clientName = payload['client_name']?.toString() ?? '';
     final author = payload['author']?.toString() ?? '';

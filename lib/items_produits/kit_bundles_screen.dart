@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import '../sql_database.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/settings/app_settings.dart';
@@ -40,6 +40,11 @@ class _KitBundlesScreenState extends State<KitBundlesScreen> {
       listen: false,
     ).language;
 
+    String materialType = kit?['material_type']?.toString().toLowerCase() ?? 'all';
+    if (!const ['all', 'aluminium', 'pvc'].contains(materialType)) {
+      materialType = 'all';
+    }
+
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -73,6 +78,31 @@ class _KitBundlesScreenState extends State<KitBundlesScreen> {
                   border: const OutlineInputBorder(),
                 ),
               ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                value: materialType,
+                decoration: InputDecoration(
+                  labelText: Localization.translate('نوع المادة', lang),
+                  border: const OutlineInputBorder(),
+                ),
+                items: [
+                  DropdownMenuItem(
+                    value: 'all',
+                    child: Text(Localization.translate('مشترك (Aluminium + PVC)', lang)),
+                  ),
+                  DropdownMenuItem(
+                    value: 'aluminium',
+                    child: Text(Localization.translate('ألمنيوم (Aluminium)', lang)),
+                  ),
+                  DropdownMenuItem(
+                    value: 'pvc',
+                    child: Text(Localization.translate('بي في سي (PVC)', lang)),
+                  ),
+                ],
+                onChanged: (val) {
+                  if (val != null) setS(() => materialType = val);
+                },
+              ),
               const SizedBox(height: 12),
               SwitchListTile(
                 title: Text(Localization.translate('Kit منفصل لكل ضلفة', lang)),
@@ -98,6 +128,7 @@ class _KitBundlesScreenState extends State<KitBundlesScreen> {
                         ? null
                         : descCtrl.text.trim(),
                     perLeaf: perLeaf,
+                    materialType: materialType,
                   );
                 } else {
                   await widget.db.updateKitBundle(
@@ -107,6 +138,7 @@ class _KitBundlesScreenState extends State<KitBundlesScreen> {
                         ? null
                         : descCtrl.text.trim(),
                     perLeaf: perLeaf,
+                    materialType: materialType,
                   );
                 }
                 if (ctx.mounted) Navigator.pop(ctx);
@@ -211,15 +243,71 @@ class _KitBundlesScreenState extends State<KitBundlesScreen> {
                             kit['name'] ?? '',
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
-                          subtitle: perLeaf
-                              ? Text(
-                                  Localization.translate('Kit لكل ضلفة', lang),
-                                  style: const TextStyle(
-                                    color: Colors.blue,
-                                    fontSize: 12,
-                                  ),
-                                )
-                              : null,
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  if (kit['material_type'] == 'pvc')
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.teal.shade50,
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(
+                                          color: Colors.teal.shade300,
+                                        ),
+                                      ),
+                                      child: const Text(
+                                        'PVC',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.teal,
+                                        ),
+                                      ),
+                                    )
+                                  else if (kit['material_type'] == 'aluminium')
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.indigo.shade50,
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(
+                                          color: Colors.indigo.shade300,
+                                        ),
+                                      ),
+                                      child: const Text(
+                                        'Aluminium',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.indigo,
+                                        ),
+                                      ),
+                                    ),
+                                  if (perLeaf) ...[
+                                    if (kit['material_type'] == 'pvc' ||
+                                        kit['material_type'] == 'aluminium')
+                                      const SizedBox(width: 6),
+                                    Text(
+                                      Localization.translate('Kit لكل ضلفة', lang),
+                                      style: const TextStyle(
+                                        color: Colors.blue,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ],
+                          ),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [

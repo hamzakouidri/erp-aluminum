@@ -4,7 +4,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../services/pdf_font_cache.dart';
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import 'package:provider/provider.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:database_data/sql_database.dart';
@@ -3714,8 +3714,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
   Widget _buildDesktopRequiredGoodsTable() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final headerStyle = const TextStyle(
-      color: Colors.white,
+    final headerStyle = TextStyle(
+      color: isDark ? Colors.white : const Color(0xFF18233B),
       fontWeight: FontWeight.bold,
       fontSize: 12,
     );
@@ -6188,7 +6188,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       fontWeight: FontWeight.bold,
       fontSize: 12,
       color: isDesktop
-          ? Colors.white
+          ? (isDark ? Colors.white : const Color(0xFF18233B))
           : (isDark ? Colors.white.withValues(alpha: 0.87) : Colors.black87),
     );
     final bodyColor = isDark

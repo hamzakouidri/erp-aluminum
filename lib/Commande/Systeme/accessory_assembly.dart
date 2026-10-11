@@ -20,6 +20,7 @@ class AssemblyDemand {
     this.topMiterCorners,
     this.bottomMiterCorners,
     this.sectionId,
+    this.isExtension = false,
   });
 
   final String target;
@@ -29,6 +30,7 @@ class AssemblyDemand {
   final int? topMiterCorners;
   final int? bottomMiterCorners;
   final int? sectionId;
+  final bool isExtension;
 
   /// الزوايا المقطوعة بـ 45 درجة فقط المؤهلة لتركيب الكلام (Clam)
   int get effectiveTopMiterCorners => topMiterCorners ?? topCorners;
@@ -148,7 +150,7 @@ List<AssemblyDemand> assemblyDemands(WindowModel window) {
       topMiter = 0;
       bottomMiter = 0;
     }
-
+    final mainFrameSectionId = sectionId(sliding, true);
     demands.add(
       AssemblyDemand(
         target: 'frame',
@@ -157,7 +159,7 @@ List<AssemblyDemand> assemblyDemands(WindowModel window) {
         bottomCorners: !window.hasBottomFrameForRect(rect) ? 0 : 2,
         topMiterCorners: topMiter,
         bottomMiterCorners: bottomMiter,
-        sectionId: sectionId(sliding, true),
+        sectionId: mainFrameSectionId,
       ),
     );
   }
@@ -184,34 +186,37 @@ List<AssemblyDemand> assemblyDemands(WindowModel window) {
       int slidingTopMiter = 0;
       int slidingBottomMiter = 0;
 
-      final bool hasCentralMeeting =
-          zone.slidingFaceToFace && sashes >= 4 && sashes % 2 == 0;
-      final int halfSashes = sashes ~/ 2;
-
-      // فحص كل ظلفة: هل تتصل بمونتوسليم (MontoSlim) أو التقاء وسطي (90°) يلغي الكلام ببراغي التجميع؟
       for (int s = 0; s < sashes; s++) {
-        final bool isMeetingRight = hasCentralMeeting && (s == halfSashes - 1);
-        final bool isMeetingLeft = hasCentralMeeting && (s == halfSashes);
-
+        // فحص المونو سليم فقط: إذا كان مفعلاً على هذا القائم يلغي الـ clamp بزاوية 90°
+        // أما درفات التقاء الوسط (Face to Face) فهي تقص 45° في كامل أطرافها وتأخذ Clam في كل زاوية
         final bool leftIsSlim =
-            s > 0 &&
-            (zone.slidingMontantSlim['central_${(s - 1) * 2 + 1}'] ?? false);
+            (zone.slidingMontantSlim['central_${(s - 1) * 2 + 1}'] == true);
         final bool rightIsSlim =
-            s < (sashes - 1) &&
-            (zone.slidingMontantSlim['central_${s * 2}'] ?? false);
+            (zone.slidingMontantSlim['central_${s * 2}'] == true);
 
-        final bool leftIsSquare = leftIsSlim || isMeetingLeft;
-        final bool rightIsSquare = rightIsSlim || isMeetingRight;
-
-        // الجانب الذي ليس فيه زاوية 90° (سليم أو التقاء وسطي) يكون 45° ويأخذ كلام
-        if (!leftIsSquare) {
+        // طرف الضلفة الأيسر: إذا لم يكن مونوسليم فهو 45° ويأخذ كلم
+        if (!leftIsSlim) {
           slidingTopMiter += 1;
           slidingBottomMiter += 1;
         }
-        if (!rightIsSquare) {
+        // طرف الضلفة الأيمن: إذا لم يكن مونوسليم فهو 45° ويأخذ كلم
+        if (!rightIsSlim) {
           slidingTopMiter += 1;
           slidingBottomMiter += 1;
         }
+      }
+
+      // عند تفعيل التقاء الضلف الوسطي (Batmo central / Rencontre):
+      // عمودا الالتقاء يقصان 45° مع العوارض العلوية والسفلية (زاويتان علويتان + زاويتان سفليتان = 4 زوايا مائلة 45°)
+      final bool hasCentralMeeting =
+          zone.slidingFaceToFace &&
+          isSlidingFaceToFaceLayout(
+            trackCount: zone.slidingTrackCount,
+            sashCount: sashes,
+          );
+      if (hasCentralMeeting) {
+        slidingTopMiter += 2; // زاويتان علويتان 45°
+        slidingBottomMiter += 2; // زاويتان سفليتان 45°
       }
 
       addSashes(
@@ -280,10 +285,19 @@ int assemblyQuantity(
   var quantity = 0;
   for (final demand in demands) {
     if (perCornerClamp && demand.target != 'frame' && demand.target != 'sash') {
-      continue;
+      if (demand.sectionId == null ||
+          !linkedSections.contains(demand.sectionId)) {
+        continue;
+      }
     }
     if (linkedSections.isNotEmpty) {
-      if (!linkedSections.contains(demand.sectionId)) continue;
+      // إذا كان القطاع محدداً بالقاعدة نتحقق منه، أما إذا لم يكن للطلب قطاع محدد
+      // فيجب على الأقل أن يتطابق الهدف (frame أو sash)
+      if (demand.sectionId != null) {
+        if (!linkedSections.contains(demand.sectionId)) continue;
+      } else {
+        if (target != 'both' && target != demand.target) continue;
+      }
     } else {
       if (target != 'both' && target != demand.target) continue;
     }
@@ -301,15 +315,13 @@ int assemblyQuantity(
         ? null
         : sectionSideQuantities[demand.sectionId];
 
-    if (perCornerClamp &&
-        sectionQuantities != null &&
-        (demand.target == 'frame' || demand.target == 'sash')) {
-      final perCorner = sectionQuantities.$1;
-      quantity += (topCorners + bottomCorners) * perCorner;
-    } else if (sectionQuantities != null) {
+    if (sectionQuantities != null) {
       quantity +=
           topCorners * sectionQuantities.$1 +
           bottomCorners * sectionQuantities.$2;
+    } else if (demand.isExtension) {
+      // إطار الإضافة المنفرد (سكة واحدة) يأخذ 1 كالم لكل زاوية 45°
+      quantity += topCorners * 1 + bottomCorners * 1;
     } else {
       quantity += topCorners * top + bottomCorners * bottom;
     }

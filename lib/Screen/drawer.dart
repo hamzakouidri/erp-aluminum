@@ -10,7 +10,7 @@ import 'projects_screen.dart';
 import 'sales_screen.dart';
 import 'package:database_data/Screen/support_dialog.dart';
 import 'package:database_data/Screen/subscription_review_dialog.dart';
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import 'package:flutter/services.dart';
 import '../Cliente/client.dart';
 import '../Commande/commande.dart';
@@ -647,7 +647,11 @@ class _AppDrawerState extends State<AppDrawer> {
           ),
           Consumer<AppSettingsProvider>(
             builder: (context, appSettings, _) {
-              if (!appSettings.isDualActivity) return const SizedBox.shrink();
+              if (!appSettings.isDualActivity ||
+                  !appSettings.canAccessWorkshopScope() ||
+                  !appSettings.canAccessStoreScope()) {
+                return const SizedBox.shrink();
+              }
               return Container(
                 margin: const EdgeInsets.only(top: 12),
                 padding: const EdgeInsets.all(4),
@@ -914,10 +918,8 @@ class _AppDrawerState extends State<AppDrawer> {
     AppLanguage lang, {
     required bool isDesktop,
   }) {
-    final allowWorkshop = settings.workingSection == WorkingSection.all ||
-        settings.workingSection == WorkingSection.workshop;
-    final allowStore = settings.workingSection == WorkingSection.all ||
-        settings.workingSection == WorkingSection.materialsStore;
+    final allowWorkshop = settings.isWorkingInWorkshop;
+    final allowStore = settings.isWorkingInStore;
 
     final orderItems = <Widget>[];
     if (allowWorkshop && settings.hasWorkshop && settings.canViewOrders()) {
@@ -1212,52 +1214,57 @@ class _AppDrawerState extends State<AppDrawer> {
           onTap: () => _openScreen(
             'caisse',
             Icons.account_balance_wallet_rounded,
-            TreasuryScreen(db: SqlDatabase()),
+            TreasuryScreen(
+              db: SqlDatabase(),
+              storeOnly: allowStore && !allowWorkshop,
+            ),
             titleKey: 'caisse',
           ),
           color: Colors.green,
         ),
       );
-      financeItems.add(
-        _desktopMenuItem(
-          isDesktop: isDesktop,
-          title: _desktopLabel(
-            lang,
-            arabic: 'قبض جديد (Encaissement)',
-            french: 'Nouvel Encaissement',
-            english: 'New Income (Encaissement)',
+      if (allowWorkshop) {
+        financeItems.add(
+          _desktopMenuItem(
+            isDesktop: isDesktop,
+            title: _desktopLabel(
+              lang,
+              arabic: 'قبض جديد (Encaissement)',
+              french: 'Nouvel Encaissement',
+              english: 'New Income (Encaissement)',
+            ),
+            icon: Icons.arrow_downward_rounded,
+            onTap: () {
+              TreasuryScreen.showQuickTransactionDialog(
+                context,
+                initialType: 'Encaissement',
+              );
+            },
+            color: const Color(0xFF10B981),
           ),
-          icon: Icons.arrow_downward_rounded,
-          onTap: () {
-            TreasuryScreen.showQuickTransactionDialog(
-              context,
-              initialType: 'Encaissement',
-            );
-          },
-          color: const Color(0xFF10B981),
-        ),
-      );
-      financeItems.add(
-        _desktopMenuItem(
-          isDesktop: isDesktop,
-          title: _desktopLabel(
-            lang,
-            arabic: 'دفع جديد (Décaissement)',
-            french: 'Nouveau Décaissement',
-            english: 'New Expense (Décaissement)',
+        );
+        financeItems.add(
+          _desktopMenuItem(
+            isDesktop: isDesktop,
+            title: _desktopLabel(
+              lang,
+              arabic: 'دفع جديد (Décaissement)',
+              french: 'Nouveau Décaissement',
+              english: 'New Expense (Décaissement)',
+            ),
+            icon: Icons.arrow_upward_rounded,
+            onTap: () {
+              TreasuryScreen.showQuickTransactionDialog(
+                context,
+                initialType: 'Décaissement',
+              );
+            },
+            color: const Color(0xFFF59E0B),
           ),
-          icon: Icons.arrow_upward_rounded,
-          onTap: () {
-            TreasuryScreen.showQuickTransactionDialog(
-              context,
-              initialType: 'Décaissement',
-            );
-          },
-          color: const Color(0xFFF59E0B),
-        ),
-      );
+        );
+      }
     }
-    if (settings.canViewWorkerFinances()) {
+    if (allowWorkshop && settings.canViewWorkerFinances()) {
       financeItems.add(
         _desktopMenuItem(
           isDesktop: isDesktop,
@@ -1277,7 +1284,7 @@ class _AppDrawerState extends State<AppDrawer> {
         ),
       );
     }
-    if (settings.canViewWorkerWeeklySettlement()) {
+    if (allowWorkshop && settings.canViewWorkerWeeklySettlement()) {
       financeItems.add(
         _desktopMenuItem(
           isDesktop: isDesktop,
@@ -1313,13 +1320,13 @@ class _AppDrawerState extends State<AppDrawer> {
           onTap: () => _openScreen(
             'clients',
             Icons.groups_rounded,
-            Customers(),
+            Customers(storeOnly: allowStore && !allowWorkshop),
             titleKey: 'clients',
           ),
         ),
       );
     }
-    if (settings.canViewClientLedger()) {
+    if (allowWorkshop && settings.canViewClientLedger()) {
       clientItems.add(
         _desktopMenuItem(
           isDesktop: isDesktop,
@@ -1342,7 +1349,7 @@ class _AppDrawerState extends State<AppDrawer> {
     }
 
     final taskItems = <Widget>[];
-    if (settings.canViewMyTasks()) {
+    if (allowWorkshop && settings.canViewMyTasks()) {
       taskItems.add(
         _desktopMenuItem(
           isDesktop: isDesktop,
@@ -1382,7 +1389,7 @@ class _AppDrawerState extends State<AppDrawer> {
         ),
       );
     }
-    if (settings.canAccessExternalOperations()) {
+    if (allowWorkshop && settings.canAccessExternalOperations()) {
       taskItems.add(
         _desktopMenuItem(
           isDesktop: isDesktop,
@@ -1426,7 +1433,7 @@ class _AppDrawerState extends State<AppDrawer> {
         ),
       );
     }
-    if (settings.canChangePrices()) {
+    if (allowWorkshop && settings.canChangePrices()) {
       managementItems.add(
         _desktopMenuItem(
           isDesktop: isDesktop,
@@ -1446,7 +1453,7 @@ class _AppDrawerState extends State<AppDrawer> {
         ),
       );
     }
-    if (settings.canSelectSystems()) {
+    if (allowWorkshop && settings.canSelectSystems()) {
       managementItems.add(
         _desktopMenuItem(
           isDesktop: isDesktop,
@@ -1654,7 +1661,7 @@ class _AppDrawerState extends State<AppDrawer> {
         ),
       );
     }
-    if (settings.hasWorkshop && settings.canViewProjects()) {
+    if (allowWorkshop && settings.hasWorkshop && settings.canViewProjects()) {
       menu.add(
         isDesktop
             ? ListTile(
@@ -1718,7 +1725,7 @@ class _AppDrawerState extends State<AppDrawer> {
               ),
       );
     }
-    if (settings.hasWorkshop && taskItems.isNotEmpty) {
+    if (allowWorkshop && settings.hasWorkshop && taskItems.isNotEmpty) {
       menu.add(
         _desktopGroup(
           isDesktop: isDesktop,
@@ -2145,7 +2152,9 @@ class _AppDrawerState extends State<AppDrawer> {
             },
           ),
           const Divider(height: 8),
-          if (settings.isDualActivity)
+          if (settings.isDualActivity &&
+              settings.canAccessWorkshopScope() &&
+              settings.canAccessStoreScope())
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               padding: const EdgeInsets.all(4),

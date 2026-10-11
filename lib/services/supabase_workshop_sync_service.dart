@@ -107,6 +107,7 @@ class SupabaseWorkshopSyncService {
 
   Timer? _uploadTimer;
   Timer? _backgroundSyncTimer;
+  Timer? _permissionsRefreshTimer;
   RealtimeChannel? _permissionsChannel;
   Future<void>? _startTask;
   Future<void>? _activeUpload;
@@ -280,6 +281,7 @@ class SupabaseWorkshopSyncService {
   void stop() {
     _uploadTimer?.cancel();
     _backgroundSyncTimer?.cancel();
+    _permissionsRefreshTimer?.cancel();
     final permissionsChannel = _permissionsChannel;
     if (permissionsChannel != null) {
       unawaited(_client.removeChannel(permissionsChannel));
@@ -290,6 +292,7 @@ class SupabaseWorkshopSyncService {
     }
     _uploadTimer = null;
     _backgroundSyncTimer = null;
+    _permissionsRefreshTimer = null;
     _permissionsChannel = null;
     _permissionsChannelName = null;
     _workshopDataChannel = null;
@@ -763,6 +766,8 @@ class SupabaseWorkshopSyncService {
     _isInBackground = true;
     _backgroundSyncTimer?.cancel();
     _backgroundSyncTimer = null;
+    _permissionsRefreshTimer?.cancel();
+    _permissionsRefreshTimer = null;
     debugPrint('SupabaseWorkshopSyncService: background sync paused.');
   }
 
@@ -772,7 +777,9 @@ class SupabaseWorkshopSyncService {
     _isInBackground = false;
     if (isReady && _backgroundSyncTimer == null) {
       _startBackgroundSync();
+      _startPermissionsRefreshFallback();
       unawaited(_runBackgroundSyncCycle());
+      unawaited(refreshCurrentPermissions());
       debugPrint('SupabaseWorkshopSyncService: background sync resumed.');
     }
   }
@@ -781,6 +788,18 @@ class SupabaseWorkshopSyncService {
     _backgroundSyncTimer?.cancel();
     _backgroundSyncTimer = Timer.periodic(_backgroundSyncInterval, (_) {
       unawaited(_runBackgroundSyncCycle());
+    });
+  }
+
+  void _startPermissionsRefreshFallback() {
+    _permissionsRefreshTimer?.cancel();
+    _permissionsRefreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (_isInBackground || !isReady) return;
+      unawaited(
+        refreshCurrentPermissions().catchError((error) {
+          debugPrint('Periodic permission refresh skipped: $error');
+        }),
+      );
     });
   }
 
@@ -1328,6 +1347,14 @@ class SupabaseWorkshopSyncService {
           if (deleted) continue;
           final orderDeviceId = order['device_id']?.toString() ?? '';
           if (orderDeviceId.isNotEmpty && orderDeviceId == _deviceId) continue;
+          final currentUserId = _client.auth.currentUser?.id;
+          final orderUserId = order['user_id']?.toString() ?? '';
+          if (currentUserId != null &&
+              currentUserId.isNotEmpty &&
+              orderUserId.isNotEmpty &&
+              currentUserId == orderUserId) {
+            continue;
+          }
           final clientName = ' '.trim();
           final orderCode =
               order['order_code']?.toString() ??

@@ -288,7 +288,8 @@ class BomItem {
       return 'إطار فتح لجهة بروفيل الزاوية (Dormant côté angle)';
     }
 
-    if (original == 'إطار منزلق لجهة بروفيل الزاوية (Cadre coulissant côté angle)' ||
+    if (original ==
+            'إطار منزلق لجهة بروفيل الزاوية (Cadre coulissant côté angle)' ||
         original.contains('منزلق لجهة بروفيل الزاوية')) {
       if (lang == 'fr') return 'Cadre coulissant côté angle';
       if (lang == 'en') return 'Sliding Frame (Corner)';
@@ -2122,6 +2123,29 @@ class ComponentCalculator {
     }
 
     String? getKitKey(String baseName) {
+      final isObKit = baseName == 'System OB' || baseName == 'Demi System OB';
+      bool matchesKitMaterial(Map<String, dynamic>? meta, String kitKey) {
+        if (!isObKit) return true;
+        final rawMat =
+            meta?['material_type']?.toString().toLowerCase().trim() ?? '';
+        if (rawMat.isEmpty || rawMat == 'all') {
+          // Check if name explicitly mentions PVC or Aluminium
+          final lower = kitKey.toLowerCase();
+          if (window.isPVC) {
+            if (lower.contains('aluminium') || lower.contains('alu'))
+              return false;
+          } else {
+            if (lower.contains('pvc')) return false;
+          }
+          return true;
+        }
+        if (window.isPVC) {
+          return rawMat == 'pvc';
+        } else {
+          return rawMat == 'aluminium' || rawMat == 'aluminum';
+        }
+      }
+
       String? descriptionCode;
       if (baseName == 'System OB' || baseName == 'Demi System OB') {
         descriptionCode = 'OB';
@@ -2130,7 +2154,9 @@ class ComponentCalculator {
       }
       if (descriptionCode != null && kitBundleMetadata.isNotEmpty) {
         final coded = kitBundleMetadata.entries.where(
-          (entry) => kitHasDescriptionCode(entry.value, descriptionCode!),
+          (entry) =>
+              kitHasDescriptionCode(entry.value, descriptionCode!) &&
+              matchesKitMaterial(entry.value, entry.key),
         );
         for (final entry in coded) {
           final normalizedName = entry.key.toLowerCase();
@@ -4518,6 +4544,7 @@ class ComponentCalculator {
       List<double> sashPieces = [];
       List<String> sashPieceAngles = [];
       List<double> slidingSashPieces = [];
+      List<String> slidingSashPieceAngles = [];
       List<double> slidingSashTraversePieces = [];
       List<double> slidingSashLateralPieces = [];
       List<double> slidingSashLateralReinforcedPieces = [];
@@ -4812,7 +4839,11 @@ class ComponentCalculator {
                     window.getSlidingSectionByType('sash_central'))
               : null;
           final bool hasMeetingInCenter =
-              zone.slidingFaceToFace && sashes >= 4 && sashes % 2 == 0;
+              zone.slidingFaceToFace &&
+              isSlidingFaceToFaceLayout(
+                trackCount: zone.slidingTrackCount,
+                sashCount: sashes,
+              );
           final faceEnabled = hasMeetingInCenter && faceSection != null;
           if (faceEnabled && sashes >= 4) {
             final faceCount = (sashes == 4 || sashes == 6) ? 2 : 1;
@@ -4834,9 +4865,10 @@ class ComponentCalculator {
             }
 
             final int lateralCount = hasMeetingInCenter ? 4 : 2;
-            final int centralsCount = hasMeetingInCenter
-                ? (sashes == 4 ? 4 : 8)
-                : ((sashes * 2) - 2);
+            final centralKeys = slidingCentralEdgeKeys(
+              zone: zone,
+              sashesCount: sashes,
+            );
 
             // Lateral pieces (2 outer laterals, plus 2 meeting in center for 4 or 6 sashes)
             for (int i = 0; i < lateralCount; i++) {
@@ -4864,13 +4896,14 @@ class ComponentCalculator {
             }
 
             // Central / chicane pieces
-            for (int s = 0; s < centralsCount; s++) {
+            for (final key in centralKeys) {
+              final s = int.tryParse(key.substring('central_'.length)) ?? 0;
               final legacyKey = s.isEven ? 'central_left' : 'central_right';
               final reinforced =
-                  zone.slidingMontantReinforced['central_$s'] ??
+                  zone.slidingMontantReinforced[key] ??
                   zone.slidingMontantReinforced[legacyKey] ??
                   false;
-              final isSlim = zone.slidingMontantSlim['central_$s'] ?? false;
+              final isSlim = zone.slidingMontantSlim[key] ?? false;
               if (isSlim) {
                 slidingSashCentralSlimPieces.add(sashH / 1000.0);
                 slidingSlimCleatPieces.addAll([0.10, 0.10]);
@@ -4920,6 +4953,7 @@ class ComponentCalculator {
                 slidingSlimCleatPieces.addAll([0.10, 0.10]);
               } else {
                 slidingSashPieces.add(sashH / 1000.0);
+                slidingSashPieceAngles.add('45/45');
               }
 
               if (rightIsSlim) {
@@ -4927,20 +4961,21 @@ class ComponentCalculator {
                 slidingSlimCleatPieces.addAll([0.10, 0.10]);
               } else {
                 slidingSashPieces.add(sashH / 1000.0);
+                slidingSashPieceAngles.add('45/45');
               }
 
+              // The top and bottom widths always belong to the sash profile.
+              // Slim replaces only the selected vertical montant; it must not
+              // move the sash widths to Complément haut/base or another row.
               if (leftIsSlim && rightIsSlim) {
-                slidingSashTraverse9090Pieces.addAll([
-                  sashW / 1000.0,
-                  sashW / 1000.0,
-                ]);
+                slidingSashPieces.addAll([sashW / 1000.0, sashW / 1000.0]);
+                slidingSashPieceAngles.addAll(['90/90', '90/90']);
               } else if (leftIsSlim || rightIsSlim) {
-                slidingSashTraverse4590Pieces.addAll([
-                  sashW / 1000.0,
-                  sashW / 1000.0,
-                ]);
+                slidingSashPieces.addAll([sashW / 1000.0, sashW / 1000.0]);
+                slidingSashPieceAngles.addAll(['45/90', '45/90']);
               } else {
                 slidingSashPieces.addAll([sashW / 1000.0, sashW / 1000.0]);
+                slidingSashPieceAngles.addAll(['45/45', '45/45']);
               }
             }
             // joint brosse موحد PVC والألمنيوم: 3 ضلفات H×8+W×12 ، غيرها × عدد الأزواج
@@ -5232,19 +5267,23 @@ class ComponentCalculator {
           );
         }
       }
-
       if (slidingSashPieces.isNotEmpty) {
         items.add(
           createProfile(
             'الظلفة المنزلقة (Sliding Sash)',
             colorName,
             pieces: slidingSashPieces,
-            pieceCutAngles: uniformAngles(slidingSashPieces, '45/45'),
+            pieceCutAngles:
+                slidingSashPieceAngles.length == slidingSashPieces.length
+                ? slidingSashPieceAngles
+                : uniformAngles(slidingSashPieces, '45/45'),
             unit: 'قطاع',
             overrideMap:
                 window.slidingSashOverride ??
                 window.getSlidingSectionByType('sash')?.toMap(),
             preferOverrideMap: true,
+            selectorType: 'sash',
+            roleKey: 'sash',
           ),
         );
       }
@@ -5516,7 +5555,7 @@ class ComponentCalculator {
               'قائم Face to Face (Face-to-Face)',
               colorName,
               pieces: slidingFaceToFacePieces,
-              pieceCutAngles: uniformAngles(slidingFaceToFacePieces, '90/90'),
+              pieceCutAngles: uniformAngles(slidingFaceToFacePieces, '45/45'),
               unit: 'قطاع',
               overrideMap: faceOverride,
               preferOverrideMap: true,
@@ -6513,8 +6552,10 @@ class ComponentCalculator {
             // rule at all the BomEngine will silently drop it after filtering
             // available candidates, but we can avoid emitting a misleading
             // item altogether by checking the override map first.
-            (window.componentOverrides.containsKey('أونتروماتيك (Entrematique)') ||
-             window.componentOverrides.containsKey('entrematique'));
+            (window.componentOverrides.containsKey(
+                  'أونتروماتيك (Entrematique)',
+                ) ||
+                window.componentOverrides.containsKey('entrematique'));
 
         if (useEntrematique) {
           items.add(

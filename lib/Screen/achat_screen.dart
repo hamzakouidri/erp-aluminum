@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:database_data/settings/localization.dart';
 import '../services/cloud_sync_service.dart';
@@ -8,9 +8,13 @@ import 'achat_details_screen.dart';
 import 'achat_return_screen.dart';
 import 'ai_scanner_screen.dart';
 import 'trash_screen.dart';
+import 'app_workspace_shell.dart';
 import '../widgets/home_back_boundary.dart';
+import '../widgets/resizable_columns_table.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:provider/provider.dart';
+
+enum _AchatViewMode { cards, table }
 
 class AchatScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -41,6 +45,8 @@ class _AchatScreenState extends State<AchatScreen>
   int? _expandedAchatId;
   StreamSubscription? _syncSub;
   bool? _selectedModeIsWorkshop;
+  _AchatViewMode _viewMode = _AchatViewMode.cards;
+  int? _selectedAchatId;
 
   bool get _effectiveIsWorkshop {
     if (_selectedModeIsWorkshop != null) return _selectedModeIsWorkshop!;
@@ -56,14 +62,45 @@ class _AchatScreenState extends State<AchatScreen>
   static const _blue = Color(0xFF2563EB);
   static const _blueLight = Color(0xFF3B82F6);
   static const _cyan = Color(0xFF0EA5E9);
+
   Color get _cardBg => Theme.of(context).cardColor;
+
   Color get _bg => Theme.of(context).scaffoldBackgroundColor;
   static const _green = Color(0xFF10B981);
   static const _red = Color(0xFFEF4444);
   static const _orange = Color(0xFFF59E0B);
+
+  void _openAchatDetails({
+    required int achatId,
+    required String invoiceNumber,
+    required String supplierName,
+    bool autoOpenPicker = false,
+  }) {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    openAdaptiveScreen(
+      context,
+      title:
+          '$supplierName • ${Localization.translate('تفاصيل الشراء', lang)} #$invoiceNumber',
+      icon: Icons.receipt_long_rounded,
+      entryId: 'achat_details_$achatId',
+      screen: AchatDetailsScreen(
+        achatId: achatId,
+        invoiceNumber: invoiceNumber,
+        supplierName: supplierName,
+        autoOpenPicker: autoOpenPicker,
+      ),
+    );
+    _refreshList();
+  }
+
   Color get _text => Theme.of(context).colorScheme.onSurface;
+
   Color get _textDim =>
       Theme.of(context).colorScheme.onSurface.withOpacity(0.7);
+
   Color get _divider => Theme.of(context).dividerColor;
 
   @override
@@ -206,6 +243,13 @@ class _AchatScreenState extends State<AchatScreen>
 
                     return matchesSearch && matchesFilter;
                   }).toList();
+                  Map<String, dynamic>? selectedAchat;
+                  for (final item in filteredData) {
+                    if (item['id'] == _selectedAchatId) {
+                      selectedAchat = item;
+                      break;
+                    }
+                  }
 
                   return Padding(
                     padding: EdgeInsets.symmetric(
@@ -223,6 +267,12 @@ class _AchatScreenState extends State<AchatScreen>
                         _buildSearchAndTitle(),
                         SizedBox(height: 12),
 
+                        _buildViewModeSelector(),
+                        if (_viewMode == _AchatViewMode.table &&
+                            selectedAchat != null)
+                          _buildSelectedAchatActions(selectedAchat),
+                        SizedBox(height: 12),
+
                         // ── فلاتر الحالة ──
                         _buildFilterChips(),
                         SizedBox(height: 16),
@@ -230,6 +280,8 @@ class _AchatScreenState extends State<AchatScreen>
                         // ── قائمة فواتير المشتريات ──
                         filteredData.isEmpty
                             ? _buildEmptyState()
+                            : _viewMode == _AchatViewMode.table
+                            ? _buildAchatTable(filteredData)
                             : ListView.builder(
                                 shrinkWrap: true,
                                 physics: const NeverScrollableScrollPhysics(),
@@ -273,6 +325,227 @@ class _AchatScreenState extends State<AchatScreen>
     );
   }
 
+  Widget _buildViewModeSelector() {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    return Align(
+      alignment: AlignmentDirectional.centerStart,
+      child: SegmentedButton<_AchatViewMode>(
+        segments: [
+          ButtonSegment(
+            value: _AchatViewMode.cards,
+            icon: const Icon(Icons.view_agenda_rounded, size: 18),
+            label: Text(Localization.translate('عرض كبطاقات', lang)),
+          ),
+          ButtonSegment(
+            value: _AchatViewMode.table,
+            icon: const Icon(Icons.table_rows_rounded, size: 18),
+            label: Text(Localization.translate('عرض كجدول', lang)),
+          ),
+        ],
+        selected: {_viewMode},
+        onSelectionChanged: (selection) => setState(() {
+          _viewMode = selection.first;
+          if (_viewMode == _AchatViewMode.cards) _selectedAchatId = null;
+        }),
+      ),
+    );
+  }
+
+  Widget _buildSelectedAchatActions(Map<String, dynamic> achat) {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    final id = (achat['id'] as num).toInt();
+    final invoice = (achat['invoice_number'] ?? '').toString();
+    final supplier = (achat['supplier_name'] ?? '').toString();
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      color: _blue.withOpacity(0.07),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '$supplier • $invoice',
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          TextButton.icon(
+            onPressed: () => _openAchatDetails(
+              achatId: id,
+              invoiceNumber: invoice,
+              supplierName: supplier,
+            ),
+            icon: const Icon(Icons.edit_rounded),
+            label: Text(Localization.translate('تعديل', lang)),
+          ),
+          if (!widget.readOnly)
+            TextButton.icon(
+              onPressed: () => _confirmDeleteAchat(id, invoice),
+              icon: const Icon(Icons.delete_rounded, color: _red),
+              label: Text(
+                Localization.translate('حذف', lang),
+                style: const TextStyle(color: _red),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAchatTable(List<Map<String, dynamic>> achats) {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final headerStyle = TextStyle(
+      color: isDark ? Colors.white : const Color(0xFF18233B),
+      fontWeight: FontWeight.bold,
+      fontSize: 12,
+      fontFamily: 'Cairo',
+    );
+    bool wasModified(Map<String, dynamic> achat) {
+      final created = DateTime.tryParse(achat['created_at']?.toString() ?? '');
+      final updated = DateTime.tryParse(achat['updated_at']?.toString() ?? '');
+      if (created == null || updated == null) return false;
+      return updated.difference(created).abs() > const Duration(seconds: 5);
+    }
+    return ResizableColumnsTable(
+      persistenceKey: 'material_purchase_documents_v2',
+      headerColor: isDark ? Colors.grey.shade900 : Colors.blueGrey.shade800,
+      borderColor: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+      rowColor: isDark ? const Color(0xFF171721) : Colors.white,
+      headerMinHeight: 52,
+      rowMinHeight: 64,
+      maxBodyHeight: 560,
+      columns: [
+        ResizableTableColumn(
+          id: 'invoice',
+          label: Text(
+            Localization.translate('رقم الوثيقة', lang),
+            style: headerStyle,
+          ),
+          initialWidth: 170,
+        ),
+        ResizableTableColumn(
+          id: 'supplier',
+          label: Text(
+            Localization.translate('المورد', lang),
+            style: headerStyle,
+          ),
+          initialWidth: 280,
+        ),
+        ResizableTableColumn(
+          id: 'created_at',
+          label: Text(Localization.translate('تاريخ الإنشاء', lang), style: headerStyle),
+          initialWidth: 180,
+        ),
+        ResizableTableColumn(
+          id: 'created_by',
+          label: Text(Localization.translate('أدخل من طرف', lang), style: headerStyle),
+          initialWidth: 170,
+        ),
+        ResizableTableColumn(
+          id: 'updated_at',
+          label: Text(Localization.translate('تاريخ التعديل', lang), style: headerStyle),
+          initialWidth: 180,
+        ),
+        ResizableTableColumn(
+          id: 'updated_by',
+          label: Text(Localization.translate('عُدل من طرف', lang), style: headerStyle),
+          initialWidth: 170,
+        ),
+        ResizableTableColumn(
+          id: 'status',
+          label: Text(
+            Localization.translate('الحالة', lang),
+            style: headerStyle,
+          ),
+          initialWidth: 150,
+        ),
+        ResizableTableColumn(
+          id: 'amount',
+          label: Text(
+            Localization.translate('المبلغ', lang),
+            style: headerStyle,
+          ),
+          initialWidth: 180,
+        ),
+        ResizableTableColumn(
+          id: 'actions',
+          label: Text(
+            Localization.translate('إجراء', lang),
+            style: headerStyle,
+          ),
+          initialWidth: 150,
+          alignment: Alignment.center,
+        ),
+      ],
+      rows: achats.map((achat) {
+        final id = (achat['id'] as num).toInt();
+        final invoice = (achat['invoice_number'] ?? '—').toString();
+        final supplier = (achat['supplier_name'] ?? '—').toString();
+        final modified = wasModified(achat);
+        return ResizableTableRow(
+          reorderId: id.toString(),
+          color: id == _selectedAchatId ? _blue.withOpacity(0.09) : null,
+          onTap: () => setState(() => _selectedAchatId = id),
+          onDoubleTap: () => _openAchatDetails(
+            achatId: id,
+            invoiceNumber: invoice,
+            supplierName: supplier,
+          ),
+          cells: [
+            Text(invoice, style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(supplier, overflow: TextOverflow.ellipsis),
+            Text(_formatDate((achat['created_at'] ?? '').toString())),
+            Text((achat['created_by'] ?? '—').toString()),
+            Text(modified ? _formatDate((achat['updated_at'] ?? '').toString()) : '—'),
+            Text(modified ? (achat['updated_by'] ?? '—').toString() : '—'),
+            Text((achat['status'] ?? 'Active').toString()),
+            Text(
+              '${NumberFormat('#,##0.00', 'en_US').format((achat['total'] as num?)?.toDouble() ?? 0)} DZD',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  tooltip: Localization.translate('تعديل', lang),
+                  onPressed: () => _openAchatDetails(
+                    achatId: id,
+                    invoiceNumber: invoice,
+                    supplierName: supplier,
+                  ),
+                  icon: const Icon(Icons.edit_rounded, size: 19),
+                ),
+                if (!widget.readOnly)
+                  IconButton(
+                    tooltip: Localization.translate('حذف', lang),
+                    onPressed: () => _confirmDeleteAchat(id, invoice),
+                    icon: const Icon(
+                      Icons.delete_outline_rounded,
+                      size: 19,
+                      color: _red,
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        );
+      }).toList(),
+    );
+  }
+
   // ── Sliver App Bar with Gradient ──────────────────────────────────────────
   Widget _buildAppBar() {
     return SliverAppBar(
@@ -290,8 +563,8 @@ class _AchatScreenState extends State<AchatScreen>
       leading: HomeBackScope.of(context) != null
           ? const SizedBox(width: kToolbarHeight)
           : (Navigator.canPop(context)
-              ? const BackButton(color: Colors.white)
-              : null),
+                ? const BackButton(color: Colors.white)
+                : null),
       actions: [
         IconButton(
           icon: const Icon(Icons.refresh_rounded),
@@ -312,7 +585,10 @@ class _AchatScreenState extends State<AchatScreen>
           ),
           onPressed: _openAiScanner,
         ),
-        if (Provider.of<AppSettingsProvider>(context, listen: false).canAccessTrash())
+        if (Provider.of<AppSettingsProvider>(
+          context,
+          listen: false,
+        ).canAccessTrash())
           IconButton(
             icon: const Icon(Icons.auto_delete_rounded),
             tooltip: Localization.translate(
@@ -392,7 +668,10 @@ class _AchatScreenState extends State<AchatScreen>
                 },
                 borderRadius: BorderRadius.circular(16),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(16),
@@ -401,7 +680,11 @@ class _AchatScreenState extends State<AchatScreen>
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.swap_horiz_rounded, size: 16, color: Colors.white),
+                      const Icon(
+                        Icons.swap_horiz_rounded,
+                        size: 16,
+                        color: Colors.white,
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         Localization.translate(
@@ -662,20 +945,11 @@ class _AchatScreenState extends State<AchatScreen>
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
         child: InkWell(
-          onTap: () async {
-            // Navigator to AchatDetailsScreen
-            await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => AchatDetailsScreen(
-                  achatId: id,
-                  invoiceNumber: invoiceNumber,
-                  supplierName: supplierName,
-                ),
-              ),
-            );
-            _refreshList(); // Reload stats after returning
-          },
+          onTap: () => _openAchatDetails(
+            achatId: id,
+            invoiceNumber: invoiceNumber,
+            supplierName: supplierName,
+          ),
           child: Container(
             decoration: BoxDecoration(
               border: Border(right: BorderSide(color: statusColor, width: 6)),
@@ -841,19 +1115,11 @@ class _AchatScreenState extends State<AchatScreen>
                             ).canEditPurchases())
                           TextButton.icon(
                             style: TextButton.styleFrom(foregroundColor: _blue),
-                            onPressed: () async {
-                              await Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => AchatDetailsScreen(
-                                    achatId: id,
-                                    invoiceNumber: invoiceNumber,
-                                    supplierName: supplierName,
-                                  ),
-                                ),
-                              );
-                              _refreshList();
-                            },
+                            onPressed: () => _openAchatDetails(
+                              achatId: id,
+                              invoiceNumber: invoiceNumber,
+                              supplierName: supplierName,
+                            ),
                             icon: const Icon(Icons.edit, size: 18),
                             label: Text(
                               Localization.translate('تعديل', lang),
@@ -992,7 +1258,10 @@ class _AchatScreenState extends State<AchatScreen>
         builder: (context, setDialogState) {
           if (!isLoaded) {
             final isWs = _effectiveIsWorkshop;
-            final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+            final settings = Provider.of<AppSettingsProvider>(
+              context,
+              listen: false,
+            );
             Future.wait([
               widget.db.readSuppliers(),
               isWs
@@ -1159,7 +1428,9 @@ class _AchatScreenState extends State<AchatScreen>
                                     'المورد *',
                                     lang,
                                   ),
-                                  prefixIcon: const Icon(Icons.business_rounded),
+                                  prefixIcon: const Icon(
+                                    Icons.business_rounded,
+                                  ),
                                   border: const OutlineInputBorder(),
                                 ),
                                 items: suppliers.map((s) {
@@ -1291,24 +1562,19 @@ class _AchatScreenState extends State<AchatScreen>
                         locationId: selectedLocationId,
                         createdAt: selectedDate.toIso8601String(),
                         isWorkshop: _effectiveIsWorkshop,
-                        activityType: _effectiveIsWorkshop ? 'workshop' : 'store',
+                        activityType: _effectiveIsWorkshop
+                            ? 'workshop'
+                            : 'store',
                       );
 
                       _refreshList();
                       if (!context.mounted) return;
                       Navigator.pop(context);
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => AchatDetailsScreen(
-                            achatId: newAchatId,
-                            invoiceNumber: invoiceCtrl.text.trim(),
-                            supplierName: selectedSupplierName!,
-                            autoOpenPicker: false,
-                          ),
-                        ),
+                      _openAchatDetails(
+                        achatId: newAchatId,
+                        invoiceNumber: invoiceCtrl.text.trim(),
+                        supplierName: selectedSupplierName!,
                       );
-                      _refreshList();
                     } catch (e) {
                       if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -1322,9 +1588,7 @@ class _AchatScreenState extends State<AchatScreen>
                   },
                   child: Text(
                     Localization.translate('حفظ وتسجيل', lang),
-                    style: const TextStyle(
-                      fontFamily: 'Cairo',
-                    ),
+                    style: const TextStyle(fontFamily: 'Cairo'),
                   ),
                 ),
                 ElevatedButton.icon(
@@ -1381,24 +1645,20 @@ class _AchatScreenState extends State<AchatScreen>
                         locationId: selectedLocationId,
                         createdAt: selectedDate.toIso8601String(),
                         isWorkshop: _effectiveIsWorkshop,
-                        activityType: _effectiveIsWorkshop ? 'workshop' : 'store',
+                        activityType: _effectiveIsWorkshop
+                            ? 'workshop'
+                            : 'store',
                       );
 
                       _refreshList();
                       if (!context.mounted) return;
                       Navigator.pop(context);
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => AchatDetailsScreen(
-                            achatId: newAchatId,
-                            invoiceNumber: invoiceCtrl.text.trim(),
-                            supplierName: selectedSupplierName!,
-                            autoOpenPicker: true,
-                          ),
-                        ),
+                      _openAchatDetails(
+                        achatId: newAchatId,
+                        invoiceNumber: invoiceCtrl.text.trim(),
+                        supplierName: selectedSupplierName!,
+                        autoOpenPicker: true,
                       );
-                      _refreshList();
                     } catch (e) {
                       if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(

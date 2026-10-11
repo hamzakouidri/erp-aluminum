@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import '../sql_database.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:database_data/settings/localization.dart';

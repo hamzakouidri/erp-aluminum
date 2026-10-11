@@ -1,6 +1,76 @@
 import '../app_settings.dart';
 
 const Map<String, Map<AppLanguage, String>> generalKeys = {
+  'تاريخ الإدخال': {
+    AppLanguage.arabic: 'تاريخ الإدخال',
+    AppLanguage.french: 'Date de création',
+    AppLanguage.english: 'Created at',
+  },
+  'أدخل من طرف': {
+    AppLanguage.arabic: 'أدخل من طرف',
+    AppLanguage.french: 'Créé par',
+    AppLanguage.english: 'Created by',
+  },
+  'تاريخ التعديل': {
+    AppLanguage.arabic: 'تاريخ التعديل',
+    AppLanguage.french: 'Date de modification',
+    AppLanguage.english: 'Updated at',
+  },
+  'عُدل من طرف': {
+    AppLanguage.arabic: 'عُدل من طرف',
+    AppLanguage.french: 'Modifié par',
+    AppLanguage.english: 'Updated by',
+  },
+  'عرض كبطاقات': {
+    AppLanguage.arabic: 'عرض كبطاقات',
+    AppLanguage.french: 'Affichage en cartes',
+    AppLanguage.english: 'Card view',
+  },
+  'عرض كجدول': {
+    AppLanguage.arabic: 'عرض كجدول',
+    AppLanguage.french: 'Affichage en tableau',
+    AppLanguage.english: 'Table view',
+  },
+  'إضافة وثيقة جديدة': {
+    AppLanguage.arabic: 'إضافة وثيقة جديدة',
+    AppLanguage.french: 'Ajouter un nouveau document',
+    AppLanguage.english: 'Add a new document',
+  },
+  'رقم الوثيقة': {
+    AppLanguage.arabic: 'رقم الوثيقة',
+    AppLanguage.french: 'N° du document',
+    AppLanguage.english: 'Document No.',
+  },
+  'نوع الوثيقة': {
+    AppLanguage.arabic: 'نوع الوثيقة',
+    AppLanguage.french: 'Type de document',
+    AppLanguage.english: 'Document type',
+  },
+  'كل شيء': {
+    AppLanguage.arabic: 'كل شيء',
+    AppLanguage.french: 'Tout',
+    AppLanguage.english: 'Everything',
+  },
+  'الربط': {
+    AppLanguage.arabic: 'الربط',
+    AppLanguage.french: 'Liaison',
+    AppLanguage.english: 'Link',
+  },
+  'صندوق المحل': {
+    AppLanguage.arabic: 'صندوق المحل',
+    AppLanguage.french: 'Caisse Magasin',
+    AppLanguage.english: 'Store Cashbox',
+  },
+  'زبائن المحل': {
+    AppLanguage.arabic: 'زبائن المحل',
+    AppLanguage.french: 'Clients Magasin',
+    AppLanguage.english: 'Store Customers',
+  },
+  'معطل': {
+    AppLanguage.arabic: 'معطل',
+    AppLanguage.french: 'Bloqué',
+    AppLanguage.english: 'Blocked',
+  },
   'نوع النشاط': {
     AppLanguage.arabic: 'نوع النشاط',
     AppLanguage.french: 'Type d\'activité',
@@ -8,7 +78,8 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
   },
   'تحديد طبيعة نشاط المؤسسة': {
     AppLanguage.arabic: 'تحديد طبيعة نشاط المؤسسة والوظائف المتاحة',
-    AppLanguage.french: 'Définir la nature de l\'activité et les modules actifs',
+    AppLanguage.french:
+        'Définir la nature de l\'activité et les modules actifs',
     AppLanguage.english: 'Define organization activity nature & active modules',
   },
   'ورشة فقط': {
@@ -17,9 +88,12 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.english: 'Workshop only',
   },
   'تصنيع النوافذ والمطابخ والطلبيات مع مستودعات ومشتريات الورشة المباشرة': {
-    AppLanguage.arabic: 'تصنيع النوافذ والمطابخ والطلبيات مع مستودعات ومشتريات الورشة المباشرة',
-    AppLanguage.french: 'Fabrication de menuiserie, commandes, stock et achats directs atelier',
-    AppLanguage.english: 'Manufacturing, orders, workshop stock and direct purchases',
+    AppLanguage.arabic:
+        'تصنيع النوافذ والمطابخ والطلبيات مع مستودعات ومشتريات الورشة المباشرة',
+    AppLanguage.french:
+        'Fabrication de menuiserie, commandes, stock et achats directs atelier',
+    AppLanguage.english:
+        'Manufacturing, orders, workshop stock and direct purchases',
   },
   'محل بيع مواد فقط': {
     AppLanguage.arabic: 'محل بيع مواد فقط',
@@ -27,9 +101,12 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.english: 'Materials store only',
   },
   'بيع وتجارة المقاطع والزجاج والإكسسوارات ومستودعات ومبيعات المحل': {
-    AppLanguage.arabic: 'بيع وتجارة المقاطع والزجاج والإكسسوارات ومستودعات ومبيعات المحل',
-    AppLanguage.french: 'Vente profilés, quincaillerie, vitrage, stocks magasin et factures',
-    AppLanguage.english: 'Selling profiles, glass, accessories, store stock and invoices',
+    AppLanguage.arabic:
+        'بيع وتجارة المقاطع والزجاج والإكسسوارات ومستودعات ومبيعات المحل',
+    AppLanguage.french:
+        'Vente profilés, quincaillerie, vitrage, stocks magasin et factures',
+    AppLanguage.english:
+        'Selling profiles, glass, accessories, store stock and invoices',
   },
   'ورشة + محل بيع مواد': {
     AppLanguage.arabic: 'ورشة + محل بيع مواد',
@@ -37,9 +114,12 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.english: 'Workshop + Materials store',
   },
   'كلا النشاطين معاً، مع إمكانية التحويل والبيع الداخلي للورشة': {
-    AppLanguage.arabic: 'كلا النشاطين معاً، مع إمكانية التحويل والبيع الداخلي للورشة',
-    AppLanguage.french: 'Les deux activités avec vente et transfert interne vers l\'atelier',
-    AppLanguage.english: 'Both activities with internal sale and transfer to workshop',
+    AppLanguage.arabic:
+        'كلا النشاطين معاً، مع إمكانية التحويل والبيع الداخلي للورشة',
+    AppLanguage.french:
+        'Les deux activités avec vente et transfert interne vers l\'atelier',
+    AppLanguage.english:
+        'Both activities with internal sale and transfer to workshop',
   },
   'تأكيد واستلام في المخزون': {
     AppLanguage.arabic: 'تأكيد واستلام في المخزون',
@@ -53,8 +133,10 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
   },
   'تم تأكيد الفاتورة وإدخال الكميات للمخزون بنجاح': {
     AppLanguage.arabic: 'تم تأكيد الفاتورة وإدخال الكميات للمخزون بنجاح',
-    AppLanguage.french: 'Facture confirmée et articles ajoutés au stock avec succès',
-    AppLanguage.english: 'Invoice confirmed and items added to stock successfully',
+    AppLanguage.french:
+        'Facture confirmée et articles ajoutés au stock avec succès',
+    AppLanguage.english:
+        'Invoice confirmed and items added to stock successfully',
   },
   // ── Material Sales Translations ──
   'لوحة المتابعة': {
@@ -143,9 +225,12 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.english: 'Stock available for sale',
   },
   'يعرض نفس مخزون الورشة المتاح للبيع، دون إنشاء مخزون منفصل.': {
-    AppLanguage.arabic: 'يعرض نفس مخزون الورشة المتاح للبيع، دون إنشاء مخزون منفصل.',
-    AppLanguage.french: "Affiche le même stock de l'atelier disponible à la vente, sans créer de stock séparé.",
-    AppLanguage.english: 'Displays the same workshop inventory available for sale, without creating separate stock.',
+    AppLanguage.arabic:
+        'يعرض نفس مخزون الورشة المتاح للبيع، دون إنشاء مخزون منفصل.',
+    AppLanguage.french:
+        "Affiche le même stock de l'atelier disponible à la vente, sans créer de stock séparé.",
+    AppLanguage.english:
+        'Displays the same workshop inventory available for sale, without creating separate stock.',
   },
   'فتح المخزون': {
     AppLanguage.arabic: 'فتح المخزون',
@@ -227,11 +312,11 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Payé',
     AppLanguage.english: 'Paid',
   },
-  'نوع الوثيقة': {
-    AppLanguage.arabic: 'نوع الوثيقة',
-    AppLanguage.french: 'Type de document',
-    AppLanguage.english: 'Document Type',
-  },
+  // 'نوع الوثيقة': {
+  //   AppLanguage.arabic: 'نوع الوثيقة',
+  //   AppLanguage.french: 'Type de document',
+  //   AppLanguage.english: 'Document Type',
+  // },
   'العميل': {
     AppLanguage.arabic: 'العميل',
     AppLanguage.french: 'Client',
@@ -884,6 +969,11 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.arabic: 'حفظ وتسجيل',
     AppLanguage.french: 'Enregistrer',
     AppLanguage.english: 'Save and Register',
+  },
+  'حفظ وإضافة عناصر': {
+    AppLanguage.arabic: 'حفظ وإضافة عناصر',
+    AppLanguage.french: 'Enregistrer et ajouter des articles',
+    AppLanguage.english: 'Save and add items',
   },
   'حلق خارجي (Frame)': {
     AppLanguage.arabic: 'حلق خارجي (اطار)',
@@ -3210,6 +3300,21 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'جوانات',
     AppLanguage.french: 'Joints',
     AppLanguage.english: 'Joints',
+  },
+  'المستودع - إضافة عناصر للفاتورة (اسحب للتحريك)': {
+    AppLanguage.arabic: 'المستودع - إضافة عناصر للفاتورة (اسحب للتحريك)',
+    AppLanguage.french: 'Dépôt - Ajouter des articles à la facture (Glisser pour déplacer)',
+    AppLanguage.english: 'Warehouse - Add items to invoice (Drag to move)',
+  },
+  'إضافة عناصر (مصغرة)': {
+    AppLanguage.arabic: 'إضافة عناصر (مصغرة)',
+    AppLanguage.french: 'Ajouter des articles (Minimisé)',
+    AppLanguage.english: 'Add items (Minimized)',
+  },
+  'السعر: --': {
+    AppLanguage.arabic: 'السعر: --',
+    AppLanguage.french: 'Prix : --',
+    AppLanguage.english: 'Price: --',
   },
   'المستودع (إضافة للفاتورة)': {
     AppLanguage.arabic: 'المستودع (إضافة للفاتورة)',
@@ -7563,7 +7668,8 @@ This action cannot be undone!''',
   },
   'بيع داخلي للورشة (تحويل مخزون تلقائي)': {
     AppLanguage.arabic: 'بيع داخلي للورشة (تحويل مخزون تلقائي)',
-    AppLanguage.french: 'Vente interne atelier (transfert de stock automatique)',
+    AppLanguage.french:
+        'Vente interne atelier (transfert de stock automatique)',
     AppLanguage.english: 'Internal sale to workshop (automatic stock transfer)',
   },
   'مستودع المحل (المصدر)': {
@@ -7653,13 +7759,17 @@ This action cannot be undone!''',
   },
   'فصل أرباح المحل والورشة واستبعاد الهامش الداخلي': {
     AppLanguage.arabic: 'فصل أرباح المحل والورشة واستبعاد الهامش الداخلي',
-    AppLanguage.french: 'Séparation magasin/atelier et élimination de la marge interne',
-    AppLanguage.english: 'Separate store & workshop profits with internal margin eliminated',
+    AppLanguage.french:
+        'Séparation magasin/atelier et élimination de la marge interne',
+    AppLanguage.english:
+        'Separate store & workshop profits with internal margin eliminated',
   },
   'النتيجة المجمعة للمؤسسة (بدون تحويلات داخلية)': {
     AppLanguage.arabic: 'النتيجة المجمعة للمؤسسة (بدون تحويلات داخلية)',
-    AppLanguage.french: 'Résultat consolidé de l\'entreprise (hors transferts internes)',
-    AppLanguage.english: 'Consolidated Enterprise Result (excl. internal transfers)',
+    AppLanguage.french:
+        'Résultat consolidé de l\'entreprise (hors transferts internes)',
+    AppLanguage.english:
+        'Consolidated Enterprise Result (excl. internal transfers)',
   },
   'إجمالي إيراد المؤسسة الخارجي': {
     AppLanguage.arabic: 'إجمالي إيراد المؤسسة الخارجي',
@@ -7688,8 +7798,10 @@ This action cannot be undone!''',
   },
   'منعاً لاحتساب أرباح وهمية قبل البيع للزبون النهائي.': {
     AppLanguage.arabic: 'منعاً لاحتساب أرباح وهمية قبل البيع للزبون النهائي.',
-    AppLanguage.french: 'pour éviter la comptabilisation de profits fictifs avant la vente finale.',
-    AppLanguage.english: 'to prevent unrealized internal profits prior to external sale.',
+    AppLanguage.french:
+        'pour éviter la comptabilisation de profits fictifs avant la vente finale.',
+    AppLanguage.english:
+        'to prevent unrealized internal profits prior to external sale.',
   },
   'نشاط محل بيع المواد المستقل': {
     AppLanguage.arabic: 'نشاط محل بيع المواد المستقل',
@@ -7762,9 +7874,12 @@ This action cannot be undone!''',
     AppLanguage.english: 'Cancel internal transfer',
   },
   'هل أنت متأكد من إلغاء هذا التحويل الداخلي؟ سيتم إرجاع المواد من مستودع الورشة إلى مستودع المحل وتوثيق حركة عكسية دون حذف السجل التاريخي.': {
-    AppLanguage.arabic: 'هل أنت متأكد من إلغاء هذا التحويل الداخلي؟ سيتم إرجاع المواد من مستودع الورشة إلى مستودع المحل وتوثيق حركة عكسية دون حذف السجل التاريخي.',
-    AppLanguage.french: 'Êtes-vous sûr d\'annuler ce transfert interne ? Les articles seront retournés du stock atelier vers le magasin avec écriture d\'extourne sans supprimer l\'historique.',
-    AppLanguage.english: 'Are you sure you want to cancel this internal transfer? Items will be returned from workshop stock to store stock with counter-entries without deleting history.',
+    AppLanguage.arabic:
+        'هل أنت متأكد من إلغاء هذا التحويل الداخلي؟ سيتم إرجاع المواد من مستودع الورشة إلى مستودع المحل وتوثيق حركة عكسية دون حذف السجل التاريخي.',
+    AppLanguage.french:
+        'Êtes-vous sûr d\'annuler ce transfert interne ? Les articles seront retournés du stock atelier vers le magasin avec écriture d\'extourne sans supprimer l\'historique.',
+    AppLanguage.english:
+        'Are you sure you want to cancel this internal transfer? Items will be returned from workshop stock to store stock with counter-entries without deleting history.',
   },
   'تأكيد الإرجاع للمحل': {
     AppLanguage.arabic: 'تأكيد الإرجاع للمحل',
@@ -7773,8 +7888,10 @@ This action cannot be undone!''',
   },
   'تم إرجاع المواد وإلغاء التحويل الداخلي بنجاح': {
     AppLanguage.arabic: 'تم إرجاع المواد وإلغاء التحويل الداخلي بنجاح',
-    AppLanguage.french: 'Articles retournés et transfert interne annulé avec succès',
-    AppLanguage.english: 'Items returned and internal transfer cancelled successfully',
+    AppLanguage.french:
+        'Articles retournés et transfert interne annulé avec succès',
+    AppLanguage.english:
+        'Items returned and internal transfer cancelled successfully',
   },
   'خطأ أثناء إلغاء التحويل': {
     AppLanguage.arabic: 'خطأ أثناء إلغاء التحويل',

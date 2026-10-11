@@ -143,4 +143,175 @@ void main() {
       2,
     );
   });
+  test('BS90 frame clams progression per rail: 2 rails=4, 3 rails=6, 4 rails=8, 5 rails=10, 6 rails=12', () async {
+    final db = RuleDatabase();
+    db.rules
+      ..clear()
+      ..add({
+        'id': 4188,
+        'item_id': 61,
+        'series_id': 41,
+        'role_key': 'clam',
+        'is_active': 1,
+        'show_in_quantity': 1,
+        'usage_scope': 'sliding',
+        'assembly_target': 'frame',
+        'assembly_section_ids': '296,305',
+        'assembly_section_quantities': '296:2:2,305:1:1',
+      });
+
+    final model = WindowModel(db: db, width: 1500, height: 1200)
+      ..systemMode = 'sliding'
+      ..hasBottomFrame = false
+      ..activeSlidingSeries = AluminumSeries(id: 41, profileId: 1, name: 'Bs90', type: 'sliding')
+      ..slidingFrameOverride = {'id': 296, 'series_id': 41, 'type': 'frame'}
+      ..zones = [
+        WindowZone(
+          id: 's',
+          content: ZoneContent.slidingSash,
+          boundary: const Rect.fromLTWH(0, 0, 1500, 1200),
+          slidingSashesCount: 2,
+        ),
+      ];
+
+    // 2 rails: Base frame only with seuil (top=2 corners * 2 clams = 4)
+    final res2 = await BomEngineV2(database: db).filterItemsByAvailableCandidates(
+      window: model,
+      items: [],
+    );
+    expect(res2.singleWhere((i) => i.roleKey == 'clam').quantity, 4);
+
+    // 3 rails: Base frame (4) + 1 rail extension (3 cuts * 1 clam per top corner = 2) -> 6
+    final res3 = await BomEngineV2(database: db).filterItemsByAvailableCandidates(
+      window: model,
+      items: [
+        BomItem(
+          category: 'profile',
+          originalName: 'Ext',
+          name: 'Ext',
+          quantity: 1,
+          unit: 'm',
+          unitPrice: 0,
+          catalogItemId: 305,
+          roleKey: 'frame_extension',
+          sourceSeriesId: 41,
+          pieces: [1.5, 1.2, 1.2],
+        ),
+      ],
+    );
+    expect(res3.singleWhere((i) => i.roleKey == 'clam').quantity, 6);
+
+    // 4 rails: Base frame (4) + 2 rails extension (6 cuts -> 4 corners * 1 = 4) -> 8
+    final res4 = await BomEngineV2(database: db).filterItemsByAvailableCandidates(
+      window: model,
+      items: [
+        BomItem(
+          category: 'profile',
+          originalName: 'Ext',
+          name: 'Ext',
+          quantity: 1,
+          unit: 'm',
+          unitPrice: 0,
+          catalogItemId: 305,
+          roleKey: 'frame_extension',
+          sourceSeriesId: 41,
+          pieces: [1.5, 1.2, 1.2, 1.5, 1.2, 1.2],
+        ),
+      ],
+    );
+    expect(res4.singleWhere((i) => i.roleKey == 'clam').quantity, 8);
+
+    // 5 rails: Base frame (4) + 3 rails extension (9 cuts -> 6 corners * 1 = 6) -> 10
+    final res5 = await BomEngineV2(database: db).filterItemsByAvailableCandidates(
+      window: model,
+      items: [
+        BomItem(
+          category: 'profile',
+          originalName: 'Ext',
+          name: 'Ext',
+          quantity: 1,
+          unit: 'm',
+          unitPrice: 0,
+          catalogItemId: 305,
+          roleKey: 'frame_extension',
+          sourceSeriesId: 41,
+          pieces: [1.5, 1.2, 1.2, 1.5, 1.2, 1.2, 1.5, 1.2, 1.2],
+        ),
+      ],
+    );
+    expect(res5.singleWhere((i) => i.roleKey == 'clam').quantity, 10);
+
+    // 6 rails: Base frame (4) + 4 rails extension (12 cuts -> 8 corners * 1 = 8) -> 12
+    final res6 = await BomEngineV2(database: db).filterItemsByAvailableCandidates(
+      window: model,
+      items: [
+        BomItem(
+          category: 'profile',
+          originalName: 'Ext',
+          name: 'Ext',
+          quantity: 1,
+          unit: 'm',
+          unitPrice: 0,
+          catalogItemId: 305,
+          roleKey: 'frame_extension',
+          sourceSeriesId: 41,
+          pieces: [1.5, 1.2, 1.2, 1.5, 1.2, 1.2, 1.5, 1.2, 1.2, 1.5, 1.2, 1.2],
+        ),
+      ],
+    );
+    expect(res6.singleWhere((i) => i.roleKey == 'clam').quantity, 12);
+  });
+
+  test('BS90 face-to-face central meeting adds 4 clams for the two meeting columns', () async {
+    final db = RuleDatabase();
+    db.rules
+      ..clear()
+      ..add({
+        'id': 4196,
+        'item_id': 60,
+        'series_id': 41,
+        'role_key': 'clam',
+        'is_active': 1,
+        'show_in_quantity': 1,
+        'usage_scope': 'sliding',
+        'assembly_target': 'sash',
+        'assembly_section_ids': '293,400',
+        'assembly_section_quantities': '293:1:1,400:1:1',
+      });
+
+    final model = WindowModel(db: db, width: 2000, height: 1200)
+      ..systemMode = 'sliding'
+      ..activeSlidingSeries = AluminumSeries(id: 41, profileId: 1, name: 'Bs90', type: 'sliding')
+      ..slidingSashOverride = {'id': 293, 'series_id': 41, 'type': 'sash'}
+      ..zones = [
+        WindowZone(
+          id: 's',
+          content: ZoneContent.slidingSash,
+          boundary: const Rect.fromLTWH(0, 0, 2000, 1200),
+          slidingSashesCount: 4,
+          slidingFaceToFace: true,
+        ),
+      ];
+
+    // Face-to-face 2 meeting columns cut at 45° (2 top + 2 bottom corners = 4 corners * 1 clam = 4)
+    final res = await BomEngineV2(database: db).filterItemsByAvailableCandidates(
+      window: model,
+      items: [
+        BomItem(
+          category: 'profile',
+          originalName: 'Face',
+          name: 'Face',
+          quantity: 1,
+          unit: 'm',
+          unitPrice: 0,
+          catalogItemId: 400,
+          roleKey: 'face_to_face',
+          sourceSeriesId: 41,
+          pieces: [1.2, 1.2],
+        ),
+      ],
+    );
+    // 4 sashes (16) + 2 face-to-face columns (4) = 20 clams
+    expect(res.singleWhere((i) => i.roleKey == 'clam').quantity, 20);
+  });
 }

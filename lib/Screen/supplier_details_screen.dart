@@ -6,6 +6,7 @@ import '../services/cloud_sync_service.dart';
 import '../settings/app_settings.dart';
 import '../sql_database.dart';
 import 'achat_details_screen.dart';
+import 'app_workspace_shell.dart';
 import 'supplier_ledger_pdf_service.dart';
 import 'receipt_pdf_service.dart';
 
@@ -686,16 +687,20 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
         onTap: () {
           if (type == 'Purchase') {
             final raw = item['raw'] as Map<String, dynamic>;
-            Navigator.push(
+            final invoiceNumber = raw['invoice_number']?.toString() ?? '';
+            final supplierName = widget.supplier['name']?.toString() ?? '';
+            openAdaptiveScreen(
               context,
-              MaterialPageRoute(
-                builder: (context) => AchatDetailsScreen(
-                  achatId: raw['id'],
-                  invoiceNumber: raw['invoice_number']?.toString() ?? '',
-                  supplierName: widget.supplier['name']?.toString() ?? '',
-                ),
+              title: '$supplierName • Détails des achats #$invoiceNumber',
+              icon: Icons.receipt_long_rounded,
+              entryId: 'achat_details_${raw['id']}',
+              screen: AchatDetailsScreen(
+                achatId: raw['id'],
+                invoiceNumber: invoiceNumber,
+                supplierName: supplierName,
               ),
-            ).then((_) => _loadLedgerData());
+            );
+            _loadLedgerData();
           } else if (type == 'Payment' || type == 'Return') {
             final raw = item['raw'] as Map<String, dynamic>;
             _showReceiptOptions(context, raw);

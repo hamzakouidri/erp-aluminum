@@ -107,16 +107,20 @@ class AppSettingsProvider extends ChangeNotifier {
   WorkingSection get workingSection {
     if (!hasWorkshop && hasMaterialsStore) return WorkingSection.materialsStore;
     if (hasWorkshop && !hasMaterialsStore) return WorkingSection.workshop;
+    if (!canAccessWorkshopScope() && canAccessStoreScope()) return WorkingSection.materialsStore;
+    if (canAccessWorkshopScope() && !canAccessStoreScope()) return WorkingSection.workshop;
     return _workingSection;
   }
 
   bool get isWorkingInWorkshop =>
       hasWorkshop &&
+      canAccessWorkshopScope() &&
       (workingSection == WorkingSection.all ||
           workingSection == WorkingSection.workshop);
 
   bool get isWorkingInStore =>
       hasMaterialsStore &&
+      canAccessStoreScope() &&
       (workingSection == WorkingSection.all ||
           workingSection == WorkingSection.materialsStore);
 
@@ -883,10 +887,20 @@ class AppSettingsProvider extends ChangeNotifier {
   }
 
   Future<void> setWorkingSection(WorkingSection section) async {
-    _workingSection = section;
+    if (section == WorkingSection.workshop && !canAccessWorkshopScope()) return;
+    if (section == WorkingSection.materialsStore && !canAccessStoreScope()) return;
+    if (section == WorkingSection.all && (!canAccessWorkshopScope() || !canAccessStoreScope())) {
+      if (canAccessStoreScope()) {
+        _workingSection = WorkingSection.materialsStore;
+      } else {
+        _workingSection = WorkingSection.workshop;
+      }
+    } else {
+      _workingSection = section;
+    }
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('app_working_section', section.index);
+    await prefs.setInt('app_working_section', _workingSection.index);
   }
 
   Future<void> setDefaultWorkshopLocationId(int? id) async {

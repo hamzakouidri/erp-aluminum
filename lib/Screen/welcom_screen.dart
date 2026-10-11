@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb, mapEquals;
 import 'package:firebase_auth/firebase_auth.dart';
@@ -37,6 +37,9 @@ import 'external_operations_hub_screen.dart';
 import 'worker_archive_screen.dart';
 import 'subscription_overview_card.dart';
 import '../widgets/resizable_columns_table.dart';
+import 'ai_guide_chat_dialog.dart';
+import 'cutting_optimization_screen.dart';
+import 'tempered_glass_work_screen.dart';
 
 bool get _isWindowsDesktop =>
     !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
@@ -105,6 +108,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
   String _clientsCount = '—';
   String _cliTrend = '';
   String _produitsCount = '—';
+  String _materialSalesCount = '0';
+  String _storeAchatsCount = '0';
 
   // تنبيهات الطلبات والمخزون
   int _lowStockCount = 0;
@@ -115,6 +120,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
   // database that is kept in sync with Firebase, so the Windows view never
   // needs a separate source of truth.
   List<Map<String, dynamic>> _desktopOrders = [];
+  List<Map<String, dynamic>> _materialSales = [];
   List<Map<String, dynamic>> _desktopClients = [];
   List<Map<String, dynamic>> _desktopProfiles = [];
   List<Map<String, dynamic>> _desktopTreasury = [];
@@ -128,6 +134,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
   String _desktopTreasurySearchQuery = '';
   bool _showTreasuryTotals = false;
   double _treasuryBalance = 0.0;
+  double _workshopTreasuryBalance = 0.0;
+  double _storeTreasuryBalance = 0.0;
+  int _storeClientsCount = 0;
   int _activeWorkersCount = 0;
   int _workersCount = 0;
   int _pendingOrdersCount = 0;
@@ -145,6 +154,149 @@ class _WelcomScreenState extends State<WelcomScreen> {
     } catch (e) {
       debugPrint("Error marking orders read: $e");
     }
+  }
+
+  void _handleAiNavigation(String target) {
+    final settings = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    );
+    final lang = settings.language;
+    final storeOnly =
+        settings.workingSection == WorkingSection.materialsStore;
+    switch (target) {
+      case 'orders':
+        openAdaptiveScreen(
+          context,
+          title: Localization.translate('commandes', lang),
+          icon: Icons.receipt_long_rounded,
+          screen: const Commande(),
+        );
+        break;
+      case 'caisse':
+        openAdaptiveScreen(
+          context,
+          title: Localization.translate('treasury', lang),
+          icon: Icons.account_balance_wallet_rounded,
+          screen: TreasuryScreen(db: db, storeOnly: storeOnly),
+        );
+        break;
+      case 'stock':
+        openAdaptiveScreen(
+          context,
+          title: Localization.translate('inventory', lang),
+          icon: Icons.inventory_2_rounded,
+          screen: InventoryScreen(db: db),
+        );
+        break;
+      case 'clients':
+        openAdaptiveScreen(
+          context,
+          title: Localization.translate('clients', lang),
+          icon: Icons.people_alt_rounded,
+          screen: Customers(storeOnly: storeOnly),
+        );
+        break;
+      case 'settings':
+        openAdaptiveScreen(
+          context,
+          title: Localization.translate('settings', lang),
+          icon: Icons.settings_rounded,
+          screen: const SettingsScreen(),
+        );
+        break;
+      case 'purchases':
+        openAdaptiveScreen(
+          context,
+          title: Localization.translate('المشتريات', lang),
+          icon: Icons.shopping_bag_rounded,
+          screen: AchatScreen(db: db, isWorkshop: !storeOnly),
+        );
+        break;
+      case 'material_sales':
+        openAdaptiveScreen(
+          context,
+          title: Localization.translate('بيع المواد', lang),
+          icon: Icons.storefront_rounded,
+          screen: MaterialSalesScreen(db: db),
+        );
+        break;
+      case 'projects':
+        openAdaptiveScreen(
+          context,
+          title: Localization.translate('المشاريع', lang),
+          icon: Icons.folder_shared_rounded,
+          screen: ProjectsScreen(db: db),
+        );
+        break;
+      case 'reports':
+        openAdaptiveScreen(
+          context,
+          title: Localization.translate('rapports', lang),
+          icon: Icons.bar_chart_rounded,
+          screen: ReportsHubScreen(db: db),
+        );
+        break;
+      case 'cutting_optimizer':
+        openAdaptiveScreen(
+          context,
+          title: Localization.translate('تحسين القص', lang),
+          icon: Icons.content_cut_rounded,
+          screen: CuttingOptimizationScreen(db: db),
+        );
+        break;
+      case 'tempered_glass':
+        openAdaptiveScreen(
+          context,
+          title: Localization.translate('الزجاج المقسى سيكوريت', lang),
+          icon: Icons.view_in_ar_rounded,
+          screen: const TemperedGlassWorkScreen(),
+        );
+        break;
+      case 'worker_tasks':
+        openAdaptiveScreen(
+          context,
+          title: Localization.translate('مهامي وتصنيعاتي', lang),
+          icon: Icons.assignment_turned_in_rounded,
+          screen: WorkerTasksScreen(db: db),
+        );
+        break;
+      case 'suppliers':
+        openAdaptiveScreen(
+          context,
+          title: Localization.translate('الموردين', lang),
+          icon: Icons.local_shipping_rounded,
+          screen: SuppliersScreen(db: db),
+        );
+        break;
+      case 'encaissement':
+        TreasuryScreen.showQuickTransactionDialog(
+          context,
+          db: db,
+          initialType: 'Encaissement',
+        );
+        break;
+      case 'decaissement':
+      case 'decaissment':
+        TreasuryScreen.showQuickTransactionDialog(
+          context,
+          db: db,
+          initialType: 'Décaissement',
+        );
+        break;
+      default:
+        break;
+    }
+  }
+
+  void _openAiAssistant() {
+    AiGuideChatDialog.show(
+      context,
+      onNavigate: (target) {
+        Navigator.of(context, rootNavigator: true).pop();
+        _handleAiNavigation(target);
+      },
+    );
   }
 
   // بيانات المخطط البياني
@@ -438,6 +590,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
         db.readClientsForDisplay(),
         db.getOrderAssignedWorkersMap(),
         db.readAllProfiles(),
+        db.readMaterialSales(),
+        db.readStoreAchats(),
       ]);
       final profiles = secondaryData[0] as List<Map<String, dynamic>>;
       final desktopOrders = List<Map<String, dynamic>>.from(
@@ -452,12 +606,16 @@ class _WelcomScreenState extends State<WelcomScreen> {
         secondaryData[5] as Map<int, String>,
       );
       final allProfiles = secondaryData[6] as List<Map<String, dynamic>>;
+      final matSales = secondaryData[7] as List<Map<String, dynamic>>;
+      final storeAchats = secondaryData[8] as List<Map<String, dynamic>>;
 
       if (mounted && loadToken == _statsLoadToken) {
         setState(() {
           _newOrdersCount = unreadOrders;
           _commandesCount = stats['cmdCount'] ?? '0';
           _cmdTrend = stats['cmdTrend'] ?? '—';
+          _materialSalesCount = matSales.length.toString();
+          _storeAchatsCount = storeAchats.length.toString();
           _ordersByStatus = canonicalizeOrderStatusCounts(
             Map<String, int>.from(
               (chartData['byStatus'] as Map<String, int>?) ?? {},
@@ -473,11 +631,45 @@ class _WelcomScreenState extends State<WelcomScreen> {
           // profiles, which previously made this card show zero.
           _produitsCount = allProfiles.length.toString();
           _desktopOrders = desktopOrders;
+          _materialSales = matSales;
           _desktopClients = clients;
           _desktopProfiles = profiles;
           _desktopTreasury = treasuryRows;
           _assignedWorkersMap = assignedWorkersMap;
           _treasuryBalance = _calculateTreasuryBalance(treasuryRows);
+
+          // Caisse Magasin (Store Cashbox) balance calculation
+          final storeTreasuryRows = treasuryRows.where((row) {
+            final c = (row['caisse_name'] ?? '')
+                .toString()
+                .trim()
+                .toLowerCase();
+            return c == 'صندوق المحل' ||
+                c == 'caisse magasin' ||
+                c.contains('المحل');
+          }).toList();
+          _storeTreasuryBalance = _calculateTreasuryBalance(storeTreasuryRows);
+
+          // Caisse Atelier (Workshop Cashbox) balance calculation
+          final workshopTreasuryRows = treasuryRows.where((row) {
+            final c = (row['caisse_name'] ?? '')
+                .toString()
+                .trim()
+                .toLowerCase();
+            return !(c == 'صندوق المحل' ||
+                c == 'caisse magasin' ||
+                c.contains('المحل'));
+          }).toList();
+          _workshopTreasuryBalance = _calculateTreasuryBalance(
+            workshopTreasuryRows,
+          );
+
+          // Store clients count (materials & both)
+          _storeClientsCount = clients.where((c) {
+            final seg = (c['business_segment'] ?? '').toString().toLowerCase();
+            return seg == 'materials' || seg == 'both' || seg.contains('مواد');
+          }).length;
+
           _workersCount = employees.length;
           _activeWorkersCount = employees.where(_isActiveEmployee).length;
           _pendingOrdersCount = desktopOrders.where(_isOpenOrder).length;
@@ -515,6 +707,72 @@ class _WelcomScreenState extends State<WelcomScreen> {
     }.contains(status);
   }
 
+  Map<String, int> get _materialSalesByStatus {
+    final result = <String, int>{};
+    for (final sale in _materialSales) {
+      final rawStatus = (sale['status'] ?? 'draft')
+          .toString()
+          .trim()
+          .toLowerCase();
+      final netTotal = (sale['net_total'] as num?)?.toDouble() ?? 0;
+      final paid = (sale['paid_amount'] as num?)?.toDouble() ?? 0;
+      final remaining = (sale['remaining_amount'] as num?)?.toDouble() ?? 0;
+      final String key;
+      if (rawStatus == 'reserved') {
+        key = 'reserved';
+      } else if (rawStatus == 'paid' || (netTotal > 0 && remaining <= 0)) {
+        key = 'paid';
+      } else if (rawStatus == 'delivered' && paid <= 0 && remaining > 0) {
+        key = 'unpaid';
+      } else if (rawStatus == 'delivered' && paid > 0 && remaining > 0) {
+        key = 'partially_paid';
+      } else {
+        key = rawStatus.isEmpty ? 'draft' : rawStatus;
+      }
+      result[key] = (result[key] ?? 0) + 1;
+    }
+    return result;
+  }
+
+  Map<String, int> get _materialSalesByMonth {
+    final result = <String, int>{};
+    if (_ordersByMonth.isNotEmpty) {
+      for (final key in _ordersByMonth.keys) {
+        result[key] = 0;
+      }
+    } else {
+      final now = DateTime.now();
+      for (var offset = 5; offset >= 0; offset--) {
+        final date = DateTime(now.year, now.month - offset);
+        result['${date.month}/${date.year}'] = 0;
+      }
+    }
+    for (final sale in _materialSales) {
+      final date = DateTime.tryParse((sale['sale_date'] ?? '').toString());
+      if (date == null) continue;
+      final key = '${date.month}/${date.year}';
+      if (result.containsKey(key)) result[key] = result[key]! + 1;
+    }
+    return result;
+  }
+
+  int _clientCountForSection(WorkingSection section) {
+    bool matches(Map<String, dynamic> client) {
+      final segment = (client['business_segment'] ?? 'windows')
+          .toString()
+          .toLowerCase();
+      if (section == WorkingSection.workshop) {
+        return segment == 'windows' || segment == 'both';
+      }
+      if (section == WorkingSection.materialsStore) {
+        return segment == 'materials' || segment == 'both';
+      }
+      return segment != 'internal_workshop';
+    }
+
+    return _desktopClients.where(matches).length;
+  }
+
   double _calculateTreasuryBalance(List<Map<String, dynamic>> rows) {
     double balance = 0.0;
     for (final row in rows) {
@@ -548,11 +806,25 @@ class _WelcomScreenState extends State<WelcomScreen> {
         description.contains('مصروف');
   }
 
-  List<double> _clientAdditionsByMonth() {
+  List<double> _clientAdditionsByMonth(WorkingSection section) {
     const monthsToShow = 6;
     final now = DateTime.now();
     final counts = List<int>.filled(monthsToShow, 0);
     for (final client in _desktopClients) {
+      final segment = (client['business_segment'] ?? 'windows')
+          .toString()
+          .trim()
+          .toLowerCase();
+      if (section == WorkingSection.workshop &&
+          segment != 'windows' &&
+          segment != 'both') {
+        continue;
+      }
+      if (section == WorkingSection.materialsStore &&
+          segment != 'materials' &&
+          segment != 'both') {
+        continue;
+      }
       final date = DateTime.tryParse((client['created_at'] ?? '').toString());
       if (date == null) continue;
       final monthDifference =
@@ -579,7 +851,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
           : (accountName.isNotEmpty && accountName != accountCode
                 ? accountName
                 : '');
-      final savedLogo = prefs.getString('workshop_logo_base64') ??
+      final savedLogo =
+          prefs.getString('workshop_logo_base64') ??
           prefs.getString('workshop_logo');
       final savedPhone = (prefs.getString('phone') ?? '').trim();
       if (name.isNotEmpty) {
@@ -882,6 +1155,19 @@ class _WelcomScreenState extends State<WelcomScreen> {
       child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         drawer: AppDrawer(),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: _openAiAssistant,
+          backgroundColor: const Color(0xFF0072FF),
+          foregroundColor: Colors.white,
+          elevation: 5,
+          icon: const Icon(Icons.psychology_alt_rounded),
+          label: Text(
+            lang == AppLanguage.french
+                ? 'Assistant IA'
+                : (lang == AppLanguage.english ? 'AI Assistant' : 'المساعد الذكي'),
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+          ),
+        ),
         body: Stack(
           children: [
             if (!_isWindowsDesktop)
@@ -921,8 +1207,11 @@ class _WelcomScreenState extends State<WelcomScreen> {
                               const SizedBox(height: 12),
 
                               // ── شبكة التنقل ──────────────────────────────────────
-                              _buildMeasurementCard(context),
-                              const SizedBox(height: 12),
+                              if (settings.workingSection !=
+                                  WorkingSection.materialsStore) ...[
+                                _buildMeasurementCard(context),
+                                const SizedBox(height: 12),
+                              ],
                               _buildNavGrid(context),
                               const SizedBox(height: 24),
 
@@ -932,12 +1221,22 @@ class _WelcomScreenState extends State<WelcomScreen> {
                               ),
                               const SizedBox(height: 12),
                               _OrdersChartCard(
-                                byStatus: _ordersByStatus,
-                                byMonth: _ordersByMonth,
+                                byStatus:
+                                    settings.workingSection ==
+                                        WorkingSection.materialsStore
+                                    ? _materialSalesByStatus
+                                    : _ordersByStatus,
+                                byMonth:
+                                    settings.workingSection ==
+                                        WorkingSection.materialsStore
+                                    ? _materialSalesByMonth
+                                    : _ordersByMonth,
                               ),
                               const SizedBox(height: 24),
 
-                              if (settings.canViewSubscription()) ...[
+                              if (settings.workingSection !=
+                                      WorkingSection.materialsStore &&
+                                  settings.canViewSubscription()) ...[
                                 // ── بيانات الاشتراك ──────────────────────────────
                                 _sectionLabel(
                                   Localization.translate(
@@ -1394,6 +1693,17 @@ class _WelcomScreenState extends State<WelcomScreen> {
                 side: BorderSide(color: mutedColor.withValues(alpha: 0.10)),
               ),
             ),
+            const SizedBox(width: 8),
+            IconButton(
+              tooltip: 'المساعد الذكي والتحكم الصوتي',
+              onPressed: _openAiAssistant,
+              icon: const Icon(Icons.psychology_alt_rounded),
+              color: const Color(0xFF0072FF),
+              style: IconButton.styleFrom(
+                backgroundColor: cardColor,
+                side: BorderSide(color: mutedColor.withValues(alpha: 0.10)),
+              ),
+            ),
             const SizedBox(width: 18),
             Expanded(
               child: Center(
@@ -1548,7 +1858,13 @@ class _WelcomScreenState extends State<WelcomScreen> {
                         ),
                       ),
                     );
-                    final sectionSelector = _buildDesktopSectionSelector(context, lang, cardColor, contentColor, mutedColor);
+                    final sectionSelector = _buildDesktopSectionSelector(
+                      context,
+                      lang,
+                      cardColor,
+                      contentColor,
+                      mutedColor,
+                    );
                     if (narrow) {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1641,7 +1957,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
                     return orders;
                   },
                 ),
-                if (settings.canViewSubscription()) ...[
+                if (settings.workingSection !=
+                        WorkingSection.materialsStore &&
+                    settings.canViewSubscription()) ...[
                   const SizedBox(height: 18),
                   const SubscriptionOverviewCard(),
                 ],
@@ -1661,12 +1979,19 @@ class _WelcomScreenState extends State<WelcomScreen> {
   ) {
     final settings = Provider.of<AppSettingsProvider>(context);
     final lang = settings.language;
+    final allowWorkshop =
+        settings.workingSection == WorkingSection.all ||
+        settings.workingSection == WorkingSection.workshop;
+    final allowStore =
+        settings.workingSection == WorkingSection.all ||
+        settings.workingSection == WorkingSection.materialsStore;
     final values = _ordersByMonth.values
         .map((value) => value.toDouble())
         .toList();
-    final clientValues = _clientAdditionsByMonth();
+    final clientValues = _clientAdditionsByMonth(settings.workingSection);
     final cards = <Widget>[
-      if (settings.canViewOrders())
+      // 🟢 الصف الأول: بطاقات الورشة
+      if (allowWorkshop && settings.hasWorkshop && settings.canViewOrders())
         _DesktopMetricCard(
           icon: Icons.receipt_long_rounded,
           title: _desktopText(
@@ -1705,22 +2030,54 @@ class _WelcomScreenState extends State<WelcomScreen> {
               : const Color(0xFFF97316),
           onSecondaryTap: () => _showLowStockNotifications(context),
         ),
-      if (settings.canAccessTreasury())
+      if (allowWorkshop && settings.hasWorkshop && settings.canViewOrders())
+        _DesktopMetricCard(
+          icon: Icons.pending_actions_rounded,
+          title: _desktopText(
+            lang,
+            'طلبيات مفتوحة',
+            'Commandes ouvertes',
+            'Open orders',
+          ),
+          value: _pendingOrdersCount.toString(),
+          caption: _desktopText(
+            lang,
+            'تحتاج إلى متابعة بالورشة',
+            'En cours à l\'atelier',
+            'In progress in workshop',
+          ),
+          color: const Color(0xFFF59E0B),
+          values: values,
+          backgroundColor: cardColor,
+          textColor: contentColor,
+          mutedColor: mutedColor,
+          onTap: _openOrders,
+        ),
+      if (allowWorkshop &&
+          settings.hasWorkshop &&
+          settings.canAccessTreasury())
         _DesktopMetricCard(
           icon: Icons.account_balance_wallet_rounded,
           title: _desktopText(
             lang,
-            'رصيد الخزينة',
-            'Solde de trésorerie',
-            'Treasury balance',
+            'صندوق الورشة',
+            'Caisse Atelier',
+            'Workshop Cashbox',
           ),
-          value: _formatCurrency(_treasuryBalance),
-          caption: _desktopText(
-            lang,
-            'المتاح حالياً',
-            'Disponible actuellement',
-            'Available now',
-          ),
+          value: '${_formatCurrency(_workshopTreasuryBalance)} DA',
+          caption: settings.isDualActivity
+              ? _desktopText(
+                  lang,
+                  'صندوق الورشة (إجمالي: ${_formatCurrency(_treasuryBalance)})',
+                  'Caisse atelier (Total: ${_formatCurrency(_treasuryBalance)})',
+                  'Workshop box (Total: ${_formatCurrency(_treasuryBalance)})',
+                )
+              : _desktopText(
+                  lang,
+                  'المتاح حالياً بالخزينة',
+                  'Disponible actuellement',
+                  'Available now',
+                ),
           color: const Color(0xFF0EA5A4),
           values: values,
           backgroundColor: cardColor,
@@ -1733,52 +2090,147 @@ class _WelcomScreenState extends State<WelcomScreen> {
             screen: TreasuryScreen(db: db),
           ),
         ),
-      _DesktopMetricCard(
-        icon: Icons.people_alt_rounded,
-        title: _desktopText(
-          lang,
-          'إجمالي الزبائن',
-          'Total des clients',
-          'Total clients',
-        ),
-        value: _clientsCount,
-        caption: _cliTrend.isEmpty
-            ? _desktopText(
-                lang,
-                'الزبائن المضافون حديثاً',
-                'Clients ajoutés récemment',
-                'Recently added clients',
-              )
-            : _cliTrend,
-        color: const Color(0xFF8B5CF6),
-        values: clientValues,
-        backgroundColor: cardColor,
-        textColor: contentColor,
-        mutedColor: mutedColor,
-        onTap: settings.canViewClients() ? _openClients : null,
-      ),
-      if (settings.canViewOrders())
+      if (allowWorkshop &&
+          settings.hasWorkshop &&
+          settings.canViewClients())
         _DesktopMetricCard(
-          icon: Icons.pending_actions_rounded,
+          icon: Icons.people_alt_rounded,
           title: _desktopText(
             lang,
-            'طلبيات مفتوحة',
-            'Commandes ouvertes',
-            'Open orders',
+            'زبائن الورشة',
+            'Clients Atelier',
+            'Workshop Clients',
           ),
-          value: _pendingOrdersCount.toString(),
+          value: _clientCountForSection(settings.workingSection).toString(),
+          caption: _cliTrend.isEmpty
+              ? _desktopText(
+                  lang,
+                  'زبائن الطلبيات والورشة',
+                  'Clients des commandes',
+                  'Orders & workshop clients',
+                )
+              : _cliTrend,
+          color: const Color(0xFF8B5CF6),
+          values: clientValues,
+          backgroundColor: cardColor,
+          textColor: contentColor,
+          mutedColor: mutedColor,
+          onTap: settings.canViewClients() ? _openClients : null,
+        ),
+
+      // 🟠 الصف الثاني: بطاقات محل بيع المواد
+      if (allowStore &&
+          settings.hasMaterialsStore &&
+          settings.canMaterialSales())
+        _DesktopMetricCard(
+          icon: Icons.storefront_rounded,
+          title: _desktopText(
+            lang,
+            'مبيعات المواد',
+            'Ventes de matières',
+            'Material sales',
+          ),
+          value: _materialSalesCount,
           caption: _desktopText(
             lang,
-            'تحتاج إلى متابعة',
-            'À suivre',
-            'Need follow-up',
+            'سجل فواتير المحل',
+            'Factures du magasin',
+            'Store invoices',
           ),
-          color: const Color(0xFFF59E0B),
+          color: const Color(0xFFEA580C),
           values: values,
           backgroundColor: cardColor,
           textColor: contentColor,
           mutedColor: mutedColor,
-          onTap: _openOrders,
+          onTap: () => openAdaptiveScreen(
+            context,
+            title: Localization.translate('بيع المواد', lang),
+            icon: Icons.storefront_rounded,
+            screen: MaterialSalesScreen(db: db),
+          ),
+        ),
+      if (allowStore &&
+          settings.hasMaterialsStore &&
+          settings.canAccessTreasury())
+        _DesktopMetricCard(
+          icon: Icons.point_of_sale_rounded,
+          title: _desktopText(
+            lang,
+            'صندوق المحل',
+            'Caisse Magasin',
+            'Store Cashbox',
+          ),
+          value: '${_formatCurrency(_storeTreasuryBalance)} DA',
+          caption: _desktopText(
+            lang,
+            'المتاح في صندوق المحل',
+            'Disponible caisse magasin',
+            'Available in store',
+          ),
+          color: const Color(0xFF059669),
+          values: values,
+          backgroundColor: cardColor,
+          textColor: contentColor,
+          mutedColor: mutedColor,
+          onTap: () => openAdaptiveScreen(
+            context,
+            title: _desktopText(lang, 'الخزينة', 'Trésorerie', 'Treasury'),
+            icon: Icons.account_balance_wallet_rounded,
+            screen: TreasuryScreen(db: db, storeOnly: true),
+          ),
+        ),
+      if (allowStore && settings.hasMaterialsStore && settings.canViewClients())
+        _DesktopMetricCard(
+          icon: Icons.groups_2_rounded,
+          title: _desktopText(
+            lang,
+            'زبائن المحل',
+            'Clients Magasin',
+            'Store Customers',
+          ),
+          value: _storeClientsCount.toString(),
+          caption: _desktopText(
+            lang,
+            'زبائن المواد والألمنيوم',
+            'Clients profilés & matériaux',
+            'Material store clients',
+          ),
+          color: const Color(0xFF6366F1),
+          values: clientValues,
+          backgroundColor: cardColor,
+          textColor: contentColor,
+          mutedColor: mutedColor,
+          onTap: settings.canViewClients() ? _openClients : null,
+        ),
+      if (allowStore &&
+          settings.hasMaterialsStore &&
+          settings.canRegisterPurchases())
+        _DesktopMetricCard(
+          icon: Icons.shopping_cart_rounded,
+          title: _desktopText(
+            lang,
+            'شراء المواد',
+            'Achat de matières',
+            'Material purchases',
+          ),
+          value: _storeAchatsCount,
+          caption: _desktopText(
+            lang,
+            'مشتريات محل المواد',
+            'Achats du magasin',
+            'Store purchases',
+          ),
+          color: const Color(0xFF0D9488),
+          values: values,
+          backgroundColor: cardColor,
+          textColor: contentColor,
+          mutedColor: mutedColor,
+          onTap: () => openAdaptiveScreen(
+            context,
+            title: Localization.translate('شراء المواد', lang),
+            icon: Icons.shopping_cart_rounded,
+            screen: AchatScreen(db: db, isWorkshop: false),
+          ),
         ),
     ];
 
@@ -1808,8 +2260,11 @@ class _WelcomScreenState extends State<WelcomScreen> {
     Color contentColor,
     Color mutedColor,
   ) {
-    final lang = Provider.of<AppSettingsProvider>(context).language;
-    final entries = _ordersByMonth.entries.toList();
+    final settings = Provider.of<AppSettingsProvider>(context);
+    final lang = settings.language;
+    final isStore = settings.workingSection == WorkingSection.materialsStore;
+    final entries = (isStore ? _materialSalesByMonth : _ordersByMonth).entries
+        .toList();
     final values = entries.map((entry) => entry.value.toDouble()).toList();
     final maxValue = entries.fold<int>(
       0,
@@ -1820,15 +2275,21 @@ class _WelcomScreenState extends State<WelcomScreen> {
       context: context,
       title: _desktopText(
         lang,
-        'حركة الطلبيات',
-        'Évolution des commandes',
-        'Order activity',
+        isStore ? 'حركة مبيعات المواد' : 'حركة الطلبيات',
+        isStore ? 'Évolution des ventes' : 'Évolution des commandes',
+        isStore ? 'Material sales activity' : 'Order activity',
       ),
       subtitle: _desktopText(
         lang,
-        'مقارنة الطلبيات المسجلة خلال الأشهر الأخيرة',
-        'Comparaison des commandes des derniers mois',
-        'Comparison of orders from recent months',
+        isStore
+            ? 'مقارنة مبيعات المواد المسجلة خلال الأشهر الأخيرة'
+            : 'مقارنة الطلبيات المسجلة خلال الأشهر الأخيرة',
+        isStore
+            ? 'Comparaison des ventes des derniers mois'
+            : 'Comparaison des commandes des derniers mois',
+        isStore
+            ? 'Comparison of material sales from recent months'
+            : 'Comparison of orders from recent months',
       ),
       icon: Icons.query_stats_rounded,
       color: const Color(0xFF4D67F0),
@@ -1843,7 +2304,12 @@ class _WelcomScreenState extends State<WelcomScreen> {
               children: [
                 _desktopTrendLegend(
                   const Color(0xFF7289F4),
-                  _desktopText(lang, 'الطلبيات', 'Commandes', 'Orders'),
+                  _desktopText(
+                    lang,
+                    isStore ? 'مبيعات المواد' : 'الطلبيات',
+                    isStore ? 'Ventes' : 'Commandes',
+                    isStore ? 'Sales' : 'Orders',
+                  ),
                   mutedColor,
                 ),
                 const SizedBox(width: 16),
@@ -2058,6 +2524,15 @@ class _WelcomScreenState extends State<WelcomScreen> {
   ) {
     final settings = Provider.of<AppSettingsProvider>(context);
     final lang = settings.language;
+    if (settings.workingSection == WorkingSection.materialsStore) {
+      return _buildDesktopMaterialSalesPanel(
+        context,
+        cardColor,
+        contentColor,
+        mutedColor,
+        lang,
+      );
+    }
     final selectedTab =
         !settings.canAccessTreasury() && _selectedDesktopTableTab == 2
         ? 0
@@ -2248,6 +2723,122 @@ class _WelcomScreenState extends State<WelcomScreen> {
     );
   }
 
+  Widget _buildDesktopMaterialSalesPanel(
+    BuildContext context,
+    Color cardColor,
+    Color contentColor,
+    Color mutedColor,
+    AppLanguage lang,
+  ) {
+    final recent = _materialSales.take(8).toList();
+    return _desktopPanel(
+      context: context,
+      title: _desktopText(
+        lang,
+        'آخر طلبيات ومبيعات المواد',
+        'Dernières commandes et ventes',
+        'Recent material orders and sales',
+      ),
+      subtitle: _desktopText(
+        lang,
+        'بيانات المحل فقط حسب القسم المحدد',
+        'Données du magasin uniquement',
+        'Store data only',
+      ),
+      icon: Icons.storefront_rounded,
+      color: const Color(0xFFEA580C),
+      backgroundColor: cardColor,
+      textColor: contentColor,
+      mutedColor: mutedColor,
+      action: TextButton.icon(
+        onPressed: () => openAdaptiveScreen(
+          context,
+          title: Localization.translate('بيع المواد', lang),
+          icon: Icons.storefront_rounded,
+          screen: MaterialSalesScreen(db: db),
+        ),
+        icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+        label: Text(
+          _desktopText(lang, 'عرض الكل', 'Tout voir', 'View all'),
+          style: const TextStyle(fontFamily: 'Cairo'),
+        ),
+      ),
+      child: SizedBox(
+        height: 380,
+        child: recent.isEmpty
+            ? Center(
+                child: Text(
+                  _desktopText(
+                    lang,
+                    'لا توجد مبيعات مواد بعد',
+                    'Aucune vente de matières',
+                    'No material sales yet',
+                  ),
+                  style: TextStyle(color: mutedColor, fontFamily: 'Cairo'),
+                ),
+              )
+            : ListView.separated(
+                itemCount: recent.length,
+                separatorBuilder: (_, __) => Divider(
+                  height: 1,
+                  color: mutedColor.withValues(alpha: 0.14),
+                ),
+                itemBuilder: (context, index) {
+                  final sale = recent[index];
+                  final status = (sale['status'] ?? 'draft').toString();
+                  final amount = (sale['net_total'] as num?)?.toDouble() ?? 0;
+                  return ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 6),
+                    leading: CircleAvatar(
+                      backgroundColor: const Color(
+                        0xFFEA580C,
+                      ).withValues(alpha: 0.12),
+                      child: const Icon(
+                        Icons.receipt_long_rounded,
+                        color: Color(0xFFEA580C),
+                      ),
+                    ),
+                    title: Text(
+                      (sale['sale_code'] ?? '—').toString(),
+                      style: TextStyle(
+                        color: contentColor,
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    subtitle: Text(
+                      '${(sale['client_name'] ?? '—')} • ${_formatDate(sale['sale_date'])}',
+                      style: TextStyle(color: mutedColor, fontFamily: 'Cairo'),
+                    ),
+                    trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          _formatCurrency(amount),
+                          style: TextStyle(
+                            color: contentColor,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        Text(
+                          _desktopStatusText(status, lang),
+                          style: TextStyle(
+                            color: _desktopStatusColor(status),
+                            fontFamily: 'Cairo',
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+      ),
+    );
+  }
+
   Widget _buildDesktopTreasuryPanel(
     BuildContext context,
     Color cardColor,
@@ -2338,7 +2929,11 @@ class _WelcomScreenState extends State<WelcomScreen> {
               initialType: 'Encaissement',
               onSaved: () => _loadStats(),
             ),
-            icon: const Icon(Icons.arrow_downward_rounded, size: 14, color: Colors.white),
+            icon: const Icon(
+              Icons.arrow_downward_rounded,
+              size: 14,
+              color: Colors.white,
+            ),
             label: Text(
               _desktopText(lang, '+ قبض', '+ Encaissement', '+ Income'),
               style: const TextStyle(
@@ -2363,7 +2958,11 @@ class _WelcomScreenState extends State<WelcomScreen> {
               initialType: 'Décaissement',
               onSaved: () => _loadStats(),
             ),
-            icon: const Icon(Icons.arrow_upward_rounded, size: 14, color: Colors.white),
+            icon: const Icon(
+              Icons.arrow_upward_rounded,
+              size: 14,
+              color: Colors.white,
+            ),
             label: Text(
               _desktopText(lang, '- دفع', '- Décaissement', '- Expense'),
               style: const TextStyle(
@@ -2399,27 +2998,35 @@ class _WelcomScreenState extends State<WelcomScreen> {
   }
 
   void _openTreasury() {
-    final lang = Provider.of<AppSettingsProvider>(
+    final settings = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    ).language;
+    );
+    final lang = settings.language;
     openAdaptiveScreen(
       context,
       title: _desktopText(lang, 'الصندوق', 'Trésorerie', 'Treasury'),
       icon: Icons.account_balance_wallet_rounded,
-      screen: TreasuryScreen(db: db),
+      screen: TreasuryScreen(
+        db: db,
+        storeOnly: settings.workingSection == WorkingSection.materialsStore,
+      ),
     );
   }
 
   void _openClients({bool openAddClientOnStart = false}) {
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
     openAdaptiveScreen(
       context,
       title: Localization.translate(
         'الزبائن',
-        Provider.of<AppSettingsProvider>(context, listen: false).language,
+        settings.language,
       ),
       icon: Icons.people_alt_rounded,
-      screen: Customers(openAddClientOnStart: openAddClientOnStart),
+      screen: Customers(
+        openAddClientOnStart: openAddClientOnStart,
+        storeOnly: settings.workingSection == WorkingSection.materialsStore,
+      ),
     );
   }
 
@@ -3617,17 +4224,24 @@ class _WelcomScreenState extends State<WelcomScreen> {
     Color contentColor,
     Color mutedColor,
   ) {
-    final lang = Provider.of<AppSettingsProvider>(context).language;
-    final total = _desktopOrders.length;
-    final completed = math.max(0, total - _pendingOrdersCount);
+    final settings = Provider.of<AppSettingsProvider>(context);
+    final lang = settings.language;
+    final isStore = settings.workingSection == WorkingSection.materialsStore;
+    final total = isStore ? _materialSales.length : _desktopOrders.length;
+    final completed = isStore
+        ? _materialSales.where((sale) {
+            final status = (sale['status'] ?? '').toString().toLowerCase();
+            return status == 'delivered' || status == 'paid';
+          }).length
+        : math.max(0, total - _pendingOrdersCount);
     final rate = total == 0 ? 0.0 : completed / total;
     return _desktopPanel(
       context: context,
       title: _desktopText(
         lang,
-        'حالة سير العمل',
-        'État du travail',
-        'Work progress',
+        isStore ? 'حالة مبيعات المحل' : 'حالة سير العمل',
+        isStore ? 'État des ventes' : 'État du travail',
+        isStore ? 'Sales progress' : 'Work progress',
       ),
       icon: Icons.track_changes_rounded,
       color: const Color(0xFF0EA5E9),
@@ -3687,9 +4301,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
                   Text(
                     _desktopText(
                       lang,
-                      'من أصل $total طلبية',
-                      'sur $total commandes',
-                      'out of $total orders',
+                      'من أصل $total ${isStore ? 'عملية بيع' : 'طلبية'}',
+                      'sur $total ${isStore ? 'ventes' : 'commandes'}',
+                      'out of $total ${isStore ? 'sales' : 'orders'}',
                     ),
                     style: TextStyle(
                       fontFamily: 'Cairo',
@@ -3698,20 +4312,21 @@ class _WelcomScreenState extends State<WelcomScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    _desktopText(
-                      lang,
-                      '$_activeWorkersCount عامل نشط',
-                      '$_activeWorkersCount employés actifs',
-                      '$_activeWorkersCount active workers',
+                  if (!isStore)
+                    Text(
+                      _desktopText(
+                        lang,
+                        '$_activeWorkersCount عامل نشط',
+                        '$_activeWorkersCount employés actifs',
+                        '$_activeWorkersCount active workers',
+                      ),
+                      style: const TextStyle(
+                        fontFamily: 'Cairo',
+                        color: Color(0xFF0EA5A4),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                    style: const TextStyle(
-                      fontFamily: 'Cairo',
-                      color: Color(0xFF0EA5A4),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -3731,11 +4346,11 @@ class _WelcomScreenState extends State<WelcomScreen> {
     Color contentColor,
     Color mutedColor,
   ) {
-    final lang = Provider.of<AppSettingsProvider>(context).language;
-    final total = _ordersByStatus.values.fold<int>(
-      0,
-      (sum, value) => sum + value,
-    );
+    final settings = Provider.of<AppSettingsProvider>(context);
+    final lang = settings.language;
+    final isStore = settings.workingSection == WorkingSection.materialsStore;
+    final statusData = isStore ? _materialSalesByStatus : _ordersByStatus;
+    final total = statusData.values.fold<int>(0, (sum, value) => sum + value);
     final statusColors = <String, Color>{
       'Nouveau': const Color(0xFF64748B),
       'New': const Color(0xFF64748B),
@@ -3749,9 +4364,16 @@ class _WelcomScreenState extends State<WelcomScreen> {
       'Installation': const Color(0xFF8B5CF6),
       'Reserve': const Color(0xFFEF4444),
       'Done': const Color(0xFF059669),
+      'draft': const Color(0xFF94A3B8),
+      'reserved': const Color(0xFFF59E0B),
+      'confirmed': const Color(0xFF2563EB),
+      'delivered': const Color(0xFF06B6D4),
+      'paid': const Color(0xFF10B981),
+      'unpaid': const Color(0xFFEF4444),
+      'partially_paid': const Color(0xFFF97316),
     };
     final sortedStatusMap = <String, int>{};
-    final legendEntries = _ordersByStatus.entries.toList()
+    final legendEntries = statusData.entries.toList()
       ..sort(
         (a, b) => _orderLifecycleWeight(
           a.key,
@@ -3764,15 +4386,15 @@ class _WelcomScreenState extends State<WelcomScreen> {
       context: context,
       title: _desktopText(
         lang,
-        'حالات الطلبيات',
-        'État des commandes',
-        'Order statuses',
+        isStore ? 'حالات مبيعات المواد' : 'حالات الطلبيات',
+        isStore ? 'État des ventes' : 'État des commandes',
+        isStore ? 'Material sale statuses' : 'Order statuses',
       ),
       subtitle: _desktopText(
         lang,
-        'توزيع الطلبيات حسب الحالة',
-        'Répartition par état',
-        'Orders grouped by status',
+        isStore ? 'توزيع مبيعات المحل حسب الحالة' : 'توزيع الطلبيات حسب الحالة',
+        isStore ? 'Répartition des ventes par état' : 'Répartition par état',
+        isStore ? 'Sales grouped by status' : 'Orders grouped by status',
       ),
       icon: Icons.donut_small_rounded,
       color: const Color(0xFF2563EB),
@@ -3786,9 +4408,11 @@ class _WelcomScreenState extends State<WelcomScreen> {
                 child: Text(
                   _desktopText(
                     lang,
-                    'لا توجد طلبيات بعد',
-                    'Aucune commande pour le moment',
-                    'No orders yet',
+                    isStore ? 'لا توجد مبيعات بعد' : 'لا توجد طلبيات بعد',
+                    isStore
+                        ? 'Aucune vente pour le moment'
+                        : 'Aucune commande pour le moment',
+                    isStore ? 'No sales yet' : 'No orders yet',
                   ),
                   style: TextStyle(color: mutedColor, fontSize: 11),
                 ),
@@ -3825,9 +4449,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
                             Text(
                               _desktopText(
                                 lang,
-                                'طلبية',
-                                'commandes',
-                                'orders',
+                                isStore ? 'عملية بيع' : 'طلبية',
+                                isStore ? 'ventes' : 'commandes',
+                                isStore ? 'sales' : 'orders',
                               ),
                               style: TextStyle(color: mutedColor, fontSize: 9),
                             ),
@@ -4270,6 +4894,15 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ],
       'installation': ['تركيب', 'Installation', 'Installation'],
       'reserve': ['تحفّظ', 'Réserve', 'Reserve'],
+      'reserved': ['محجوزة', 'Réservée', 'Reserved'],
+      'delivered': ['مسلّمة', 'Livrée', 'Delivered'],
+      'paid': ['مدفوعة', 'Payée', 'Paid'],
+      'unpaid': ['غير مدفوعة', 'Impayée', 'Unpaid'],
+      'partially_paid': [
+        'مدفوعة جزئيًا',
+        'Partiellement payée',
+        'Partially paid',
+      ],
       'done': ['مكتملة', 'Terminée', 'Completed'],
       'completed': ['مكتملة', 'Terminée', 'Completed'],
       'finished': ['مكتملة', 'Terminée', 'Completed'],
@@ -4374,6 +5007,14 @@ class _WelcomScreenState extends State<WelcomScreen> {
               ),
           ],
         ),
+        IconButton(
+          icon: const Icon(
+            Icons.psychology_alt_rounded,
+            color: Colors.cyanAccent,
+          ),
+          tooltip: 'المساعد الذكي والتحكم الصوتي',
+          onPressed: _openAiAssistant,
+        ),
         const SizedBox(width: 4),
       ],
       flexibleSpace: FlexibleSpaceBar(
@@ -4457,53 +5098,65 @@ class _WelcomScreenState extends State<WelcomScreen> {
                           : null,
                     ),
                     const SizedBox(width: 14),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _workshopName,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.4,
-                            fontFamily: 'Cairo',
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _workshopName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.4,
+                              fontFamily: 'Cairo',
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _userEmail,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.8),
-                            fontSize: 13,
-                            fontFamily: 'Cairo',
-                          ),
-                        ),
-                        if (_workshopPhone.isNotEmpty) ...[
                           const SizedBox(height: 2),
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.phone_rounded,
-                                size: 12,
-                                color: Colors.white.withValues(alpha: 0.8),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                _workshopPhone,
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.8),
-                                  fontSize: 12,
-                                  fontFamily: 'Cairo',
-                                ),
-                              ),
-                            ],
+                          Text(
+                            _userEmail,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.8),
+                              fontSize: 13,
+                              fontFamily: 'Cairo',
+                            ),
                           ),
+                          if (_workshopPhone.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.phone_rounded,
+                                  size: 12,
+                                  color: Colors.white.withValues(alpha: 0.8),
+                                ),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    _workshopPhone,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.8,
+                                      ),
+                                      fontSize: 12,
+                                      fontFamily: 'Cairo',
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 8),
                     // بادج الحالة
                     Container(
                       padding: const EdgeInsets.symmetric(
@@ -4566,6 +5219,13 @@ class _WelcomScreenState extends State<WelcomScreen> {
   Widget _buildStatsRow(BuildContext context) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
     final settings = Provider.of<AppSettingsProvider>(context);
+    final allowWorkshop =
+        settings.workingSection == WorkingSection.all ||
+        settings.workingSection == WorkingSection.workshop;
+    final allowStore =
+        settings.workingSection == WorkingSection.all ||
+        settings.workingSection == WorkingSection.materialsStore;
+
     final ordersLabel = lang == AppLanguage.arabic
         ? 'الطلبيات'
         : Localization.translate('commandes', lang);
@@ -4598,7 +5258,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
       );
     }
 
-    if (settings.canViewOrders()) {
+    // 🟢 بطاقات الورشة أولاً
+    if (allowWorkshop && settings.hasWorkshop && settings.canViewOrders()) {
       addCard(
         icon: Icons.receipt_long_rounded,
         label: ordersLabel,
@@ -4606,25 +5267,95 @@ class _WelcomScreenState extends State<WelcomScreen> {
         color: _blue,
         trend: _cmdTrend,
       );
+      if (_isWindowsDesktop) {
+        addCard(
+          icon: Icons.pending_actions_rounded,
+          label: lang == AppLanguage.arabic
+              ? 'طلبيات مفتوحة'
+              : (lang == AppLanguage.french
+                    ? 'Commandes ouvertes'
+                    : 'Open orders'),
+          value: _pendingOrdersCount.toString(),
+          color: const Color(0xFFF59E0B),
+          trend: '—',
+        );
+      }
     }
 
-    if (settings.canViewClients()) {
+    if (allowWorkshop && settings.hasWorkshop && settings.canViewClients()) {
       addCard(
         icon: Icons.people_alt_rounded,
         label: clientsLabel,
-        value: _clientsCount,
+        value: _clientCountForSection(settings.workingSection).toString(),
         color: _purple,
         trend: _cliTrend,
       );
     }
 
-    addCard(
-      icon: Icons.inventory_2_rounded,
-      label: productsLabel,
-      value: _produitsCount,
-      color: _amber,
-      trend: '—',
-    );
+    if (allowWorkshop && settings.hasWorkshop) {
+      addCard(
+        icon: Icons.inventory_2_rounded,
+        label: productsLabel,
+        value: _produitsCount,
+        color: _amber,
+        trend: '—',
+      );
+    }
+
+    // 🟠 بطاقات محل بيع المواد
+    if (allowStore &&
+        settings.hasMaterialsStore &&
+        settings.canMaterialSales()) {
+      addCard(
+        icon: Icons.storefront_rounded,
+        label: Localization.translate('بيع المواد', lang),
+        value: _materialSalesCount,
+        color: const Color(0xFFEA580C),
+        trend: '—',
+      );
+    }
+
+    if (allowStore &&
+        settings.hasMaterialsStore &&
+        settings.canAccessTreasury()) {
+      addCard(
+        icon: Icons.point_of_sale_rounded,
+        label: lang == AppLanguage.arabic
+            ? 'صندوق المحل'
+            : (lang == AppLanguage.french
+                  ? 'Caisse Magasin'
+                  : 'Store Cashbox'),
+        value: '${_formatCurrency(_storeTreasuryBalance)} DA',
+        color: const Color(0xFF059669),
+        trend: '—',
+      );
+    }
+
+    if (allowStore && settings.hasMaterialsStore) {
+      if (settings.canViewClients()) {
+        addCard(
+          icon: Icons.groups_2_rounded,
+          label: lang == AppLanguage.arabic
+              ? 'زبائن المحل'
+              : Localization.translate('زبائن المحل', lang),
+          value: _storeClientsCount.toString(),
+          color: const Color(0xFF6366F1),
+          trend: '—',
+        );
+      }
+    }
+
+    if (allowStore &&
+        settings.hasMaterialsStore &&
+        settings.canRegisterPurchases()) {
+      addCard(
+        icon: Icons.shopping_cart_rounded,
+        label: Localization.translate('شراء المواد', lang),
+        value: _storeAchatsCount,
+        color: const Color(0xFF0D9488),
+        trend: '—',
+      );
+    }
 
     if (_isWindowsDesktop) {
       addCard(
@@ -4642,34 +5373,26 @@ class _WelcomScreenState extends State<WelcomScreen> {
                   ? 'المخزون مستقر'
                   : 'Stock is stable'),
       );
-
-      return LayoutBuilder(
-        builder: (context, constraints) {
-          const gap = 16.0;
-          final targetColumns = constraints.maxWidth >= 1200 ? 4 : 3;
-          final columns = cards.length < targetColumns
-              ? cards.length
-              : targetColumns;
-          final cardWidth =
-              (constraints.maxWidth - ((columns - 1) * gap)) / columns;
-          return Wrap(
-            spacing: gap,
-            runSpacing: gap,
-            children: [
-              for (final card in cards) SizedBox(width: cardWidth, child: card),
-            ],
-          );
-        },
-      );
     }
 
-    return Row(
-      children: [
-        for (var index = 0; index < cards.length; index++) ...[
-          Expanded(child: cards[index]),
-          if (index != cards.length - 1) const SizedBox(width: 12),
-        ],
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double gap = constraints.maxWidth < 600 ? 10.0 : 16.0;
+        final int targetColumns = constraints.maxWidth >= 1200 ? 4 : 3;
+        final columns = cards.length < targetColumns
+            ? cards.length
+            : targetColumns;
+        final cardWidth =
+            (constraints.maxWidth - ((columns - 1) * gap)) /
+            (columns > 0 ? columns : 1);
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final card in cards) SizedBox(width: cardWidth, child: card),
+          ],
+        );
+      },
     );
   }
 
@@ -4792,12 +5515,17 @@ class _WelcomScreenState extends State<WelcomScreen> {
   Widget _buildNavGrid(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
     final lang = settings.language;
-    final allowWorkshop = settings.workingSection == WorkingSection.all ||
+    final allowWorkshop =
+        settings.workingSection == WorkingSection.all ||
         settings.workingSection == WorkingSection.workshop;
-    final allowStore = settings.workingSection == WorkingSection.all ||
+    final allowStore =
+        settings.workingSection == WorkingSection.all ||
+        settings.workingSection == WorkingSection.materialsStore;
+    final storeOnlyView =
         settings.workingSection == WorkingSection.materialsStore;
 
     final items = [
+      // 🟢 أقسام الورشة أولاً
       if (allowWorkshop && settings.hasWorkshop && settings.canViewOrders())
         _NavItem(
           icon: Icons.receipt_long_rounded,
@@ -4815,18 +5543,6 @@ class _WelcomScreenState extends State<WelcomScreen> {
             }
           },
         ),
-      if (allowStore && settings.hasMaterialsStore && settings.canMaterialSales())
-        _NavItem(
-          icon: Icons.storefront_rounded,
-          label: Localization.translate('بيع المواد', lang),
-          color: const Color(0xFFEA580C), // Orange
-          onTap: () => openAdaptiveScreen(
-            context,
-            title: Localization.translate('بيع المواد', lang),
-            icon: Icons.storefront_rounded,
-            screen: MaterialSalesScreen(db: db),
-          ),
-        ),
       if (allowWorkshop && settings.hasWorkshop && settings.canViewProjects())
         _NavItem(
           icon: Icons.folder_shared_rounded,
@@ -4837,30 +5553,6 @@ class _WelcomScreenState extends State<WelcomScreen> {
             title: Localization.translate('المشاريع', lang),
             icon: Icons.folder_shared_rounded,
             screen: ProjectsScreen(db: db),
-          ),
-        ),
-      if (settings.canViewClients())
-        _NavItem(
-          icon: Icons.people_alt_rounded,
-          label: Localization.translate('clients', lang),
-          color: const Color(0xFF8B5CF6), // Amethyst Violet
-          onTap: () => openAdaptiveScreen(
-            context,
-            title: Localization.translate('clients', lang),
-            icon: Icons.people_alt_rounded,
-            screen: const Customers(),
-          ),
-        ),
-      if (settings.canViewMyAccreditations())
-        _NavItem(
-          icon: Icons.inventory_2_rounded,
-          label: Localization.translate('produits', lang),
-          color: const Color(0xFFF59E0B), // Golden Amber
-          onTap: () => openAdaptiveScreen(
-            context,
-            title: Localization.translate('produits', lang),
-            icon: Icons.inventory_2_rounded,
-            screen: ProductsMenuScreen(db: db),
           ),
         ),
       if (allowWorkshop && settings.hasWorkshop && settings.canViewMyTasks())
@@ -4895,79 +5587,29 @@ class _WelcomScreenState extends State<WelcomScreen> {
             screen: WorkerArchiveScreen(db: db),
           ),
         ),
-      if (settings.canViewSuppliers())
-        _NavItem(
-          icon: Icons.local_shipping_rounded,
-          label: Localization.translate('الموردين', lang),
-          color: const Color(0xFFE11D48), // Rose Crimson
-          onTap: () => openAdaptiveScreen(
-            context,
-            title: Localization.translate('الموردين', lang),
-            icon: Icons.local_shipping_rounded,
-            screen: SuppliersScreen(db: db),
-          ),
-        ),
-      if (settings.canAccessInventory())
-        _NavItem(
-          icon: Icons.warehouse_rounded,
-          label: Localization.translate('المخزون', lang),
-          color: const Color(0xFFD946EF), // Neon Fuchsia Magenta
-          onTap: () => openAdaptiveScreen(
-            context,
-            title: Localization.translate('المخزون', lang),
-            icon: Icons.warehouse_rounded,
-            screen: InventoryScreen(db: db),
-          ),
-        ),
-      if (settings.canRegisterPurchases())
+      if (allowWorkshop &&
+          settings.hasWorkshop &&
+          settings.canRegisterPurchases())
         _NavItem(
           icon: Icons.shopping_bag_rounded,
-          label: Localization.translate('المشتريات', lang),
+          label: Localization.translate(
+            settings.isDualActivity ? 'مشتريات الورشة' : 'المشتريات',
+            lang,
+          ),
           color: const Color(0xFF06B6D4), // Bright Turquoise
           onTap: () => openAdaptiveScreen(
             context,
-            title: Localization.translate('المشتريات', lang),
+            title: Localization.translate(
+              settings.isDualActivity ? 'مشتريات الورشة' : 'المشتريات',
+              lang,
+            ),
             icon: Icons.shopping_bag_rounded,
-            screen: AchatScreen(db: db),
+            screen: AchatScreen(db: db, isWorkshop: true),
           ),
         ),
-      if (settings.canAccessSettings())
-        _NavItem(
-          icon: Icons.settings_rounded,
-          label: Localization.translate('settings', lang),
-          color: const Color(0xFF475569), // Dark Slate Graphite
-          onTap: () => openAdaptiveScreen(
-            context,
-            title: Localization.translate('settings', lang),
-            icon: Icons.settings_rounded,
-            screen: const SettingsScreen(),
-          ),
-        ),
-      if (settings.canViewStatistics())
-        _NavItem(
-          icon: Icons.bar_chart_rounded,
-          label: Localization.translate('rapports', lang),
-          color: const Color(0xFF6366F1), // Vivid Indigo Blue
-          onTap: () => openAdaptiveScreen(
-            context,
-            title: Localization.translate('rapports', lang),
-            icon: Icons.bar_chart_rounded,
-            screen: ReportsHubScreen(db: db),
-          ),
-        ),
-      if (settings.canAccessTreasury())
-        _NavItem(
-          icon: Icons.account_balance_wallet_rounded,
-          label: Localization.translate('الخزينة', lang),
-          color: const Color(0xFF15803D), // Forest Green
-          onTap: () => openAdaptiveScreen(
-            context,
-            title: Localization.translate('الخزينة', lang),
-            icon: Icons.account_balance_wallet_rounded,
-            screen: TreasuryScreen(db: db),
-          ),
-        ),
-      if (allowWorkshop && settings.hasWorkshop && settings.canAccessExternalOperations())
+      if (allowWorkshop &&
+          settings.hasWorkshop &&
+          settings.canAccessExternalOperations())
         _NavItem(
           icon: Icons.engineering_rounded,
           label: lang == AppLanguage.arabic
@@ -4987,12 +5629,136 @@ class _WelcomScreenState extends State<WelcomScreen> {
             screen: ExternalOperationsHubScreen(db: db),
           ),
         ),
+
+      // 🟠 أقسام محل بيع المواد
+      if (allowStore &&
+          settings.hasMaterialsStore &&
+          settings.canMaterialSales())
+        _NavItem(
+          icon: Icons.storefront_rounded,
+          label: Localization.translate('بيع المواد', lang),
+          color: const Color(0xFFEA580C), // Orange
+          onTap: () => openAdaptiveScreen(
+            context,
+            title: Localization.translate('بيع المواد', lang),
+            icon: Icons.storefront_rounded,
+            screen: MaterialSalesScreen(db: db),
+          ),
+        ),
+      if (allowStore &&
+          settings.hasMaterialsStore &&
+          settings.canRegisterPurchases())
+        _NavItem(
+          icon: Icons.shopping_cart_rounded,
+          label: Localization.translate('شراء المواد', lang),
+          color: const Color(0xFF0D9488), // Teal
+          onTap: () => openAdaptiveScreen(
+            context,
+            title: Localization.translate('شراء المواد', lang),
+            icon: Icons.shopping_cart_rounded,
+            screen: AchatScreen(db: db, isWorkshop: false),
+          ),
+        ),
+
+      // 🔵 الأقسام المشتركة والإدارية
+      if (settings.canViewClients())
+        _NavItem(
+          icon: Icons.people_alt_rounded,
+          label: Localization.translate('clients', lang),
+          color: const Color(0xFF8B5CF6), // Amethyst Violet
+          onTap: () => openAdaptiveScreen(
+            context,
+            title: Localization.translate('clients', lang),
+            icon: Icons.people_alt_rounded,
+            screen: Customers(
+              storeOnly:
+                  settings.workingSection == WorkingSection.materialsStore,
+            ),
+          ),
+        ),
+      if (!storeOnlyView && settings.canViewMyAccreditations())
+        _NavItem(
+          icon: Icons.inventory_2_rounded,
+          label: Localization.translate('produits', lang),
+          color: const Color(0xFFF59E0B), // Golden Amber
+          onTap: () => openAdaptiveScreen(
+            context,
+            title: Localization.translate('produits', lang),
+            icon: Icons.inventory_2_rounded,
+            screen: ProductsMenuScreen(db: db),
+          ),
+        ),
+      if (!storeOnlyView && settings.canAccessInventory())
+        _NavItem(
+          icon: Icons.warehouse_rounded,
+          label: Localization.translate('المخزون', lang),
+          color: const Color(0xFFD946EF), // Neon Fuchsia Magenta
+          onTap: () => openAdaptiveScreen(
+            context,
+            title: Localization.translate('المخزون', lang),
+            icon: Icons.warehouse_rounded,
+            screen: InventoryScreen(db: db),
+          ),
+        ),
+      if (!storeOnlyView && settings.canViewSuppliers())
+        _NavItem(
+          icon: Icons.local_shipping_rounded,
+          label: Localization.translate('الموردين', lang),
+          color: const Color(0xFFE11D48), // Rose Crimson
+          onTap: () => openAdaptiveScreen(
+            context,
+            title: Localization.translate('الموردين', lang),
+            icon: Icons.local_shipping_rounded,
+            screen: SuppliersScreen(db: db),
+          ),
+        ),
+      if (settings.canAccessTreasury())
+        _NavItem(
+          icon: Icons.account_balance_wallet_rounded,
+          label: Localization.translate('الخزينة', lang),
+          color: const Color(0xFF15803D), // Forest Green
+          onTap: () => openAdaptiveScreen(
+            context,
+            title: Localization.translate('الخزينة', lang),
+            icon: Icons.account_balance_wallet_rounded,
+            screen: TreasuryScreen(
+              db: db,
+              storeOnly:
+                  settings.workingSection == WorkingSection.materialsStore,
+            ),
+          ),
+        ),
+      if (!storeOnlyView && settings.canViewStatistics())
+        _NavItem(
+          icon: Icons.bar_chart_rounded,
+          label: Localization.translate('rapports', lang),
+          color: const Color(0xFF6366F1), // Vivid Indigo Blue
+          onTap: () => openAdaptiveScreen(
+            context,
+            title: Localization.translate('rapports', lang),
+            icon: Icons.bar_chart_rounded,
+            screen: ReportsHubScreen(db: db),
+          ),
+        ),
+      if (!storeOnlyView && settings.canAccessSettings())
+        _NavItem(
+          icon: Icons.settings_rounded,
+          label: Localization.translate('settings', lang),
+          color: const Color(0xFF475569), // Dark Slate Graphite
+          onTap: () => openAdaptiveScreen(
+            context,
+            title: Localization.translate('settings', lang),
+            icon: Icons.settings_rounded,
+            screen: const SettingsScreen(),
+          ),
+        ),
     ];
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final desktopColumns = constraints.maxWidth >= 1240 ? 6 : 5;
         final crossAxisCount = _isWindowsDesktop ? desktopColumns : 3;
+        final childAspectRatio = _isWindowsDesktop ? 1.65 : 0.88;
         return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -5000,7 +5766,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
             crossAxisCount: crossAxisCount,
             crossAxisSpacing: _isWindowsDesktop ? 14 : 10,
             mainAxisSpacing: _isWindowsDesktop ? 14 : 10,
-            childAspectRatio: _isWindowsDesktop ? 1.65 : 1.05,
+            childAspectRatio: childAspectRatio,
           ),
           itemCount: items.length,
           itemBuilder: (_, i) =>
@@ -5031,7 +5797,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
     Color mutedColor,
   ) {
     final settings = Provider.of<AppSettingsProvider>(context);
-    if (!settings.isDualActivity) return null;
+    if (!settings.isDualActivity ||
+        !settings.canAccessWorkshopScope() ||
+        !settings.canAccessStoreScope()) return null;
 
     final current = settings.workingSection;
 
@@ -5056,7 +5824,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
                       color: const Color(0xFF2563EB).withValues(alpha: 0.25),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
-                    )
+                    ),
                   ]
                 : null,
           ),
@@ -5125,7 +5893,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
 
   Widget _buildMobileSectionSelector(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
-    if (!settings.isDualActivity) return const SizedBox.shrink();
+    if (!settings.isDualActivity ||
+        !settings.canAccessWorkshopScope() ||
+        !settings.canAccessStoreScope()) return const SizedBox.shrink();
 
     final lang = settings.language;
     final current = settings.workingSection;
@@ -5151,7 +5921,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
               border: isSelected && isDark
-                  ? Border.all(color: activeColor.withValues(alpha: 0.6), width: 1.2)
+                  ? Border.all(
+                      color: activeColor.withValues(alpha: 0.6),
+                      width: 1.2,
+                    )
                   : null,
               boxShadow: isSelected && !isDark
                   ? [
@@ -5159,7 +5932,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
                         color: activeColor.withValues(alpha: 0.30),
                         blurRadius: 8,
                         offset: const Offset(0, 3),
-                      )
+                      ),
                     ]
                   : null,
             ),
@@ -5182,10 +5955,14 @@ class _WelcomScreenState extends State<WelcomScreen> {
                     style: TextStyle(
                       fontFamily: 'Cairo',
                       fontSize: 12,
-                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                      fontWeight: isSelected
+                          ? FontWeight.w800
+                          : FontWeight.w600,
                       color: isSelected
                           ? (isDark ? Colors.white : Colors.white)
-                          : (isDark ? Colors.white70 : Colors.blueGrey.shade700),
+                          : (isDark
+                                ? Colors.white70
+                                : Colors.blueGrey.shade700),
                     ),
                   ),
                 ),
@@ -5203,7 +5980,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
         color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isDark ? Colors.white12 : Colors.blueGrey.withValues(alpha: 0.12),
+          color: isDark
+              ? Colors.white12
+              : Colors.blueGrey.withValues(alpha: 0.12),
         ),
       ),
       child: Row(
@@ -5734,12 +6513,17 @@ class _StatCardState extends State<_StatCard> with TickerProviderStateMixin {
                             ],
                           ),
                           const Spacer(),
-                          Text(
-                            widget.value,
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
-                              fontFamily: 'Cairo',
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              widget.value,
+                              maxLines: 1,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                                fontFamily: 'Cairo',
+                              ),
                             ),
                           ),
                           const SizedBox(height: 1),
@@ -5941,7 +6725,8 @@ class _NavCardState extends State<_NavCard> with TickerProviderStateMixin {
                   Positioned(
                     left: 0,
                     right: 0,
-                    top: 6, // إزاحة للأسفل
+                    top: 6,
+                    // إزاحة للأسفل
                     bottom: 0,
                     child: Container(
                       decoration: BoxDecoration(
@@ -5966,8 +6751,10 @@ class _NavCardState extends State<_NavCard> with TickerProviderStateMixin {
                     curve: Curves.easeOut,
                     left: 0,
                     right: 0,
-                    top: _pressed ? 6 : 0, // عند الضغط تنزل لطبقة العمق
-                    bottom: _pressed ? 0 : 6, // عند الضغط تفقد الارتفاع
+                    top: _pressed ? 6 : 0,
+                    // عند الضغط تنزل لطبقة العمق
+                    bottom: _pressed ? 0 : 6,
+                    // عند الضغط تفقد الارتفاع
                     child: Container(
                       decoration: BoxDecoration(
                         color: isDark
@@ -6013,8 +6800,8 @@ class _NavCardState extends State<_NavCard> with TickerProviderStateMixin {
                         children: [
                           AnimatedContainer(
                             duration: const Duration(milliseconds: 150),
-                            width: 42,
-                            height: 42,
+                            width: 38,
+                            height: 38,
                             decoration: BoxDecoration(
                               color: color.withValues(
                                 alpha: isDark ? 0.25 : 0.14,
@@ -6035,21 +6822,26 @@ class _NavCardState extends State<_NavCard> with TickerProviderStateMixin {
                             child: Icon(
                               widget.item.icon,
                               color: color,
-                              size: 20,
+                              size: 19,
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            widget.item.label,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              fontFamily: 'Cairo',
-                              color: isDark
-                                  ? Colors.white
-                                  : const Color(0xFF1E293B),
+                          const SizedBox(height: 6),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Text(
+                              widget.item.label,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'Cairo',
+                                color: isDark
+                                    ? Colors.white
+                                    : const Color(0xFF1E293B),
+                              ),
                             ),
-                            textAlign: TextAlign.center,
                           ),
                         ],
                       ),
@@ -6919,6 +7711,7 @@ class _LineChartPainter extends CustomPainter {
 
 class _WaterWaveBackground extends StatefulWidget {
   final bool enabled;
+
   const _WaterWaveBackground({required this.enabled});
 
   @override
@@ -7034,9 +7827,8 @@ class _WaterWaveBackgroundState extends State<_WaterWaveBackground>
                       progress: _controller!.value,
                       waveColor: isDark
                           ? const Color(0x1F1E293B) // soft dark slate wave
-                          : const Color(
-                              0x3338BDF8,
-                            ), // sky-400 with glowing highlight
+                          : const Color(0x3338BDF8),
+                      // sky-400 with glowing highlight
                       amplitude: 14,
                       frequency: 1.2,
                       phaseShift: 0.0,
@@ -7059,7 +7851,8 @@ class _WaterWaveBackgroundState extends State<_WaterWaveBackground>
                       progress: _controller!.value,
                       waveColor: isDark
                           ? const Color(0x2A334155) // slate-700 wave
-                          : const Color(0x400EA5E9), // cyan-500
+                          : const Color(0x400EA5E9),
+                      // cyan-500
                       amplitude: 18,
                       frequency: 0.8,
                       phaseShift: 2.2,
@@ -7082,7 +7875,8 @@ class _WaterWaveBackgroundState extends State<_WaterWaveBackground>
                       progress: _controller!.value,
                       waveColor: isDark
                           ? const Color(0x38475569) // slate-600 wave
-                          : const Color(0x520284C7), // sky-600
+                          : const Color(0x520284C7),
+                      // sky-600
                       amplitude: 22,
                       frequency: 1.4,
                       phaseShift: 4.5,
