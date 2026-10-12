@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
     show KeyDownEvent, KeyEvent, KeyRepeatEvent, LogicalKeyboardKey;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'desktop_scroll_behavior.dart';
 
 class ResizableTableColumn {
   final String id;
@@ -807,7 +808,13 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
                   scrollDirection: Axis.horizontal,
                   primary: false,
                   child: bodyIsBounded
-                      ? SizedBox(height: bodyHeight, child: tableContent)
+                      ? SizedBox(
+                          height: bodyHeight,
+                          child: DesktopScrollFallback(
+                            controller: _verticalController,
+                            child: tableContent,
+                          ),
+                        )
                       : tableContent,
                 ),
               ),

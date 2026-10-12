@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../sql_database.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
+import '../settings/document_status_localization.dart';
 import '../services/cloud_sync_service.dart';
 import '../widgets/resizable_columns_table.dart';
 import 'achat_item_picker.dart';
@@ -1587,13 +1588,7 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
         _status != 'Confirmed' ||
         settings.isManager; // التعديل بعد التأكيد فقط للمديرين
     final canChangePurchaseDate = settings.canChangePurchaseDates();
-    final statusText = _status == 'Confirmed'
-        ? Localization.translate('مؤكدة', lang)
-        : _status == 'Returned'
-        ? Localization.translate('مسترجعة', lang)
-        : _status == 'Partial Returned'
-        ? Localization.translate('جزئياً مسترجعة', lang)
-        : Localization.translate(_status, lang);
+    final statusText = localizeDocumentStatus(_status, lang);
     final statusColor = _status == 'Confirmed' || _status == 'Returned'
         ? Colors.green
         : Colors.orange;

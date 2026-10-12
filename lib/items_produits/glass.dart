@@ -184,6 +184,8 @@ class _GlassScreenState extends State<GlassScreen> {
     final priceCtrl = TextEditingController();
     final heightCtrl = TextEditingController();
     final visibleWidthCtrl = TextEditingController();
+    final panelWidthCtrl = TextEditingController();
+    final panelHeightCtrl = TextEditingController();
 
     String selectedType = 'Glass';
     String selectedColor = 'بدون لون';
@@ -433,6 +435,30 @@ class _GlassScreenState extends State<GlassScreen> {
                       keyboardType: TextInputType.number,
                     ),
                   ],
+                  if (isDecorPanneau) ...[
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: panelWidthCtrl,
+                      decoration: InputDecoration(
+                        labelText: Localization.translate(
+                          'عرض البانو الكامل',
+                          Provider.of<AppSettingsProvider>(context).language,
+                        ),
+                      ),
+                      keyboardType: TextInputType.number,
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: panelHeightCtrl,
+                      decoration: InputDecoration(
+                        labelText: Localization.translate(
+                          'طول البانو الكامل',
+                          Provider.of<AppSettingsProvider>(context).language,
+                        ),
+                      ),
+                      keyboardType: TextInputType.number,
+                    ),
+                  ],
                   // سعر المتر المربع — يُخفى للـ Panneau (يُدار من صفحة الأسعار)
                   if (!isPanneau) ...[
                     const SizedBox(height: 10),
@@ -469,6 +495,8 @@ class _GlassScreenState extends State<GlassScreen> {
                   final thickness = _readDialogNumber(thicknessCtrl);
                   final decorWidth = _readDialogNumber(visibleWidthCtrl);
                   final decorHeight = _readDialogNumber(heightCtrl);
+                  final panelWidth = _readDialogNumber(panelWidthCtrl);
+                  final panelHeight = _readDialogNumber(panelHeightCtrl);
                   final isDecorPanneau =
                       selectedType == 'Panneau' &&
                       _isDecorSubtype(selectedSubtype);
@@ -490,6 +518,13 @@ class _GlassScreenState extends State<GlassScreen> {
                   if (isDecorPanneau && (decorWidth <= 0 || decorHeight <= 0)) {
                     _showCatalogSaveError(
                       'يجب إدخال عرض الديكور وطوله.',
+                    );
+                    return;
+                  }
+                  if (isDecorPanneau &&
+                      (panelWidth < decorWidth || panelHeight < decorHeight)) {
+                    _showCatalogSaveError(
+                      'يجب أن يكون عرض وطول البانو الكامل أكبر من أو يساوي أبعاد الديكور.',
                     );
                     return;
                   }
@@ -525,6 +560,8 @@ class _GlassScreenState extends State<GlassScreen> {
                               isDecorPanneau
                           ? decorWidth
                           : null,
+                      panelWidth: isDecorPanneau ? panelWidth : null,
+                      panelHeight: isDecorPanneau ? panelHeight : null,
                       decorDesignCode: isDecorPanneau
                           ? selectedDecorDesignCode
                           : '',
@@ -569,6 +606,12 @@ class _GlassScreenState extends State<GlassScreen> {
     );
     final visibleWidthCtrl = TextEditingController(
       text: (item['visible_width'] ?? '').toString(),
+    );
+    final panelWidthCtrl = TextEditingController(
+      text: (item['panel_width'] ?? '').toString(),
+    );
+    final panelHeightCtrl = TextEditingController(
+      text: (item['panel_height'] ?? '').toString(),
     );
 
     String selectedType = _glassTypes.contains(item['type'])
@@ -858,6 +901,32 @@ class _GlassScreenState extends State<GlassScreen> {
                       keyboardType: TextInputType.number,
                     ),
                   ],
+                  if (isDecorPanneau) ...[
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: panelWidthCtrl,
+                      enabled: isUserAdmin,
+                      decoration: InputDecoration(
+                        labelText: Localization.translate(
+                          'عرض البانو الكامل',
+                          Provider.of<AppSettingsProvider>(context).language,
+                        ),
+                      ),
+                      keyboardType: TextInputType.number,
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: panelHeightCtrl,
+                      enabled: isUserAdmin,
+                      decoration: InputDecoration(
+                        labelText: Localization.translate(
+                          'طول البانو الكامل',
+                          Provider.of<AppSettingsProvider>(context).language,
+                        ),
+                      ),
+                      keyboardType: TextInputType.number,
+                    ),
+                  ],
                   // سعر المتر المربع — يُخفى للـ Panneau (يُدار من صفحة الأسعار)
                   if (!isPanneau) ...[
                     const SizedBox(height: 10),
@@ -894,6 +963,8 @@ class _GlassScreenState extends State<GlassScreen> {
                   final thickness = _readDialogNumber(thicknessCtrl);
                   final decorWidth = _readDialogNumber(visibleWidthCtrl);
                   final decorHeight = _readDialogNumber(heightCtrl);
+                  final panelWidth = _readDialogNumber(panelWidthCtrl);
+                  final panelHeight = _readDialogNumber(panelHeightCtrl);
                   final isDecorPanneau =
                       selectedType == 'Panneau' &&
                       _isDecorSubtype(selectedSubtype);
@@ -915,6 +986,13 @@ class _GlassScreenState extends State<GlassScreen> {
                   if (isDecorPanneau && (decorWidth <= 0 || decorHeight <= 0)) {
                     _showCatalogSaveError(
                       'يجب إدخال عرض الديكور وطوله.',
+                    );
+                    return;
+                  }
+                  if (isDecorPanneau &&
+                      (panelWidth < decorWidth || panelHeight < decorHeight)) {
+                    _showCatalogSaveError(
+                      'يجب أن يكون عرض وطول البانو الكامل أكبر من أو يساوي أبعاد الديكور.',
                     );
                     return;
                   }
@@ -951,6 +1029,8 @@ class _GlassScreenState extends State<GlassScreen> {
                       decorDesignCode: isDecorPanneau
                           ? selectedDecorDesignCode
                           : '',
+                      panelWidth: isDecorPanneau ? panelWidth : null,
+                      panelHeight: isDecorPanneau ? panelHeight : null,
                     );
                     if (updatedRows <= 0) {
                       _showCatalogSaveError(
@@ -1211,6 +1291,14 @@ class _GlassScreenState extends State<GlassScreen> {
                     if (decorWidth > 0 && decorHeight > 0) {
                       dimText +=
                           ' - ${Localization.translate('أبعاد الديكور', lang)}: ${decorWidth.toStringAsFixed(0)} × ${decorHeight.toStringAsFixed(0)} ${Localization.translate('مم', lang)}';
+                    }
+                    final panelWidth =
+                        (item['panel_width'] as num?)?.toDouble() ?? 0.0;
+                    final panelHeight =
+                        (item['panel_height'] as num?)?.toDouble() ?? 0.0;
+                    if (panelWidth > 0 && panelHeight > 0) {
+                      dimText +=
+                          ' - ${Localization.translate('أبعاد البانو الكامل', lang)}: ${panelWidth.toStringAsFixed(0)} × ${panelHeight.toStringAsFixed(0)} ${Localization.translate('مم', lang)}';
                     }
                   }
                 }

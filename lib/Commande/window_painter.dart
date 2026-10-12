@@ -563,9 +563,11 @@ class WindowPainter extends CustomPainter {
       _drawMotorControls(canvas, w, h, t, topOffset);
     }
 
-    if (showSelection) {
+    if (showSelection || showDrawingDimensions) {
       for (final zone in model.zones) {
-        if (model.selectedZone != null && model.selectedZone!.id == zone.id) {
+        if (showSelection &&
+            model.selectedZone != null &&
+            model.selectedZone!.id == zone.id) {
           final r = zone.boundary;
           bool highlightEntireZone =
               model.activeSubZone == 'all' ||
@@ -2401,6 +2403,7 @@ class WindowPainter extends CustomPainter {
     canvas.drawPath(path, _buildPaint(outerRect));
 
     final isWholeDrawingFrameSelected =
+        showSelection &&
         model.selection.type == SelectionType.frame &&
         model.selection.zoneId == null &&
         model.isDrawingMode;
@@ -2482,9 +2485,9 @@ class WindowPainter extends CustomPainter {
       canvas.drawLine(Offset(0, h), Offset(t, h), bp);
       canvas.drawLine(Offset(w - t, h), Offset(w, h), bp);
 
-      // Removing the bottom frame applies only below opening sashes. Fixed
-      // cells still sit on their own lower frame segment. Zone coordinates
-      // are global, so translate them into this physical frame's local space.
+      // Removing the lower member is allowed only below opening sashes.
+      // Fixed/empty cells retain their structural lower segment even when a
+      // neighbouring opening in the same physical frame has no bottom.
       final frame = sourceFrame ?? Rect.fromLTRB(0, topY, w, h);
       for (final zone in model.zones) {
         if (!frame.contains(zone.boundary.center)) continue;
@@ -2819,7 +2822,6 @@ class WindowPainter extends CustomPainter {
       }
       if (model.hiddenSideCoverSegments.contains(edge.side) ||
           model.removedShutterSides.contains(edge.side) ||
-          (edge.side == 'bottom' && !_hasEffectiveBottomFrame) ||
           !model.isSideCoverSegmentEnabled(edge.side)) {
         continue;
       }
@@ -2838,10 +2840,16 @@ class WindowPainter extends CustomPainter {
                 orElse: () => null,
               );
       if (edgeFrame != null) {
+        if (edge.side == 'bottom' &&
+            !model.hasBottomFrameForRect(edgeFrame)) {
+          continue;
+        }
         final hasCover = model.isIntegratedFrame
             ? model.frameSideHasIntegratedCover(edgeFrame, edge.side)
             : model.frameSideAllowsSideCover(edgeFrame, edge.side);
         if (!hasCover) continue;
+      } else if (edge.side == 'bottom' && !_hasEffectiveBottomFrame) {
+        continue;
       }
 
       final spans = customSegments.isEmpty
@@ -3985,7 +3993,7 @@ class WindowPainter extends CustomPainter {
     }
     canvas.restore();
 
-    if (model.selection.type == SelectionType.mullion) {
+    if (showSelection && model.selection.type == SelectionType.mullion) {
       bool isH = model.selection.isHorizontalMullion!;
       double pos = model.selection.mullionPosition!;
       double start = model.selection.mullionStart ?? 0.0;
@@ -4763,13 +4771,10 @@ class WindowPainter extends CustomPainter {
                   ? effectiveSpec.finishInner
                   : effectiveSpec.finishOuter)
             : null) ??
-        model.selectedZone?.glass.finishOuter ??
         GlassFinish.paneauSandwitch;
 
     final Paint fillPaint = Paint();
-    final String? pColor = _effectivePanneauColor(
-      effectiveSpec ?? model.selectedZone?.glass,
-    );
+    final String? pColor = _effectivePanneauColor(effectiveSpec);
     final bool isPanneauWood = pColor != null && _isWoodColor({'name': pColor});
     if (isPanneauWood && TextureCache.woodTexture != null) {
       final woodColors = getEffectiveGradientColors(FrameColor.brown, {
@@ -4783,14 +4788,10 @@ class WindowPainter extends CustomPainter {
       );
     } else {
       final ClosedGlassColor colorP =
-          effectiveSpec?.colorP ??
-          model.selectedZone?.glass.colorP ??
-          ClosedGlassColor.white;
+          effectiveSpec?.colorP ?? ClosedGlassColor.white;
       final List<Color> gradientColors = _getColorsForLayer(
         GlassStructure.closed,
-        effectiveSpec?.colorOuter ??
-            model.selectedZone?.glass.colorOuter ??
-            GlassColor.transparent,
+        effectiveSpec?.colorOuter ?? GlassColor.transparent,
         activeFinish,
         colorP,
         pColor,
@@ -5887,7 +5888,9 @@ class WindowPainter extends CustomPainter {
         );
       }
 
-      if (model.selectedZone?.id == zone.id && model.activeSubZone == cellKey) {
+      if (showSelection &&
+          model.selectedZone?.id == zone.id &&
+          model.activeSubZone == cellKey) {
         final cellPath = _buildGlassLayerPath(glassR, t, topOffset, isTopBound);
         canvas.drawPath(
           cellPath,
@@ -5959,6 +5962,7 @@ class WindowPainter extends CustomPainter {
     final List<Rect> secondaryDivisionRects = [];
     final List<Rect> selectedDivisionRects = [];
     final bool selectedThisSide =
+        showSelection &&
         model.selection.type == SelectionType.innerDivision &&
         model.selection.zoneId == zone.id &&
         (model.selection.isRightSashInnerDivision ?? false) == isRightSash;
@@ -6495,7 +6499,9 @@ class WindowPainter extends CustomPainter {
 
         // Highlight active subzone
         bool isSelected = false;
-        if (model.selectedZone?.id == zone.id && model.activeSubZone != null) {
+        if (showSelection &&
+            model.selectedZone?.id == zone.id &&
+            model.activeSubZone != null) {
           if (model.activeSubZone == cell.key) {
             isSelected = true;
           } else if (model.activeSubZone!.startsWith('${sidePrefix}_cell_')) {

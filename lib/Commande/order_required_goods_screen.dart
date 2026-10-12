@@ -1010,7 +1010,11 @@ class _ConvertGoodsToPurchaseDialogState
                     .map(
                       (location) => DropdownMenuItem<int>(
                         value: location['id'] as int,
-                        child: Text(location['name']?.toString() ?? ''),
+                        child: Text(
+                          (location['name']?.toString() == 'المستودع الرئيسي' || (location['name']?.toString() ?? '').trim().isEmpty)
+                              ? widget.t('المستودع الرئيسي')
+                              : (location['name']?.toString() ?? ''),
+                        ),
                       ),
                     )
                     .toList(),
@@ -4530,7 +4534,11 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                         .map(
                           (location) => DropdownMenuItem<int>(
                             value: (location['id'] as num).toInt(),
-                            child: Text(location['name']?.toString() ?? ''),
+                            child: Text(
+                              (location['name']?.toString() == 'المستودع الرئيسي' || (location['name']?.toString() ?? '').trim().isEmpty)
+                                  ? _t('المستودع الرئيسي')
+                                  : (location['name']?.toString() ?? ''),
+                            ),
                           ),
                         )
                         .toList(),

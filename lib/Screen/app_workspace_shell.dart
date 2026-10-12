@@ -12,6 +12,7 @@ import 'package:database_data/widgets/app_material.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 import '../widgets/home_back_boundary.dart';
+import '../widgets/desktop_scroll_behavior.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/cloud_sync_service.dart';
@@ -28,6 +29,7 @@ import '../login_screen.dart';
 const double _workspaceHeaderHeight = 110;
 
 bool _exitConfirmationOpen = false;
+
 Future<void> _confirmHomeExit(BuildContext context) async {
   if (_exitConfirmationOpen) return;
   _exitConfirmationOpen = true;
@@ -139,6 +141,7 @@ class WorkspaceController extends ChangeNotifier {
       _entries.isNotEmpty && _entries[_activeIndex].id == 'home';
 
   bool _isSidebarOpen = false;
+
   bool get isSidebarOpen => _isSidebarOpen;
 
   void toggleSidebar() {
@@ -679,30 +682,41 @@ class _WorkspaceContentHostState extends State<_WorkspaceContentHost> {
       context,
       listen: false,
     ).navigatorKeyFor(widget.entry.id);
-
-    return PrimaryScrollController(
-      controller: _primaryScrollController,
-      child: Navigator(
-        key: navigatorKey,
-        onGenerateInitialRoutes: (_, __) {
-          return [
-            MaterialPageRoute(
-              builder: (context) => widget.entry.id == 'home'
-                  ? widget.entry.content
-                  : HomeBackBoundary(
-                      label: Localization.translate(
-                        'الصفحة الرئيسية',
-                        context.read<AppSettingsProvider>().language,
-                      ),
-                      onBack: () => context
-                          .read<WorkspaceController>()
-                          .closeByIdAndReturnHome(widget.entry.id),
-                      child: widget.entry.content,
+    return Offstage(
+      offstage: !widget.active,
+      child: DesktopTabScope(
+        active: widget.active,
+        child: TickerMode(
+          enabled: widget.active,
+          child: PrimaryScrollController(
+            controller: _primaryScrollController,
+            child: DesktopScrollFallback(
+              controller: _primaryScrollController,
+              child: Navigator(
+                key: navigatorKey,
+                onGenerateInitialRoutes: (_, __) {
+                  return [
+                    MaterialPageRoute(
+                      builder: (context) => widget.entry.id == 'home'
+                          ? widget.entry.content
+                          : HomeBackBoundary(
+                              label: Localization.translate(
+                                'الصفحة الرئيسية',
+                                context.read<AppSettingsProvider>().language,
+                              ),
+                              onBack: () => context
+                                  .read<WorkspaceController>()
+                                  .closeByIdAndReturnHome(widget.entry.id),
+                              child: widget.entry.content,
+                            ),
+                      settings: RouteSettings(name: widget.entry.id),
                     ),
-              settings: RouteSettings(name: widget.entry.id),
+                  ];
+                },
+              ),
             ),
-          ];
-        },
+          ),
+        ),
       ),
     );
   }

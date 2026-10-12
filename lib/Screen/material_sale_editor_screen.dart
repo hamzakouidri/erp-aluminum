@@ -4,6 +4,7 @@ import 'package:database_data/widgets/app_material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
+import '../settings/document_status_localization.dart';
 import '../settings/localization.dart';
 import '../sql_database.dart';
 import '../services/cloud_sync_service.dart';
@@ -1092,6 +1093,14 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
 
   // ── Client picker dialog ───────────────────────────────────────────────────
   String _clientDisplayName(Map<String, dynamic> client) {
+    if (client['business_segment'] == 'internal_workshop') {
+      return _t('الورشة (داخلي)');
+    }
+    final rawFirst = (client['firstname'] ?? '').toString().trim();
+    if (rawFirst.toLowerCase() == 'divers' &&
+        (client['lastname'] ?? '').toString().trim().isEmpty) {
+      return _trans('Divers (زبون عام)', 'Divers', 'General customer (Divers)');
+    }
     final direct = client['name']?.toString().trim() ?? '';
     if (direct.isNotEmpty) return direct;
     return [client['firstname'], client['lastname']]
@@ -1099,6 +1108,7 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
         .where((value) => value.isNotEmpty)
         .join(' ');
   }
+
 
   String _clientPhoneOf(Map<String, dynamic> client) =>
       (client['phone1'] ?? client['phone'] ?? '').toString();
@@ -1168,7 +1178,13 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
       '',
     );
     await widget.db.setClientBusinessSegment(id, 'materials');
-    final clients = await widget.db.readMaterialClients();
+    final settings = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    );
+    final clients = await widget.db.readMaterialClients(
+      includeInternalWorkshop: settings.isDualActivity,
+    );
     _clients = clients;
     for (final client in clients) {
       if (client['id'] == id) return client;
@@ -1244,8 +1260,13 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
                         ),
                       ),
                       onChanged: (value) async {
+                        final settings = Provider.of<AppSettingsProvider>(
+                          context,
+                          listen: false,
+                        );
                         final clients = await widget.db.readMaterialClients(
                           includeWindowClients: value,
+                          includeInternalWorkshop: settings.isDualActivity,
                         );
                         if (!ctx.mounted) return;
                         setS(() {
@@ -1757,7 +1778,13 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
                         border: const OutlineInputBorder(),
                       ),
                       child: Text(
-                        _t(_status),
+                        localizeDocumentStatus(
+                          _status,
+                          Provider.of<AppSettingsProvider>(
+                            context,
+                            listen: false,
+                          ).language,
+                        ),
                         style: TextStyle(
                           fontFamily: 'Cairo',
                           color: fieldTextColor,
@@ -2964,7 +2991,7 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
   String _t(String key) {
     final lang = Provider.of<AppSettingsProvider>(
       context,
-      listen: false,
+      listen: true,
     ).language;
     return Localization.translate(key, lang);
   }
@@ -3447,8 +3474,11 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
         child: Column(
           children: [
             Container(
-              color: isDesktop ? const Color(0xFF111111) : Colors.transparent,
-              padding: const EdgeInsets.fromLTRB(20, 10, 12, 10),
+              decoration: BoxDecoration(
+                color: isDesktop ? const Color(0xFF111111) : Colors.transparent,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+              ),
+              padding: const EdgeInsets.fromLTRB(20, 12, 12, 12),
               child: Row(
                 children: [
                   Icon(
@@ -3476,6 +3506,7 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
                 ],
               ),
             ),
+            const SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: LayoutBuilder(
@@ -3730,7 +3761,7 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
                                 ),
                               ),
                               Text(
-                                '${_t('المتوفر')}: ${NumberFormat('#,##0.##').format(selectedStock)} ${_getUnit(selected)}',
+                                '${_t('المتوفر')}: ${NumberFormat('#,##0.##').format(selectedStock)} ${_t(_getUnit(selected))}',
                                 style: TextStyle(
                                   fontFamily: 'Cairo',
                                   color: selectedStock > 0
@@ -3848,7 +3879,7 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
                                       ],
                                       decoration: InputDecoration(
                                         labelText: _t('سعر الوحدة'),
-                                        suffixText: 'DA',
+                                        suffixText: _t('د.ج'),
                                         border: const OutlineInputBorder(),
                                         isDense: true,
                                       ),

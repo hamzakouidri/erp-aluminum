@@ -8572,8 +8572,30 @@ class ComponentCalculator {
                       window.systemMode == 'منزلق') &&
                   zone.content != ZoneContent.empty &&
                   zone.content != ZoneContent.fixedGlass);
-          final double cellThick = window
-              .glassPackThicknessIncludingVitrageJoint(cellGlass);
+          // Parclose matching uses the sealed glass/panel pack only. The
+          // retaining joints are selected separately and must not inflate the
+          // requested parclose capacity or the resulting Intercalaire.
+          double cellThick = cellGlass.totalThickness(window.allGlassCache);
+          if (cellGlass.structure == GlassStructure.double) {
+            final spacerSizes = window.availableIntercalls
+                .map((item) {
+                  final raw = item['thickness'];
+                  return raw is num
+                      ? raw.toDouble()
+                      : double.tryParse(raw?.toString() ?? '');
+                })
+                .whereType<double>()
+                .where((value) => value > 0)
+                .toList()
+              ..sort();
+            final minimumSpacer = spacerSizes.isEmpty
+                ? 6.0
+                : spacerSizes.first;
+            cellThick =
+                (cellGlass.thicknessOuter ?? 4.0) +
+                (cellGlass.thicknessInner ?? 4.0) +
+                minimumSpacer;
+          }
           final double rawCellGlassPackThickness =
               cellGlass.structure == GlassStructure.double
               ? (cellGlass.thicknessOuter ?? 4.0) +
@@ -9247,13 +9269,19 @@ class ComponentCalculator {
     // =========================================================================
     Map<String, BomItem> mergedGlass = {};
     for (var g in glassItems) {
-      // المفتاح يعتمد فقط على الأبعاد والسعر — لا على الاسم
-      // بهذا تُدمج الظلفة الرئيسية والثانوية إذا كان لهما نفس القياس والسعر
+      // Location labels (main/secondary sash or zone names) must not split
+      // identical panels into separate rows. Keep genuinely different panel
+      // products/types/colours separate, but aggregate the same material when
+      // its cut dimensions and price are identical.
+      final panneauIdentity = g.category == 'panneau'
+          ? _panelAggregationIdentity(g)
+          : '';
       String key =
           '${g.originalName}_'
-          '${g.category == 'panneau' ? g.name : ''}_'
+          '${g.category == 'panneau' ? panneauIdentity : ''}_'
           '${g.length?.toStringAsFixed(1)}_'
           '${g.glassHeight?.toStringAsFixed(1)}_'
+          '${g.unit}_'
           '${g.unitPrice.toStringAsFixed(2)}';
 
       if (mergedGlass.containsKey(key)) {
@@ -10697,6 +10725,14 @@ class ComponentCalculator {
   static String _mergeGlassName(String existingName, String newName) {
     if (existingName == newName) return existingName;
 
+    final existingPanelMarker = existingName.indexOf('بانو (Panneau)');
+    final newPanelMarker = newName.indexOf('بانو (Panneau)');
+    if (existingPanelMarker >= 0 && newPanelMarker >= 0) {
+      // Both rows already passed the strict panel identity key. Display the
+      // common material description without a misleading zone/sash label.
+      return existingName.substring(existingPanelMarker);
+    }
+
     // نحاول استخراج جزء وصف الزجاج (السطر الذي يبدأ بـ "زجاج")
     final lines = existingName.split('\n');
     final glassDescLines = lines.where(
@@ -10709,6 +10745,17 @@ class ComponentCalculator {
       return glassDescLines.join('\n');
     }
     return existingName;
+  }
+
+  static String _panelAggregationIdentity(BomItem item) {
+    var description = item.name;
+    // Panel descriptions are preceded by an optional location label. Strip
+    // that prefix so two equal cuts in different drawing zones share one BOM
+    // row and their piece count/area are summed.
+    final marker = description.indexOf('بانو (Panneau)');
+    if (marker >= 0) description = description.substring(marker);
+    description = description.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return '${item.catalogItemId ?? 'no-id'}|$description';
   }
 
   static String _buildGlassDescription(

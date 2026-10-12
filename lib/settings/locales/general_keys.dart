@@ -3303,7 +3303,8 @@ This action cannot be undone!''',
   },
   'المستودع - إضافة عناصر للفاتورة (اسحب للتحريك)': {
     AppLanguage.arabic: 'المستودع - إضافة عناصر للفاتورة (اسحب للتحريك)',
-    AppLanguage.french: 'Dépôt - Ajouter des articles à la facture (Glisser pour déplacer)',
+    AppLanguage.french:
+        'Dépôt - Ajouter des articles à la facture (Glisser pour déplacer)',
     AppLanguage.english: 'Warehouse - Add items to invoice (Drag to move)',
   },
   'إضافة عناصر (مصغرة)': {
@@ -7897,5 +7898,97 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'خطأ أثناء إلغاء التحويل',
     AppLanguage.french: 'Erreur lors de l\'annulation du transfert',
     AppLanguage.english: 'Error during transfer cancellation',
+  },
+  'مواد': {
+    AppLanguage.arabic: 'مواد',
+    AppLanguage.french: 'Matériaux',
+    AppLanguage.english: 'Materials',
+  },
+  'مشترك': {
+    AppLanguage.arabic: 'مشترك',
+    AppLanguage.french: 'Commun',
+    AppLanguage.english: 'Common',
+  },
+  'نوافذ': {
+    AppLanguage.arabic: 'نوافذ',
+    AppLanguage.french: 'Fenêtres',
+    AppLanguage.english: 'Windows',
+  },
+  'إظهار زبائن النوافذ أيضًا': {
+    AppLanguage.arabic: 'إظهار زبائن النوافذ أيضًا',
+    AppLanguage.french: 'Afficher aussi les clients fenêtres',
+    AppLanguage.english: 'Also show window clients',
+  },
+  'زبون مواد جديد': {
+    AppLanguage.arabic: 'زبون مواد جديد',
+    AppLanguage.french: 'Nouveau client matériaux',
+    AppLanguage.english: 'New materials client',
+  },
+  'إضافة زبون مواد جديد': {
+    AppLanguage.arabic: 'إضافة زبون مواد جديد',
+    AppLanguage.french: 'Ajouter un nouveau client matériaux',
+    AppLanguage.english: 'Add new materials client',
+  },
+  'الورشة (داخلي)': {
+    AppLanguage.arabic: 'الورشة (داخلي)',
+    AppLanguage.french: 'Atelier (interne)',
+    AppLanguage.english: 'Workshop (internal)',
+  },
+  'زبون عام': {
+    AppLanguage.arabic: 'زبون عام',
+    AppLanguage.french: 'Client divers',
+    AppLanguage.english: 'General customer',
+  },
+
+  // ── مفاتيح القائمة الجانبية (Canvas Pills) ──────────────────────────────
+  'حائط': {
+    AppLanguage.arabic: 'حائط',
+    AppLanguage.french: 'Mur',
+    AppLanguage.english: 'Wall',
+  },
+  'نفق': {
+    AppLanguage.arabic: 'نفق',
+    AppLanguage.french: 'Tunnel',
+    AppLanguage.english: 'Tunnel',
+  },
+  'الخصائص': {
+    AppLanguage.arabic: 'الخصائص',
+    AppLanguage.french: 'Propriétés',
+    AppLanguage.english: 'Properties',
+  },
+  'تفعيل أو إلغاء الحائط': {
+    AppLanguage.arabic: 'تفعيل أو إلغاء الحائط',
+    AppLanguage.french: 'Activer / désactiver le mur',
+    AppLanguage.english: 'Toggle wall',
+  },
+  'تفعيل أو إلغاء صندوق النفق': {
+    AppLanguage.arabic: 'تفعيل أو إلغاء صندوق النفق',
+    AppLanguage.french: 'Activer / désactiver le caisson tunnel',
+    AppLanguage.english: 'Toggle tunnel box',
+  },
+  'تفعيل أو إلغاء الغطاء الجانبي': {
+    AppLanguage.arabic: 'تفعيل أو إلغاء الغطاء الجانبي',
+    AppLanguage.french: 'Activer / désactiver le couvre-joint',
+    AppLanguage.english: 'Toggle side cover',
+  },
+  'تبديل جهة عرض النافذة': {
+    AppLanguage.arabic: 'تبديل جهة عرض النافذة',
+    AppLanguage.french: 'Basculer vue interne / externe',
+    AppLanguage.english: 'Toggle inner / outer view',
+  },
+  'تفعيل أو إلغاء الإطار السفلي': {
+    AppLanguage.arabic: 'تفعيل أو إلغاء الإطار السفلي',
+    AppLanguage.french: 'Activer / désactiver le cadre bas',
+    AppLanguage.english: 'Toggle bottom frame',
+  },
+  'فتح لوحة الخصائص': {
+    AppLanguage.arabic: 'فتح لوحة الخصائص',
+    AppLanguage.french: 'Ouvrir les propriétés',
+    AppLanguage.english: 'Open properties panel',
+  },
+  'تفعيل أو إلغاء الستار على النافذة': {
+    AppLanguage.arabic: 'تفعيل أو إلغاء الستار على النافذة',
+    AppLanguage.french: 'Activer / désactiver le volet',
+    AppLanguage.english: 'Toggle window shutter',
   },
 };

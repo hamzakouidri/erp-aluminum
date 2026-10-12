@@ -7,6 +7,7 @@ import '../sql_database.dart';
 import '../services/cloud_sync_service.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
+import '../settings/document_status_localization.dart';
 import 'material_sale_editor_screen.dart';
 import '../services/material_sale_pdf_service.dart';
 import 'inventory_screen.dart';
@@ -345,26 +346,12 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
   }
 
   String _statusLabel(String? status) {
-    switch (status) {
-      case 'draft':
-        return _t('مسودة');
-      case 'reserved':
-        return _t('محجوز');
-      case 'confirmed':
-        return _t('مؤكد');
-      case 'delivered':
-        return _t('تم التسليم');
-      case 'paid':
-        return _t('مدفوع');
-      case 'cancelled':
-        return _t('ملغى');
-      default:
-        return status ?? '—';
-    }
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    return localizeDocumentStatus(status, lang);
   }
 
   Color _statusColor(String? status) {
-    switch (status) {
+    switch (status?.trim().toLowerCase()) {
       case 'draft':
         return Colors.grey;
       case 'reserved':

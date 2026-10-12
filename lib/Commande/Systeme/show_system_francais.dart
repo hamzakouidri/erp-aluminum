@@ -10,12 +10,12 @@ import 'package:flutter/gestures.dart'
 import 'package:database_data/widgets/app_material.dart';
 import 'package:flutter/services.dart'
     show
-    FilteringTextInputFormatter,
-    LengthLimitingTextInputFormatter,
-    HardwareKeyboard,
-    KeyEvent,
-    KeyDownEvent,
-    LogicalKeyboardKey;
+        FilteringTextInputFormatter,
+        LengthLimitingTextInputFormatter,
+        HardwareKeyboard,
+        KeyEvent,
+        KeyDownEvent,
+        LogicalKeyboardKey;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/settings/shortcut_bindings.dart';
 import 'package:database_data/Commande/window_painter.dart';
@@ -70,7 +70,10 @@ class _WindowViewState extends State<WindowView> {
 
   static const _hidePresetCardPreferenceKey = 'drawing_hide_preset_quick_card';
   bool _hidePresetCard = false;
-  bool _initialCatalogReady = false;
+  // The canvas must never wait for catalogue I/O. A restored model already
+  // contains enough geometry to draw immediately, and an empty model can
+  // show its workspace while systems/colours load in the background.
+  bool _initialCatalogReady = true;
 
   Future<void> _loadInitialCatalog() async {
     try {
@@ -164,8 +167,15 @@ class _WindowViewState extends State<WindowView> {
   void _toggleWallFeature() {
     final newVal = !widget.model.showWall;
     widget.model.toggleShowWall(newVal);
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     _showShortcutFeedback(
-      newVal ? 'تم تفعيل الحائط (Mur)' : 'تم إلغاء الحائط',
+      Localization.translate(
+        newVal ? 'تم تفعيل الحائط' : 'تم إلغاء الحائط',
+        lang,
+      ),
       icon: Icons.wallpaper_rounded,
       color: newVal ? Colors.teal.shade700 : Colors.red.shade700,
     );
@@ -181,8 +191,15 @@ class _WindowViewState extends State<WindowView> {
       widget.model.setAllShutterDriveSide('right');
     }
     widget.model.notifyListeners();
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     _showShortcutFeedback(
-      newVal ? 'تم تفعيل الستار (Volet)' : 'تم إلغاء الستار',
+      Localization.translate(
+        newVal ? 'تم تفعيل الستار' : 'تم إلغاء الستار',
+        lang,
+      ),
       icon: newVal ? Icons.layers_rounded : Icons.layers_clear_rounded,
       color: newVal ? Colors.green.shade700 : Colors.red.shade700,
     );
@@ -196,20 +213,32 @@ class _WindowViewState extends State<WindowView> {
     if (isNestedSlidingFrame) {
       final newVal = !widget.model.hasInternalSlidingSideCover;
       widget.model.toggleInternalSlidingSideCover(newVal);
+      final lang = Provider.of<AppSettingsProvider>(
+        context,
+        listen: false,
+      ).language;
       _showShortcutFeedback(
-        newVal
-            ? 'تمت إضافة غطاء الإطار المنزلق'
-            : 'تمت إزالة غطاء الإطار المنزلق',
+        Localization.translate(
+          newVal
+              ? 'تمت إضافة غطاء الإطار المنزلق'
+              : 'تمت إزالة غطاء الإطار المنزلق',
+          lang,
+        ),
         icon: Icons.border_outer_rounded,
         color: newVal ? Colors.amber.shade800 : Colors.red.shade700,
       );
     } else {
       final newVal = !widget.model.hasSideCovers;
       await widget.model.toggleSideCovers(newVal);
+      final lang = Provider.of<AppSettingsProvider>(
+        context,
+        listen: false,
+      ).language;
       _showShortcutFeedback(
-        newVal
-            ? 'تمت إضافة الغطاء الجانبي (Caches)'
-            : 'تمت إزالة الغطاء الجانبي',
+        Localization.translate(
+          newVal ? 'تمت إضافة الغطاء الجانبي' : 'تمت إزالة الغطاء الجانبي',
+          lang,
+        ),
         icon: Icons.border_outer_rounded,
         color: newVal ? Colors.amber.shade800 : Colors.red.shade700,
       );
@@ -221,8 +250,15 @@ class _WindowViewState extends State<WindowView> {
     final newVal = !widget.model.isCaissonTunnel;
     widget.model.toggleCaissonTunnel(newVal);
     widget.model.refreshUI();
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     _showShortcutFeedback(
-      newVal ? 'تم تفعيل صندوق النفق (Caisson Tunnel)' : 'تم إلغاء صندوق النفق',
+      Localization.translate(
+        newVal ? 'تم تفعيل صندوق النفق' : 'تم إلغاء صندوق النفق',
+        lang,
+      ),
       icon: Icons.horizontal_rule_rounded,
       color: newVal ? Colors.deepPurple.shade700 : Colors.red.shade700,
     );
@@ -261,23 +297,31 @@ class _WindowViewState extends State<WindowView> {
       next = 'محرك';
     }
     _setShutterMechanismFeature(next);
-    String label;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    String labelKey;
     IconData icon;
     switch (next) {
       case 'محرك':
-        label = 'آلية الستار: محرك (Moteur)';
+        labelKey = 'آلية الستار: محرك';
         icon = Icons.electrical_services_rounded;
         break;
       case 'منايفال':
-        label = 'آلية الستار: منايفال (Manivelle)';
+        labelKey = 'آلية الستار: منايفال';
         icon = Icons.rotate_right_rounded;
         break;
       default:
-        label = 'آلية الستار: حزام (Sangle)';
+        labelKey = 'آلية الستار: حزام';
         icon = Icons.line_weight_rounded;
         break;
     }
-    _showShortcutFeedback(label, icon: icon, color: Colors.indigo.shade700);
+    _showShortcutFeedback(
+      Localization.translate(labelKey, lang),
+      icon: icon,
+      color: Colors.indigo.shade700,
+    );
   }
 
   void _toggleShutterDriveSideFeature([String? targetSide]) {
@@ -286,14 +330,21 @@ class _WindowViewState extends State<WindowView> {
     }
     final newSide =
         targetSide ??
-            (widget.model.shutterDriveSide == 'right' ? 'left' : 'right');
+        (widget.model.shutterDriveSide == 'right' ? 'left' : 'right');
     widget.model.shutterDriveSide = newSide;
     widget.model.setAllShutterDriveSide(newSide);
     widget.model.notifyListeners();
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     _showShortcutFeedback(
-      newSide == 'right'
-          ? 'جهة تحكم الستار: اليمين (Droite)'
-          : 'جهة تحكم الستار: اليسار (Gauche)',
+      Localization.translate(
+        newSide == 'right'
+            ? 'جهة تحكم الستار: اليمين'
+            : 'جهة تحكم الستار: اليسار',
+        lang,
+      ),
       icon: newSide == 'right'
           ? Icons.keyboard_double_arrow_right_rounded
           : Icons.keyboard_double_arrow_left_rounded,
@@ -305,10 +356,14 @@ class _WindowViewState extends State<WindowView> {
   void _toggleViewModeFeature() {
     widget.model.toggleViewMode();
     final isInternal = widget.model.isInternalView;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     _showShortcutFeedback(
       isInternal
-          ? 'مشاهدة: وجه داخلي (Face interne)'
-          : 'مشاهدة: وجه خارجي (Face externe)',
+          ? Localization.translate('مشاهدة: وجه داخلي', lang)
+          : Localization.translate('مشاهدة: وجه خارجي', lang),
       icon: isInternal ? Icons.visibility : Icons.flip_camera_android,
       color: isInternal ? Colors.blue.shade700 : Colors.orange.shade800,
     );
@@ -345,13 +400,11 @@ class _WindowViewState extends State<WindowView> {
     required VoidCallback onTap,
     String? tooltip,
   }) {
-    final isDark = Theme
-        .of(context)
-        .brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isActive
         ? (isDark
-        ? activeColor.withValues(alpha: 0.3)
-        : activeColor.withValues(alpha: 0.12))
+              ? activeColor.withValues(alpha: 0.3)
+              : activeColor.withValues(alpha: 0.12))
         : (isDark ? const Color(0xFF2A2A3C) : Colors.white);
     final borderColor = isActive
         ? activeColor
@@ -403,19 +456,14 @@ class _WindowViewState extends State<WindowView> {
     return pill;
   }
 
-  Widget _buildQuickActionsBar(BuildContext context, {
+  Widget _buildQuickActionsBar(
+    BuildContext context, {
     required bool isVertical,
   }) {
-    final lang = Provider
-        .of<AppSettingsProvider>(context)
-        .language;
-    final isDark = Theme
-        .of(context)
-        .brightness == Brightness.dark;
+    final lang = Provider.of<AppSettingsProvider>(context).language;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isTabletOrDesktop =
-        _isWindowsDesktop || MediaQuery
-            .sizeOf(context)
-            .width >= 600;
+        _isWindowsDesktop || MediaQuery.sizeOf(context).width >= 600;
 
     final items = <Widget>[
       // قفل / تحرير حركة الرسم
@@ -453,8 +501,8 @@ class _WindowViewState extends State<WindowView> {
                     fontWeight: FontWeight.bold,
                     color: _isMovementLocked
                         ? (isDark
-                        ? Colors.amber.shade200
-                        : Colors.amber.shade900)
+                              ? Colors.amber.shade200
+                              : Colors.amber.shade900)
                         : (isDark ? Colors.white70 : Colors.grey.shade800),
                   ),
                 ),
@@ -505,7 +553,7 @@ class _WindowViewState extends State<WindowView> {
           label: Localization.translate('غطاء جانبي', lang),
           icon: Icons.border_outer_rounded,
           isActive:
-          widget.model.hasSideCovers ||
+              widget.model.hasSideCovers ||
               widget.model.hasInternalSlidingSideCover,
           activeColor: Colors.amber.shade800,
           tooltip: Localization.translate(
@@ -556,8 +604,8 @@ class _WindowViewState extends State<WindowView> {
             icon: widget.model.shutterMechanism == 'محرك'
                 ? Icons.electrical_services_rounded
                 : (widget.model.shutterMechanism == 'منايفال'
-                ? Icons.rotate_right_rounded
-                : Icons.line_weight_rounded),
+                      ? Icons.rotate_right_rounded
+                      : Icons.line_weight_rounded),
             isActive: true,
             activeColor: Colors.indigo.shade600,
             tooltip: Localization.translate(
@@ -633,9 +681,7 @@ class _WindowViewState extends State<WindowView> {
     if (!mounted ||
         !_isWindowsDesktop ||
         event is! KeyDownEvent ||
-        ModalRoute
-            .of(context)
-            ?.isCurrent != true) {
+        ModalRoute.of(context)?.isCurrent != true) {
       return false;
     }
     final focus = FocusManager.instance.primaryFocus?.context;
@@ -648,7 +694,7 @@ class _WindowViewState extends State<WindowView> {
 
     final isCtrl =
         HardwareKeyboard.instance.isControlPressed ||
-            HardwareKeyboard.instance.isMetaPressed;
+        HardwareKeyboard.instance.isMetaPressed;
     final isAlt = HardwareKeyboard.instance.isAltPressed;
     final key = event.logicalKey;
     final char = event.character?.toLowerCase();
@@ -821,7 +867,7 @@ class _WindowViewState extends State<WindowView> {
           requireDialog: false,
           requireQuantity: true,
           hasSimpleGlassForReducer:
-          spec.structure == GlassStructure.simple ||
+              spec.structure == GlassStructure.simple ||
               spec.structure == GlassStructure.closed,
           hasDoubleGlassForRules: spec.structure == GlassStructure.double,
         ),
@@ -836,9 +882,7 @@ class _WindowViewState extends State<WindowView> {
         );
         final message = fit == null
             ? 'تنبيه: لا توجد تركيبة جوانات مفعّلة تطابق الزجاج ($glass مم) والسعة ($capacity مم). النقص ممنوع والزيادة القصوى 1 مم.'
-            : 'تركيبة جوانات متوافقة مقترحة: ${fit.map((
-            row) => '${row['name']} (${row['thickness']} مم)').join(
-            ' + ')}. الزجاج: $glass مم، السعة: $capacity مم، الزيادة القصوى 1 مم دون نقص.';
+            : 'تركيبة جوانات متوافقة مقترحة: ${fit.map((row) => '${row['name']} (${row['thickness']} مم)').join(' + ')}. الزجاج: $glass مم، السعة: $capacity مم، الزيادة القصوى 1 مم دون نقص.';
         return Padding(
           padding: const EdgeInsets.all(8),
           child: Text(
@@ -863,17 +907,17 @@ class _WindowViewState extends State<WindowView> {
       _handleCandidates = seriesId == null
           ? Future.value(<Map<String, dynamic>>[])
           : CatalogCandidateResolver(database: SqlDatabase()).resolve(
-        CatalogCandidateQuery(
-          category: 'accessory',
-          selectorType: '',
-          roleKeys: const ['handle', 'entrematique'],
-          seriesId: seriesId,
-          materialType: widget.model.isSlidingPVC ? 'pvc' : 'aluminium',
-          drawingMode: AccessoryDrawingMode.sliding,
-          requireDialog: true,
-          requireQuantity: true,
-        ),
-      );
+              CatalogCandidateQuery(
+                category: 'accessory',
+                selectorType: '',
+                roleKeys: const ['handle', 'entrematique'],
+                seriesId: seriesId,
+                materialType: widget.model.isSlidingPVC ? 'pvc' : 'aluminium',
+                drawingMode: AccessoryDrawingMode.sliding,
+                requireDialog: true,
+                requireQuantity: true,
+              ),
+            );
     }
     return FutureBuilder<List<Map<String, dynamic>>>(
       future: _handleCandidates,
@@ -900,19 +944,19 @@ class _WindowViewState extends State<WindowView> {
             final classic = rule['role_key'] != 'entrematique';
             final key = classic
                 ? (widget.model.isSlidingPVC
-                ? 'مقبض نافذة (Poignée Fenêtre)'
-                : 'مقبض منزلق (Poignée Coulissante)')
+                      ? 'مقبض نافذة (Poignée Fenêtre)'
+                      : 'مقبض منزلق (Poignée Coulissante)')
                 : 'أونتروماتيك (Entrematique)';
             return _ContentButton(
               label: '${candidate['name'] ?? candidate['code'] ?? ''}',
               icon: Icons.sync_alt_rounded,
               selected:
-              zone.useClassicHandle == classic &&
+                  zone.useClassicHandle == classic &&
                   widget.model.componentOverrides[key]?['id'] ==
                       candidate['id'],
               onPressed: () {
                 widget.model.componentOverrides[key] =
-                Map<String, dynamic>.from(candidate);
+                    Map<String, dynamic>.from(candidate);
                 widget.model.setSelectedZoneHandle(useClassicHandle: classic);
                 setState(() {});
               },
@@ -968,41 +1012,37 @@ class _WindowViewState extends State<WindowView> {
   static const double _zoomStep = 1.15;
 
   String _tr(String key) =>
-      Localization.translate(key, context
-          .read<AppSettingsProvider>()
-          .language);
+      Localization.translate(key, context.read<AppSettingsProvider>().language);
 
-  String _trackCountLabel(int count, AppLanguage lang) =>
-      switch (lang) {
-        AppLanguage.arabic => '$count سكك',
-        AppLanguage.french => '$count rails',
-        AppLanguage.english => '$count tracks',
-      };
+  String _trackCountLabel(int count, AppLanguage lang) => switch (lang) {
+    AppLanguage.arabic => '$count سكك',
+    AppLanguage.french => '$count rails',
+    AppLanguage.english => '$count tracks',
+  };
 
-  String _trackTitle(AppLanguage lang) =>
-      switch (lang) {
-        AppLanguage.arabic => 'عدد السكك في الإطار:',
-        AppLanguage.french => 'Nombre de rails du cadre :',
-        AppLanguage.english => 'Frame track count:',
-      };
+  String _trackTitle(AppLanguage lang) => switch (lang) {
+    AppLanguage.arabic => 'عدد السكك في الإطار:',
+    AppLanguage.french => 'Nombre de rails du cadre :',
+    AppLanguage.english => 'Frame track count:',
+  };
 
-  String _trackShortTitle(AppLanguage lang) =>
-      switch (lang) {
-        AppLanguage.arabic => 'السكك:',
-        AppLanguage.french => 'Rails :',
-        AppLanguage.english => 'Tracks:',
-      };
+  String _trackShortTitle(AppLanguage lang) => switch (lang) {
+    AppLanguage.arabic => 'السكك:',
+    AppLanguage.french => 'Rails :',
+    AppLanguage.english => 'Tracks:',
+  };
 
-  String _slidingCountLabel(int count, AppLanguage lang) =>
-      switch (lang) {
-        AppLanguage.arabic => 'منزلق $count',
-        AppLanguage.french => 'Coulissant $count vantaux',
-        AppLanguage.english => '$count-sash sliding',
-      };
+  String _slidingCountLabel(int count, AppLanguage lang) => switch (lang) {
+    AppLanguage.arabic => 'منزلق $count',
+    AppLanguage.french => 'Coulissant $count vantaux',
+    AppLanguage.english => '$count-sash sliding',
+  };
 
-  String _frameTrackCompositionLabel(int trackCount,
-      bool complete,
-      AppLanguage lang,) {
+  String _frameTrackCompositionLabel(
+    int trackCount,
+    bool complete,
+    AppLanguage lang,
+  ) {
     if (complete) {
       return switch (lang) {
         AppLanguage.arabic => 'إطار كامل بـ $trackCount سكك',
@@ -1021,15 +1061,17 @@ class _WindowViewState extends State<WindowView> {
     return switch (lang) {
       AppLanguage.arabic => 'إطار أساسي بسكتين + $additions سكة إضافية',
       AppLanguage.french =>
-      'Cadre de base à 2 rails + $additions rail(s) ajouté(s)',
+        'Cadre de base à 2 rails + $additions rail(s) ajouté(s)',
       AppLanguage.english =>
-      'Two-track base frame + $additions additional track(s)',
+        'Two-track base frame + $additions additional track(s)',
     };
   }
 
-  bool _seriesMatchesScope(AluminumSeries series,
-      AluminumProfileSystem system,
-      String scope,) {
+  bool _seriesMatchesScope(
+    AluminumSeries series,
+    AluminumProfileSystem system,
+    String scope,
+  ) {
     return widget.model.seriesSupportsDrawingScopeInSystem(
       series,
       scope,
@@ -1037,8 +1079,10 @@ class _WindowViewState extends State<WindowView> {
     );
   }
 
-  List<AluminumSeries> _seriesForScope(AluminumProfileSystem system,
-      String scope,) {
+  List<AluminumSeries> _seriesForScope(
+    AluminumProfileSystem system,
+    String scope,
+  ) {
     final normalizedScope = scope.trim().toLowerCase();
     final oppositeScope = normalizedScope == 'sliding' ? 'opening' : 'sliding';
     final matching = system.series
@@ -1076,23 +1120,21 @@ class _WindowViewState extends State<WindowView> {
     // while never putting an explicitly sliding series in the opening list.
     final directlySliding = system.series
         .where(
-          (series) =>
-          widget.model.seriesSupportsDrawingScope(
+          (series) => widget.model.seriesSupportsDrawingScope(
             series,
             'sliding',
             profile: system,
           ),
-    )
+        )
         .toList();
     final directlyOpening = system.series
         .where(
-          (series) =>
-          widget.model.seriesSupportsDrawingScope(
+          (series) => widget.model.seriesSupportsDrawingScope(
             series,
             'opening',
             profile: system,
           ),
-    )
+        )
         .toList();
 
     if (normalizedScope == 'opening') {
@@ -1166,7 +1208,7 @@ class _WindowViewState extends State<WindowView> {
   final ScrollController _leftDrawerScrollController = ScrollController();
   final ScrollController _rightDrawerScrollController = ScrollController();
   final TextEditingController _leftSashWidthController =
-  TextEditingController();
+      TextEditingController();
   final FocusNode _leftSashFocusNode = FocusNode();
   late final TextEditingController _positionCtrl;
 
@@ -1184,7 +1226,8 @@ class _WindowViewState extends State<WindowView> {
   /// On Windows Flutter excludes a mouse from drag scrolling by default.
   /// Both drawing drawers contain horizontal option rows, so enable mouse and
   /// trackpad dragging here without changing the phone touch experience.
-  ScrollBehavior _drawerScrollBehavior(BuildContext context, {
+  ScrollBehavior _drawerScrollBehavior(
+    BuildContext context, {
     bool scrollbars = true,
   }) {
     return ScrollConfiguration.of(context).copyWith(
@@ -1227,7 +1270,7 @@ class _WindowViewState extends State<WindowView> {
   // ── حالة الضغط على منطقة الستار ──
   bool _isShutterSelected = false;
   int _activeShutterTab =
-  0; // 0: شائع, 1: الصندوق, 2: الشفرات, 3: السكك, 4: نوع الستار
+      0; // 0: شائع, 1: الصندوق, 2: الشفرات, 3: السكك, 4: نوع الستار
   List<Map<String, dynamic>> _shutterLamesOptions = [];
   List<Map<String, dynamic>> _shutterCoulisseOptions = [];
   List<Map<String, dynamic>> _shutterCaissonOptions = [];
@@ -1270,9 +1313,7 @@ class _WindowViewState extends State<WindowView> {
 
   double? _caissonSizeMm(Map<String, dynamic> option) {
     final raw = getComponentSize(option);
-    if (raw == null || raw
-        .trim()
-        .isEmpty) return null;
+    if (raw == null || raw.trim().isEmpty) return null;
     var size = double.tryParse(raw.replaceAll(',', '.'));
     if (size == null || size <= 0) return null;
     if (size < 100) size *= 10;
@@ -1306,7 +1347,7 @@ class _WindowViewState extends State<WindowView> {
         widget.systemMode == 'mixed' && openingSeriesId != null;
     final needsSlidingFrames =
         (widget.systemMode == 'mixed' || widget.systemMode == 'sliding') &&
-            slidingSeriesId != null;
+        slidingSeriesId != null;
     if (_loadedSeriesId == seriesId &&
         (!needsOpeningFrames ||
             _loadedOpeningFrameSeriesId == openingSeriesId) &&
@@ -1323,9 +1364,9 @@ class _WindowViewState extends State<WindowView> {
 
       final primaryUsesSlidingFrames =
           widget.systemMode == 'sliding' ||
-              (widget.systemMode == 'mixed' &&
-                  seriesId == slidingSeriesId &&
-                  seriesId != openingSeriesId);
+          (widget.systemMode == 'mixed' &&
+              seriesId == slidingSeriesId &&
+              seriesId != openingSeriesId);
       final frames = await _loadFrameProfilesForSeries(
         db,
         seriesId,
@@ -1338,24 +1379,24 @@ class _WindowViewState extends State<WindowView> {
       );
       final openingFrames = needsOpeningFrames
           ? await _loadFrameProfilesForSeries(
-        db,
-        openingSeriesId,
-        sliding: false,
-      )
+              db,
+              openingSeriesId,
+              sliding: false,
+            )
           : <Map<String, dynamic>>[];
       final slidingFrames = needsSlidingFrames
           ? await _loadFrameProfilesForSeries(
-        db,
-        slidingSeriesId,
-        sliding: true,
-      )
+              db,
+              slidingSeriesId,
+              sliding: true,
+            )
           : <Map<String, dynamic>>[];
       final openingSashes = needsOpeningFrames
           ? await _loadSashProfilesForSeries(
-        db,
-        openingSeriesId,
-        sliding: false,
-      )
+              db,
+              openingSeriesId,
+              sliding: false,
+            )
           : <Map<String, dynamic>>[];
       final slidingSashes = needsSlidingFrames
           ? await _loadSashProfilesForSeries(db, slidingSeriesId, sliding: true)
@@ -1368,12 +1409,12 @@ class _WindowViewState extends State<WindowView> {
       );
       final centralRoleProfiles = await db
           .getDesignSectionsForDrawingRoles(montantRoleSeriesId, const [
-        'sash_central',
-        'central',
-        'chicane',
-        'chicane_renforcee',
-        'sash_central_reinforced',
-      ], usageScope: 'sliding');
+            'sash_central',
+            'central',
+            'chicane',
+            'chicane_renforcee',
+            'sash_central_reinforced',
+          ], usageScope: 'sliding');
 
       // Ignore an old result when either series changed. Publishing only one
       // complete generation prevents opening and sliding rows from being
@@ -1385,16 +1426,15 @@ class _WindowViewState extends State<WindowView> {
           widget.model.activeSlidingSeries?.id != slidingSeriesId) {
         return;
       }
-      Set<int> idsFrom(List<Map<String, dynamic>> rows) =>
-          rows
-              .map((row) {
+      Set<int> idsFrom(List<Map<String, dynamic>> rows) => rows
+          .map((row) {
             final rawId = row['id'];
             return rawId is num
                 ? rawId.toInt()
                 : int.tryParse('${rawId ?? ''}');
           })
-              .whereType<int>()
-              .toSet();
+          .whereType<int>()
+          .toSet();
       setState(() {
         _frameProfiles = frames;
         _openingFrameProfiles = openingFrames;
@@ -1424,16 +1464,16 @@ class _WindowViewState extends State<WindowView> {
             widget.systemMode == 'mixed' && currentOpeningSeriesId != null;
         final currentNeedsSlidingFrames =
             (widget.systemMode == 'mixed' || widget.systemMode == 'sliding') &&
-                currentSlidingSeriesId != null;
+            currentSlidingSeriesId != null;
         final profilesChangedWhileLoading =
             requestGeneration != _profileLoadGeneration ||
-                activeSeriesForSystem?.id != seriesId ||
-                widget.model.activeSeries?.id != openingSeriesId ||
-                widget.model.activeSlidingSeries?.id != slidingSeriesId ||
-                (currentNeedsOpeningFrames &&
-                    currentOpeningSeriesId != openingSeriesId) ||
-                (currentNeedsSlidingFrames &&
-                    currentSlidingSeriesId != slidingSeriesId);
+            activeSeriesForSystem?.id != seriesId ||
+            widget.model.activeSeries?.id != openingSeriesId ||
+            widget.model.activeSlidingSeries?.id != slidingSeriesId ||
+            (currentNeedsOpeningFrames &&
+                currentOpeningSeriesId != openingSeriesId) ||
+            (currentNeedsSlidingFrames &&
+                currentSlidingSeriesId != slidingSeriesId);
         if (profilesChangedWhileLoading) {
           unawaited(_loadAvailableProfiles());
         }
@@ -1441,10 +1481,11 @@ class _WindowViewState extends State<WindowView> {
     }
   }
 
-  Future<List<Map<String, dynamic>>> _loadFrameProfilesForSeries(SqlDatabase db,
-      int seriesId, {
-        required bool sliding,
-      }) async {
+  Future<List<Map<String, dynamic>>> _loadFrameProfilesForSeries(
+    SqlDatabase db,
+    int seriesId, {
+    required bool sliding,
+  }) async {
     final configured = await db.getDesignSectionsForDrawingRoles(
       seriesId,
       const ['frame'],
@@ -1465,8 +1506,8 @@ class _WindowViewState extends State<WindowView> {
       final flag = row['is_frame'];
       final isFrame =
           flag == true ||
-              (flag is num && flag != 0) ||
-              flag?.toString().trim() == '1';
+          (flag is num && flag != 0) ||
+          flag?.toString().trim() == '1';
       final type = (row['type'] ?? '').toString().trim().toLowerCase();
       final name = (row['name'] ?? '').toString().trim().toLowerCase();
       final code = (row['code'] ?? '').toString().trim().toLowerCase();
@@ -1488,22 +1529,22 @@ class _WindowViewState extends State<WindowView> {
       // Tringle, Port de joint, Parclose, etc. are NOT frames
       final isNonFrame =
           label.contains('tringle') ||
-              label.contains('port_de_joint') ||
-              label.contains('porte_de_joint') ||
-              label.contains('port_joint') ||
-              label.contains('porte_joint') ||
-              label.contains('portejoint') ||
-              label.contains('حامل_الجوان') ||
-              label.contains('parclose') ||
-              label.contains('rejet') ||
-              label.contains('bavette') ||
-              label.contains('cremone') ||
-              label.contains('crémone') ||
-              label.contains('charniere') ||
-              label.contains('charnière') ||
-              label.contains('roulette') ||
-              label.contains('vitrage') ||
-              label.contains('glace');
+          label.contains('port_de_joint') ||
+          label.contains('porte_de_joint') ||
+          label.contains('port_joint') ||
+          label.contains('porte_joint') ||
+          label.contains('portejoint') ||
+          label.contains('حامل_الجوان') ||
+          label.contains('parclose') ||
+          label.contains('rejet') ||
+          label.contains('bavette') ||
+          label.contains('cremone') ||
+          label.contains('crémone') ||
+          label.contains('charniere') ||
+          label.contains('charnière') ||
+          label.contains('roulette') ||
+          label.contains('vitrage') ||
+          label.contains('glace');
       if (isNonFrame) {
         return false;
       }
@@ -1511,33 +1552,33 @@ class _WindowViewState extends State<WindowView> {
       final isFrameRole = role == 'frame' || role == 'sliding_frame';
       final isNonFrameRole =
           role == 'side_cover' ||
-              role == 'porte_joint' ||
-              role == 'tringle' ||
-              role == 'parclose';
+          role == 'porte_joint' ||
+          role == 'tringle' ||
+          role == 'parclose';
       final isSideCoverType =
           normalizedType == 'side_cover' ||
-              normalizedType == 'sidecover' ||
-              normalizedType == 'couvre_joint' ||
-              normalizedType == 'couvrejoint';
+          normalizedType == 'sidecover' ||
+          normalizedType == 'couvre_joint' ||
+          normalizedType == 'couvrejoint';
       final isPorteJointType =
           normalizedType == 'porte_joint' || normalizedType == 'portejoint';
       final hasSideCoverLabel =
           label.contains('couvre_joint') ||
-              label.contains('couvrejoint') ||
-              label.contains('side_cover') ||
-              label.contains('sidecover') ||
-              label.contains('كوفرجوا') ||
-              label.contains('كوفر_جوا') ||
-              label.contains('غطاء_جانبي');
+          label.contains('couvrejoint') ||
+          label.contains('side_cover') ||
+          label.contains('sidecover') ||
+          label.contains('كوفرجوا') ||
+          label.contains('كوفر_جوا') ||
+          label.contains('غطاء_جانبي');
       final typeClearlyNamesFrame =
           isFrameRole ||
-              normalizedType == 'frame' ||
-              normalizedType.contains('cadre') ||
-              normalizedType.contains('dormant') ||
-              normalizedName.contains('cadre') ||
-              normalizedName.contains('dormant') ||
-              normalizedName.contains('حلق') ||
-              normalizedName.contains('إطار');
+          normalizedType == 'frame' ||
+          normalizedType.contains('cadre') ||
+          normalizedType.contains('dormant') ||
+          normalizedName.contains('cadre') ||
+          normalizedName.contains('dormant') ||
+          normalizedName.contains('حلق') ||
+          normalizedName.contains('إطار');
 
       if (isNonFrameRole ||
           isSideCoverType ||
@@ -1556,13 +1597,13 @@ class _WindowViewState extends State<WindowView> {
       bool isSlidingProfile() {
         if (role == 'sliding_frame' || role == 'frame_sliding') return true;
         final uScope =
-        (row['usage_scope'] ??
-            row['design_usage_scope'] ??
-            row['sharing_usage_scope'] ??
-            '')
-            .toString()
-            .trim()
-            .toLowerCase();
+            (row['usage_scope'] ??
+                    row['design_usage_scope'] ??
+                    row['sharing_usage_scope'] ??
+                    '')
+                .toString()
+                .trim()
+                .toLowerCase();
         if (uScope == 'sliding') return true;
         final text = '$label $name $type $code'.toLowerCase();
         if (RegExp(
@@ -1619,24 +1660,25 @@ class _WindowViewState extends State<WindowView> {
     return merged;
   }
 
-  Future<List<Map<String, dynamic>>> _loadSashProfilesForSeries(SqlDatabase db,
-      int seriesId, {
-        required bool sliding,
-      }) async {
+  Future<List<Map<String, dynamic>>> _loadSashProfilesForSeries(
+    SqlDatabase db,
+    int seriesId, {
+    required bool sliding,
+  }) async {
     return db.getDesignSectionsForDrawingRoles(
       seriesId,
       sliding
           ? const [
-        'sash',
-        'sash_extension',
-        'sash_lateral',
-        'sash_lateral_reinforced',
-        'sash_central',
-        'sash_central_reinforced',
-        'sash_traverse',
-        'chicane',
-        'chicane_renforcee',
-      ]
+              'sash',
+              'sash_extension',
+              'sash_lateral',
+              'sash_lateral_reinforced',
+              'sash_central',
+              'sash_central_reinforced',
+              'sash_traverse',
+              'chicane',
+              'chicane_renforcee',
+            ]
           : const ['sash', 'sash_extension'],
       usageScope: sliding ? 'sliding' : 'opening',
     );
@@ -1657,8 +1699,8 @@ class _WindowViewState extends State<WindowView> {
   /// level so an old saved flag cannot bring reinforcement controls back.
   bool get _pvcMontantReinforcementDisabled =>
       widget.model.isPVC ||
-          widget.model.isSlidingPVC ||
-          _seriesIsPvc(widget.model.activeSlidingSeries);
+      widget.model.isSlidingPVC ||
+      _seriesIsPvc(widget.model.activeSlidingSeries);
 
   DecorationImage? _getWoodTextureImage(Map<String, dynamic> dbColor) {
     final name = dbColor['name'].toString().toLowerCase();
@@ -1671,33 +1713,33 @@ class _WindowViewState extends State<WindowView> {
 
     final isWood =
         cleanName.contains('خشب') ||
-            cleanName.contains('wood') ||
-            cleanName.contains('bois') ||
-            cleanName.contains('╪«╪┤╪¿') ||
-            cleanName.contains('desert') ||
-            cleanName.contains('ديزر') ||
-            cleanName.contains('ديزير') ||
-            cleanName.contains('oak') ||
-            cleanName.contains('اوك') ||
-            cleanName.contains('chene') ||
-            cleanName.contains('chêne') ||
-            cleanName.contains('noyer') ||
-            cleanName.contains('acajou') ||
-            cleanName.contains('شين') ||
-            cleanName.contains('نويا') ||
-            cleanName.contains('اكاجو') ||
-            cleanName.contains('بوا') ||
-            cleanName.contains('faux') ||
-            cleanName.contains('فو') ||
-            cleanName.contains('antique') ||
-            cleanName.contains('انتيك') ||
-            cleanName.contains('onteak') ||
-            cleanName.contains('╪º┘å╪¬┘è┘â') ||
-            cleanName.contains('╪»┘è╪▓╪▒') ||
-            cleanName.contains('d0') ||
-            cleanName.contains('دي زيرو') ||
-            cleanName.contains('بلوط') ||
-            cleanName.contains('di zero');
+        cleanName.contains('wood') ||
+        cleanName.contains('bois') ||
+        cleanName.contains('╪«╪┤╪¿') ||
+        cleanName.contains('desert') ||
+        cleanName.contains('ديزر') ||
+        cleanName.contains('ديزير') ||
+        cleanName.contains('oak') ||
+        cleanName.contains('اوك') ||
+        cleanName.contains('chene') ||
+        cleanName.contains('chêne') ||
+        cleanName.contains('noyer') ||
+        cleanName.contains('acajou') ||
+        cleanName.contains('شين') ||
+        cleanName.contains('نويا') ||
+        cleanName.contains('اكاجو') ||
+        cleanName.contains('بوا') ||
+        cleanName.contains('faux') ||
+        cleanName.contains('فو') ||
+        cleanName.contains('antique') ||
+        cleanName.contains('انتيك') ||
+        cleanName.contains('onteak') ||
+        cleanName.contains('╪º┘å╪¬┘è┘â') ||
+        cleanName.contains('╪»┘è╪▓╪▒') ||
+        cleanName.contains('d0') ||
+        cleanName.contains('دي زيرو') ||
+        cleanName.contains('بلوط') ||
+        cleanName.contains('di zero');
 
     if (!isWood) return null;
 
@@ -1840,45 +1882,40 @@ class _WindowViewState extends State<WindowView> {
 
   Future<bool?> _askSlidingRebateCut(WindowZone zone) async {
     if (!widget.model.shouldAskSlidingRebateCut(zone)) return null;
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     return showDialog<bool>(
       context: context,
-      builder: (dialogContext) =>
-          AlertDialog(
-            title: Text(Localization.translate('ركوب الزجاج للمنزلق', lang)),
-            content: Text(
-              Localization.translate(
-                'هذا المنزلق داخل إطار واحد مقسم. هل سيتم قطع وحساب ركوب الزجاج حول منطقة المنزلق؟',
-                lang,
-              ),
-              textDirection: TextDirection.rtl,
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: Text(Localization.translate('لا', lang)),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
-                child: Text(Localization.translate('نعم', lang)),
-              ),
-            ],
+      builder: (dialogContext) => AlertDialog(
+        title: Text(Localization.translate('ركوب الزجاج للمنزلق', lang)),
+        content: Text(
+          Localization.translate(
+            'هذا المنزلق داخل إطار واحد مقسم. هل سيتم قطع وحساب ركوب الزجاج حول منطقة المنزلق؟',
+            lang,
           ),
+          textDirection: TextDirection.rtl,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(Localization.translate('لا', lang)),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(Localization.translate('نعم', lang)),
+          ),
+        ],
+      ),
     );
   }
 
   void _showSlidingUnsupportedSnack() {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -1910,10 +1947,11 @@ class _WindowViewState extends State<WindowView> {
     });
   }
 
-  Future<bool> _paintZoneContentFromUi(WindowZone zone,
-      ZoneContent content, {
-        int? slidingSashesCount,
-      }) async {
+  Future<bool> _paintZoneContentFromUi(
+    WindowZone zone,
+    ZoneContent content, {
+    int? slidingSashesCount,
+  }) async {
     bool? cutRebate;
     if (content == ZoneContent.slidingSash) {
       if (widget.model.hasArchOrSlant) {
@@ -1950,8 +1988,8 @@ class _WindowViewState extends State<WindowView> {
     final isDouble = zone.content == ZoneContent.doubleSash;
     final isSash =
         isDouble ||
-            zone.content == ZoneContent.singleSash ||
-            zone.content == ZoneContent.slidingSash;
+        zone.content == ZoneContent.singleSash ||
+        zone.content == ZoneContent.slidingSash;
 
     if (isDouble) {
       final splitX =
@@ -1959,17 +1997,17 @@ class _WindowViewState extends State<WindowView> {
       const separator = 4.0;
       target = (cellId ?? '').startsWith('right')
           ? Rect.fromLTRB(
-        splitX + separator / 2,
-        zone.boundary.top,
-        zone.boundary.right,
-        zone.boundary.bottom,
-      )
+              splitX + separator / 2,
+              zone.boundary.top,
+              zone.boundary.right,
+              zone.boundary.bottom,
+            )
           : Rect.fromLTRB(
-        zone.boundary.left,
-        zone.boundary.top,
-        splitX - separator / 2,
-        zone.boundary.bottom,
-      );
+              zone.boundary.left,
+              zone.boundary.top,
+              splitX - separator / 2,
+              zone.boundary.bottom,
+            );
     } else if (zone.content == ZoneContent.slidingSash) {
       final count = math.max(1, zone.slidingSashesCount);
       target = Rect.fromLTWH(
@@ -1983,7 +2021,7 @@ class _WindowViewState extends State<WindowView> {
     if (isSash) {
       final sashThickness =
           zone.sashThickness ??
-              widget.model.getSectionThickness('sash', fallback: 45.0);
+          widget.model.getSectionThickness('sash', fallback: 45.0);
       final width = math.max(0.0, target.width - 2 * sashThickness);
       final height = math.max(0.0, target.height - 2 * sashThickness);
       return Size(width, height);
@@ -1995,14 +2033,14 @@ class _WindowViewState extends State<WindowView> {
     final key = cellId ?? '';
     final hasLeftOrMain =
         zone.innerH > 0 ||
-            zone.innerV > 0 ||
-            zone.innerHPositions.isNotEmpty ||
-            zone.innerVPositions.isNotEmpty;
+        zone.innerV > 0 ||
+        zone.innerHPositions.isNotEmpty ||
+        zone.innerVPositions.isNotEmpty;
     final hasRight =
         zone.rightInnerH > 0 ||
-            zone.rightInnerV > 0 ||
-            zone.rightInnerHPositions.isNotEmpty ||
-            zone.rightInnerVPositions.isNotEmpty;
+        zone.rightInnerV > 0 ||
+        zone.rightInnerHPositions.isNotEmpty ||
+        zone.rightInnerVPositions.isNotEmpty;
     if (key.startsWith('right')) return hasRight;
     if (key.startsWith('left') || key.startsWith('main')) {
       return hasLeftOrMain;
@@ -2020,44 +2058,80 @@ class _WindowViewState extends State<WindowView> {
     }
 
     final product = widget.model.getPanneauProductForSpec(spec);
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     final decorWidth = product == null
         ? 0.0
         : _catalogNumber(product, 'visible_width');
     final decorHeight = product == null
         ? 0.0
         : _catalogNumber(product, 'height');
+    final panelWidth = product == null
+        ? 0.0
+        : _catalogNumber(product, 'panel_width');
+    final panelHeight = product == null
+        ? 0.0
+        : _catalogNumber(product, 'panel_height');
     if (product == null || decorWidth <= 0 || decorHeight <= 0) {
       await showDialog<void>(
         context: context,
-        builder: (dialogContext) =>
-            AlertDialog(
-              title: Text(
-                Localization.translate('أبعاد البانو ديكور غير محددة', lang),
-              ),
-              content: Text(
-                Localization.translate(
-                  'يجب تحديد عرض الديكور وطوله في منتج الزجاج أولاً.',
-                  lang,
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: Text(Localization.translate('حسناً', lang)),
-                ),
-              ],
+        builder: (dialogContext) => AlertDialog(
+          title: Text(
+            Localization.translate('أبعاد البانو ديكور غير محددة', lang),
+          ),
+          content: Text(
+            Localization.translate(
+              'يجب تحديد عرض الديكور وطوله في منتج الزجاج أولاً.',
+              lang,
             ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(Localization.translate('حسناً', lang)),
+            ),
+          ],
+        ),
       );
       return _DecorPlacementResult(false, cellId);
     }
 
     final available = _decorPanelFullSpace(zone, cellId);
+    if (panelWidth > 0 &&
+        panelHeight > 0 &&
+        !decorPanelSheetCoversSpace(
+          spaceWidth: available.width,
+          spaceHeight: available.height,
+          panelWidth: panelWidth,
+          panelHeight: panelHeight,
+        )) {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(
+            Localization.translate('لا يمكن وضع هذا البانو هنا', lang),
+          ),
+          content: Text(
+            '${Localization.translate('مقاس البانو الكامل', lang)} '
+            '${panelWidth.toStringAsFixed(0)} × ${panelHeight.toStringAsFixed(0)} '
+            '${Localization.translate('مم', lang)} '
+            '${Localization.translate('أصغر من المساحة المطلوبة', lang)} '
+            '${available.width.toStringAsFixed(0)} × '
+            '${available.height.toStringAsFixed(0)} '
+            '${Localization.translate('مم', lang)}.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(Localization.translate('حسناً', lang)),
+            ),
+          ],
+        ),
+      );
+      return _DecorPlacementResult(false, cellId);
+    }
     if (!decorPanelFitsSpace(
       spaceWidth: available.width,
       spaceHeight: available.height,
@@ -2066,28 +2140,22 @@ class _WindowViewState extends State<WindowView> {
     )) {
       await showDialog<void>(
         context: context,
-        builder: (dialogContext) =>
-            AlertDialog(
-              title: Text(
-                Localization.translate('لا يمكن وضع هذا البانو هنا', lang),
-              ),
-              content: Text(
-                '${Localization.translate('حجم الديكور', lang)} ${decorWidth
-                    .toStringAsFixed(0)} × ${decorHeight.toStringAsFixed(
-                    0)} ${Localization.translate('مم', lang)} '
-                    '${Localization.translate(
-                    'أكبر من المساحة المتاحة', lang)} ${available.width
-                    .toStringAsFixed(0)} × ${available.height.toStringAsFixed(
-                    0)} ${Localization.translate('مم', lang)}. '
-                    '${Localization.translate('ينبغي اختيار بانو آخر.', lang)}',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: Text(Localization.translate('حسناً', lang)),
-                ),
-              ],
+        builder: (dialogContext) => AlertDialog(
+          title: Text(
+            Localization.translate('لا يمكن وضع هذا البانو هنا', lang),
+          ),
+          content: Text(
+            '${Localization.translate('حجم الديكور', lang)} ${decorWidth.toStringAsFixed(0)} × ${decorHeight.toStringAsFixed(0)} ${Localization.translate('مم', lang)} '
+            '${Localization.translate('يجب أن يكون أصغر من المساحة المتاحة بـ 30 مم في العرض والطول', lang)} ${available.width.toStringAsFixed(0)} × ${available.height.toStringAsFixed(0)} ${Localization.translate('مم', lang)}. '
+            '${Localization.translate('ينبغي اختيار بانو آخر.', lang)}',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(Localization.translate('حسناً', lang)),
             ),
+          ],
+        ),
       );
       return _DecorPlacementResult(false, cellId);
     }
@@ -2098,26 +2166,23 @@ class _WindowViewState extends State<WindowView> {
 
     final removeDivisions = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) =>
-          AlertDialog(
-            title: Text(Localization.translate('إلغاء التقسيم؟', lang)),
-            content: Text(
-              '${Localization.translate(
-                  'البانو ديكور لا يقبل أي تقسيمات.', lang)} '
-                  '${Localization.translate(
-                  'يجب إلغاء التقسيم الحالي لتفعيله. هل توافق؟', lang)}',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: Text(Localization.translate('لا', lang)),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
-                child: Text(Localization.translate('نعم', lang)),
-              ),
-            ],
+      builder: (dialogContext) => AlertDialog(
+        title: Text(Localization.translate('إلغاء التقسيم؟', lang)),
+        content: Text(
+          '${Localization.translate('البانو ديكور لا يقبل أي تقسيمات.', lang)} '
+          '${Localization.translate('يجب إلغاء التقسيم الحالي لتفعيله. هل توافق؟', lang)}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(Localization.translate('لا', lang)),
           ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(Localization.translate('نعم', lang)),
+          ),
+        ],
+      ),
     );
     if (removeDivisions != true) {
       return _DecorPlacementResult(false, cellId);
@@ -2137,28 +2202,28 @@ class _WindowViewState extends State<WindowView> {
     if (isDouble || isSingle || isSliding) {
       double splitX =
           tappedZ.boundary.left +
-              tappedZ.boundary.width * tappedZ.doubleSashRatio;
+          tappedZ.boundary.width * tappedZ.doubleSashRatio;
       bool isRight = isDouble && (modelPos.dx > splitX);
       Rect sashR = tappedZ.boundary;
       if (isDouble) {
         final sep = 4.0;
         sashR = isRight
             ? Rect.fromLTRB(
-          splitX + sep / 2,
-          tappedZ.boundary.top,
-          tappedZ.boundary.right,
-          tappedZ.boundary.bottom,
-        )
+                splitX + sep / 2,
+                tappedZ.boundary.top,
+                tappedZ.boundary.right,
+                tappedZ.boundary.bottom,
+              )
             : Rect.fromLTRB(
-          tappedZ.boundary.left,
-          tappedZ.boundary.top,
-          splitX - sep / 2,
-          tappedZ.boundary.bottom,
-        );
+                tappedZ.boundary.left,
+                tappedZ.boundary.top,
+                splitX - sep / 2,
+                tappedZ.boundary.bottom,
+              );
       }
       final sashT =
           tappedZ.sashThickness ??
-              widget.model.getSectionThickness('sash', fallback: 45.0);
+          widget.model.getSectionThickness('sash', fallback: 45.0);
       final glassR = sashR.deflate(sashT);
       if (glassR.contains(modelPos)) {
         int currentInnerH = isRight ? tappedZ.rightInnerH : tappedZ.innerH;
@@ -2249,7 +2314,9 @@ class _WindowViewState extends State<WindowView> {
     }
 
     if (selectionChanged) {
-      _refreshModelDependentUi();
+      // A selection click changes only editor chrome (active toolbar/panel).
+      // Do not rescan every zone's glass or check/reload profile catalogues;
+      // those values did not change and the scans made frame selection lag.
       setState(() {});
       return;
     }
@@ -2289,7 +2356,7 @@ class _WindowViewState extends State<WindowView> {
         widget.systemMode == 'mixed' && openingSeriesId != null;
     final needsSlidingFrames =
         (widget.systemMode == 'mixed' || widget.systemMode == 'sliding') &&
-            slidingSeriesId != null;
+        slidingSeriesId != null;
     if (activeSeriesForSystem?.id != _loadedSeriesId ||
         (needsOpeningFrames &&
             _loadedOpeningFrameSeriesId != openingSeriesId) ||
@@ -2299,8 +2366,10 @@ class _WindowViewState extends State<WindowView> {
     }
   }
 
-  void _queueMixedSlidingSeriesSelection(AluminumSeries candidate,
-      int? openingSeriesId,) {
+  void _queueMixedSlidingSeriesSelection(
+    AluminumSeries candidate,
+    int? openingSeriesId,
+  ) {
     if (_slidingSeriesAutoSelectionQueued) return;
     _slidingSeriesAutoSelectionQueued = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -2325,7 +2394,7 @@ class _WindowViewState extends State<WindowView> {
   void _syncDrawerGlassFromDrawing() {
     _tempGlassSpec =
         widget.model.getUniformGlassSpecification() ??
-            const GlassSpecification();
+        const GlassSpecification();
   }
 
   // ── تحميل خيارات الستار من قاعدة البيانات ──
@@ -2341,7 +2410,7 @@ class _WindowViewState extends State<WindowView> {
       final lames = await dbInstance.query(
         'ShutterComponents',
         where:
-        "LOWER(TRIM(component_type)) IN ('blade', 'lame') AND (is_active = 1 OR is_active IS NULL)",
+            "LOWER(TRIM(component_type)) IN ('blade', 'lame') AND (is_active = 1 OR is_active IS NULL)",
         orderBy: 'name ASC',
       );
 
@@ -2349,7 +2418,7 @@ class _WindowViewState extends State<WindowView> {
       final coulisses = await dbInstance.query(
         'ShutterComponents',
         where:
-        "LOWER(TRIM(component_type)) IN ('track', 'coulisse', 'coulisses', 'glissiere') AND (is_active = 1 OR is_active IS NULL)",
+            "LOWER(TRIM(component_type)) IN ('track', 'coulisse', 'coulisses', 'glissiere') AND (is_active = 1 OR is_active IS NULL)",
         orderBy: 'name ASC',
       );
 
@@ -2357,7 +2426,7 @@ class _WindowViewState extends State<WindowView> {
       final caissonRes = await dbInstance.query(
         'ShutterComponents',
         where:
-        "(LOWER(name) LIKE '%caisson%' OR name LIKE '%صندوق%' OR LOWER(component_type) LIKE '%caisson%' OR LOWER(component_type) LIKE '%box%') AND (is_active = 1 OR is_active IS NULL)",
+            "(LOWER(name) LIKE '%caisson%' OR name LIKE '%صندوق%' OR LOWER(component_type) LIKE '%caisson%' OR LOWER(component_type) LIKE '%box%') AND (is_active = 1 OR is_active IS NULL)",
         orderBy: 'name ASC',
       );
 
@@ -2421,10 +2490,10 @@ class _WindowViewState extends State<WindowView> {
                 .fold<double>(0, (max, value) => value > max ? value : max);
             if (maxHeight <= 0) {
               unavailableCaissonReasons[id] =
-              'هذا الصندوق غير مضبوط لهذه الشفرة في حدود الستار.';
+                  'هذا الصندوق غير مضبوط لهذه الشفرة في حدود الستار.';
             } else if (widget.model.height > maxHeight) {
               unavailableCaissonReasons[id] =
-              'الحد الأقصى لهذا الصندوق ${maxHeight.toStringAsFixed(0)} مم.';
+                  'الحد الأقصى لهذا الصندوق ${maxHeight.toStringAsFixed(0)} مم.';
             }
           }
         } else {
@@ -2435,8 +2504,7 @@ class _WindowViewState extends State<WindowView> {
             if (id == null || size == null) continue;
             if (size + 0.5 < fallbackMinimumSize) {
               unavailableCaissonReasons[id] =
-              'هذا الصندوق أصغر من الحد المطلوب ${fallbackMinimumSize
-                  .toStringAsFixed(0)} مم.';
+                  'هذا الصندوق أصغر من الحد المطلوب ${fallbackMinimumSize.toStringAsFixed(0)} مم.';
             }
           }
         }
@@ -2533,10 +2601,9 @@ class _WindowViewState extends State<WindowView> {
     if (widget.model.archHeight > 0) {
       double yC =
           topOffset +
-              math.min(
-                  widget.model.topSlantLeftY, widget.model.topSlantRightY) -
-              (widget.model.archHeight * 2) +
-              t;
+          math.min(widget.model.topSlantLeftY, widget.model.topSlantRightY) -
+          (widget.model.archHeight * 2) +
+          t;
       return (1.0 - factor) * (1.0 - factor) * yL +
           2.0 * (1.0 - factor) * factor * yC +
           factor * factor * yR;
@@ -2545,11 +2612,13 @@ class _WindowViewState extends State<WindowView> {
     }
   }
 
-  double getSashTopY(double x,
-      double sashTopFlat,
-      double t,
-      double topOffset,
-      bool isTopBound,) {
+  double getSashTopY(
+    double x,
+    double sashTopFlat,
+    double t,
+    double topOffset,
+    bool isTopBound,
+  ) {
     if (!isTopBound) return sashTopFlat;
     double clearance = sashTopFlat - (topOffset + t);
     if (clearance < 0) clearance = 0;
@@ -2566,25 +2635,21 @@ class _WindowViewState extends State<WindowView> {
         ? (section == 1 ? (pos - inset) : (widget.model.height - pos - inset))
         : (section == 1 ? (pos - inset) : (widget.model.width - pos - inset));
     final ctrl = TextEditingController(text: currentValue.toInt().toString());
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     showDialog(
       context: context,
       builder: (context) {
-        final isDark = Theme
-            .of(context)
-            .brightness == Brightness.dark;
+        final isDark = Theme.of(context).brightness == Brightness.dark;
         String label = isH
             ? (section == 1
-            ? 'تعديل الفراغ العلوي (mm)'
-            : 'تعديل الفراغ السفلي (mm)')
+                  ? 'تعديل الفراغ العلوي (mm)'
+                  : 'تعديل الفراغ السفلي (mm)')
             : (section == 1
-            ? 'تعديل الفراغ الأيسر (mm)'
-            : 'تعديل الفراغ الأيمن (mm)');
+                  ? 'تعديل الفراغ الأيسر (mm)'
+                  : 'تعديل الفراغ الأيمن (mm)');
         return AlertDialog(
           backgroundColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
           title: Text(
@@ -2650,14 +2715,16 @@ class _WindowViewState extends State<WindowView> {
     );
   }
 
-  bool _checkAndStartSashDividerDrag(String zoneId,
-      bool isRight,
-      Rect glassR,
-      int innerH,
-      int innerV,
-      List<double> innerHPos,
-      List<double> innerVPos,
-      Offset touchScreen,) {
+  bool _checkAndStartSashDividerDrag(
+    String zoneId,
+    bool isRight,
+    Rect glassR,
+    int innerH,
+    int innerV,
+    List<double> innerHPos,
+    List<double> innerVPos,
+    Offset touchScreen,
+  ) {
     if (innerH == 0 && innerV == 0) return false;
 
     // 🟢 تكبير مساحة التقاط اللمس لتسهيل التحديد والتحريك (Hit Slop)
@@ -2678,13 +2745,12 @@ class _WindowViewState extends State<WindowView> {
       }
     }
     final zone = widget.model.zones.firstWhere(
-          (candidate) => candidate.id == zoneId,
-      orElse: () =>
-          WindowZone(
-            id: zoneId,
-            boundary: Rect.zero,
-            sashColor: widget.model.frameColor,
-          ),
+      (candidate) => candidate.id == zoneId,
+      orElse: () => WindowZone(
+        id: zoneId,
+        boundary: Rect.zero,
+        sashColor: widget.model.frameColor,
+      ),
     );
     String getVKey(int r, int v) => isRight ? 'right_${r}_$v' : '${r}_$v';
     String getHKey(int c, int h) => isRight ? 'right_${c}_$h' : '${c}_$h';
@@ -2780,10 +2846,12 @@ class _WindowViewState extends State<WindowView> {
     return false;
   }
 
-  bool _checkAndStartGlassDecorDrag(String zoneId,
-      Rect glassR,
-      GlassSpecification spec,
-      Offset touchScreen,) {
+  bool _checkAndStartGlassDecorDrag(
+    String zoneId,
+    Rect glassR,
+    GlassSpecification spec,
+    Offset touchScreen,
+  ) {
     if (spec.structure != GlassStructure.double) return false;
     if (spec.decorH == 0 && spec.decorV == 0) return false;
 
@@ -2889,11 +2957,15 @@ class _WindowViewState extends State<WindowView> {
         widget.model.availableSystems.isNotEmpty &&
         (widget.model.activeSeries != null ||
             widget.model.activeSlidingSeries != null);
-    _initialCatalogReady = hasReusableCatalog;
+    _initialCatalogReady = true;
     if (!hasReusableCatalog) {
-      unawaited(_loadInitialCatalog());
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_loadInitialCatalog());
+      });
     }
-    _loadShutterOptions(); // Preload shutter options from database
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_loadShutterOptions());
+    }); // Preload without delaying the first canvas frame.
     _catalogSubscription = CloudSyncService().dbUpdateStream.listen((update) {
       const catalogUpdates = {
         'catalog_changed',
@@ -2918,9 +2990,7 @@ class _WindowViewState extends State<WindowView> {
     });
     SharedPreferences.getInstance().then((prefs) {
       final name = prefs.getString('workshop_name');
-      if (name != null && name
-          .trim()
-          .isNotEmpty) {
+      if (name != null && name.trim().isNotEmpty) {
         widget.model.workshopName = name;
         widget.model.refreshUI();
       }
@@ -2961,12 +3031,10 @@ class _WindowViewState extends State<WindowView> {
         widget.model.lastLayoutSize = null;
       }
     });
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -2998,8 +3066,8 @@ class _WindowViewState extends State<WindowView> {
       final canvasOrigin = Offset(widget.model.canvasDx, widget.model.canvasDy);
       _userPan =
           focalPoint -
-              canvasOrigin -
-              (focalPoint - canvasOrigin - _userPan) * scaleRatio;
+          canvasOrigin -
+          (focalPoint - canvasOrigin - _userPan) * scaleRatio;
       _userScale = nextScale;
     });
   }
@@ -3052,8 +3120,8 @@ class _WindowViewState extends State<WindowView> {
 
   _FrameResizeHandle? _frameResizeHandleAt(Offset screenPosition) {
     final frameKey =
-    (widget.model.selection.type == SelectionType.frame ||
-        widget.model.selection.type == SelectionType.zone)
+        (widget.model.selection.type == SelectionType.frame ||
+            widget.model.selection.type == SelectionType.zone)
         ? widget.model.selection.zoneId
         : null;
     final outer = widget.model.frameRectForSelection(frameKey);
@@ -3081,10 +3149,11 @@ class _WindowViewState extends State<WindowView> {
     return closest;
   }
 
-  Rect? _dimensionTextBounds(String text,
-      Rect bounds, {
-        bool vertical = false,
-      }) {
+  Rect? _dimensionTextBounds(
+    String text,
+    Rect bounds, {
+    bool vertical = false,
+  }) {
     final crossAxis = vertical ? bounds.width : bounds.height;
     final mainAxis = vertical ? bounds.height : bounds.width;
     if (crossAxis < 12 || mainAxis < 35) return null;
@@ -3098,8 +3167,7 @@ class _WindowViewState extends State<WindowView> {
           style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w800),
         ),
         textDirection: TextDirection.ltr,
-      )
-        ..layout();
+      )..layout();
       if (painter.width <= mainAxis - 8 || fontSize <= 10) break;
       fontSize -= 1.0;
     }
@@ -3107,15 +3175,15 @@ class _WindowViewState extends State<WindowView> {
 
     return vertical
         ? Rect.fromCenter(
-      center: bounds.center,
-      width: painter.height + 6,
-      height: painter.width + 8,
-    )
+            center: bounds.center,
+            width: painter.height + 6,
+            height: painter.width + 8,
+          )
         : Rect.fromCenter(
-      center: bounds.center,
-      width: painter.width + 8,
-      height: painter.height + 6,
-    );
+            center: bounds.center,
+            width: painter.width + 8,
+            height: painter.height + 6,
+          );
   }
 
   /// Hit-test only the visible number written in the selected frame profile.
@@ -3123,12 +3191,8 @@ class _WindowViewState extends State<WindowView> {
   InnerDimensionHit? _frameProfileDimensionHit(Offset modelPosition) {
     if (widget.model.zones.length < 2) return null;
     final thickness = widget.model.profileThickness;
-    final showWidthInside = widget.model
-        .getVerticalFrameJoints()
-        .isEmpty;
-    final showHeightInside = widget.model
-        .getHorizontalFrameJoints()
-        .isEmpty;
+    final showWidthInside = widget.model.getVerticalFrameJoints().isEmpty;
+    final showHeightInside = widget.model.getHorizontalFrameJoints().isEmpty;
     final frameRects = widget.model.getFrameRects();
     for (final outer in frameRects.reversed) {
       WindowZone? representativeZone;
@@ -3187,12 +3251,10 @@ class _WindowViewState extends State<WindowView> {
   }
 
   void _activateShutterFromDesign() {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     final hasMeasuredDrawing =
         widget.model.width > 0 && widget.model.height > 0;
     final convertingExistingDrawing =
@@ -3230,15 +3292,11 @@ class _WindowViewState extends State<WindowView> {
   }
 
   void _showSplitShutterDialog(BuildContext context) {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
-    final isDark = Theme
-        .of(context)
-        .brightness == Brightness.dark;
+    ).language;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final frames = List<Rect>.from(widget.model.getFrameRects())
       ..sort((a, b) => a.left.compareTo(b.left));
@@ -3285,7 +3343,7 @@ class _WindowViewState extends State<WindowView> {
       ShutterSplitSection? existingSplit;
       if (widget.model.isShutterSplit) {
         final match = widget.model.shutterSplits.where(
-              (s) => s.frameIndex == i,
+          (s) => s.frameIndex == i,
         );
         if (match.isNotEmpty) {
           existingSplit = match.first;
@@ -3297,7 +3355,7 @@ class _WindowViewState extends State<WindowView> {
       frameDriveSides[i] =
           existingSplit?.driveSide ?? widget.model.shutterDriveSide;
       final frameTotalH =
-      (widget.model.hasShutter && !widget.model.isCaissonTunnel)
+          (widget.model.hasShutter && !widget.model.isCaissonTunnel)
           ? (frames[i].height + widget.model.shutterBoxHeight)
           : frames[i].height;
       final effectiveDefaultH = (frameTotalH - defaultDrawingHeight).abs() < 1.0
@@ -3343,14 +3401,11 @@ class _WindowViewState extends State<WindowView> {
                         ),
                         Text(
                           widget.model.isShutterSplit
-                              ? '${Localization.translate(
-                              'الحالة: مفصول إلى', lang)} (${widget.model
-                              .effectiveShutterSplits.length}) ${Localization
-                              .translate('صناديق مستقلة', lang)}'
+                              ? '${Localization.translate('الحالة: مفصول إلى', lang)} (${widget.model.effectiveShutterSplits.length}) ${Localization.translate('صناديق مستقلة', lang)}'
                               : Localization.translate(
-                            'الحالة: صندوق واحد موحد',
-                            lang,
-                          ),
+                                  'الحالة: صندوق واحد موحد',
+                                  lang,
+                                ),
                           style: TextStyle(
                             fontSize: 12,
                             color: widget.model.isShutterSplit
@@ -3390,8 +3445,8 @@ class _WindowViewState extends State<WindowView> {
                                   decoration: BoxDecoration(
                                     color: selectedTab == 0
                                         ? (isDark
-                                        ? Colors.teal.shade800
-                                        : Colors.teal.shade100)
+                                              ? Colors.teal.shade800
+                                              : Colors.teal.shade100)
                                         : Colors.transparent,
                                     borderRadius: BorderRadius.circular(8),
                                   ),
@@ -3408,11 +3463,11 @@ class _WindowViewState extends State<WindowView> {
                                             : FontWeight.normal,
                                         color: selectedTab == 0
                                             ? (isDark
-                                            ? Colors.white
-                                            : Colors.teal.shade900)
+                                                  ? Colors.white
+                                                  : Colors.teal.shade900)
                                             : (isDark
-                                            ? Colors.white70
-                                            : Colors.black87),
+                                                  ? Colors.white70
+                                                  : Colors.black87),
                                       ),
                                     ),
                                   ),
@@ -3430,8 +3485,8 @@ class _WindowViewState extends State<WindowView> {
                                   decoration: BoxDecoration(
                                     color: selectedTab == 1
                                         ? (isDark
-                                        ? Colors.teal.shade800
-                                        : Colors.teal.shade100)
+                                              ? Colors.teal.shade800
+                                              : Colors.teal.shade100)
                                         : Colors.transparent,
                                     borderRadius: BorderRadius.circular(8),
                                   ),
@@ -3448,11 +3503,11 @@ class _WindowViewState extends State<WindowView> {
                                             : FontWeight.normal,
                                         color: selectedTab == 1
                                             ? (isDark
-                                            ? Colors.white
-                                            : Colors.teal.shade900)
+                                                  ? Colors.white
+                                                  : Colors.teal.shade900)
                                             : (isDark
-                                            ? Colors.white70
-                                            : Colors.black87),
+                                                  ? Colors.white70
+                                                  : Colors.black87),
                                       ),
                                     ),
                                   ),
@@ -3501,8 +3556,7 @@ class _WindowViewState extends State<WindowView> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          '${Localization.translate(
-                              'الإطارات المكتشفة', lang)} (${frames.length}):',
+                          '${Localization.translate('الإطارات المكتشفة', lang)} (${frames.length}):',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.bold,
@@ -3510,10 +3564,7 @@ class _WindowViewState extends State<WindowView> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        ...frames
-                            .asMap()
-                            .entries
-                            .map((entry) {
+                        ...frames.asMap().entries.map((entry) {
                           final idx = entry.key;
                           final frame = entry.value;
                           final hCtrl = frameHeightControllers[idx]!;
@@ -3553,11 +3604,10 @@ class _WindowViewState extends State<WindowView> {
                                     Expanded(
                                       child: Column(
                                         crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            '${Localization.translate(
-                                                'إطار', lang)} ${idx + 1}',
+                                            '${Localization.translate('إطار', lang)} ${idx + 1}',
                                             style: TextStyle(
                                               fontSize: 12.5,
                                               fontWeight: FontWeight.bold,
@@ -3567,9 +3617,7 @@ class _WindowViewState extends State<WindowView> {
                                             ),
                                           ),
                                           Text(
-                                            '${Localization.translate(
-                                                'العرض', lang)}: ${frame.width
-                                                .toStringAsFixed(0)} mm',
+                                            '${Localization.translate('العرض', lang)}: ${frame.width.toStringAsFixed(0)} mm',
                                             style: TextStyle(
                                               fontSize: 11,
                                               color: isDark
@@ -3585,9 +3633,9 @@ class _WindowViewState extends State<WindowView> {
                                       child: TextField(
                                         controller: hCtrl,
                                         keyboardType:
-                                        const TextInputType.numberWithOptions(
-                                          decimal: true,
-                                        ),
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
                                         decoration: InputDecoration(
                                           labelText: Localization.translate(
                                             'ارتفاع الستار',
@@ -3602,10 +3650,10 @@ class _WindowViewState extends State<WindowView> {
                                           ),
                                           isDense: true,
                                           contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 8,
-                                          ),
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 8,
+                                                vertical: 8,
+                                              ),
                                           border: OutlineInputBorder(
                                             borderRadius: BorderRadius.circular(
                                               6,
@@ -3717,253 +3765,238 @@ class _WindowViewState extends State<WindowView> {
                             ),
                           );
                         }),
-                      ] else
-                        ...[
-                          Container(
-                            padding: const EdgeInsets.all(12),
+                      ] else ...[
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: Colors.amber.withOpacity(0.3),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.info_outline,
+                                color: Colors.amber,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  Localization.translate(
+                                    'تقسيم الصندوق في إطار واحد إلى عدة أقسام مستقلة. الترتيب يبدأ من اليمين إلى اليسار.',
+                                    lang,
+                                  ),
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: isDark
+                                        ? Colors.white70
+                                        : Colors.black87,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          alignment: WrapAlignment.spaceBetween,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  Localization.translate('عدد الأقسام:', lang),
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark
+                                        ? Colors.white
+                                        : Colors.black87,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                SegmentedButton<int>(
+                                  showSelectedIcon: false,
+                                  style: const ButtonStyle(
+                                    visualDensity: VisualDensity.compact,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  segments: const [
+                                    ButtonSegment(value: 2, label: Text('2')),
+                                    ButtonSegment(value: 3, label: Text('3')),
+                                    ButtonSegment(value: 4, label: Text('4')),
+                                  ],
+                                  selected: {divisionCount},
+                                  onSelectionChanged: (Set<int> newSelection) {
+                                    setDialogState(() {
+                                      divisionCount = newSelection.first;
+                                      initDivisionControllers(divisionCount);
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                            TextButton.icon(
+                              style: TextButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                              ),
+                              icon: const Icon(Icons.balance, size: 16),
+                              label: Text(
+                                Localization.translate('توزيع بالتساوي', lang),
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                              onPressed: () {
+                                setDialogState(() {
+                                  final equalW =
+                                      (widget.model.width / divisionCount)
+                                          .toStringAsFixed(1);
+                                  for (final c in divisionControllers) {
+                                    c.text = equalW;
+                                  }
+                                });
+                              },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        ...List.generate(divisionCount, (i) {
+                          final label = i == 0
+                              ? Localization.translate(
+                                  'الصندوق 1 (اليمين)',
+                                  lang,
+                                )
+                              : (i == divisionCount - 1
+                                    ? '${Localization.translate('الصندوق', lang)} ${i + 1} (${Localization.translate('اليسار', lang)})'
+                                    : '${Localization.translate('الصندوق', lang)} ${i + 1} (${Localization.translate('الوسط', lang)})');
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
                             decoration: BoxDecoration(
-                              color: Colors.amber.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(10),
+                              color: isDark
+                                  ? const Color(0xFF28283E)
+                                  : Colors.grey.shade50,
+                              borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: Colors.amber.withOpacity(0.3),
+                                color: isDark
+                                    ? Colors.white12
+                                    : Colors.grey.shade300,
                               ),
                             ),
                             child: Row(
                               children: [
-                                const Icon(
-                                  Icons.info_outline,
-                                  color: Colors.amber,
-                                  size: 20,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
+                                CircleAvatar(
+                                  radius: 12,
+                                  backgroundColor: Colors.teal.withOpacity(0.2),
                                   child: Text(
-                                    Localization.translate(
-                                      'تقسيم الصندوق في إطار واحد إلى عدة أقسام مستقلة. الترتيب يبدأ من اليمين إلى اليسار.',
-                                      lang,
-                                    ),
-                                    style: TextStyle(
-                                      fontSize: 11.5,
-                                      color: isDark
-                                          ? Colors.white70
-                                          : Colors.black87,
+                                    '${i + 1}',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.teal,
                                     ),
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Wrap(
-                            alignment: WrapAlignment.spaceBetween,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    Localization.translate(
-                                        'عدد الأقسام:', lang),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    label,
                                     style: TextStyle(
-                                      fontSize: 13,
+                                      fontSize: 12,
                                       fontWeight: FontWeight.bold,
                                       color: isDark
                                           ? Colors.white
                                           : Colors.black87,
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  SegmentedButton<int>(
-                                    showSelectedIcon: false,
-                                    style: const ButtonStyle(
-                                      visualDensity: VisualDensity.compact,
-                                      tapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                    ),
-                                    segments: const [
-                                      ButtonSegment(value: 2, label: Text('2')),
-                                      ButtonSegment(value: 3, label: Text('3')),
-                                      ButtonSegment(value: 4, label: Text('4')),
-                                    ],
-                                    selected: {divisionCount},
-                                    onSelectionChanged: (
-                                        Set<int> newSelection) {
-                                      setDialogState(() {
-                                        divisionCount = newSelection.first;
-                                        initDivisionControllers(divisionCount);
-                                      });
-                                    },
-                                  ),
-                                ],
-                              ),
-                              TextButton.icon(
-                                style: TextButton.styleFrom(
-                                  visualDensity: VisualDensity.compact,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
                                 ),
-                                icon: const Icon(Icons.balance, size: 16),
-                                label: Text(
-                                  Localization.translate(
-                                      'توزيع بالتساوي', lang),
-                                  style: const TextStyle(fontSize: 11),
-                                ),
-                                onPressed: () {
-                                  setDialogState(() {
-                                    final equalW =
-                                    (widget.model.width / divisionCount)
-                                        .toStringAsFixed(1);
-                                    for (final c in divisionControllers) {
-                                      c.text = equalW;
-                                    }
-                                  });
-                                },
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          ...List.generate(divisionCount, (i) {
-                            final label = i == 0
-                                ? Localization.translate(
-                              'الصندوق 1 (اليمين)',
-                              lang,
-                            )
-                                : (i == divisionCount - 1
-                                ? '${Localization.translate(
-                                'الصندوق', lang)} ${i + 1} (${Localization
-                                .translate('اليسار', lang)})'
-                                : '${Localization.translate(
-                                'الصندوق', lang)} ${i + 1} (${Localization
-                                .translate('الوسط', lang)})');
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isDark
-                                    ? const Color(0xFF28283E)
-                                    : Colors.grey.shade50,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: isDark
-                                      ? Colors.white12
-                                      : Colors.grey.shade300,
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  CircleAvatar(
-                                    radius: 12,
-                                    backgroundColor: Colors.teal.withOpacity(
-                                        0.2),
-                                    child: Text(
-                                      '${i + 1}',
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.teal,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      label,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        color: isDark
-                                            ? Colors.white
-                                            : Colors.black87,
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(
-                                    width: 120,
-                                    child: TextField(
-                                      controller: divisionControllers[i],
-                                      keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
-                                      ),
-                                      onChanged: (val) {
-                                        final entered = double.tryParse(
-                                          val.replaceAll(',', '.').trim(),
-                                        );
-                                        if (entered != null && entered > 0) {
-                                          final remaining =
-                                              widget.model.width - entered;
-                                          final otherIndices = List.generate(
-                                            divisionCount,
-                                                (idx) => idx,
-                                          )
-                                            ..remove(i);
-                                          if (otherIndices.isNotEmpty &&
-                                              remaining > 0) {
-                                            final share =
-                                            (remaining / otherIndices.length)
-                                                .toStringAsFixed(1);
-                                            for (final otherIdx in otherIndices) {
-                                              divisionControllers[otherIdx]
-                                                  .text =
-                                                  share;
-                                            }
+                                SizedBox(
+                                  width: 120,
+                                  child: TextField(
+                                    controller: divisionControllers[i],
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                          decimal: true,
+                                        ),
+                                    onChanged: (val) {
+                                      final entered = double.tryParse(
+                                        val.replaceAll(',', '.').trim(),
+                                      );
+                                      if (entered != null && entered > 0) {
+                                        final remaining =
+                                            widget.model.width - entered;
+                                        final otherIndices = List.generate(
+                                          divisionCount,
+                                          (idx) => idx,
+                                        )..remove(i);
+                                        if (otherIndices.isNotEmpty &&
+                                            remaining > 0) {
+                                          final share =
+                                              (remaining / otherIndices.length)
+                                                  .toStringAsFixed(1);
+                                          for (final otherIdx in otherIndices) {
+                                            divisionControllers[otherIdx].text =
+                                                share;
                                           }
                                         }
-                                      },
-                                      decoration: InputDecoration(
-                                        labelText: Localization.translate(
-                                          'العرض',
-                                          lang,
-                                        ),
-                                        labelStyle: const TextStyle(
-                                            fontSize: 10),
-                                        suffixText: 'mm',
-                                        suffixStyle: const TextStyle(
-                                          fontSize: 10,
-                                        ),
-                                        isDense: true,
-                                        contentPadding:
-                                        const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 8,
-                                        ),
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                              6),
-                                        ),
+                                      }
+                                    },
+                                    decoration: InputDecoration(
+                                      labelText: Localization.translate(
+                                        'العرض',
+                                        lang,
                                       ),
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
+                                      labelStyle: const TextStyle(fontSize: 10),
+                                      suffixText: 'mm',
+                                      suffixStyle: const TextStyle(
+                                        fontSize: 10,
+                                      ),
+                                      isDense: true,
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 8,
+                                          ),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(6),
                                       ),
                                     ),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
-                                ],
-                              ),
-                            );
-                          }),
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              '${Localization.translate(
-                                  'العرض الكلي للإطار:', lang)} ${widget.model
-                                  .width.toStringAsFixed(1)} mm',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: isDark ? Colors.white60 : Colors.black54,
-                                fontWeight: FontWeight.w500,
-                              ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            '${Localization.translate('العرض الكلي للإطار:', lang)} ${widget.model.width.toStringAsFixed(1)} mm',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isDark ? Colors.white60 : Colors.black54,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
-                        ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -4023,10 +4056,10 @@ class _WindowViewState extends State<WindowView> {
                           widget.model.setShutterSplitDrive(
                             i,
                             mechanism:
-                            frameMechanisms[i] ??
+                                frameMechanisms[i] ??
                                 widget.model.shutterMechanism,
                             driveSide:
-                            frameDriveSides[i] ??
+                                frameDriveSides[i] ??
                                 widget.model.shutterDriveSide,
                           );
                         }
@@ -4034,11 +4067,11 @@ class _WindowViewState extends State<WindowView> {
                         final widths = divisionControllers
                             .map(
                               (c) =>
-                          double.tryParse(
-                            c.text.replaceAll(',', '.'),
-                          ) ??
-                              (widget.model.width / divisionCount),
-                        )
+                                  double.tryParse(
+                                    c.text.replaceAll(',', '.'),
+                                  ) ??
+                                  (widget.model.width / divisionCount),
+                            )
                             .toList();
                         widget.model.splitShutterCustomDivisions(
                           widths,
@@ -4059,12 +4092,8 @@ class _WindowViewState extends State<WindowView> {
   }
 
   List<Widget> _buildWindowsAppBarDrawingControls(BuildContext context) {
-    final lang = Provider
-        .of<AppSettingsProvider>(context)
-        .language;
-    final isDark = Theme
-        .of(context)
-        .brightness == Brightness.dark;
+    final lang = Provider.of<AppSettingsProvider>(context).language;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final foreground = isDark ? Colors.blue.shade200 : Colors.blue.shade900;
     final buttonStyle = TextButton.styleFrom(
       foregroundColor: foreground,
@@ -4100,9 +4129,9 @@ class _WindowViewState extends State<WindowView> {
       TextButton.icon(
         style: widget.model.isDrawingMode
             ? buttonStyle.copyWith(
-          backgroundColor: WidgetStatePropertyAll(Colors.green.shade600),
-          foregroundColor: const WidgetStatePropertyAll(Colors.white),
-        )
+                backgroundColor: WidgetStatePropertyAll(Colors.green.shade600),
+                foregroundColor: const WidgetStatePropertyAll(Colors.white),
+              )
             : buttonStyle,
         onPressed: _toggleDrawingInteractionMode,
         icon: Icon(
@@ -4148,8 +4177,7 @@ class _WindowViewState extends State<WindowView> {
           ),
           label: Text(
             widget.model.isShutterSplit
-                ? '${Localization.translate('فصل الصناديق', lang)} (${widget
-                .model.effectiveShutterSplits.length})'
+                ? '${Localization.translate('فصل الصناديق', lang)} (${widget.model.effectiveShutterSplits.length})'
                 : Localization.translate('فصل الصناديق', lang),
             style: TextStyle(
               fontSize: 12,
@@ -4168,9 +4196,9 @@ class _WindowViewState extends State<WindowView> {
           ),
           tooltip: _isMovementLocked
               ? Localization.translate(
-            'تحرير حركة الرسم (الرسم مثبت حالياً)',
-            lang,
-          )
+                  'تحرير حركة الرسم (الرسم مثبت حالياً)',
+                  lang,
+                )
               : Localization.translate('تثبيت الرسم ومنع حركته', lang),
           onPressed: _toggleMovementLock,
         ),
@@ -4197,9 +4225,7 @@ class _WindowViewState extends State<WindowView> {
 
   @override
   Widget build(BuildContext context) {
-    final lang = Provider
-        .of<AppSettingsProvider>(context)
-        .language;
+    final lang = Provider.of<AppSettingsProvider>(context).language;
     final hasSelection = widget.model.selectedZone != null;
     final isMullionSelected =
         widget.model.selection.type == SelectionType.mullion;
@@ -4207,9 +4233,7 @@ class _WindowViewState extends State<WindowView> {
         widget.model.selection.type == SelectionType.innerDivision;
     final isFrameSelected =
         widget.model.selection.type == SelectionType.frame &&
-            widget.model
-                .getFrameRects()
-                .length > 1;
+        widget.model.getFrameRects().length > 1;
 
     Widget? activeTopToolbar;
     if (isInnerDivisionSelected) {
@@ -4228,1704 +4252,1363 @@ class _WindowViewState extends State<WindowView> {
         if (!didPop) unawaited(_confirmExitFromDrawing());
       },
       child: Scaffold(
-        backgroundColor: Theme
-            .of(context)
-            .brightness == Brightness.dark
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
             ? const Color(0xFF1E1E2C)
             : const Color(0xFFE8EAF6),
         appBar: _buildAppBar(context),
         body: !_initialCatalogReady
             ? const Center(child: CircularProgressIndicator())
             : Stack(
-          children: [
-            Column(
-              children: [
-                if (widget.model.shutterWidthWarning != null)
-                  Container(
-                    key: const ValueKey('drawing-shutter-width-warning'),
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    color: Colors.orange.shade100,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.warning_amber_rounded,
-                          color: Colors.orange.shade900,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            widget.model.localizedShutterWidthWarning(lang) ??
-                                widget.model.shutterWidthWarning!,
-                            style: TextStyle(
-                              color: Colors.orange.shade900,
-                              fontWeight: FontWeight.w600,
-                            ),
+                children: [
+                  Column(
+                    children: [
+                      if (widget.model.shutterWidthWarning != null)
+                        Container(
+                          key: const ValueKey('drawing-shutter-width-warning'),
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          color: Colors.orange.shade100,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.warning_amber_rounded,
+                                color: Colors.orange.shade900,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  widget.model.localizedShutterWidthWarning(
+                                        lang,
+                                      ) ??
+                                      widget.model.shutterWidthWarning!,
+                                  style: TextStyle(
+                                    color: Colors.orange.shade900,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              if (widget.model.recommendedShutterBlade !=
+                                  null) ...[
+                                const SizedBox(width: 8),
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.orange.shade800,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
+                                    ),
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                  icon: const Icon(
+                                    Icons.check_circle_outline,
+                                    size: 16,
+                                  ),
+                                  label: Text(
+                                    lang == AppLanguage.french
+                                        ? 'Appliquer la lame recommandée'
+                                        : (lang == AppLanguage.english
+                                              ? 'Apply recommended blade'
+                                              : 'تطبيق الشفرة المقترحة'),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  onPressed: () async {
+                                    widget.model.applyRecommendedShutterBlade();
+                                    await widget.model
+                                        .updateShutterDefaultsIfNeeded();
+                                    if (mounted) setState(() {});
+                                  },
+                                ),
+                              ],
+                            ],
                           ),
                         ),
-                        if (widget.model.recommendedShutterBlade != null) ...[
-                          const SizedBox(width: 8),
-                          ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.orange.shade800,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              visualDensity: VisualDensity.compact,
-                            ),
-                            icon: const Icon(
-                              Icons.check_circle_outline,
-                              size: 16,
-                            ),
-                            label: Text(
-                              lang == AppLanguage.french
-                                  ? 'Appliquer la lame recommandée'
-                                  : (lang == AppLanguage.english
-                                  ? 'Apply recommended blade'
-                                  : 'تطبيق الشفرة المقترحة'),
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            onPressed: () async {
-                              widget.model.applyRecommendedShutterBlade();
-                              await widget.model
-                                  .updateShutterDefaultsIfNeeded();
-                              if (mounted) setState(() {});
-                            },
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                if (!_isMovementLocked && activeTopToolbar != null)
-                  activeTopToolbar,
+                      if (!_isMovementLocked && activeTopToolbar != null)
+                        activeTopToolbar,
 
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      widget.model.updateLayoutMetrics(
-                        Size(constraints.maxWidth, constraints.maxHeight),
-                      );
-                      return Stack(
-                        children: [
-                          GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTapUp: (details) async {
-                              final modelPos = _getModelPos(
-                                details.localPosition,
-                              );
-
-                              // --- Individual frame dimension tap (coupled windows) ---
-                              // First check the number painted directly in
-                              // a frame profile.  This is intentionally
-                              // narrower than the surrounding profile.
-                              InnerDimensionHit? individualTap =
-                              _frameProfileDimensionHit(modelPos);
-                              final physicalFrames = widget.model
-                                  .getPhysicalFrameInfos();
-                              if (physicalFrames.length > 1) {
-                                final sorted =
-                                List<PhysicalFrameInfo>.from(physicalFrames)
-                                  ..sort(
-                                        (a, b) =>
-                                    a.rect.left != b.rect.left
-                                        ? a.rect.left.compareTo(b.rect.left)
-                                        : a.rect.top.compareTo(b.rect.top),
-                                  );
-                                final hasVaryingHeights = sorted.any(
-                                      (f) =>
-                                  (f.rect.height - sorted.first.rect.height)
-                                      .abs() >
-                                      1.0,
-                                );
-
-                                final double scW = widget.model.sideCoverWidth;
-                                double offsetDistTop = 105.0;
-                                if (widget.model.hasShutter) {
-                                  offsetDistTop += 20.0;
-                                }
-                                if (widget.model.hasSideCovers &&
-                                    !widget.model.removedShutterSides.contains(
-                                      'top',
-                                    )) {
-                                  offsetDistTop += scW + 15.0;
-                                }
-                                double offsetDistRight = 50.0;
-                                if (widget.model.hasSideCovers &&
-                                    !widget.model.removedShutterSides.contains(
-                                      'right',
-                                    )) {
-                                  offsetDistRight += scW + 15.0;
-                                }
-                                if (widget.model.shutterIsLongerThanWindow) {
-                                  offsetDistRight += 125.0;
-                                }
-                                double offsetDistLeft = 50.0;
-                                if (widget.model.hasSideCovers &&
-                                    !widget.model.removedShutterSides.contains(
-                                      'left',
-                                    )) {
-                                  offsetDistLeft += scW + 15.0;
-                                }
-                                double offsetDistBottom = 50.0;
-                                if (widget.model.hasSideCovers &&
-                                    widget.model.hasBottomFrame &&
-                                    !widget.model.removedShutterSides.contains(
-                                      'bottom',
-                                    )) {
-                                  offsetDistBottom += scW + 15.0;
-                                }
-                                final bool isSlantedOrArched =
-                                    widget.model.archHeight > 0 ||
-                                        widget.model.topSlantLeftY != 0 ||
-                                        widget.model.topSlantRightY != 0 ||
-                                        widget.model.bottomSlantLeftY != 0 ||
-                                        widget.model.bottomSlantRightY != 0;
-
-                                // 1. Check individual frame widths (Layer 1)
-                                if (individualTap == null) {
-                                  double layer1Y;
-                                  if (isSlantedOrArched) {
-                                    double maxBottomY = math.max(
-                                      widget.model.bottomSlantLeftY,
-                                      widget.model.bottomSlantRightY,
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            widget.model.updateLayoutMetrics(
+                              Size(constraints.maxWidth, constraints.maxHeight),
+                            );
+                            return Stack(
+                              children: [
+                                GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTapUp: (details) async {
+                                    final modelPos = _getModelPos(
+                                      details.localPosition,
                                     );
-                                    layer1Y =
-                                        widget.model.height +
-                                            maxBottomY +
-                                            offsetDistBottom;
-                                  } else {
-                                    double wY = -offsetDistTop;
-                                    if (widget.model.hasShutter &&
-                                        widget.model.isCaissonTunnel) {
-                                      wY -= widget.model.shutterBoxHeight;
-                                    }
-                                    layer1Y = wY + 70.0;
-                                  }
-                                  for (final f in sorted) {
-                                    final xCenter =
-                                        (f.rect.left + f.rect.right) / 2;
-                                    if ((modelPos.dx - xCenter).abs() <
-                                        (f.rect.width / 2).clamp(
-                                          30.0,
-                                          90.0,
-                                        ) &&
-                                        (modelPos.dy - layer1Y).abs() < 28.0) {
-                                      individualTap = InnerDimensionHit(
-                                        f.primaryZoneId,
-                                        true,
+
+                                    // --- Individual frame dimension tap (coupled windows) ---
+                                    // First check the number painted directly in
+                                    // a frame profile.  This is intentionally
+                                    // narrower than the surrounding profile.
+                                    InnerDimensionHit? individualTap =
+                                        _frameProfileDimensionHit(modelPos);
+                                    final physicalFrames = widget.model
+                                        .getPhysicalFrameInfos();
+                                    if (physicalFrames.length > 1) {
+                                      final sorted =
+                                          List<PhysicalFrameInfo>.from(
+                                            physicalFrames,
+                                          )..sort(
+                                            (a, b) => a.rect.left != b.rect.left
+                                                ? a.rect.left.compareTo(
+                                                    b.rect.left,
+                                                  )
+                                                : a.rect.top.compareTo(
+                                                    b.rect.top,
+                                                  ),
+                                          );
+                                      final hasVaryingHeights = sorted.any(
+                                        (f) =>
+                                            (f.rect.height -
+                                                    sorted.first.rect.height)
+                                                .abs() >
+                                            1.0,
                                       );
-                                      break;
+
+                                      final double scW =
+                                          widget.model.sideCoverWidth;
+                                      double offsetDistTop = 105.0;
+                                      if (widget.model.hasShutter) {
+                                        offsetDistTop += 20.0;
+                                      }
+                                      if (widget.model.hasSideCovers &&
+                                          !widget.model.removedShutterSides
+                                              .contains('top')) {
+                                        offsetDistTop += scW + 15.0;
+                                      }
+                                      double offsetDistRight = 50.0;
+                                      if (widget.model.hasSideCovers &&
+                                          !widget.model.removedShutterSides
+                                              .contains('right')) {
+                                        offsetDistRight += scW + 15.0;
+                                      }
+                                      if (widget
+                                          .model
+                                          .shutterIsLongerThanWindow) {
+                                        offsetDistRight += 125.0;
+                                      }
+                                      double offsetDistLeft = 50.0;
+                                      if (widget.model.hasSideCovers &&
+                                          !widget.model.removedShutterSides
+                                              .contains('left')) {
+                                        offsetDistLeft += scW + 15.0;
+                                      }
+                                      double offsetDistBottom = 50.0;
+                                      if (widget.model.hasSideCovers &&
+                                          widget.model.hasBottomFrame &&
+                                          !widget.model.removedShutterSides
+                                              .contains('bottom')) {
+                                        offsetDistBottom += scW + 15.0;
+                                      }
+                                      final bool isSlantedOrArched =
+                                          widget.model.archHeight > 0 ||
+                                          widget.model.topSlantLeftY != 0 ||
+                                          widget.model.topSlantRightY != 0 ||
+                                          widget.model.bottomSlantLeftY != 0 ||
+                                          widget.model.bottomSlantRightY != 0;
+
+                                      // 1. Check individual frame widths (Layer 1)
+                                      if (individualTap == null) {
+                                        double layer1Y;
+                                        if (isSlantedOrArched) {
+                                          double maxBottomY = math.max(
+                                            widget.model.bottomSlantLeftY,
+                                            widget.model.bottomSlantRightY,
+                                          );
+                                          layer1Y =
+                                              widget.model.height +
+                                              maxBottomY +
+                                              offsetDistBottom;
+                                        } else {
+                                          double wY = -offsetDistTop;
+                                          if (widget.model.hasShutter &&
+                                              widget.model.isCaissonTunnel) {
+                                            wY -= widget.model.shutterBoxHeight;
+                                          }
+                                          layer1Y = wY + 70.0;
+                                        }
+                                        for (final f in sorted) {
+                                          final xCenter =
+                                              (f.rect.left + f.rect.right) / 2;
+                                          if ((modelPos.dx - xCenter).abs() <
+                                                  (f.rect.width / 2).clamp(
+                                                    30.0,
+                                                    90.0,
+                                                  ) &&
+                                              (modelPos.dy - layer1Y).abs() <
+                                                  28.0) {
+                                            individualTap = InnerDimensionHit(
+                                              f.primaryZoneId,
+                                              true,
+                                            );
+                                            break;
+                                          }
+                                        }
+                                      }
+
+                                      // 2. Check leftmost frame height
+                                      if (individualTap == null) {
+                                        final leftmost = sorted.first;
+                                        final leftYCenter =
+                                            (leftmost.rect.top +
+                                                leftmost.rect.bottom) /
+                                            2;
+                                        final leftDimX = -offsetDistLeft;
+                                        if ((modelPos.dx - leftDimX).abs() <
+                                                28.0 &&
+                                            (modelPos.dy - leftYCenter).abs() <
+                                                (leftmost.rect.height / 2)
+                                                    .clamp(30.0, 90.0)) {
+                                          individualTap = InnerDimensionHit(
+                                            leftmost.primaryZoneId,
+                                            false,
+                                          );
+                                        }
+                                      }
+
+                                      // 3. Check rightmost frame height
+                                      if (individualTap == null &&
+                                          sorted.length >= 2) {
+                                        final rightmost = sorted.last;
+                                        final rightYCenter =
+                                            (rightmost.rect.top +
+                                                rightmost.rect.bottom) /
+                                            2;
+                                        final rightDimX =
+                                            widget.model.width +
+                                            offsetDistRight;
+                                        if ((modelPos.dx - rightDimX).abs() <
+                                                28.0 &&
+                                            (modelPos.dy - rightYCenter).abs() <
+                                                (rightmost.rect.height / 2)
+                                                    .clamp(30.0, 90.0)) {
+                                          individualTap = InnerDimensionHit(
+                                            rightmost.primaryZoneId,
+                                            false,
+                                          );
+                                        }
+                                      }
+
+                                      // 4. Check intermediate frame heights
+                                      if (individualTap == null &&
+                                          sorted.length >= 3 &&
+                                          hasVaryingHeights) {
+                                        for (
+                                          int i = 1;
+                                          i < sorted.length - 1;
+                                          i++
+                                        ) {
+                                          final f = sorted[i];
+                                          final dimX =
+                                              f.rect.left +
+                                              math.min(
+                                                f.rect.width * 0.28,
+                                                65.0,
+                                              );
+                                          final yCenter =
+                                              (f.rect.top + f.rect.bottom) / 2;
+                                          if ((modelPos.dx - dimX).abs() <
+                                                  28.0 &&
+                                              (modelPos.dy - yCenter).abs() <
+                                                  (f.rect.height / 2).clamp(
+                                                    30.0,
+                                                    90.0,
+                                                  )) {
+                                            individualTap = InnerDimensionHit(
+                                              f.primaryZoneId,
+                                              false,
+                                            );
+                                            break;
+                                          }
+                                        }
+                                      }
                                     }
-                                  }
-                                }
-
-                                // 2. Check leftmost frame height
-                                if (individualTap == null) {
-                                  final leftmost = sorted.first;
-                                  final leftYCenter =
-                                      (leftmost.rect.top +
-                                          leftmost.rect.bottom) /
-                                          2;
-                                  final leftDimX = -offsetDistLeft;
-                                  if ((modelPos.dx - leftDimX).abs() < 28.0 &&
-                                      (modelPos.dy - leftYCenter).abs() <
-                                          (leftmost.rect.height / 2).clamp(
-                                            30.0,
-                                            90.0,
-                                          )) {
-                                    individualTap = InnerDimensionHit(
-                                      leftmost.primaryZoneId,
-                                      false,
-                                    );
-                                  }
-                                }
-
-                                // 3. Check rightmost frame height
-                                if (individualTap == null &&
-                                    sorted.length >= 2) {
-                                  final rightmost = sorted.last;
-                                  final rightYCenter =
-                                      (rightmost.rect.top +
-                                          rightmost.rect.bottom) /
-                                          2;
-                                  final rightDimX =
-                                      widget.model.width + offsetDistRight;
-                                  if ((modelPos.dx - rightDimX).abs() < 28.0 &&
-                                      (modelPos.dy - rightYCenter).abs() <
-                                          (rightmost.rect.height / 2).clamp(
-                                            30.0,
-                                            90.0,
-                                          )) {
-                                    individualTap = InnerDimensionHit(
-                                      rightmost.primaryZoneId,
-                                      false,
-                                    );
-                                  }
-                                }
-
-                                // 4. Check intermediate frame heights
-                                if (individualTap == null &&
-                                    sorted.length >= 3 &&
-                                    hasVaryingHeights) {
-                                  for (int i = 1; i < sorted.length - 1; i++) {
-                                    final f = sorted[i];
-                                    final dimX =
-                                        f.rect.left +
-                                            math.min(f.rect.width * 0.28, 65.0);
-                                    final yCenter =
-                                        (f.rect.top + f.rect.bottom) / 2;
-                                    if ((modelPos.dx - dimX).abs() < 28.0 &&
-                                        (modelPos.dy - yCenter).abs() <
-                                            (f.rect.height / 2).clamp(
-                                              30.0,
-                                              90.0,
-                                            )) {
-                                      individualTap = InnerDimensionHit(
-                                        f.primaryZoneId,
-                                        false,
+                                    if (individualTap != null) {
+                                      _showFrameResizeDialog(
+                                        context,
+                                        individualTap,
                                       );
-                                      break;
+                                      return;
                                     }
-                                  }
-                                }
-                              }
-                              if (individualTap != null) {
-                                _showFrameResizeDialog(context, individualTap);
-                                return;
-                              }
-                              // --- end individual frame tap ---
+                                    // --- end individual frame tap ---
 
-                              // Opening the glass drawer is not an apply
-                              // command. Only an explicitly armed paintbrush
-                              // may write a glass specification to a zone.
-                              if (_paintbrushSecondsLeft > 0) {
-                                // A prepared zone type has priority over
-                                // the glass brush. This makes a choice such
-                                // as "double sash" apply to the frame that
-                                // is clicked next.
-                                if (_activePaintZoneContent != null) {
-                                  WindowZone? tappedZ;
-                                  for (final zone in widget.model.zones) {
-                                    if (zone.boundary.contains(modelPos)) {
-                                      tappedZ = zone;
-                                      break;
+                                    // Opening the glass drawer is not an apply
+                                    // command. Only an explicitly armed paintbrush
+                                    // may write a glass specification to a zone.
+                                    if (_paintbrushSecondsLeft > 0) {
+                                      // A prepared zone type has priority over
+                                      // the glass brush. This makes a choice such
+                                      // as "double sash" apply to the frame that
+                                      // is clicked next.
+                                      if (_activePaintZoneContent != null) {
+                                        WindowZone? tappedZ;
+                                        for (final zone in widget.model.zones) {
+                                          if (zone.boundary.contains(
+                                            modelPos,
+                                          )) {
+                                            tappedZ = zone;
+                                            break;
+                                          }
+                                        }
+                                        if (tappedZ != null) {
+                                          final applied =
+                                              await _paintZoneContentFromUi(
+                                                tappedZ,
+                                                _activePaintZoneContent!,
+                                                slidingSashesCount:
+                                                    _activePaintSlidingSashesCount,
+                                              );
+                                          if (applied) {
+                                            setState(() {
+                                              _paintbrushSecondsLeft = 10;
+                                            });
+                                            return;
+                                          }
+                                        }
+                                      }
+                                      final specToApply = _activePaintGlassSpec;
+                                      if (specToApply != null) {
+                                        WindowZone? tappedZ;
+                                        for (var z in widget.model.zones) {
+                                          if (z.boundary.contains(modelPos)) {
+                                            tappedZ = z;
+                                            break;
+                                          }
+                                        }
+                                        if (tappedZ != null) {
+                                          String? tappedCellId;
+                                          bool isDouble =
+                                              tappedZ.content ==
+                                              ZoneContent.doubleSash;
+                                          bool isSingle =
+                                              tappedZ.content ==
+                                              ZoneContent.singleSash;
+                                          bool isSliding =
+                                              tappedZ.content ==
+                                              ZoneContent.slidingSash;
+                                          if (isDouble ||
+                                              isSingle ||
+                                              isSliding) {
+                                            if (isSliding) {
+                                              final count =
+                                                  tappedZ.slidingSashesCount;
+                                              double chicaneT = 45.0;
+                                              final series =
+                                                  widget
+                                                      .model
+                                                      .activeSlidingSeries ??
+                                                  widget.model.activeSeries;
+                                              if (series != null) {
+                                                for (var sec
+                                                    in series.sections) {
+                                                  final secType = sec.type
+                                                      .toLowerCase();
+                                                  if (secType == 'chicane' ||
+                                                      secType ==
+                                                          'sash_central' ||
+                                                      secType == 'central' ||
+                                                      secType == 'centrale') {
+                                                    if (sec.visibleWidth > 0) {
+                                                      chicaneT =
+                                                          sec.visibleWidth;
+                                                    } else if (sec.thickness >
+                                                        0)
+                                                      chicaneT = sec.thickness;
+                                                  }
+                                                }
+                                              }
+                                              final double sashWidth =
+                                                  (tappedZ.boundary.width +
+                                                      (count - 1) * chicaneT) /
+                                                  count;
+
+                                              List<int> tracks;
+                                              if (count == 2) {
+                                                tracks =
+                                                    (tappedZ.openDirection ==
+                                                        OpenDirection.left)
+                                                    ? [1, 0]
+                                                    : [0, 1];
+                                              } else if (count == 3) {
+                                                tracks = [0, 1, 0];
+                                              } else if (count == 4) {
+                                                tracks = [0, 1, 1, 0];
+                                              } else {
+                                                tracks = List.generate(
+                                                  count,
+                                                  (i) => i % 2,
+                                                );
+                                              }
+
+                                              int selectedSashIndex = -1;
+                                              for (int tg = 1; tg >= 0; tg--) {
+                                                for (
+                                                  int i = 0;
+                                                  i < count;
+                                                  i++
+                                                ) {
+                                                  if (tracks[i] == tg) {
+                                                    double left =
+                                                        tappedZ.boundary.left +
+                                                        i *
+                                                            (sashWidth -
+                                                                chicaneT);
+                                                    Rect
+                                                    sashRect = Rect.fromLTRB(
+                                                      left,
+                                                      tappedZ.boundary.top,
+                                                      left + sashWidth,
+                                                      tappedZ.boundary.bottom,
+                                                    );
+                                                    if (sashRect.contains(
+                                                      modelPos,
+                                                    )) {
+                                                      selectedSashIndex = i;
+                                                      break;
+                                                    }
+                                                  }
+                                                }
+                                                if (selectedSashIndex != -1)
+                                                  break;
+                                              }
+
+                                              if (selectedSashIndex == -1) {
+                                                double tX =
+                                                    (modelPos.dx -
+                                                        tappedZ.boundary.left) /
+                                                    tappedZ.boundary.width;
+                                                selectedSashIndex = (tX * count)
+                                                    .floor()
+                                                    .clamp(0, count - 1);
+                                              }
+
+                                              tappedCellId =
+                                                  'main_cell_0_$selectedSashIndex';
+                                            } else {
+                                              double splitX =
+                                                  tappedZ.boundary.left +
+                                                  tappedZ.boundary.width *
+                                                      tappedZ.doubleSashRatio;
+                                              bool isRight =
+                                                  isDouble &&
+                                                  (modelPos.dx > splitX);
+                                              Rect sashR = tappedZ.boundary;
+                                              if (isDouble) {
+                                                final sep = 4.0;
+                                                sashR = isRight
+                                                    ? Rect.fromLTRB(
+                                                        splitX + sep / 2,
+                                                        tappedZ.boundary.top,
+                                                        tappedZ.boundary.right,
+                                                        tappedZ.boundary.bottom,
+                                                      )
+                                                    : Rect.fromLTRB(
+                                                        tappedZ.boundary.left,
+                                                        tappedZ.boundary.top,
+                                                        splitX - sep / 2,
+                                                        tappedZ.boundary.bottom,
+                                                      );
+                                              }
+                                              final sashT =
+                                                  tappedZ.sashThickness ??
+                                                  widget.model
+                                                      .getSectionThickness(
+                                                        'sash',
+                                                        fallback: 45.0,
+                                                      );
+                                              final glassR = sashR.deflate(
+                                                sashT,
+                                              );
+                                              if (glassR.contains(modelPos)) {
+                                                int currentInnerH = isRight
+                                                    ? tappedZ.rightInnerH
+                                                    : tappedZ.innerH;
+                                                int currentInnerV = isRight
+                                                    ? tappedZ.rightInnerV
+                                                    : tappedZ.innerV;
+                                                double cellW =
+                                                    glassR.width /
+                                                    (currentInnerV + 1);
+                                                double cellH =
+                                                    glassR.height /
+                                                    (currentInnerH + 1);
+                                                final clampedX = modelPos.dx
+                                                    .clamp(
+                                                      glassR.left + 0.1,
+                                                      glassR.right - 0.1,
+                                                    );
+                                                final clampedY = modelPos.dy
+                                                    .clamp(
+                                                      glassR.top + 0.1,
+                                                      glassR.bottom - 0.1,
+                                                    );
+                                                int col =
+                                                    ((clampedX - glassR.left) /
+                                                            cellW)
+                                                        .clamp(0, currentInnerV)
+                                                        .toInt();
+                                                int row =
+                                                    ((clampedY - glassR.top) /
+                                                            cellH)
+                                                        .clamp(0, currentInnerH)
+                                                        .toInt();
+                                                String sidePrefix = isDouble
+                                                    ? (isRight
+                                                          ? 'right'
+                                                          : 'left')
+                                                    : 'main';
+                                                tappedCellId =
+                                                    '${sidePrefix}_cell_${row}_$col';
+                                              } else {
+                                                tappedCellId = null;
+                                              }
+                                            }
+                                          } else {
+                                            // Non-sash zone (fixed glass, etc.)
+                                            final glassR = tappedZ.boundary;
+                                            int currentInnerH = tappedZ.innerH;
+                                            int currentInnerV = tappedZ.innerV;
+                                            double cellW =
+                                                glassR.width /
+                                                (currentInnerV + 1);
+                                            double cellH =
+                                                glassR.height /
+                                                (currentInnerH + 1);
+                                            final clampedX = modelPos.dx.clamp(
+                                              glassR.left + 0.1,
+                                              glassR.right - 0.1,
+                                            );
+                                            final clampedY = modelPos.dy.clamp(
+                                              glassR.top + 0.1,
+                                              glassR.bottom - 0.1,
+                                            );
+                                            int col =
+                                                ((clampedX - glassR.left) /
+                                                        cellW)
+                                                    .clamp(0, currentInnerV)
+                                                    .toInt();
+                                            int row =
+                                                ((clampedY - glassR.top) /
+                                                        cellH)
+                                                    .clamp(0, currentInnerH)
+                                                    .toInt();
+                                            tappedCellId =
+                                                'main_cell_${row}_$col';
+                                          }
+                                          var targetCellId = tappedCellId;
+                                          if (_isDecorPanelSpec(specToApply)) {
+                                            final placement =
+                                                await _prepareDecorPanelPlacement(
+                                                  zone: tappedZ,
+                                                  cellId: tappedCellId,
+                                                  spec: specToApply,
+                                                );
+                                            if (!placement.allowed) return;
+                                            targetCellId = placement.cellId;
+                                          }
+                                          widget.model.paintZoneOrCellSpec(
+                                            tappedZ.id,
+                                            spec: specToApply,
+                                            cellId: targetCellId,
+                                          );
+                                          // إعادة المؤقت عند كل ضغطة ناجحة
+                                          setState(() {
+                                            _paintbrushSecondsLeft = 10;
+                                          });
+                                          return;
+                                        }
+                                      } else if (_activePaintFinish != null) {
+                                        WindowZone? tappedZ;
+                                        for (var z in widget.model.zones) {
+                                          if (z.boundary.contains(modelPos)) {
+                                            tappedZ = z;
+                                            break;
+                                          }
+                                        }
+                                        if (tappedZ != null) {
+                                          String? tappedCellId;
+                                          bool isDouble =
+                                              tappedZ.content ==
+                                              ZoneContent.doubleSash;
+                                          bool isSingle =
+                                              tappedZ.content ==
+                                              ZoneContent.singleSash;
+                                          bool isSliding =
+                                              tappedZ.content ==
+                                              ZoneContent.slidingSash;
+                                          if (isDouble ||
+                                              isSingle ||
+                                              isSliding) {
+                                            double splitX =
+                                                tappedZ.boundary.left +
+                                                tappedZ.boundary.width *
+                                                    tappedZ.doubleSashRatio;
+                                            bool isRight =
+                                                isDouble &&
+                                                (modelPos.dx > splitX);
+                                            Rect sashR = tappedZ.boundary;
+                                            if (isDouble) {
+                                              final sep = 4.0;
+                                              sashR = isRight
+                                                  ? Rect.fromLTRB(
+                                                      splitX + sep / 2,
+                                                      tappedZ.boundary.top,
+                                                      tappedZ.boundary.right,
+                                                      tappedZ.boundary.bottom,
+                                                    )
+                                                  : Rect.fromLTRB(
+                                                      tappedZ.boundary.left,
+                                                      tappedZ.boundary.top,
+                                                      splitX - sep / 2,
+                                                      tappedZ.boundary.bottom,
+                                                    );
+                                            }
+                                            final sashT =
+                                                tappedZ.sashThickness ??
+                                                widget.model
+                                                    .getSectionThickness(
+                                                      'sash',
+                                                      fallback: 45.0,
+                                                    );
+                                            final glassR = sashR.deflate(sashT);
+                                            if (glassR.contains(modelPos)) {
+                                              int currentInnerH = isRight
+                                                  ? tappedZ.rightInnerH
+                                                  : tappedZ.innerH;
+                                              int currentInnerV = isRight
+                                                  ? tappedZ.rightInnerV
+                                                  : tappedZ.innerV;
+                                              double cellW =
+                                                  glassR.width /
+                                                  (currentInnerV + 1);
+                                              double cellH =
+                                                  glassR.height /
+                                                  (currentInnerH + 1);
+                                              int col =
+                                                  ((modelPos.dx - glassR.left) /
+                                                          cellW)
+                                                      .clamp(0, currentInnerV)
+                                                      .toInt();
+                                              int row =
+                                                  ((modelPos.dy - glassR.top) /
+                                                          cellH)
+                                                      .clamp(0, currentInnerH)
+                                                      .toInt();
+                                              String sidePrefix = isDouble
+                                                  ? (isRight ? 'right' : 'left')
+                                                  : 'main';
+                                              tappedCellId =
+                                                  '${sidePrefix}_cell_${row}_$col';
+                                            }
+                                          } else {
+                                            // Non-sash zone (fixed glass, etc.)
+                                            final glassR = tappedZ.boundary;
+                                            if (glassR.contains(modelPos)) {
+                                              int currentInnerH =
+                                                  tappedZ.innerH;
+                                              int currentInnerV =
+                                                  tappedZ.innerV;
+                                              double cellW =
+                                                  glassR.width /
+                                                  (currentInnerV + 1);
+                                              double cellH =
+                                                  glassR.height /
+                                                  (currentInnerH + 1);
+                                              int col =
+                                                  ((modelPos.dx - glassR.left) /
+                                                          cellW)
+                                                      .clamp(0, currentInnerV)
+                                                      .toInt();
+                                              int row =
+                                                  ((modelPos.dy - glassR.top) /
+                                                          cellH)
+                                                      .clamp(0, currentInnerH)
+                                                      .toInt();
+                                              tappedCellId =
+                                                  'main_cell_${row}_$col';
+                                            }
+                                          }
+                                          widget.model.paintZoneOrCell(
+                                            tappedZ.id,
+                                            finish: _activePaintFinish!,
+                                            structure: _activePaintStructure!,
+                                            cellId: tappedCellId,
+                                          );
+                                          return;
+                                        }
+                                      } else if (_activePaintZoneContent !=
+                                          null) {
+                                        WindowZone? tappedZ;
+                                        for (var z in widget.model.zones) {
+                                          if (z.boundary.contains(modelPos)) {
+                                            tappedZ = z;
+                                            break;
+                                          }
+                                        }
+                                        if (tappedZ != null) {
+                                          final applied =
+                                              await _paintZoneContentFromUi(
+                                                tappedZ,
+                                                _activePaintZoneContent!,
+                                                slidingSashesCount:
+                                                    _activePaintSlidingSashesCount,
+                                              );
+                                          if (applied) return;
+                                        }
+                                      } else if (_activePaintCellSash) {
+                                        WindowZone? tappedZ;
+                                        for (var z in widget.model.zones) {
+                                          if (z.boundary.contains(modelPos)) {
+                                            tappedZ = z;
+                                            break;
+                                          }
+                                        }
+                                        if (tappedZ != null) {
+                                          final cellId = _getTappedCellId(
+                                            tappedZ,
+                                            modelPos,
+                                          );
+                                          if (cellId != null) {
+                                            widget.model.paintCellSash(
+                                              tappedZ.id,
+                                              cellId,
+                                              true,
+                                            );
+                                          }
+                                          return;
+                                        }
+                                      } else if (_activePaintCellPanel) {
+                                        WindowZone? tappedZ;
+                                        for (var z in widget.model.zones) {
+                                          if (z.boundary.contains(modelPos)) {
+                                            tappedZ = z;
+                                            break;
+                                          }
+                                        }
+                                        if (tappedZ != null) {
+                                          final cellId = _getTappedCellId(
+                                            tappedZ,
+                                            modelPos,
+                                          );
+                                          if (cellId != null) {
+                                            widget.model.paintCellPanel(
+                                              tappedZ.id,
+                                              cellId,
+                                              true,
+                                            );
+                                          }
+                                          return;
+                                        }
+                                      }
                                     }
-                                  }
-                                  if (tappedZ != null) {
-                                    final applied =
-                                    await _paintZoneContentFromUi(
-                                      tappedZ,
-                                      _activePaintZoneContent!,
-                                      slidingSashesCount:
-                                      _activePaintSlidingSashesCount,
+
+                                    final outerTap = widget.model
+                                        .checkOuterDimensionTap(modelPos);
+                                    // The compact number inside each outer frame
+                                    // has priority over the general dimension
+                                    // areas, so only the visible number opens its
+                                    // own edit dialog.
+                                    final innerTap =
+                                        _frameProfileDimensionHit(modelPos) ??
+                                        widget.model.checkInnerDimensionTap(
+                                          modelPos,
+                                        );
+                                    final mullionDimTap = widget.model
+                                        .checkMullionDimensionTap(modelPos);
+
+                                    bool tappedZone = false;
+                                    for (var z in widget.model.zones) {
+                                      if (z.boundary.contains(modelPos)) {
+                                        tappedZone = true;
+                                        break;
+                                      }
+                                    }
+
+                                    bool tappedMullion = false;
+                                    bool? tappedMullionIsHorizontal;
+                                    double? tappedMullionPosition;
+                                    double nearestMullionDistance =
+                                        double.infinity;
+                                    double hitSlop = 40.0;
+                                    final mullionT =
+                                        widget.model.mullionThickness;
+                                    for (
+                                      int i = 0;
+                                      i < widget.model.zones.length;
+                                      i++
+                                    ) {
+                                      for (
+                                        int j = i + 1;
+                                        j < widget.model.zones.length;
+                                        j++
+                                      ) {
+                                        final z1 =
+                                            widget.model.zones[i].boundary;
+                                        final z2 =
+                                            widget.model.zones[j].boundary;
+                                        if ((z1.bottom - z2.top).abs() <=
+                                                mullionT + 2 ||
+                                            (z2.bottom - z1.top).abs() <=
+                                                mullionT + 2) {
+                                          double yCenter =
+                                              (z1.bottom + z2.top) / 2;
+                                          if ((z2.bottom - z1.top).abs() <=
+                                              mullionT + 2) {
+                                            yCenter = (z2.bottom + z1.top) / 2;
+                                          }
+                                          double overlapLeft = math.max(
+                                            z1.left,
+                                            z2.left,
+                                          );
+                                          double overlapRight = math.min(
+                                            z1.right,
+                                            z2.right,
+                                          );
+                                          if (overlapLeft < overlapRight &&
+                                              modelPos.dx >= overlapLeft &&
+                                              modelPos.dx <= overlapRight &&
+                                              (modelPos.dy - yCenter).abs() <
+                                                  hitSlop) {
+                                            final distance =
+                                                (modelPos.dy - yCenter).abs();
+                                            if (distance <
+                                                nearestMullionDistance) {
+                                              tappedMullion = true;
+                                              tappedMullionIsHorizontal = true;
+                                              tappedMullionPosition = yCenter;
+                                              nearestMullionDistance = distance;
+                                            }
+                                          }
+                                        }
+                                        if ((z1.right - z2.left).abs() <=
+                                                mullionT + 2 ||
+                                            (z2.right - z1.left).abs() <=
+                                                mullionT + 2) {
+                                          double xCenter =
+                                              (z1.right + z2.left) / 2;
+                                          if ((z2.right - z1.left).abs() <=
+                                              mullionT + 2) {
+                                            xCenter = (z2.right + z1.left) / 2;
+                                          }
+                                          double overlapTop = math.max(
+                                            z1.top,
+                                            z2.top,
+                                          );
+                                          double overlapBottom = math.min(
+                                            z1.bottom,
+                                            z2.bottom,
+                                          );
+                                          if (overlapTop < overlapBottom &&
+                                              modelPos.dy >= overlapTop &&
+                                              modelPos.dy <= overlapBottom &&
+                                              (modelPos.dx - xCenter).abs() <
+                                                  hitSlop) {
+                                            final distance =
+                                                (modelPos.dx - xCenter).abs();
+                                            if (distance <
+                                                nearestMullionDistance) {
+                                              tappedMullion = true;
+                                              tappedMullionIsHorizontal = false;
+                                              tappedMullionPosition = xCenter;
+                                              nearestMullionDistance = distance;
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+
+                                    final now = DateTime.now();
+                                    bool isDoubleTap = false;
+                                    if (_lastTapTime != null &&
+                                        now.difference(_lastTapTime!) <
+                                            const Duration(milliseconds: 300)) {
+                                      if (_lastTapPosition != null &&
+                                          (details.localPosition -
+                                                      _lastTapPosition!)
+                                                  .distance <
+                                              30.0) {
+                                        isDoubleTap = true;
+                                      }
+                                    }
+                                    _lastTapTime = now;
+                                    _lastTapPosition = details.localPosition;
+
+                                    final frameAtBorderHit = _frameAtBorder(
+                                      modelPos,
                                     );
-                                    if (applied) {
+                                    if (!tappedZone &&
+                                        !tappedMullion &&
+                                        frameAtBorderHit == null &&
+                                        outerTap == DimensionTap.none &&
+                                        innerTap == null &&
+                                        mullionDimTap == null) {
                                       setState(() {
-                                        _paintbrushSecondsLeft = 10;
+                                        _isDrawerOpen = false;
+                                        _isLeftDrawerOpen = false;
+                                        _isBottomPanelExpanded = false;
+                                        _isShutterSelected = false;
+                                      });
+                                      widget.model.clearSelection();
+                                      return;
+                                    }
+
+                                    if (outerTap != DimensionTap.none) {
+                                      _showResizeDialog(
+                                        context,
+                                        focusWidth:
+                                            outerTap == DimensionTap.width,
+                                      );
+                                      return;
+                                    }
+                                    if (innerTap != null) {
+                                      _showInnerResizeDialog(context, innerTap);
+                                      return;
+                                    }
+                                    if (mullionDimTap != null) {
+                                      _showMullionResizeDialog(
+                                        context,
+                                        mullionDimTap,
+                                      );
+                                      return;
+                                    }
+
+                                    if (isDoubleTap) {
+                                      final double h = widget.model.height;
+                                      if (modelPos.dy >= h - 30.0 &&
+                                          modelPos.dy <= h + 250.0) {
+                                        widget.model.toggleBottomWall();
+                                        return;
+                                      }
+
+                                      if (tappedMullion &&
+                                          tappedMullionIsHorizontal != null &&
+                                          tappedMullionPosition != null) {
+                                        widget.model.selectAt(
+                                          modelPos,
+                                          isLongPress: false,
+                                        );
+                                        _showMullionTypeDialog(context);
+                                        return;
+                                      }
+                                    }
+
+                                    if (widget.model.hasShutter &&
+                                        !tappedZone &&
+                                        !tappedMullion &&
+                                        outerTap == DimensionTap.none &&
+                                        innerTap == null &&
+                                        mullionDimTap == null) {
+                                      final double shutterTop =
+                                          -widget.model.shutterBoxHeight;
+                                      final double shutterBottom =
+                                          widget.model.topSlantLeftY;
+                                      if (modelPos.dy >= shutterTop - 20 &&
+                                          modelPos.dy <= shutterBottom + 10 &&
+                                          modelPos.dx >= -20 &&
+                                          modelPos.dx <=
+                                              widget.model.width + 20) {
+                                        setState(() {
+                                          _isShutterSelected = true;
+                                          _isBottomPanelExpanded = true;
+                                          _activeShutterTab = 0;
+                                          widget.model.clearSelection();
+                                        });
+                                        if (_shutterLamesOptions.isEmpty &&
+                                            _shutterCoulisseOptions.isEmpty) {
+                                          _loadShutterOptions();
+                                        }
+                                        return;
+                                      }
+                                    }
+
+                                    // In a coupled drawing the physical border
+                                    // selects that frame itself, not the content
+                                    // inside it.  Its eight resize handles then
+                                    // become available.
+                                    final frameAtBorder = _frameAtBorder(
+                                      modelPos,
+                                    );
+                                    if (frameAtBorder != null) {
+                                      setState(() {
+                                        _isShutterSelected = false;
+                                        _isBottomPanelExpanded = true;
+                                      });
+                                      widget.model.selectFrameByIndex(
+                                        frameAtBorder,
+                                      );
+                                      return;
+                                    }
+
+                                    setState(() {
+                                      _isShutterSelected = false;
+                                      _isBottomPanelExpanded = true;
+                                    });
+                                    widget.model.selectAt(
+                                      modelPos,
+                                      isLongPress: false,
+                                    );
+
+                                    if (!widget.model.isShutterOnly &&
+                                        isDoubleTap &&
+                                        tappedZone) {
+                                      setState(() {
+                                        widget.model.clearSelection();
+                                        _isLeftDrawerOpen = true;
+                                      });
+                                    }
+                                  },
+                                  onSecondaryTapDown: (details) async {
+                                    await _showDesktopContextMenu(
+                                      context,
+                                      details.globalPosition,
+                                      details.localPosition,
+                                    );
+                                  },
+                                  onLongPressStart: (details) async {
+                                    final modelPos = _getModelPos(
+                                      details.localPosition,
+                                    );
+                                    WindowZone? tappedZ;
+                                    for (var z in widget.model.zones) {
+                                      if (z.boundary.contains(modelPos)) {
+                                        tappedZ = z;
+                                        break;
+                                      }
+                                    }
+                                    if (tappedZ != null &&
+                                        (tappedZ.content ==
+                                                ZoneContent.singleSash ||
+                                            tappedZ.content ==
+                                                ZoneContent.doubleSash ||
+                                            tappedZ.content ==
+                                                ZoneContent.slidingSash)) {
+                                      _suppressHandleDragForLongPress = true;
+                                      _isDraggingHandle = false;
+                                      _isDraggingHinge = false;
+                                    }
+
+                                    if (_paintbrushSecondsLeft > 0) {
+                                      // A long press applies to all zones only when
+                                      // the user explicitly selected a glass brush.
+                                      // Never reuse the currently saved zone glass
+                                      // merely because the drawer is open.
+                                      final specToApply = _activePaintGlassSpec;
+                                      if (specToApply != null &&
+                                          tappedZ != null) {
+                                        unawaited(
+                                          widget.model
+                                              .applyGlassSpecificationToAllZones(
+                                                specToApply,
+                                              ),
+                                        );
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              _tr(
+                                                'تم تعميم نوع البانو/الزجاج على جميع المناطق',
+                                              ),
+                                            ),
+                                            backgroundColor: Colors.blue,
+                                            duration: Duration(seconds: 2),
+                                          ),
+                                        );
+                                        return;
+                                      }
+                                    }
+
+                                    if (_isDrawerOpen || _isLeftDrawerOpen) {
+                                      setState(() {
+                                        _isDrawerOpen = false;
+                                        _isLeftDrawerOpen = false;
                                       });
                                       return;
                                     }
-                                  }
-                                }
-                                final specToApply = _activePaintGlassSpec;
-                                if (specToApply != null) {
-                                  WindowZone? tappedZ;
-                                  for (var z in widget.model.zones) {
-                                    if (z.boundary.contains(modelPos)) {
-                                      tappedZ = z;
-                                      break;
-                                    }
-                                  }
-                                  if (tappedZ != null) {
-                                    String? tappedCellId;
-                                    bool isDouble =
-                                        tappedZ.content ==
-                                            ZoneContent.doubleSash;
-                                    bool isSingle =
-                                        tappedZ.content ==
-                                            ZoneContent.singleSash;
-                                    bool isSliding =
-                                        tappedZ.content ==
-                                            ZoneContent.slidingSash;
-                                    if (isDouble || isSingle || isSliding) {
-                                      if (isSliding) {
-                                        final count =
-                                            tappedZ.slidingSashesCount;
-                                        double chicaneT = 45.0;
-                                        final series =
-                                            widget.model.activeSlidingSeries ??
-                                                widget.model.activeSeries;
-                                        if (series != null) {
-                                          for (var sec in series.sections) {
-                                            final secType = sec.type
-                                                .toLowerCase();
-                                            if (secType == 'chicane' ||
-                                                secType == 'sash_central' ||
-                                                secType == 'central' ||
-                                                secType == 'centrale') {
-                                              if (sec.visibleWidth > 0) {
-                                                chicaneT = sec.visibleWidth;
-                                              } else if (sec.thickness > 0)
-                                                chicaneT = sec.thickness;
-                                            }
-                                          }
-                                        }
-                                        final double sashWidth =
-                                            (tappedZ.boundary.width +
-                                                (count - 1) * chicaneT) /
-                                                count;
-
-                                        List<int> tracks;
-                                        if (count == 2) {
-                                          tracks =
-                                          (tappedZ.openDirection ==
-                                              OpenDirection.left)
-                                              ? [1, 0]
-                                              : [0, 1];
-                                        } else if (count == 3) {
-                                          tracks = [0, 1, 0];
-                                        } else if (count == 4) {
-                                          tracks = [0, 1, 1, 0];
-                                        } else {
-                                          tracks = List.generate(
-                                            count,
-                                                (i) => i % 2,
-                                          );
-                                        }
-
-                                        int selectedSashIndex = -1;
-                                        for (int tg = 1; tg >= 0; tg--) {
-                                          for (int i = 0; i < count; i++) {
-                                            if (tracks[i] == tg) {
-                                              double left =
-                                                  tappedZ.boundary.left +
-                                                      i * (sashWidth -
-                                                          chicaneT);
-                                              Rect sashRect = Rect.fromLTRB(
-                                                left,
-                                                tappedZ.boundary.top,
-                                                left + sashWidth,
-                                                tappedZ.boundary.bottom,
-                                              );
-                                              if (sashRect.contains(modelPos)) {
-                                                selectedSashIndex = i;
-                                                break;
-                                              }
-                                            }
-                                          }
-                                          if (selectedSashIndex != -1) break;
-                                        }
-
-                                        if (selectedSashIndex == -1) {
-                                          double tX =
-                                              (modelPos.dx -
-                                                  tappedZ.boundary.left) /
-                                                  tappedZ.boundary.width;
-                                          selectedSashIndex = (tX * count)
-                                              .floor()
-                                              .clamp(0, count - 1);
-                                        }
-
-                                        tappedCellId =
-                                        'main_cell_0_$selectedSashIndex';
-                                      } else {
-                                        double splitX =
-                                            tappedZ.boundary.left +
-                                                tappedZ.boundary.width *
-                                                    tappedZ.doubleSashRatio;
-                                        bool isRight =
-                                            isDouble && (modelPos.dx > splitX);
-                                        Rect sashR = tappedZ.boundary;
-                                        if (isDouble) {
-                                          final sep = 4.0;
-                                          sashR = isRight
-                                              ? Rect.fromLTRB(
-                                            splitX + sep / 2,
-                                            tappedZ.boundary.top,
-                                            tappedZ.boundary.right,
-                                            tappedZ.boundary.bottom,
-                                          )
-                                              : Rect.fromLTRB(
-                                            tappedZ.boundary.left,
-                                            tappedZ.boundary.top,
-                                            splitX - sep / 2,
-                                            tappedZ.boundary.bottom,
-                                          );
-                                        }
-                                        final sashT =
-                                            tappedZ.sashThickness ??
-                                                widget.model
-                                                    .getSectionThickness(
-                                                  'sash',
-                                                  fallback: 45.0,
-                                                );
-                                        final glassR = sashR.deflate(sashT);
-                                        if (glassR.contains(modelPos)) {
-                                          int currentInnerH = isRight
-                                              ? tappedZ.rightInnerH
-                                              : tappedZ.innerH;
-                                          int currentInnerV = isRight
-                                              ? tappedZ.rightInnerV
-                                              : tappedZ.innerV;
-                                          double cellW =
-                                              glassR.width /
-                                                  (currentInnerV + 1);
-                                          double cellH =
-                                              glassR.height /
-                                                  (currentInnerH + 1);
-                                          final clampedX = modelPos.dx.clamp(
-                                            glassR.left + 0.1,
-                                            glassR.right - 0.1,
-                                          );
-                                          final clampedY = modelPos.dy.clamp(
-                                            glassR.top + 0.1,
-                                            glassR.bottom - 0.1,
-                                          );
-                                          int col =
-                                          ((clampedX - glassR.left) / cellW)
-                                              .clamp(0, currentInnerV)
-                                              .toInt();
-                                          int row =
-                                          ((clampedY - glassR.top) / cellH)
-                                              .clamp(0, currentInnerH)
-                                              .toInt();
-                                          String sidePrefix = isDouble
-                                              ? (isRight ? 'right' : 'left')
-                                              : 'main';
-                                          tappedCellId =
-                                          '${sidePrefix}_cell_${row}_$col';
-                                        } else {
-                                          tappedCellId = null;
-                                        }
-                                      }
-                                    } else {
-                                      // Non-sash zone (fixed glass, etc.)
-                                      final glassR = tappedZ.boundary;
-                                      int currentInnerH = tappedZ.innerH;
-                                      int currentInnerV = tappedZ.innerV;
-                                      double cellW =
-                                          glassR.width / (currentInnerV + 1);
-                                      double cellH =
-                                          glassR.height / (currentInnerH + 1);
-                                      final clampedX = modelPos.dx.clamp(
-                                        glassR.left + 0.1,
-                                        glassR.right - 0.1,
-                                      );
-                                      final clampedY = modelPos.dy.clamp(
-                                        glassR.top + 0.1,
-                                        glassR.bottom - 0.1,
-                                      );
-                                      int col =
-                                      ((clampedX - glassR.left) / cellW)
-                                          .clamp(0, currentInnerV)
-                                          .toInt();
-                                      int row =
-                                      ((clampedY - glassR.top) / cellH)
-                                          .clamp(0, currentInnerH)
-                                          .toInt();
-                                      tappedCellId = 'main_cell_${row}_$col';
-                                    }
-                                    var targetCellId = tappedCellId;
-                                    if (_isDecorPanelSpec(specToApply)) {
-                                      final placement =
-                                      await _prepareDecorPanelPlacement(
-                                        zone: tappedZ,
-                                        cellId: tappedCellId,
-                                        spec: specToApply,
-                                      );
-                                      if (!placement.allowed) return;
-                                      targetCellId = placement.cellId;
-                                    }
-                                    widget.model.paintZoneOrCellSpec(
-                                      tappedZ.id,
-                                      spec: specToApply,
-                                      cellId: targetCellId,
+                                    widget.model.selectAt(
+                                      modelPos,
+                                      isLongPress: true,
                                     );
-                                    // إعادة المؤقت عند كل ضغطة ناجحة
-                                    setState(() {
-                                      _paintbrushSecondsLeft = 10;
-                                    });
-                                    return;
-                                  }
-                                } else if (_activePaintFinish != null) {
-                                  WindowZone? tappedZ;
-                                  for (var z in widget.model.zones) {
-                                    if (z.boundary.contains(modelPos)) {
-                                      tappedZ = z;
-                                      break;
+
+                                    if (widget.model.selection.type ==
+                                        SelectionType.mullion) {
+                                      widget.model.deleteSelectedMullion();
+                                      return;
                                     }
-                                  }
-                                  if (tappedZ != null) {
-                                    String? tappedCellId;
-                                    bool isDouble =
-                                        tappedZ.content ==
-                                            ZoneContent.doubleSash;
-                                    bool isSingle =
-                                        tappedZ.content ==
-                                            ZoneContent.singleSash;
-                                    bool isSliding =
-                                        tappedZ.content ==
-                                            ZoneContent.slidingSash;
-                                    if (isDouble || isSingle || isSliding) {
-                                      double splitX =
-                                          tappedZ.boundary.left +
-                                              tappedZ.boundary.width *
-                                                  tappedZ.doubleSashRatio;
-                                      bool isRight =
-                                          isDouble && (modelPos.dx > splitX);
-                                      Rect sashR = tappedZ.boundary;
-                                      if (isDouble) {
-                                        final sep = 4.0;
-                                        sashR = isRight
-                                            ? Rect.fromLTRB(
-                                          splitX + sep / 2,
-                                          tappedZ.boundary.top,
-                                          tappedZ.boundary.right,
-                                          tappedZ.boundary.bottom,
-                                        )
-                                            : Rect.fromLTRB(
-                                          tappedZ.boundary.left,
-                                          tappedZ.boundary.top,
-                                          splitX - sep / 2,
-                                          tappedZ.boundary.bottom,
+                                    if (widget.model.selection.type ==
+                                        SelectionType.innerDivision) {
+                                      widget.model
+                                          .deleteSelectedInnerDivision();
+                                      return;
+                                    }
+                                    if (widget.model.selection.type ==
+                                        SelectionType.frame) {
+                                      if (widget.model.getFrameRects().length >
+                                          1) {
+                                        widget.model.deleteSelectedFrame();
+                                        return;
+                                      }
+                                      if (widget.model.canBeArchedOrSlanted) {
+                                        widget.model.selection = SelectionInfo(
+                                          type: SelectionType.frame,
                                         );
-                                      }
-                                      final sashT =
-                                          tappedZ.sashThickness ??
-                                              widget.model.getSectionThickness(
-                                                'sash',
-                                                fallback: 45.0,
-                                              );
-                                      final glassR = sashR.deflate(sashT);
-                                      if (glassR.contains(modelPos)) {
-                                        int currentInnerH = isRight
-                                            ? tappedZ.rightInnerH
-                                            : tappedZ.innerH;
-                                        int currentInnerV = isRight
-                                            ? tappedZ.rightInnerV
-                                            : tappedZ.innerV;
-                                        double cellW =
-                                            glassR.width / (currentInnerV + 1);
-                                        double cellH =
-                                            glassR.height / (currentInnerH + 1);
-                                        int col =
-                                        ((modelPos.dx - glassR.left) /
-                                            cellW)
-                                            .clamp(0, currentInnerV)
-                                            .toInt();
-                                        int row =
-                                        ((modelPos.dy - glassR.top) / cellH)
-                                            .clamp(0, currentInnerH)
-                                            .toInt();
-                                        String sidePrefix = isDouble
-                                            ? (isRight ? 'right' : 'left')
-                                            : 'main';
-                                        tappedCellId =
-                                        '${sidePrefix}_cell_${row}_$col';
-                                      }
-                                    } else {
-                                      // Non-sash zone (fixed glass, etc.)
-                                      final glassR = tappedZ.boundary;
-                                      if (glassR.contains(modelPos)) {
-                                        int currentInnerH = tappedZ.innerH;
-                                        int currentInnerV = tappedZ.innerV;
-                                        double cellW =
-                                            glassR.width / (currentInnerV + 1);
-                                        double cellH =
-                                            glassR.height / (currentInnerH + 1);
-                                        int col =
-                                        ((modelPos.dx - glassR.left) /
-                                            cellW)
-                                            .clamp(0, currentInnerV)
-                                            .toInt();
-                                        int row =
-                                        ((modelPos.dy - glassR.top) / cellH)
-                                            .clamp(0, currentInnerH)
-                                            .toInt();
-                                        tappedCellId = 'main_cell_${row}_$col';
-                                      }
-                                    }
-                                    widget.model.paintZoneOrCell(
-                                      tappedZ.id,
-                                      finish: _activePaintFinish!,
-                                      structure: _activePaintStructure!,
-                                      cellId: tappedCellId,
-                                    );
-                                    return;
-                                  }
-                                } else if (_activePaintZoneContent != null) {
-                                  WindowZone? tappedZ;
-                                  for (var z in widget.model.zones) {
-                                    if (z.boundary.contains(modelPos)) {
-                                      tappedZ = z;
-                                      break;
-                                    }
-                                  }
-                                  if (tappedZ != null) {
-                                    final applied =
-                                    await _paintZoneContentFromUi(
-                                      tappedZ,
-                                      _activePaintZoneContent!,
-                                      slidingSashesCount:
-                                      _activePaintSlidingSashesCount,
-                                    );
-                                    if (applied) return;
-                                  }
-                                } else if (_activePaintCellSash) {
-                                  WindowZone? tappedZ;
-                                  for (var z in widget.model.zones) {
-                                    if (z.boundary.contains(modelPos)) {
-                                      tappedZ = z;
-                                      break;
-                                    }
-                                  }
-                                  if (tappedZ != null) {
-                                    final cellId = _getTappedCellId(
-                                      tappedZ,
-                                      modelPos,
-                                    );
-                                    if (cellId != null) {
-                                      widget.model.paintCellSash(
-                                        tappedZ.id,
-                                        cellId,
-                                        true,
-                                      );
-                                    }
-                                    return;
-                                  }
-                                } else if (_activePaintCellPanel) {
-                                  WindowZone? tappedZ;
-                                  for (var z in widget.model.zones) {
-                                    if (z.boundary.contains(modelPos)) {
-                                      tappedZ = z;
-                                      break;
-                                    }
-                                  }
-                                  if (tappedZ != null) {
-                                    final cellId = _getTappedCellId(
-                                      tappedZ,
-                                      modelPos,
-                                    );
-                                    if (cellId != null) {
-                                      widget.model.paintCellPanel(
-                                        tappedZ.id,
-                                        cellId,
-                                        true,
-                                      );
-                                    }
-                                    return;
-                                  }
-                                }
-                              }
-
-                              final outerTap = widget.model
-                                  .checkOuterDimensionTap(modelPos);
-                              // The compact number inside each outer frame
-                              // has priority over the general dimension
-                              // areas, so only the visible number opens its
-                              // own edit dialog.
-                              final innerTap =
-                                  _frameProfileDimensionHit(modelPos) ??
-                                      widget.model.checkInnerDimensionTap(
-                                          modelPos);
-                              final mullionDimTap = widget.model
-                                  .checkMullionDimensionTap(modelPos);
-
-                              bool tappedZone = false;
-                              for (var z in widget.model.zones) {
-                                if (z.boundary.contains(modelPos)) {
-                                  tappedZone = true;
-                                  break;
-                                }
-                              }
-
-                              bool tappedMullion = false;
-                              bool? tappedMullionIsHorizontal;
-                              double? tappedMullionPosition;
-                              double nearestMullionDistance = double.infinity;
-                              double hitSlop = 40.0;
-                              final mullionT = widget.model.mullionThickness;
-                              for (
-                              int i = 0;
-                              i < widget.model.zones.length;
-                              i++
-                              ) {
-                                for (
-                                int j = i + 1;
-                                j < widget.model.zones.length;
-                                j++
-                                ) {
-                                  final z1 = widget.model.zones[i].boundary;
-                                  final z2 = widget.model.zones[j].boundary;
-                                  if ((z1.bottom - z2.top).abs() <=
-                                      mullionT + 2 ||
-                                      (z2.bottom - z1.top).abs() <=
-                                          mullionT + 2) {
-                                    double yCenter = (z1.bottom + z2.top) / 2;
-                                    if ((z2.bottom - z1.top).abs() <=
-                                        mullionT + 2) {
-                                      yCenter = (z2.bottom + z1.top) / 2;
-                                    }
-                                    double overlapLeft = math.max(
-                                      z1.left,
-                                      z2.left,
-                                    );
-                                    double overlapRight = math.min(
-                                      z1.right,
-                                      z2.right,
-                                    );
-                                    if (overlapLeft < overlapRight &&
-                                        modelPos.dx >= overlapLeft &&
-                                        modelPos.dx <= overlapRight &&
-                                        (modelPos.dy - yCenter).abs() <
-                                            hitSlop) {
-                                      final distance = (modelPos.dy - yCenter)
-                                          .abs();
-                                      if (distance < nearestMullionDistance) {
-                                        tappedMullion = true;
-                                        tappedMullionIsHorizontal = true;
-                                        tappedMullionPosition = yCenter;
-                                        nearestMullionDistance = distance;
-                                      }
-                                    }
-                                  }
-                                  if ((z1.right - z2.left).abs() <=
-                                      mullionT + 2 ||
-                                      (z2.right - z1.left).abs() <=
-                                          mullionT + 2) {
-                                    double xCenter = (z1.right + z2.left) / 2;
-                                    if ((z2.right - z1.left).abs() <=
-                                        mullionT + 2) {
-                                      xCenter = (z2.right + z1.left) / 2;
-                                    }
-                                    double overlapTop = math.max(
-                                      z1.top,
-                                      z2.top,
-                                    );
-                                    double overlapBottom = math.min(
-                                      z1.bottom,
-                                      z2.bottom,
-                                    );
-                                    if (overlapTop < overlapBottom &&
-                                        modelPos.dy >= overlapTop &&
-                                        modelPos.dy <= overlapBottom &&
-                                        (modelPos.dx - xCenter).abs() <
-                                            hitSlop) {
-                                      final distance = (modelPos.dx - xCenter)
-                                          .abs();
-                                      if (distance < nearestMullionDistance) {
-                                        tappedMullion = true;
-                                        tappedMullionIsHorizontal = false;
-                                        tappedMullionPosition = xCenter;
-                                        nearestMullionDistance = distance;
-                                      }
-                                    }
-                                  }
-                                }
-                              }
-
-                              final now = DateTime.now();
-                              bool isDoubleTap = false;
-                              if (_lastTapTime != null &&
-                                  now.difference(_lastTapTime!) <
-                                      const Duration(milliseconds: 300)) {
-                                if (_lastTapPosition != null &&
-                                    (details.localPosition - _lastTapPosition!)
-                                        .distance <
-                                        30.0) {
-                                  isDoubleTap = true;
-                                }
-                              }
-                              _lastTapTime = now;
-                              _lastTapPosition = details.localPosition;
-
-                              final frameAtBorderHit = _frameAtBorder(modelPos);
-                              if (!tappedZone &&
-                                  !tappedMullion &&
-                                  frameAtBorderHit == null &&
-                                  outerTap == DimensionTap.none &&
-                                  innerTap == null &&
-                                  mullionDimTap == null) {
-                                setState(() {
-                                  _isDrawerOpen = false;
-                                  _isLeftDrawerOpen = false;
-                                  _isBottomPanelExpanded = false;
-                                  _isShutterSelected = false;
-                                });
-                                widget.model.clearSelection();
-                                return;
-                              }
-
-                              if (outerTap != DimensionTap.none) {
-                                _showResizeDialog(
-                                  context,
-                                  focusWidth: outerTap == DimensionTap.width,
-                                );
-                                return;
-                              }
-                              if (innerTap != null) {
-                                _showInnerResizeDialog(context, innerTap);
-                                return;
-                              }
-                              if (mullionDimTap != null) {
-                                _showMullionResizeDialog(
-                                  context,
-                                  mullionDimTap,
-                                );
-                                return;
-                              }
-
-                              if (isDoubleTap) {
-                                final double h = widget.model.height;
-                                if (modelPos.dy >= h - 30.0 &&
-                                    modelPos.dy <= h + 250.0) {
-                                  widget.model.toggleBottomWall();
-                                  return;
-                                }
-
-                                if (tappedMullion &&
-                                    tappedMullionIsHorizontal != null &&
-                                    tappedMullionPosition != null) {
-                                  widget.model.selectAt(
-                                    modelPos,
-                                    isLongPress: false,
-                                  );
-                                  _showMullionTypeDialog(context);
-                                  return;
-                                }
-                              }
-
-                              if (widget.model.hasShutter &&
-                                  !tappedZone &&
-                                  !tappedMullion &&
-                                  outerTap == DimensionTap.none &&
-                                  innerTap == null &&
-                                  mullionDimTap == null) {
-                                final double shutterTop =
-                                -widget.model.shutterBoxHeight;
-                                final double shutterBottom =
-                                    widget.model.topSlantLeftY;
-                                if (modelPos.dy >= shutterTop - 20 &&
-                                    modelPos.dy <= shutterBottom + 10 &&
-                                    modelPos.dx >= -20 &&
-                                    modelPos.dx <= widget.model.width + 20) {
-                                  setState(() {
-                                    _isShutterSelected = true;
-                                    _isBottomPanelExpanded = true;
-                                    _activeShutterTab = 0;
-                                    widget.model.clearSelection();
-                                  });
-                                  if (_shutterLamesOptions.isEmpty &&
-                                      _shutterCoulisseOptions.isEmpty) {
-                                    _loadShutterOptions();
-                                  }
-                                  return;
-                                }
-                              }
-
-                              // In a coupled drawing the physical border
-                              // selects that frame itself, not the content
-                              // inside it.  Its eight resize handles then
-                              // become available.
-                              final frameAtBorder = _frameAtBorder(modelPos);
-                              if (frameAtBorder != null) {
-                                setState(() {
-                                  _isShutterSelected = false;
-                                  _isBottomPanelExpanded = true;
-                                });
-                                widget.model.selectFrameByIndex(frameAtBorder);
-                                return;
-                              }
-
-                              setState(() {
-                                _isShutterSelected = false;
-                                _isBottomPanelExpanded = true;
-                              });
-                              widget.model.selectAt(
-                                modelPos,
-                                isLongPress: false,
-                              );
-
-                              if (!widget.model.isShutterOnly &&
-                                  isDoubleTap &&
-                                  tappedZone) {
-                                setState(() {
-                                  widget.model.clearSelection();
-                                  _isLeftDrawerOpen = true;
-                                });
-                              }
-                            },
-                            onSecondaryTapDown: (details) async {
-                              await _showDesktopContextMenu(
-                                context,
-                                details.globalPosition,
-                                details.localPosition,
-                              );
-                            },
-                            onLongPressStart: (details) async {
-                              final modelPos = _getModelPos(
-                                details.localPosition,
-                              );
-                              WindowZone? tappedZ;
-                              for (var z in widget.model.zones) {
-                                if (z.boundary.contains(modelPos)) {
-                                  tappedZ = z;
-                                  break;
-                                }
-                              }
-                              if (tappedZ != null &&
-                                  (tappedZ.content == ZoneContent.singleSash ||
-                                      tappedZ.content ==
-                                          ZoneContent.doubleSash ||
-                                      tappedZ.content ==
-                                          ZoneContent.slidingSash)) {
-                                _suppressHandleDragForLongPress = true;
-                                _isDraggingHandle = false;
-                                _isDraggingHinge = false;
-                              }
-
-                              if (_paintbrushSecondsLeft > 0) {
-                                // A long press applies to all zones only when
-                                // the user explicitly selected a glass brush.
-                                // Never reuse the currently saved zone glass
-                                // merely because the drawer is open.
-                                final specToApply = _activePaintGlassSpec;
-                                if (specToApply != null && tappedZ != null) {
-                                  unawaited(
-                                    widget.model
-                                        .applyGlassSpecificationToAllZones(
-                                      specToApply,
-                                    ),
-                                  );
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        _tr(
-                                          'تم تعميم نوع البانو/الزجاج على جميع المناطق',
-                                        ),
-                                      ),
-                                      backgroundColor: Colors.blue,
-                                      duration: Duration(seconds: 2),
-                                    ),
-                                  );
-                                  return;
-                                }
-                              }
-
-                              if (_isDrawerOpen || _isLeftDrawerOpen) {
-                                setState(() {
-                                  _isDrawerOpen = false;
-                                  _isLeftDrawerOpen = false;
-                                });
-                                return;
-                              }
-                              widget.model.selectAt(
-                                modelPos,
-                                isLongPress: true,
-                              );
-
-                              if (widget.model.selection.type ==
-                                  SelectionType.mullion) {
-                                widget.model.deleteSelectedMullion();
-                                return;
-                              }
-                              if (widget.model.selection.type ==
-                                  SelectionType.innerDivision) {
-                                widget.model.deleteSelectedInnerDivision();
-                                return;
-                              }
-                              if (widget.model.selection.type ==
-                                  SelectionType.frame) {
-                                if (widget.model
-                                    .getFrameRects()
-                                    .length > 1) {
-                                  widget.model.deleteSelectedFrame();
-                                  return;
-                                }
-                                if (widget.model.canBeArchedOrSlanted) {
-                                  widget.model.selection = SelectionInfo(
-                                    type: SelectionType.frame,
-                                  );
-                                  widget.model.showZoneMenu = false;
-                                  widget.model.activeSubZone = null;
-                                  widget.model.refreshUI();
-                                  ScaffoldMessenger.of(
-                                    context,
-                                  ).hideCurrentSnackBar();
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Row(
-                                        children: [
-                                          Icon(
-                                            Icons.gesture_rounded,
-                                            color: Colors.white,
-                                            size: 20,
-                                          ),
-                                          SizedBox(width: 8),
-                                          Expanded(
-                                            child: Text(
-                                              _tr(
-                                                'تم تفعيل وضع تعديل ميلان وتقويس الإطار (اسحب المقابض الدائرية العلوية)',
-                                              ),
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                              ),
+                                        widget.model.showZoneMenu = false;
+                                        widget.model.activeSubZone = null;
+                                        widget.model.refreshUI();
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).hideCurrentSnackBar();
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.gesture_rounded,
+                                                  color: Colors.white,
+                                                  size: 20,
+                                                ),
+                                                SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Text(
+                                                    _tr(
+                                                      'تم تفعيل وضع تعديل ميلان وتقويس الإطار (اسحب المقابض الدائرية العلوية)',
+                                                    ),
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
                                             ),
+                                            backgroundColor:
+                                                Colors.amber.shade900,
+                                            duration: const Duration(
+                                              milliseconds: 2200,
+                                            ),
+                                            behavior: SnackBarBehavior.floating,
                                           ),
-                                        ],
-                                      ),
-                                      backgroundColor: Colors.amber.shade900,
-                                      duration: const Duration(
-                                        milliseconds: 2200,
-                                      ),
-                                      behavior: SnackBarBehavior.floating,
-                                    ),
-                                  );
-                                  return;
-                                }
-                              }
+                                        );
+                                        return;
+                                      }
+                                    }
 
-                              final zone = widget.model.selectedZone;
-                              final cellKey = widget.model.activeSubZone;
-                              if (zone != null &&
-                                  cellKey != null &&
-                                  cellKey.contains('_cell_')) {
-                                final hasSash =
-                                    zone.cellIsSash[cellKey] == true ||
-                                        zone.cellIsDoubleSash[cellKey] == true;
-                                if (hasSash) {
-                                  final selected =
-                                  await showDialog<Map<String, dynamic>>(
-                                    context: context,
-                                    builder: (context) =>
-                                        ProfileSelectorDialog(
-                                          profileType: 'sash',
-                                          seriesId:
-                                          activeSeriesForSystem?.id,
-                                          hasSimpleGlassForReducer: widget
-                                              .model
-                                              .hasSimpleGlassForReducer,
-                                          hasDoubleGlassForRules: widget
-                                              .model
-                                              .hasDoubleGlassForRules,
+                                    final zone = widget.model.selectedZone;
+                                    final cellKey = widget.model.activeSubZone;
+                                    if (zone != null &&
+                                        cellKey != null &&
+                                        cellKey.contains('_cell_')) {
+                                      final hasSash =
+                                          zone.cellIsSash[cellKey] == true ||
+                                          zone.cellIsDoubleSash[cellKey] ==
+                                              true;
+                                      if (hasSash) {
+                                        final selected =
+                                            await showDialog<
+                                              Map<String, dynamic>
+                                            >(
+                                              context: context,
+                                              builder: (context) =>
+                                                  ProfileSelectorDialog(
+                                                    profileType: 'sash',
+                                                    seriesId:
+                                                        activeSeriesForSystem
+                                                            ?.id,
+                                                    hasSimpleGlassForReducer: widget
+                                                        .model
+                                                        .hasSimpleGlassForReducer,
+                                                    hasDoubleGlassForRules: widget
+                                                        .model
+                                                        .hasDoubleGlassForRules,
+                                                  ),
+                                            );
+                                        if (!mounted || selected == null)
+                                          return;
+                                        final mutableSelected =
+                                            Map<String, dynamic>.from(selected);
+                                        mutableSelected['calculated_price'] =
+                                            await _sectionPriceForSelectedColor(
+                                              mutableSelected,
+                                            );
+                                        if (!mounted) return;
+
+                                        setState(() {
+                                          final newOverrides =
+                                              Map<
+                                                String,
+                                                Map<String, dynamic>
+                                              >.from(zone.cellSashOverrides);
+                                          newOverrides[cellKey] =
+                                              mutableSelected;
+                                          zone.cellSashOverrides = newOverrides;
+                                          widget.model.refreshUI();
+                                        });
+                                      }
+                                    }
+                                  },
+                                  onLongPressMoveUpdate: (details) {
+                                    if (widget.model.selectedZone?.content ==
+                                            ZoneContent.doubleSash &&
+                                        widget.model.activeSubZone == 'all' &&
+                                        widget.model.isDrawingMode) {
+                                      final zone = widget.model.selectedZone!;
+                                      final bounds = zone.boundary;
+                                      final modelPos = _getModelPos(
+                                        details.localPosition,
+                                      );
+                                      double newRatio =
+                                          (modelPos.dx - bounds.left) /
+                                          bounds.width;
+                                      newRatio = newRatio.clamp(0.15, 0.85);
+                                      widget.model.updateZoneDoubleSashRatio(
+                                        zone.id,
+                                        newRatio,
+                                      );
+                                    }
+                                  },
+                                  onLongPressEnd: (details) {
+                                    if (widget.model.selectedZone?.content ==
+                                            ZoneContent.doubleSash &&
+                                        widget.model.activeSubZone == 'all') {
+                                      widget.model.saveSnapshotOutside();
+                                    }
+                                    _isDraggingHandle = false;
+                                    _isDraggingHinge = false;
+                                    _suppressHandleDragForLongPress = false;
+                                  },
+                                  onScaleStart: (details) {
+                                    if (_isDrawerOpen || _isLeftDrawerOpen) {
+                                      setState(() {
+                                        _isDrawerOpen = false;
+                                        _isLeftDrawerOpen = false;
+                                      });
+                                    }
+                                    _baseUserScale = _userScale;
+                                    _baseUserPan = _userPan;
+                                    _focalPointStart = details.localFocalPoint;
+
+                                    if (details.pointerCount < 2) {
+                                      final modelPos = _getModelPos(
+                                        details.localFocalPoint,
+                                      );
+
+                                      // Helper to map model coordinates to screen pixels for comfortable hit-testing
+                                      Offset modelToScreen(Offset mPos) {
+                                        return _modelToScreen(mPos);
+                                      }
+
+                                      final tlScreen = modelToScreen(
+                                        Offset(0, widget.model.topSlantLeftY),
+                                      );
+                                      final trScreen = modelToScreen(
+                                        Offset(
+                                          widget.model.width,
+                                          widget.model.topSlantRightY,
                                         ),
-                                  );
-                                  if (!mounted || selected == null) return;
-                                  final mutableSelected =
-                                  Map<String, dynamic>.from(selected);
-                                  mutableSelected['calculated_price'] =
-                                  await _sectionPriceForSelectedColor(
-                                    mutableSelected,
-                                  );
-                                  if (!mounted) return;
-
-                                  setState(() {
-                                    final newOverrides =
-                                    Map<String, Map<String, dynamic>>.from(
-                                      zone.cellSashOverrides,
-                                    );
-                                    newOverrides[cellKey] = mutableSelected;
-                                    zone.cellSashOverrides = newOverrides;
-                                    widget.model.refreshUI();
-                                  });
-                                }
-                              }
-                            },
-                            onLongPressMoveUpdate: (details) {
-                              if (widget.model.selectedZone?.content ==
-                                  ZoneContent.doubleSash &&
-                                  widget.model.activeSubZone == 'all' &&
-                                  widget.model.isDrawingMode) {
-                                final zone = widget.model.selectedZone!;
-                                final bounds = zone.boundary;
-                                final modelPos = _getModelPos(
-                                  details.localPosition,
-                                );
-                                double newRatio =
-                                    (modelPos.dx - bounds.left) / bounds.width;
-                                newRatio = newRatio.clamp(0.15, 0.85);
-                                widget.model.updateZoneDoubleSashRatio(
-                                  zone.id,
-                                  newRatio,
-                                );
-                              }
-                            },
-                            onLongPressEnd: (details) {
-                              if (widget.model.selectedZone?.content ==
-                                  ZoneContent.doubleSash &&
-                                  widget.model.activeSubZone == 'all') {
-                                widget.model.saveSnapshotOutside();
-                              }
-                              _isDraggingHandle = false;
-                              _isDraggingHinge = false;
-                              _suppressHandleDragForLongPress = false;
-                            },
-                            onScaleStart: (details) {
-                              if (_isDrawerOpen || _isLeftDrawerOpen) {
-                                setState(() {
-                                  _isDrawerOpen = false;
-                                  _isLeftDrawerOpen = false;
-                                });
-                              }
-                              _baseUserScale = _userScale;
-                              _baseUserPan = _userPan;
-                              _focalPointStart = details.localFocalPoint;
-
-                              if (details.pointerCount < 2) {
-                                final modelPos = _getModelPos(
-                                  details.localFocalPoint,
-                                );
-
-                                // Helper to map model coordinates to screen pixels for comfortable hit-testing
-                                Offset modelToScreen(Offset mPos) {
-                                  return _modelToScreen(mPos);
-                                }
-
-                                final tlScreen = modelToScreen(
-                                  Offset(0, widget.model.topSlantLeftY),
-                                );
-                                final trScreen = modelToScreen(
-                                  Offset(
-                                    widget.model.width,
-                                    widget.model.topSlantRightY,
-                                  ),
-                                );
-                                final tcScreen = modelToScreen(
-                                  Offset(
-                                    widget.model.width / 2,
-                                    math.min(
-                                      widget.model.topSlantLeftY,
-                                      widget.model.topSlantRightY,
-                                    ) -
-                                        (widget.model.archHeight * 2),
-                                  ),
-                                );
-                                final touchScreen = details.localFocalPoint;
-                                const double hitRadius = 35.0;
-
-                                final isFrameSelected =
-                                    widget.model.selection.type ==
-                                        SelectionType.frame;
-                                final frameResizeHandle = _frameResizeHandleAt(
-                                  touchScreen,
-                                );
-                                final canSlantOrArch =
-                                    isFrameSelected &&
-                                        widget.model.canBeArchedOrSlanted &&
-                                        (widget.model.selection.zoneId ==
-                                            null ||
-                                            widget.model.selection.zoneId ==
-                                                'frame:0' ||
-                                            widget.model
-                                                .getFrameRects()
-                                                .length <=
-                                                1);
-                                if (frameResizeHandle != null) {
-                                  _draggedFrameResizeHandle = frameResizeHandle;
-                                  _draggedFrameZoneId =
-                                      widget.model.selection.zoneId ??
-                                          'frame:0';
-                                  _frameResizeHistorySaved = false;
-                                } else if (canSlantOrArch &&
-                                    (touchScreen - tlScreen).distance <
-                                        hitRadius) {
-                                  _isDraggingSlantLeft = true;
-                                } else if (canSlantOrArch &&
-                                    (touchScreen - trScreen).distance <
-                                        hitRadius) {
-                                  _isDraggingSlantRight = true;
-                                } else if (canSlantOrArch &&
-                                    (touchScreen - tcScreen).distance <
-                                        hitRadius) {
-                                  _isDraggingArch = true;
-                                } else if (widget.model.selectedZone != null &&
-                                    widget.model.selectedZone!.boundary
-                                        .contains(modelPos) &&
-                                    widget.model.isDrawingMode) {
-                                  final zone = widget.model.selectedZone!;
-                                  final bounds = zone.boundary;
-                                  final isTopBound = _isTopZone(zone);
-                                  final double topOffset =
-                                  widget.model.hasShutter
-                                      ? widget.model.shutterBoxHeight
-                                      : 0.0;
-
-                                  bool hitHandle = false;
-                                  bool hitHinge = false;
-                                  final canInteractWithHardware =
-                                      widget.model.isInternalView ||
-                                          widget.model.showInternalHardware;
-                                  final bool isDoubleBothSelected =
-                                      zone.content == ZoneContent.doubleSash &&
-                                          widget.model.activeSubZone == 'all';
-
-                                  if (canInteractWithHardware &&
-                                      (zone.content == ZoneContent.singleSash ||
-                                          zone.content ==
-                                              ZoneContent.doubleSash)) {
-                                    final activeIsRight =
-                                    widget.model.activeSubZone != null &&
-                                        widget.model.activeSubZone != 'all'
-                                        ? widget.model.activeSubZone!
-                                        .startsWith('right')
-                                        : (zone.openDirection !=
-                                        OpenDirection.left);
-
-                                    final sep = 4.0;
-                                    final midX =
-                                        bounds.left +
-                                            bounds.width * zone.doubleSashRatio;
-                                    final leftR = Rect.fromLTRB(
-                                      bounds.left,
-                                      bounds.top,
-                                      midX - sep / 2,
-                                      bounds.bottom,
-                                    );
-                                    final rightR = Rect.fromLTRB(
-                                      midX + sep / 2,
-                                      bounds.top,
-                                      bounds.right,
-                                      bounds.bottom,
-                                    );
-
-                                    final sashRect =
-                                    (zone.content == ZoneContent.doubleSash)
-                                        ? (activeIsRight ? rightR : leftR)
-                                        : bounds;
-
-                                    final handleSide =
-                                    (zone.content == ZoneContent.doubleSash)
-                                        ? (activeIsRight
-                                        ? OpenDirection.left
-                                        : OpenDirection.right)
-                                        : zone.openDirection!;
-
-                                    // Precise hit testing for handle - disabled when both sashes are selected!
-                                    if (!isDoubleBothSelected) {
-                                      double hRatio =
-                                          zone.handlePositionRatio ?? 0.5;
-                                      double hX = sashRect.center.dx;
-                                      double hY = sashRect.center.dy;
-
-                                      if (handleSide == OpenDirection.left) {
-                                        hX = sashRect.left + 20;
-                                        double topYVal = getSashTopY(
-                                          hX,
-                                          sashRect.top,
-                                          widget.model.profileThickness,
-                                          topOffset,
-                                          isTopBound,
-                                        );
-                                        hY =
-                                            topYVal +
-                                                ((sashRect.bottom - topYVal) *
-                                                    (1.0 - hRatio));
-                                      } else if (handleSide ==
-                                          OpenDirection.right) {
-                                        hX = sashRect.right - 20;
-                                        double topYVal = getSashTopY(
-                                          hX,
-                                          sashRect.top,
-                                          widget.model.profileThickness,
-                                          topOffset,
-                                          isTopBound,
-                                        );
-                                        hY =
-                                            topYVal +
-                                                ((sashRect.bottom - topYVal) *
-                                                    (1.0 - hRatio));
-                                      } else if (handleSide ==
-                                          OpenDirection.top) {
-                                        hX =
-                                            sashRect.left +
-                                                (sashRect.width * hRatio);
-                                        double topYVal = getSashTopY(
-                                          hX,
-                                          sashRect.top,
-                                          widget.model.profileThickness,
-                                          topOffset,
-                                          isTopBound,
-                                        );
-                                        hY = topYVal + 22;
-                                      } else if (handleSide ==
-                                          OpenDirection.bottom) {
-                                        hY = sashRect.bottom - 22;
-                                        hX =
-                                            sashRect.left +
-                                                (sashRect.width * hRatio);
-                                      }
-
-                                      final handleScreenPos = modelToScreen(
-                                        Offset(hX, hY),
                                       );
-                                      if ((touchScreen - handleScreenPos)
-                                          .distance <
-                                          45.0) {
-                                        _isDraggingHandle = true;
-                                        hitHandle = true;
-                                      }
-                                    }
-
-                                    // Precise hit testing for hinges
-                                    bool hingesOnLeft = false;
-                                    bool hingesOnRight = false;
-                                    bool hingesOnTop = false;
-                                    bool hingesOnBottom = false;
-
-                                    if (zone.content ==
-                                        ZoneContent.doubleSash) {
-                                      hingesOnLeft = !activeIsRight;
-                                      hingesOnRight = activeIsRight;
-                                    } else {
-                                      hingesOnLeft =
-                                      (zone.openDirection ==
-                                          OpenDirection.right);
-                                      hingesOnRight =
-                                      (zone.openDirection ==
-                                          OpenDirection.left);
-                                      hingesOnTop =
-                                      (zone.openDirection ==
-                                          OpenDirection.bottom);
-                                      hingesOnBottom =
-                                      (zone.openDirection ==
-                                          OpenDirection.top);
-                                    }
-
-                                    final hingeCount =
-                                    standardHingeCountForSash(
-                                      sashHeight: sashRect.height,
-                                      glassStructure: zone.glass.structure,
-                                    );
-
-                                    if (hingeCount >= 3 && !hitHandle) {
-                                      double hgX = 0;
-                                      double hgY = 0;
-                                      final hingeRevealOffset =
-                                      (widget.model.profileThickness * 0.28)
-                                          .clamp(9.0, 18.0)
-                                          .toDouble();
-                                      if (hingesOnLeft || hingesOnRight) {
-                                        hgX = hingesOnRight
-                                            ? sashRect.right + hingeRevealOffset
-                                            : sashRect.left - hingeRevealOffset;
-                                        double startY =
-                                            getSashTopY(
-                                              hgX,
-                                              sashRect.top,
-                                              widget.model.profileThickness,
-                                              topOffset,
-                                              isTopBound,
-                                            ) +
-                                                100;
-                                        double step =
-                                            (sashRect.bottom - 100 - startY) /
-                                                (hingeCount - 1);
-                                        hgY =
-                                            startY +
-                                                step +
-                                                zone.middleHingeDragOffset;
-                                      } else if (hingesOnTop ||
-                                          hingesOnBottom) {
-                                        hgY = hingesOnBottom
-                                            ? sashRect.bottom +
-                                            hingeRevealOffset
-                                            : sashRect.top - hingeRevealOffset;
-                                        double startX = sashRect.left + 100;
-                                        double step =
-                                            (sashRect.right - 100 - startX) /
-                                                (hingeCount - 1);
-                                        hgX =
-                                            startX +
-                                                step +
-                                                zone.middleHingeDragOffset;
-                                        if (hingesOnTop) {
-                                          hgY =
-                                              getSashTopY(
-                                                hgX,
-                                                sashRect.top,
-                                                widget.model.profileThickness,
-                                                topOffset,
-                                                isTopBound,
+                                      final tcScreen = modelToScreen(
+                                        Offset(
+                                          widget.model.width / 2,
+                                          math.min(
+                                                widget.model.topSlantLeftY,
+                                                widget.model.topSlantRightY,
                                               ) -
-                                                  hingeRevealOffset;
-                                        }
-                                      }
-                                      final hingeScreenPos = modelToScreen(
-                                        Offset(hgX, hgY),
+                                              (widget.model.archHeight * 2),
+                                        ),
                                       );
-                                      if ((touchScreen - hingeScreenPos)
-                                          .distance <
-                                          45.0) {
-                                        _isDraggingHinge = true;
-                                        hitHinge = true;
-                                      }
-                                    }
-                                  } else if (canInteractWithHardware &&
-                                      zone.content == ZoneContent.slidingSash) {
-                                    int count = zone.slidingSashesCount;
-                                    if (count < 2) count = 2;
-                                    double frameT =
-                                        zone.sashThickness ??
-                                            widget.model.getSectionThickness(
-                                              'sash',
-                                              fallback: 45.0,
-                                            );
-                                    double sashWidth =
-                                        (bounds.width + (count - 1) * frameT) /
-                                            count;
+                                      final touchScreen =
+                                          details.localFocalPoint;
+                                      const double hitRadius = 35.0;
 
-                                    // Left sash (i=0)
-                                    double left0 = bounds.left;
-                                    Rect sashRectLeft = Rect.fromLTRB(
-                                      left0,
-                                      bounds.top,
-                                      left0 + sashWidth,
-                                      bounds.bottom,
-                                    );
+                                      final isFrameSelected =
+                                          widget.model.selection.type ==
+                                          SelectionType.frame;
+                                      final frameResizeHandle =
+                                          _frameResizeHandleAt(touchScreen);
+                                      final canSlantOrArch =
+                                          isFrameSelected &&
+                                          widget.model.canBeArchedOrSlanted &&
+                                          (widget.model.selection.zoneId ==
+                                                  null ||
+                                              widget.model.selection.zoneId ==
+                                                  'frame:0' ||
+                                              widget.model
+                                                      .getFrameRects()
+                                                      .length <=
+                                                  1);
+                                      if (frameResizeHandle != null) {
+                                        _draggedFrameResizeHandle =
+                                            frameResizeHandle;
+                                        _draggedFrameZoneId =
+                                            widget.model.selection.zoneId ??
+                                            'frame:0';
+                                        _frameResizeHistorySaved = false;
+                                      } else if (canSlantOrArch &&
+                                          (touchScreen - tlScreen).distance <
+                                              hitRadius) {
+                                        _isDraggingSlantLeft = true;
+                                      } else if (canSlantOrArch &&
+                                          (touchScreen - trScreen).distance <
+                                              hitRadius) {
+                                        _isDraggingSlantRight = true;
+                                      } else if (canSlantOrArch &&
+                                          (touchScreen - tcScreen).distance <
+                                              hitRadius) {
+                                        _isDraggingArch = true;
+                                      } else if (widget.model.selectedZone !=
+                                              null &&
+                                          widget.model.selectedZone!.boundary
+                                              .contains(modelPos) &&
+                                          widget.model.isDrawingMode) {
+                                        final zone = widget.model.selectedZone!;
+                                        final bounds = zone.boundary;
+                                        final isTopBound = _isTopZone(zone);
+                                        final double topOffset =
+                                            widget.model.hasShutter
+                                            ? widget.model.shutterBoxHeight
+                                            : 0.0;
 
-                                    // Right sash (i=count-1)
-                                    double leftN =
-                                        bounds.left +
-                                            (count - 1) * (sashWidth - frameT);
-                                    Rect sashRectRight = Rect.fromLTRB(
-                                      leftN,
-                                      bounds.top,
-                                      leftN + sashWidth,
-                                      bounds.bottom,
-                                    );
+                                        bool hitHandle = false;
+                                        bool hitHinge = false;
+                                        final canInteractWithHardware =
+                                            widget.model.isInternalView ||
+                                            widget.model.showInternalHardware;
+                                        final bool isDoubleBothSelected =
+                                            zone.content ==
+                                                ZoneContent.doubleSash &&
+                                            widget.model.activeSubZone == 'all';
 
-                                    double hRatio =
-                                        zone.handlePositionRatio ?? 0.5;
+                                        if (canInteractWithHardware &&
+                                            (zone.content ==
+                                                    ZoneContent.singleSash ||
+                                                zone.content ==
+                                                    ZoneContent.doubleSash)) {
+                                          final activeIsRight =
+                                              widget.model.activeSubZone !=
+                                                      null &&
+                                                  widget.model.activeSubZone !=
+                                                      'all'
+                                              ? widget.model.activeSubZone!
+                                                    .startsWith('right')
+                                              : (zone.openDirection !=
+                                                    OpenDirection.left);
 
-                                    // Left handle (OpenDirection.left on sashRectLeft)
-                                    double hXLeft = sashRectLeft.left + 20;
-                                    double topYLeft = getSashTopY(
-                                      hXLeft,
-                                      sashRectLeft.top,
-                                      widget.model.profileThickness,
-                                      topOffset,
-                                      isTopBound,
-                                    );
-                                    double hYLeft =
-                                        topYLeft +
-                                            ((sashRectLeft.bottom - topYLeft) *
-                                                (1.0 - hRatio));
-
-                                    // Right handle (OpenDirection.right on sashRectRight)
-                                    double hXRight = sashRectRight.right - 20;
-                                    double topYRight = getSashTopY(
-                                      hXRight,
-                                      sashRectRight.top,
-                                      widget.model.profileThickness,
-                                      topOffset,
-                                      isTopBound,
-                                    );
-                                    double hYRight =
-                                        topYRight +
-                                            ((sashRectRight.bottom -
-                                                topYRight) *
-                                                (1.0 - hRatio));
-
-                                    final handleScreenPosLeft = modelToScreen(
-                                      Offset(hXLeft, hYLeft),
-                                    );
-                                    final handleScreenPosRight = modelToScreen(
-                                      Offset(hXRight, hYRight),
-                                    );
-
-                                    var touchesSlidingHandle =
-                                        (touchScreen - handleScreenPosLeft)
-                                            .distance <
-                                            45.0 ||
-                                            (touchScreen - handleScreenPosRight)
-                                                .distance <
-                                                45.0;
-
-                                    final hasCentralMeeting =
-                                        zone.slidingFaceToFace &&
-                                            count >= 4 &&
-                                            count.isEven;
-                                    if (!touchesSlidingHandle &&
-                                        hasCentralMeeting) {
-                                      final centerX = bounds.center.dx;
-                                      final mainHandleOnRight =
-                                          zone.openDirection !=
-                                              OpenDirection.left;
-
-                                      Offset centralHandlePosition(
-                                          bool onRight,) {
-                                        final x = onRight
-                                            ? centerX + 20.0
-                                            : centerX - 20.0;
-                                        final topY = getSashTopY(
-                                          x,
-                                          bounds.top,
-                                          widget.model.profileThickness,
-                                          topOffset,
-                                          isTopBound,
-                                        );
-                                        final y =
-                                            topY +
-                                                ((bounds.bottom - topY) *
-                                                    (1.0 - hRatio));
-                                        return modelToScreen(Offset(x, y));
-                                      }
-
-                                      if (zone.slidingCentralHandle ||
-                                          zone.slidingFaceToFace) {
-                                        touchesSlidingHandle =
-                                            (touchScreen -
-                                                centralHandlePosition(
-                                                  mainHandleOnRight,
-                                                ))
-                                                .distance <
-                                                45.0;
-                                      }
-                                      if (!touchesSlidingHandle &&
-                                          zone.slidingSecondCentralHandle) {
-                                        touchesSlidingHandle =
-                                            (touchScreen -
-                                                centralHandlePosition(
-                                                  !mainHandleOnRight,
-                                                ))
-                                                .distance <
-                                                45.0;
-                                      }
-                                    }
-
-                                    if (touchesSlidingHandle) {
-                                      _isDraggingHandle = true;
-                                      hitHandle = true;
-                                    }
-                                  }
-
-                                  if (hitHandle || hitHinge) {
-                                    // Done, drag started for handle or hinge
-                                  } else {
-                                    final dividerX =
-                                        bounds.left +
-                                            bounds.width * zone.doubleSashRatio;
-                                    final dividerTop = _modelToScreen(
-                                      Offset(dividerX, bounds.top),
-                                    );
-                                    final dividerBottom = _modelToScreen(
-                                      Offset(dividerX, bounds.bottom),
-                                    );
-                                    final dividerScreenX = dividerTop.dx;
-                                    final topScreenY = dividerTop.dy;
-                                    final bottomScreenY = dividerBottom.dy;
-                                    final double dist =
-                                    (touchScreen.dx - dividerScreenX).abs();
-
-                                    final double hitThreshold =
-                                    (zone.content ==
-                                        ZoneContent.doubleSash &&
-                                        widget.model.activeSubZone == 'all')
-                                        ? 60.0
-                                        : 30.0;
-                                    if (zone.content ==
-                                        ZoneContent.doubleSash &&
-                                        dist < hitThreshold &&
-                                        touchScreen.dy >= topScreenY - 20.0 &&
-                                        touchScreen.dy <=
-                                            bottomScreenY + 20.0) {
-                                      widget.model.selectAt(
-                                        modelPos,
-                                        isLongPress: true,
-                                      );
-                                      _isDraggingDoubleSashDivider = true;
-                                    } else if ((zone.content ==
-                                        ZoneContent.singleSash ||
-                                        zone.content ==
-                                            ZoneContent.doubleSash) &&
-                                        (() {
-                                          final sashT =
-                                              zone.sashThickness ??
-                                                  widget.model.profileThickness;
-                                          if (zone.content ==
-                                              ZoneContent.doubleSash) {
-                                            final sep = 4.0;
-                                            final midX =
-                                                bounds.left +
-                                                    bounds.width *
-                                                        zone.doubleSashRatio;
-                                            final leftR = Rect.fromLTRB(
-                                              bounds.left,
-                                              bounds.top,
-                                              midX - sep / 2,
-                                              bounds.bottom,
-                                            );
-                                            final rightR = Rect.fromLTRB(
-                                              midX + sep / 2,
-                                              bounds.top,
-                                              bounds.right,
-                                              bounds.bottom,
-                                            );
-                                            final leftGlassR = widget.model
-                                                .getSafeGlassRect(leftR, sashT);
-                                            final rightGlassR = widget.model
-                                                .getSafeGlassRect(
-                                              rightR,
-                                              sashT,
-                                            );
-                                            return _checkAndStartSashDividerDrag(
-                                              zone.id,
-                                              false,
-                                              leftGlassR,
-                                              zone.innerH,
-                                              zone.innerV,
-                                              zone.innerHPositions,
-                                              zone.innerVPositions,
-                                              touchScreen,
-                                            ) ||
-                                                _checkAndStartSashDividerDrag(
-                                                  zone.id,
-                                                  true,
-                                                  rightGlassR,
-                                                  zone.rightInnerH,
-                                                  zone.rightInnerV,
-                                                  zone.rightInnerHPositions,
-                                                  zone.rightInnerVPositions,
-                                                  touchScreen,
-                                                );
-                                          } else {
-                                            final glassR = widget.model
-                                                .getSafeGlassRect(
-                                              bounds,
-                                              sashT,
-                                            );
-                                            return _checkAndStartSashDividerDrag(
-                                              zone.id,
-                                              false,
-                                              glassR,
-                                              zone.innerH,
-                                              zone.innerV,
-                                              zone.innerHPositions,
-                                              zone.innerVPositions,
-                                              touchScreen,
-                                            );
-                                          }
-                                        })()) {
-                                      // Started dragging sash division
-                                    } else if ((() {
-                                      if (zone.glass.structure ==
-                                          GlassStructure.double) {
-                                        final sashT =
-                                            zone.sashThickness ??
-                                                widget.model.profileThickness;
-                                        if (zone.content ==
-                                            ZoneContent.doubleSash) {
                                           final sep = 4.0;
                                           final midX =
                                               bounds.left +
-                                                  bounds.width *
-                                                      zone.doubleSashRatio;
+                                              bounds.width *
+                                                  zone.doubleSashRatio;
                                           final leftR = Rect.fromLTRB(
                                             bounds.left,
                                             bounds.top,
@@ -5938,1067 +5621,1618 @@ class _WindowViewState extends State<WindowView> {
                                             bounds.right,
                                             bounds.bottom,
                                           );
-                                          final leftGlassR = widget.model
-                                              .getSafeGlassRect(leftR, sashT);
-                                          final rightGlassR = widget.model
-                                              .getSafeGlassRect(rightR, sashT);
-                                          return _checkAndStartGlassDecorDrag(
-                                            zone.id,
-                                            leftGlassR,
-                                            zone.glass,
-                                            touchScreen,
-                                          ) ||
-                                              _checkAndStartGlassDecorDrag(
-                                                zone.id,
-                                                rightGlassR,
-                                                zone.glass,
-                                                touchScreen,
+
+                                          final sashRect =
+                                              (zone.content ==
+                                                  ZoneContent.doubleSash)
+                                              ? (activeIsRight ? rightR : leftR)
+                                              : bounds;
+
+                                          final handleSide =
+                                              (zone.content ==
+                                                  ZoneContent.doubleSash)
+                                              ? (activeIsRight
+                                                    ? OpenDirection.left
+                                                    : OpenDirection.right)
+                                              : zone.openDirection!;
+
+                                          // Precise hit testing for handle - disabled when both sashes are selected!
+                                          if (!isDoubleBothSelected) {
+                                            double hRatio =
+                                                zone.handlePositionRatio ?? 0.5;
+                                            double hX = sashRect.center.dx;
+                                            double hY = sashRect.center.dy;
+
+                                            if (handleSide ==
+                                                OpenDirection.left) {
+                                              hX = sashRect.left + 20;
+                                              double topYVal = getSashTopY(
+                                                hX,
+                                                sashRect.top,
+                                                widget.model.profileThickness,
+                                                topOffset,
+                                                isTopBound,
                                               );
-                                        } else {
-                                          final glassR = widget.model
-                                              .getSafeGlassRect(bounds, sashT);
-                                          return _checkAndStartGlassDecorDrag(
-                                            zone.id,
-                                            glassR,
-                                            zone.glass,
-                                            touchScreen,
+                                              hY =
+                                                  topYVal +
+                                                  ((sashRect.bottom - topYVal) *
+                                                      (1.0 - hRatio));
+                                            } else if (handleSide ==
+                                                OpenDirection.right) {
+                                              hX = sashRect.right - 20;
+                                              double topYVal = getSashTopY(
+                                                hX,
+                                                sashRect.top,
+                                                widget.model.profileThickness,
+                                                topOffset,
+                                                isTopBound,
+                                              );
+                                              hY =
+                                                  topYVal +
+                                                  ((sashRect.bottom - topYVal) *
+                                                      (1.0 - hRatio));
+                                            } else if (handleSide ==
+                                                OpenDirection.top) {
+                                              hX =
+                                                  sashRect.left +
+                                                  (sashRect.width * hRatio);
+                                              double topYVal = getSashTopY(
+                                                hX,
+                                                sashRect.top,
+                                                widget.model.profileThickness,
+                                                topOffset,
+                                                isTopBound,
+                                              );
+                                              hY = topYVal + 22;
+                                            } else if (handleSide ==
+                                                OpenDirection.bottom) {
+                                              hY = sashRect.bottom - 22;
+                                              hX =
+                                                  sashRect.left +
+                                                  (sashRect.width * hRatio);
+                                            }
+
+                                            final handleScreenPos =
+                                                modelToScreen(Offset(hX, hY));
+                                            if ((touchScreen - handleScreenPos)
+                                                    .distance <
+                                                45.0) {
+                                              _isDraggingHandle = true;
+                                              hitHandle = true;
+                                            }
+                                          }
+
+                                          // Precise hit testing for hinges
+                                          bool hingesOnLeft = false;
+                                          bool hingesOnRight = false;
+                                          bool hingesOnTop = false;
+                                          bool hingesOnBottom = false;
+
+                                          if (zone.content ==
+                                              ZoneContent.doubleSash) {
+                                            hingesOnLeft = !activeIsRight;
+                                            hingesOnRight = activeIsRight;
+                                          } else {
+                                            hingesOnLeft =
+                                                (zone.openDirection ==
+                                                OpenDirection.right);
+                                            hingesOnRight =
+                                                (zone.openDirection ==
+                                                OpenDirection.left);
+                                            hingesOnTop =
+                                                (zone.openDirection ==
+                                                OpenDirection.bottom);
+                                            hingesOnBottom =
+                                                (zone.openDirection ==
+                                                OpenDirection.top);
+                                          }
+
+                                          final hingeCount =
+                                              standardHingeCountForSash(
+                                                sashHeight: sashRect.height,
+                                                glassStructure:
+                                                    zone.glass.structure,
+                                              );
+
+                                          if (hingeCount >= 3 && !hitHandle) {
+                                            double hgX = 0;
+                                            double hgY = 0;
+                                            final hingeRevealOffset =
+                                                (widget.model.profileThickness *
+                                                        0.28)
+                                                    .clamp(9.0, 18.0)
+                                                    .toDouble();
+                                            if (hingesOnLeft || hingesOnRight) {
+                                              hgX = hingesOnRight
+                                                  ? sashRect.right +
+                                                        hingeRevealOffset
+                                                  : sashRect.left -
+                                                        hingeRevealOffset;
+                                              double startY =
+                                                  getSashTopY(
+                                                    hgX,
+                                                    sashRect.top,
+                                                    widget
+                                                        .model
+                                                        .profileThickness,
+                                                    topOffset,
+                                                    isTopBound,
+                                                  ) +
+                                                  100;
+                                              double step =
+                                                  (sashRect.bottom -
+                                                      100 -
+                                                      startY) /
+                                                  (hingeCount - 1);
+                                              hgY =
+                                                  startY +
+                                                  step +
+                                                  zone.middleHingeDragOffset;
+                                            } else if (hingesOnTop ||
+                                                hingesOnBottom) {
+                                              hgY = hingesOnBottom
+                                                  ? sashRect.bottom +
+                                                        hingeRevealOffset
+                                                  : sashRect.top -
+                                                        hingeRevealOffset;
+                                              double startX =
+                                                  sashRect.left + 100;
+                                              double step =
+                                                  (sashRect.right -
+                                                      100 -
+                                                      startX) /
+                                                  (hingeCount - 1);
+                                              hgX =
+                                                  startX +
+                                                  step +
+                                                  zone.middleHingeDragOffset;
+                                              if (hingesOnTop) {
+                                                hgY =
+                                                    getSashTopY(
+                                                      hgX,
+                                                      sashRect.top,
+                                                      widget
+                                                          .model
+                                                          .profileThickness,
+                                                      topOffset,
+                                                      isTopBound,
+                                                    ) -
+                                                    hingeRevealOffset;
+                                              }
+                                            }
+                                            final hingeScreenPos =
+                                                modelToScreen(Offset(hgX, hgY));
+                                            if ((touchScreen - hingeScreenPos)
+                                                    .distance <
+                                                45.0) {
+                                              _isDraggingHinge = true;
+                                              hitHinge = true;
+                                            }
+                                          }
+                                        } else if (canInteractWithHardware &&
+                                            zone.content ==
+                                                ZoneContent.slidingSash) {
+                                          int count = zone.slidingSashesCount;
+                                          if (count < 2) count = 2;
+                                          double frameT =
+                                              zone.sashThickness ??
+                                              widget.model.getSectionThickness(
+                                                'sash',
+                                                fallback: 45.0,
+                                              );
+                                          double sashWidth =
+                                              (bounds.width +
+                                                  (count - 1) * frameT) /
+                                              count;
+
+                                          // Left sash (i=0)
+                                          double left0 = bounds.left;
+                                          Rect sashRectLeft = Rect.fromLTRB(
+                                            left0,
+                                            bounds.top,
+                                            left0 + sashWidth,
+                                            bounds.bottom,
                                           );
+
+                                          // Right sash (i=count-1)
+                                          double leftN =
+                                              bounds.left +
+                                              (count - 1) *
+                                                  (sashWidth - frameT);
+                                          Rect sashRectRight = Rect.fromLTRB(
+                                            leftN,
+                                            bounds.top,
+                                            leftN + sashWidth,
+                                            bounds.bottom,
+                                          );
+
+                                          double hRatio =
+                                              zone.handlePositionRatio ?? 0.5;
+
+                                          // Left handle (OpenDirection.left on sashRectLeft)
+                                          double hXLeft =
+                                              sashRectLeft.left + 20;
+                                          double topYLeft = getSashTopY(
+                                            hXLeft,
+                                            sashRectLeft.top,
+                                            widget.model.profileThickness,
+                                            topOffset,
+                                            isTopBound,
+                                          );
+                                          double hYLeft =
+                                              topYLeft +
+                                              ((sashRectLeft.bottom -
+                                                      topYLeft) *
+                                                  (1.0 - hRatio));
+
+                                          // Right handle (OpenDirection.right on sashRectRight)
+                                          double hXRight =
+                                              sashRectRight.right - 20;
+                                          double topYRight = getSashTopY(
+                                            hXRight,
+                                            sashRectRight.top,
+                                            widget.model.profileThickness,
+                                            topOffset,
+                                            isTopBound,
+                                          );
+                                          double hYRight =
+                                              topYRight +
+                                              ((sashRectRight.bottom -
+                                                      topYRight) *
+                                                  (1.0 - hRatio));
+
+                                          final handleScreenPosLeft =
+                                              modelToScreen(
+                                                Offset(hXLeft, hYLeft),
+                                              );
+                                          final handleScreenPosRight =
+                                              modelToScreen(
+                                                Offset(hXRight, hYRight),
+                                              );
+
+                                          var touchesSlidingHandle =
+                                              (touchScreen -
+                                                          handleScreenPosLeft)
+                                                      .distance <
+                                                  45.0 ||
+                                              (touchScreen -
+                                                          handleScreenPosRight)
+                                                      .distance <
+                                                  45.0;
+
+                                          final hasCentralMeeting =
+                                              zone.slidingFaceToFace &&
+                                              count >= 4 &&
+                                              count.isEven;
+                                          if (!touchesSlidingHandle &&
+                                              hasCentralMeeting) {
+                                            final centerX = bounds.center.dx;
+                                            final mainHandleOnRight =
+                                                zone.openDirection !=
+                                                OpenDirection.left;
+
+                                            Offset centralHandlePosition(
+                                              bool onRight,
+                                            ) {
+                                              final x = onRight
+                                                  ? centerX + 20.0
+                                                  : centerX - 20.0;
+                                              final topY = getSashTopY(
+                                                x,
+                                                bounds.top,
+                                                widget.model.profileThickness,
+                                                topOffset,
+                                                isTopBound,
+                                              );
+                                              final y =
+                                                  topY +
+                                                  ((bounds.bottom - topY) *
+                                                      (1.0 - hRatio));
+                                              return modelToScreen(
+                                                Offset(x, y),
+                                              );
+                                            }
+
+                                            if (zone.slidingCentralHandle ||
+                                                zone.slidingFaceToFace) {
+                                              touchesSlidingHandle =
+                                                  (touchScreen -
+                                                          centralHandlePosition(
+                                                            mainHandleOnRight,
+                                                          ))
+                                                      .distance <
+                                                  45.0;
+                                            }
+                                            if (!touchesSlidingHandle &&
+                                                zone.slidingSecondCentralHandle) {
+                                              touchesSlidingHandle =
+                                                  (touchScreen -
+                                                          centralHandlePosition(
+                                                            !mainHandleOnRight,
+                                                          ))
+                                                      .distance <
+                                                  45.0;
+                                            }
+                                          }
+
+                                          if (touchesSlidingHandle) {
+                                            _isDraggingHandle = true;
+                                            hitHandle = true;
+                                          }
+                                        }
+
+                                        if (hitHandle || hitHinge) {
+                                          // Done, drag started for handle or hinge
+                                        } else {
+                                          final dividerX =
+                                              bounds.left +
+                                              bounds.width *
+                                                  zone.doubleSashRatio;
+                                          final dividerTop = _modelToScreen(
+                                            Offset(dividerX, bounds.top),
+                                          );
+                                          final dividerBottom = _modelToScreen(
+                                            Offset(dividerX, bounds.bottom),
+                                          );
+                                          final dividerScreenX = dividerTop.dx;
+                                          final topScreenY = dividerTop.dy;
+                                          final bottomScreenY =
+                                              dividerBottom.dy;
+                                          final double dist =
+                                              (touchScreen.dx - dividerScreenX)
+                                                  .abs();
+
+                                          final double hitThreshold =
+                                              (zone.content ==
+                                                      ZoneContent.doubleSash &&
+                                                  widget.model.activeSubZone ==
+                                                      'all')
+                                              ? 60.0
+                                              : 30.0;
+                                          if (zone.content ==
+                                                  ZoneContent.doubleSash &&
+                                              dist < hitThreshold &&
+                                              touchScreen.dy >=
+                                                  topScreenY - 20.0 &&
+                                              touchScreen.dy <=
+                                                  bottomScreenY + 20.0) {
+                                            widget.model.selectAt(
+                                              modelPos,
+                                              isLongPress: true,
+                                            );
+                                            _isDraggingDoubleSashDivider = true;
+                                          } else if ((zone.content ==
+                                                      ZoneContent.singleSash ||
+                                                  zone.content ==
+                                                      ZoneContent.doubleSash) &&
+                                              (() {
+                                                final sashT =
+                                                    zone.sashThickness ??
+                                                    widget
+                                                        .model
+                                                        .profileThickness;
+                                                if (zone.content ==
+                                                    ZoneContent.doubleSash) {
+                                                  final sep = 4.0;
+                                                  final midX =
+                                                      bounds.left +
+                                                      bounds.width *
+                                                          zone.doubleSashRatio;
+                                                  final leftR = Rect.fromLTRB(
+                                                    bounds.left,
+                                                    bounds.top,
+                                                    midX - sep / 2,
+                                                    bounds.bottom,
+                                                  );
+                                                  final rightR = Rect.fromLTRB(
+                                                    midX + sep / 2,
+                                                    bounds.top,
+                                                    bounds.right,
+                                                    bounds.bottom,
+                                                  );
+                                                  final leftGlassR = widget
+                                                      .model
+                                                      .getSafeGlassRect(
+                                                        leftR,
+                                                        sashT,
+                                                      );
+                                                  final rightGlassR = widget
+                                                      .model
+                                                      .getSafeGlassRect(
+                                                        rightR,
+                                                        sashT,
+                                                      );
+                                                  return _checkAndStartSashDividerDrag(
+                                                        zone.id,
+                                                        false,
+                                                        leftGlassR,
+                                                        zone.innerH,
+                                                        zone.innerV,
+                                                        zone.innerHPositions,
+                                                        zone.innerVPositions,
+                                                        touchScreen,
+                                                      ) ||
+                                                      _checkAndStartSashDividerDrag(
+                                                        zone.id,
+                                                        true,
+                                                        rightGlassR,
+                                                        zone.rightInnerH,
+                                                        zone.rightInnerV,
+                                                        zone.rightInnerHPositions,
+                                                        zone.rightInnerVPositions,
+                                                        touchScreen,
+                                                      );
+                                                } else {
+                                                  final glassR = widget.model
+                                                      .getSafeGlassRect(
+                                                        bounds,
+                                                        sashT,
+                                                      );
+                                                  return _checkAndStartSashDividerDrag(
+                                                    zone.id,
+                                                    false,
+                                                    glassR,
+                                                    zone.innerH,
+                                                    zone.innerV,
+                                                    zone.innerHPositions,
+                                                    zone.innerVPositions,
+                                                    touchScreen,
+                                                  );
+                                                }
+                                              })()) {
+                                            // Started dragging sash division
+                                          } else if ((() {
+                                            if (zone.glass.structure ==
+                                                GlassStructure.double) {
+                                              final sashT =
+                                                  zone.sashThickness ??
+                                                  widget.model.profileThickness;
+                                              if (zone.content ==
+                                                  ZoneContent.doubleSash) {
+                                                final sep = 4.0;
+                                                final midX =
+                                                    bounds.left +
+                                                    bounds.width *
+                                                        zone.doubleSashRatio;
+                                                final leftR = Rect.fromLTRB(
+                                                  bounds.left,
+                                                  bounds.top,
+                                                  midX - sep / 2,
+                                                  bounds.bottom,
+                                                );
+                                                final rightR = Rect.fromLTRB(
+                                                  midX + sep / 2,
+                                                  bounds.top,
+                                                  bounds.right,
+                                                  bounds.bottom,
+                                                );
+                                                final leftGlassR = widget.model
+                                                    .getSafeGlassRect(
+                                                      leftR,
+                                                      sashT,
+                                                    );
+                                                final rightGlassR = widget.model
+                                                    .getSafeGlassRect(
+                                                      rightR,
+                                                      sashT,
+                                                    );
+                                                return _checkAndStartGlassDecorDrag(
+                                                      zone.id,
+                                                      leftGlassR,
+                                                      zone.glass,
+                                                      touchScreen,
+                                                    ) ||
+                                                    _checkAndStartGlassDecorDrag(
+                                                      zone.id,
+                                                      rightGlassR,
+                                                      zone.glass,
+                                                      touchScreen,
+                                                    );
+                                              } else {
+                                                final glassR = widget.model
+                                                    .getSafeGlassRect(
+                                                      bounds,
+                                                      sashT,
+                                                    );
+                                                return _checkAndStartGlassDecorDrag(
+                                                  zone.id,
+                                                  glassR,
+                                                  zone.glass,
+                                                  touchScreen,
+                                                );
+                                              }
+                                            }
+                                            return false;
+                                          })()) {
+                                            // Started dragging glass decoration
+                                          } else {
+                                            // Defer drawing start — wait for real drag in onScaleUpdate
+                                            widget.model.pendingDrawStart =
+                                                modelPos;
+                                          }
+                                        }
+                                      } else if (widget.model.isDrawingMode &&
+                                          widget.model.selection.type !=
+                                              SelectionType.mullion) {
+                                        widget.model.pendingDrawStart =
+                                            modelPos;
+                                      }
+                                    }
+                                  },
+                                  onScaleUpdate: (details) {
+                                    if (details.pointerCount >= 2) {
+                                      if (_isMovementLocked) return;
+                                      setState(() {
+                                        double newScale =
+                                            (_baseUserScale * details.scale)
+                                                .clamp(0.5, 5.0);
+                                        _userScale = newScale;
+                                        final canvasOrigin = Offset(
+                                          widget.model.canvasDx,
+                                          widget.model.canvasDy,
+                                        );
+                                        _userPan =
+                                            details.localFocalPoint -
+                                            canvasOrigin -
+                                            (details.localFocalPoint -
+                                                    canvasOrigin -
+                                                    _baseUserPan) *
+                                                (newScale / _baseUserScale);
+                                      });
+                                    } else {
+                                      final modelPos = _getModelPos(
+                                        details.localFocalPoint,
+                                      );
+                                      // Commit pendingDrawStart → real drawing only after
+                                      // the finger has actually moved (≥5 logical pixels)
+                                      if (widget.model.drawingStart == null &&
+                                          widget.model.pendingDrawStart !=
+                                              null) {
+                                        final pending =
+                                            widget.model.pendingDrawStart!;
+                                        final screenPending = _modelToScreen(
+                                          pending,
+                                        );
+                                        if ((details.localFocalPoint -
+                                                    screenPending)
+                                                .distance >=
+                                            5.0) {
+                                          widget.model.startDrawing(pending);
                                         }
                                       }
-                                      return false;
-                                    })()) {
-                                      // Started dragging glass decoration
-                                    } else {
-                                      // Defer drawing start — wait for real drag in onScaleUpdate
-                                      widget.model.pendingDrawStart = modelPos;
-                                    }
-                                  }
-                                } else if (widget.model.isDrawingMode &&
-                                    widget.model.selection.type !=
-                                        SelectionType.mullion) {
-                                  widget.model.pendingDrawStart = modelPos;
-                                }
-                              }
-                            },
-                            onScaleUpdate: (details) {
-                              if (details.pointerCount >= 2) {
-                                if (_isMovementLocked) return;
-                                setState(() {
-                                  double newScale =
-                                  (_baseUserScale * details.scale).clamp(
-                                    0.5,
-                                    5.0,
-                                  );
-                                  _userScale = newScale;
-                                  final canvasOrigin = Offset(
-                                    widget.model.canvasDx,
-                                    widget.model.canvasDy,
-                                  );
-                                  _userPan =
-                                      details.localFocalPoint -
-                                          canvasOrigin -
-                                          (details.localFocalPoint -
-                                              canvasOrigin -
-                                              _baseUserPan) *
-                                              (newScale / _baseUserScale);
-                                });
-                              } else {
-                                final modelPos = _getModelPos(
-                                  details.localFocalPoint,
-                                );
-                                // Commit pendingDrawStart → real drawing only after
-                                // the finger has actually moved (≥5 logical pixels)
-                                if (widget.model.drawingStart == null &&
-                                    widget.model.pendingDrawStart != null) {
-                                  final pending =
-                                  widget.model.pendingDrawStart!;
-                                  final screenPending = _modelToScreen(pending);
-                                  if ((details.localFocalPoint - screenPending)
-                                      .distance >=
-                                      5.0) {
-                                    widget.model.startDrawing(pending);
-                                  }
-                                }
-                                if (widget.model.drawingStart != null) {
-                                  widget.model.updateDrawing(modelPos);
-                                } else if (_draggedFrameResizeHandle != null &&
-                                    _draggedFrameZoneId != null) {
-                                  final handle = _draggedFrameResizeHandle!;
-                                  final moveLeft =
-                                      handle == _FrameResizeHandle.left ||
-                                          handle ==
-                                              _FrameResizeHandle.topLeft ||
-                                          handle ==
-                                              _FrameResizeHandle.bottomLeft;
-                                  final moveRight =
-                                      handle == _FrameResizeHandle.right ||
-                                          handle ==
-                                              _FrameResizeHandle.topRight ||
-                                          handle ==
-                                              _FrameResizeHandle.bottomRight;
-                                  final moveTop =
-                                      handle == _FrameResizeHandle.top ||
-                                          handle ==
-                                              _FrameResizeHandle.topLeft ||
-                                          handle == _FrameResizeHandle.topRight;
-                                  final moveBottom =
-                                      handle == _FrameResizeHandle.bottom ||
-                                          handle ==
-                                              _FrameResizeHandle.bottomLeft ||
-                                          handle ==
-                                              _FrameResizeHandle.bottomRight;
+                                      if (widget.model.drawingStart != null) {
+                                        widget.model.updateDrawing(modelPos);
+                                      } else if (_draggedFrameResizeHandle !=
+                                              null &&
+                                          _draggedFrameZoneId != null) {
+                                        final handle =
+                                            _draggedFrameResizeHandle!;
+                                        final moveLeft =
+                                            handle == _FrameResizeHandle.left ||
+                                            handle ==
+                                                _FrameResizeHandle.topLeft ||
+                                            handle ==
+                                                _FrameResizeHandle.bottomLeft;
+                                        final moveRight =
+                                            handle ==
+                                                _FrameResizeHandle.right ||
+                                            handle ==
+                                                _FrameResizeHandle.topRight ||
+                                            handle ==
+                                                _FrameResizeHandle.bottomRight;
+                                        final moveTop =
+                                            handle == _FrameResizeHandle.top ||
+                                            handle ==
+                                                _FrameResizeHandle.topLeft ||
+                                            handle ==
+                                                _FrameResizeHandle.topRight;
+                                        final moveBottom =
+                                            handle ==
+                                                _FrameResizeHandle.bottom ||
+                                            handle ==
+                                                _FrameResizeHandle.bottomLeft ||
+                                            handle ==
+                                                _FrameResizeHandle.bottomRight;
 
-                                  final scaleFactor =
-                                      _userScale * widget.model.canvasScale;
-                                  final deltaX =
-                                  (moveLeft || moveRight) &&
-                                      scaleFactor > 0.0001
-                                      ? details.focalPointDelta.dx / scaleFactor
-                                      : 0.0;
-                                  final deltaY =
-                                  (moveTop || moveBottom) &&
-                                      scaleFactor > 0.0001
-                                      ? details.focalPointDelta.dy / scaleFactor
-                                      : 0.0;
-                                  widget.model.resizeFrameFromHandles(
-                                    _draggedFrameZoneId!,
-                                    moveLeft: moveLeft,
-                                    moveRight: moveRight,
-                                    moveTop: moveTop,
-                                    moveBottom: moveBottom,
-                                    deltaX: deltaX,
-                                    deltaY: deltaY,
-                                    saveHistory: !_frameResizeHistorySaved,
-                                  );
-                                  _frameResizeHistorySaved = true;
-                                } else if (_isDraggingSlantLeft) {
-                                  double dy =
-                                      details.focalPointDelta.dy /
-                                          (_userScale *
-                                              widget.model.canvasScale);
-                                  widget.model.updateTopSlantAndArch(
-                                    leftSlant: (widget.model.topSlantLeftY + dy)
-                                        .clamp(-500.0, 500.0),
-                                  );
-                                } else if (_isDraggingSlantRight) {
-                                  double dy =
-                                      details.focalPointDelta.dy /
-                                          (_userScale *
-                                              widget.model.canvasScale);
-                                  widget.model.updateTopSlantAndArch(
-                                    rightSlant:
-                                    (widget.model.topSlantRightY + dy)
-                                        .clamp(-500.0, 500.0),
-                                  );
-                                } else if (_isDraggingArch) {
-                                  double dy =
-                                      details.focalPointDelta.dy /
-                                          (_userScale *
-                                              widget.model.canvasScale);
-                                  widget.model.updateTopSlantAndArch(
-                                    arch: (widget.model.archHeight - dy / 2)
-                                        .clamp(0.0, 800.0),
-                                  );
-                                } else if (widget.model.selection.type ==
-                                    SelectionType.mullion) {
-                                  widget.model.moveSelectedMullion(
-                                    (widget.model.selection.isHorizontalMullion!
-                                        ? details.focalPointDelta.dy
-                                        : details.focalPointDelta.dx) /
-                                        (_userScale * widget.model.canvasScale),
-                                  );
-                                } else if (widget.model.selection.type ==
-                                    SelectionType.innerDivision) {
-                                  double deltaX =
-                                      details.focalPointDelta.dx /
-                                          (_userScale *
-                                              widget.model.canvasScale);
-                                  double deltaY =
-                                      details.focalPointDelta.dy /
-                                          (_userScale *
-                                              widget.model.canvasScale);
-                                  widget.model.moveSelectedInnerDivision(
-                                    deltaX,
-                                    deltaY,
-                                  );
-                                } else if (_isDraggingDecor &&
-                                    _draggedDecorZoneId != null &&
-                                    widget.model.isDrawingMode) {
-                                  final zone = widget.model.zones.firstWhere(
-                                        (z) => z.id == _draggedDecorZoneId,
-                                  );
-                                  final sashT =
-                                      zone.sashThickness ??
-                                          widget.model.profileThickness;
-                                  Rect parentR = zone.boundary;
-                                  Rect sashR = parentR;
-                                  if (zone.content == ZoneContent.doubleSash) {
-                                    final sep = 4.0;
-                                    final midX =
-                                        parentR.left +
-                                            parentR.width *
-                                                zone.doubleSashRatio;
-                                    if (modelPos.dx < midX) {
-                                      sashR = Rect.fromLTRB(
-                                        parentR.left,
-                                        parentR.top,
-                                        midX - sep / 2,
-                                        parentR.bottom,
-                                      );
-                                    } else {
-                                      sashR = Rect.fromLTRB(
-                                        midX + sep / 2,
-                                        parentR.top,
-                                        parentR.right,
-                                        parentR.bottom,
-                                      );
-                                    }
-                                  }
-                                  final glassR = widget.model.getSafeGlassRect(
-                                    sashR,
-                                    sashT,
-                                  );
+                                        final scaleFactor =
+                                            _userScale *
+                                            widget.model.canvasScale;
+                                        final deltaX =
+                                            (moveLeft || moveRight) &&
+                                                scaleFactor > 0.0001
+                                            ? details.focalPointDelta.dx /
+                                                  scaleFactor
+                                            : 0.0;
+                                        final deltaY =
+                                            (moveTop || moveBottom) &&
+                                                scaleFactor > 0.0001
+                                            ? details.focalPointDelta.dy /
+                                                  scaleFactor
+                                            : 0.0;
+                                        widget.model.resizeFrameFromHandles(
+                                          _draggedFrameZoneId!,
+                                          moveLeft: moveLeft,
+                                          moveRight: moveRight,
+                                          moveTop: moveTop,
+                                          moveBottom: moveBottom,
+                                          deltaX: deltaX,
+                                          deltaY: deltaY,
+                                          saveHistory:
+                                              !_frameResizeHistorySaved,
+                                        );
+                                        _frameResizeHistorySaved = true;
+                                      } else if (_isDraggingSlantLeft) {
+                                        double dy =
+                                            details.focalPointDelta.dy /
+                                            (_userScale *
+                                                widget.model.canvasScale);
+                                        widget.model.updateTopSlantAndArch(
+                                          leftSlant:
+                                              (widget.model.topSlantLeftY + dy)
+                                                  .clamp(-500.0, 500.0),
+                                        );
+                                      } else if (_isDraggingSlantRight) {
+                                        double dy =
+                                            details.focalPointDelta.dy /
+                                            (_userScale *
+                                                widget.model.canvasScale);
+                                        widget.model.updateTopSlantAndArch(
+                                          rightSlant:
+                                              (widget.model.topSlantRightY + dy)
+                                                  .clamp(-500.0, 500.0),
+                                        );
+                                      } else if (_isDraggingArch) {
+                                        double dy =
+                                            details.focalPointDelta.dy /
+                                            (_userScale *
+                                                widget.model.canvasScale);
+                                        widget.model.updateTopSlantAndArch(
+                                          arch:
+                                              (widget.model.archHeight - dy / 2)
+                                                  .clamp(0.0, 800.0),
+                                        );
+                                      } else if (widget.model.selection.type ==
+                                          SelectionType.mullion) {
+                                        widget.model.moveSelectedMullion(
+                                          (widget
+                                                      .model
+                                                      .selection
+                                                      .isHorizontalMullion!
+                                                  ? details.focalPointDelta.dy
+                                                  : details
+                                                        .focalPointDelta
+                                                        .dx) /
+                                              (_userScale *
+                                                  widget.model.canvasScale),
+                                        );
+                                      } else if (widget.model.selection.type ==
+                                          SelectionType.innerDivision) {
+                                        double deltaX =
+                                            details.focalPointDelta.dx /
+                                            (_userScale *
+                                                widget.model.canvasScale);
+                                        double deltaY =
+                                            details.focalPointDelta.dy /
+                                            (_userScale *
+                                                widget.model.canvasScale);
+                                        widget.model.moveSelectedInnerDivision(
+                                          deltaX,
+                                          deltaY,
+                                        );
+                                      } else if (_isDraggingDecor &&
+                                          _draggedDecorZoneId != null &&
+                                          widget.model.isDrawingMode) {
+                                        final zone = widget.model.zones
+                                            .firstWhere(
+                                              (z) =>
+                                                  z.id == _draggedDecorZoneId,
+                                            );
+                                        final sashT =
+                                            zone.sashThickness ??
+                                            widget.model.profileThickness;
+                                        Rect parentR = zone.boundary;
+                                        Rect sashR = parentR;
+                                        if (zone.content ==
+                                            ZoneContent.doubleSash) {
+                                          final sep = 4.0;
+                                          final midX =
+                                              parentR.left +
+                                              parentR.width *
+                                                  zone.doubleSashRatio;
+                                          if (modelPos.dx < midX) {
+                                            sashR = Rect.fromLTRB(
+                                              parentR.left,
+                                              parentR.top,
+                                              midX - sep / 2,
+                                              parentR.bottom,
+                                            );
+                                          } else {
+                                            sashR = Rect.fromLTRB(
+                                              midX + sep / 2,
+                                              parentR.top,
+                                              parentR.right,
+                                              parentR.bottom,
+                                            );
+                                          }
+                                        }
+                                        final glassR = widget.model
+                                            .getSafeGlassRect(sashR, sashT);
 
-                                  if (_draggedDecorIsHorizontal) {
-                                    double newRatio =
-                                        (modelPos.dy - glassR.top) /
-                                            glassR.height;
-                                    newRatio = newRatio.clamp(0.02, 0.98);
-                                    widget.model.updateZoneGlassDecorHPos(
-                                      _draggedDecorZoneId!,
-                                      _draggedDecorIndex,
-                                      newRatio,
-                                    );
-                                  } else {
-                                    double newRatio =
-                                        (modelPos.dx - glassR.left) /
-                                            glassR.width;
-                                    newRatio = newRatio.clamp(0.02, 0.98);
-                                    widget.model.updateZoneGlassDecorVPos(
-                                      _draggedDecorZoneId!,
-                                      _draggedDecorIndex,
-                                      newRatio,
-                                    );
-                                  }
-                                } else if (_isDraggingDoubleSashDivider &&
-                                    widget.model.selectedZone != null &&
-                                    widget.model.isDrawingMode) {
-                                  final zone = widget.model.selectedZone!;
-                                  final bounds = zone.boundary;
-                                  double newRatio =
-                                      (modelPos.dx - bounds.left) /
-                                          bounds.width;
-                                  newRatio = newRatio.clamp(0.15, 0.85);
-                                  widget.model.updateZoneDoubleSashRatio(
-                                    zone.id,
-                                    newRatio,
-                                  );
-                                } else if (_isDraggingSashDivision &&
-                                    _draggedSashZoneId != null &&
-                                    widget.model.isDrawingMode) {
-                                  final zone = widget.model.zones.firstWhere(
-                                        (z) => z.id == _draggedSashZoneId,
-                                  );
-                                  final isRight = _draggedSashIsRight;
-                                  final sashT =
-                                      zone.sashThickness ??
-                                          widget.model.profileThickness;
-                                  Rect parentR = zone.boundary;
-                                  Rect sashR = parentR;
-                                  if (zone.content == ZoneContent.doubleSash) {
-                                    final sep = 4.0;
-                                    final midX =
-                                        parentR.left +
-                                            parentR.width *
-                                                zone.doubleSashRatio;
-                                    if (!isRight) {
-                                      sashR = Rect.fromLTRB(
-                                        parentR.left,
-                                        parentR.top,
-                                        midX - sep / 2,
-                                        parentR.bottom,
-                                      );
-                                    } else {
-                                      sashR = Rect.fromLTRB(
-                                        midX + sep / 2,
-                                        parentR.top,
-                                        parentR.right,
-                                        parentR.bottom,
-                                      );
-                                    }
-                                  }
-                                  final glassR = widget.model.getSafeGlassRect(
-                                    sashR,
-                                    sashT,
-                                  );
+                                        if (_draggedDecorIsHorizontal) {
+                                          double newRatio =
+                                              (modelPos.dy - glassR.top) /
+                                              glassR.height;
+                                          newRatio = newRatio.clamp(0.02, 0.98);
+                                          widget.model.updateZoneGlassDecorHPos(
+                                            _draggedDecorZoneId!,
+                                            _draggedDecorIndex,
+                                            newRatio,
+                                          );
+                                        } else {
+                                          double newRatio =
+                                              (modelPos.dx - glassR.left) /
+                                              glassR.width;
+                                          newRatio = newRatio.clamp(0.02, 0.98);
+                                          widget.model.updateZoneGlassDecorVPos(
+                                            _draggedDecorZoneId!,
+                                            _draggedDecorIndex,
+                                            newRatio,
+                                          );
+                                        }
+                                      } else if (_isDraggingDoubleSashDivider &&
+                                          widget.model.selectedZone != null &&
+                                          widget.model.isDrawingMode) {
+                                        final zone = widget.model.selectedZone!;
+                                        final bounds = zone.boundary;
+                                        double newRatio =
+                                            (modelPos.dx - bounds.left) /
+                                            bounds.width;
+                                        newRatio = newRatio.clamp(0.15, 0.85);
+                                        widget.model.updateZoneDoubleSashRatio(
+                                          zone.id,
+                                          newRatio,
+                                        );
+                                      } else if (_isDraggingSashDivision &&
+                                          _draggedSashZoneId != null &&
+                                          widget.model.isDrawingMode) {
+                                        final zone = widget.model.zones
+                                            .firstWhere(
+                                              (z) => z.id == _draggedSashZoneId,
+                                            );
+                                        final isRight = _draggedSashIsRight;
+                                        final sashT =
+                                            zone.sashThickness ??
+                                            widget.model.profileThickness;
+                                        Rect parentR = zone.boundary;
+                                        Rect sashR = parentR;
+                                        if (zone.content ==
+                                            ZoneContent.doubleSash) {
+                                          final sep = 4.0;
+                                          final midX =
+                                              parentR.left +
+                                              parentR.width *
+                                                  zone.doubleSashRatio;
+                                          if (!isRight) {
+                                            sashR = Rect.fromLTRB(
+                                              parentR.left,
+                                              parentR.top,
+                                              midX - sep / 2,
+                                              parentR.bottom,
+                                            );
+                                          } else {
+                                            sashR = Rect.fromLTRB(
+                                              midX + sep / 2,
+                                              parentR.top,
+                                              parentR.right,
+                                              parentR.bottom,
+                                            );
+                                          }
+                                        }
+                                        final glassR = widget.model
+                                            .getSafeGlassRect(sashR, sashT);
 
-                                  if (_draggedSashIsHorizontal) {
-                                    double newRatio =
-                                        (modelPos.dy - glassR.top) /
-                                            glassR.height;
-                                    widget.model.updateZoneInnerHDivisionRatio(
-                                      _draggedSashZoneId!,
-                                      isRight,
-                                      _draggedSashIndex,
-                                      newRatio,
-                                    );
-                                  } else {
-                                    double newRatio =
-                                        (modelPos.dx - glassR.left) /
-                                            glassR.width;
-                                    widget.model.updateZoneInnerVDivisionRatio(
-                                      _draggedSashZoneId!,
-                                      isRight,
-                                      _draggedSashIndex,
-                                      newRatio,
-                                    );
-                                  }
-                                } else if (!_suppressHandleDragForLongPress &&
-                                    _isDraggingHinge &&
-                                    widget.model.selectedZone != null &&
-                                    widget.model.isDrawingMode) {
-                                  _handleHingeDrag(
-                                    details.focalPointDelta,
-                                    widget.model.selectedZone!,
-                                  );
-                                } else if (!_suppressHandleDragForLongPress &&
-                                    _isDraggingHandle &&
-                                    widget.model.selectedZone != null &&
-                                    !(widget.model.selectedZone!.content ==
-                                        ZoneContent.doubleSash &&
-                                        widget.model.activeSubZone == 'all') &&
-                                    widget.model.isDrawingMode) {
-                                  _handleHandleDrag(
-                                    details.focalPointDelta,
-                                    widget.model.selectedZone!,
-                                  );
-                                } else if (!widget.model.isDrawingMode) {
-                                  if (_isMovementLocked) return;
-                                  setState(() {
-                                    _userPan =
-                                        _baseUserPan +
-                                            (details.localFocalPoint -
-                                                _focalPointStart);
-                                  });
-                                }
-                              }
-                            },
-                            onScaleEnd: (details) {
-                              if (widget.model.drawingStart != null) {
-                                widget.model.endDrawing();
-                              }
-                              bool wasDraggingProperty =
-                                  _isDraggingSlantLeft ||
-                                      _isDraggingSlantRight ||
-                                      _isDraggingArch ||
-                                      _isDraggingDoubleSashDivider ||
-                                      _isDraggingSashDivision ||
-                                      _isDraggingDecor ||
-                                      _isDraggingHinge ||
-                                      _isDraggingHandle;
-                              if (wasDraggingProperty) {
-                                widget.model.saveSnapshotOutside();
-                              }
-                              _isDraggingHandle = false;
-                              _isDraggingHinge = false;
-                              _suppressHandleDragForLongPress = false;
-                              _isDraggingSlantLeft = false;
-                              _isDraggingSlantRight = false;
-                              _isDraggingArch = false;
-                              _isDraggingDoubleSashDivider = false;
-                              _isDraggingSashDivision = false;
-                              _isDraggingDecor = false;
-                              _draggedSashZoneId = null;
-                              _draggedDecorZoneId = null;
-                              _draggedFrameResizeHandle = null;
-                              _draggedFrameZoneId = null;
-                              _frameResizeHistorySaved = false;
-                            },
-                            child: Listener(
-                              onPointerSignal: _handleDrawingPointerSignal,
-                              child: MouseRegion(
-                                cursor: _isWindowsDesktop
-                                    ? SystemMouseCursors.precise
-                                    : MouseCursor.defer,
-                                child: Container(
-                                  width: double.infinity,
-                                  height: double.infinity,
-                                  decoration: BoxDecoration(
-                                    color:
-                                    Theme
-                                        .of(context)
-                                        .brightness ==
-                                        Brightness.dark
-                                        ? const Color(0xFF232332)
-                                        : const Color(0xFFF5F5F5),
-                                  ),
-                                  child: CustomPaint(
-                                    size: Size(
-                                      constraints.maxWidth,
-                                      constraints.maxHeight,
-                                    ),
-                                    painter: AppWorkspacePainter(
-                                      model: widget.model,
-                                      userScale: _userScale,
-                                      userPan: _userPan,
+                                        if (_draggedSashIsHorizontal) {
+                                          double newRatio =
+                                              (modelPos.dy - glassR.top) /
+                                              glassR.height;
+                                          widget.model
+                                              .updateZoneInnerHDivisionRatio(
+                                                _draggedSashZoneId!,
+                                                isRight,
+                                                _draggedSashIndex,
+                                                newRatio,
+                                              );
+                                        } else {
+                                          double newRatio =
+                                              (modelPos.dx - glassR.left) /
+                                              glassR.width;
+                                          widget.model
+                                              .updateZoneInnerVDivisionRatio(
+                                                _draggedSashZoneId!,
+                                                isRight,
+                                                _draggedSashIndex,
+                                                newRatio,
+                                              );
+                                        }
+                                      } else if (!_suppressHandleDragForLongPress &&
+                                          _isDraggingHinge &&
+                                          widget.model.selectedZone != null &&
+                                          widget.model.isDrawingMode) {
+                                        _handleHingeDrag(
+                                          details.focalPointDelta,
+                                          widget.model.selectedZone!,
+                                        );
+                                      } else if (!_suppressHandleDragForLongPress &&
+                                          _isDraggingHandle &&
+                                          widget.model.selectedZone != null &&
+                                          !(widget
+                                                      .model
+                                                      .selectedZone!
+                                                      .content ==
+                                                  ZoneContent.doubleSash &&
+                                              widget.model.activeSubZone ==
+                                                  'all') &&
+                                          widget.model.isDrawingMode) {
+                                        _handleHandleDrag(
+                                          details.focalPointDelta,
+                                          widget.model.selectedZone!,
+                                        );
+                                      } else if (!widget.model.isDrawingMode) {
+                                        if (_isMovementLocked) return;
+                                        setState(() {
+                                          _userPan =
+                                              _baseUserPan +
+                                              (details.localFocalPoint -
+                                                  _focalPointStart);
+                                        });
+                                      }
+                                    }
+                                  },
+                                  onScaleEnd: (details) {
+                                    if (widget.model.drawingStart != null) {
+                                      widget.model.endDrawing();
+                                    }
+                                    bool wasDraggingProperty =
+                                        _isDraggingSlantLeft ||
+                                        _isDraggingSlantRight ||
+                                        _isDraggingArch ||
+                                        _isDraggingDoubleSashDivider ||
+                                        _isDraggingSashDivision ||
+                                        _isDraggingDecor ||
+                                        _isDraggingHinge ||
+                                        _isDraggingHandle;
+                                    if (wasDraggingProperty) {
+                                      widget.model.saveSnapshotOutside();
+                                    }
+                                    _isDraggingHandle = false;
+                                    _isDraggingHinge = false;
+                                    _suppressHandleDragForLongPress = false;
+                                    _isDraggingSlantLeft = false;
+                                    _isDraggingSlantRight = false;
+                                    _isDraggingArch = false;
+                                    _isDraggingDoubleSashDivider = false;
+                                    _isDraggingSashDivision = false;
+                                    _isDraggingDecor = false;
+                                    _draggedSashZoneId = null;
+                                    _draggedDecorZoneId = null;
+                                    _draggedFrameResizeHandle = null;
+                                    _draggedFrameZoneId = null;
+                                    _frameResizeHistorySaved = false;
+                                  },
+                                  child: Listener(
+                                    onPointerSignal:
+                                        _handleDrawingPointerSignal,
+                                    child: MouseRegion(
+                                      cursor: _isWindowsDesktop
+                                          ? SystemMouseCursors.precise
+                                          : MouseCursor.defer,
+                                      child: Container(
+                                        width: double.infinity,
+                                        height: double.infinity,
+                                        decoration: BoxDecoration(
+                                          color:
+                                              Theme.of(context).brightness ==
+                                                  Brightness.dark
+                                              ? const Color(0xFF232332)
+                                              : const Color(0xFFF5F5F5),
+                                        ),
+                                        child: Stack(
+                                          fit: StackFit.expand,
+                                          children: [
+                                            RepaintBoundary(
+                                              child: CustomPaint(
+                                                size: Size(
+                                                  constraints.maxWidth,
+                                                  constraints.maxHeight,
+                                                ),
+                                                painter: AppWorkspacePainter(
+                                                  model: widget.model,
+                                                  userScale: _userScale,
+                                                  userPan: _userPan,
+                                                ),
+                                              ),
+                                            ),
+                                            IgnorePointer(
+                                              child: CustomPaint(
+                                                painter:
+                                                    WorkspaceSelectionPainter(
+                                                      model: widget.model,
+                                                      userScale: _userScale,
+                                                      userPan: _userPan,
+                                                    ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                            ),
-                          ),
-                          if (_isWindowsDesktop)
-                            Positioned(
-                              top: 18,
-                              right: _paintbrushSecondsLeft > 0 ? 150 : 18,
-                              child: Offstage(
-                                offstage: true,
-                                child: Material(
-                                  color: Colors.transparent,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: Theme
-                                          .of(
-                                        context,
-                                      )
-                                          .cardColor
-                                          .withValues(alpha: 0.94),
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(
-                                        color: Theme
-                                            .of(
-                                          context,
-                                        )
-                                            .dividerColor
-                                            .withValues(alpha: 0.7),
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withValues(
-                                            alpha: 0.18,
-                                          ),
-                                          blurRadius: 10,
-                                          offset: const Offset(0, 3),
-                                        ),
-                                      ],
-                                    ),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Semantics(
-                                          button: true,
-                                          label: 'تكبير الرسم',
-                                          child: IconButton(
-                                            icon: const Icon(Icons.add),
-                                            onPressed: () =>
-                                                _changeDrawingZoom(
-                                                  _zoomStep,
-                                                  Offset(
-                                                    constraints.maxWidth / 2,
-                                                    constraints.maxHeight / 2,
-                                                  ),
-                                                ),
-                                          ),
-                                        ),
-                                        Container(
-                                          width: 26,
-                                          height: 1,
-                                          color: Theme
-                                              .of(context)
-                                              .dividerColor,
-                                        ),
-                                        Semantics(
-                                          button: true,
-                                          label: 'تصغير الرسم',
-                                          child: IconButton(
-                                            icon: const Icon(Icons.remove),
-                                            onPressed: () =>
-                                                _changeDrawingZoom(
-                                                  1 / _zoomStep,
-                                                  Offset(
-                                                    constraints.maxWidth / 2,
-                                                    constraints.maxHeight / 2,
-                                                  ),
-                                                ),
-                                          ),
-                                        ),
-                                        Container(
-                                          width: 26,
-                                          height: 1,
-                                          color: Theme
-                                              .of(context)
-                                              .dividerColor,
-                                        ),
-                                        Semantics(
-                                          button: true,
-                                          label: 'إعادة حجم الرسم',
-                                          child: IconButton(
-                                            icon: const Icon(
-                                              Icons
-                                                  .center_focus_strong_outlined,
-                                            ),
-                                            onPressed: _resetDrawingZoom,
-                                          ),
-                                        ),
-                                        if (widget.model.usesProfileAngle &&
-                                            widget
-                                                .model
-                                                .activeProfileAngleJunctions
-                                                .isNotEmpty) ...[
-                                          Container(
-                                            width: 26,
-                                            height: 1,
-                                            color: Theme
-                                                .of(
+                                if (_isWindowsDesktop)
+                                  Positioned(
+                                    top: 18,
+                                    right: _paintbrushSecondsLeft > 0
+                                        ? 150
+                                        : 18,
+                                    child: Offstage(
+                                      offstage: true,
+                                      child: Material(
+                                        color: Colors.transparent,
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            color: Theme.of(
                                               context,
-                                            )
-                                                .dividerColor,
+                                            ).cardColor.withValues(alpha: 0.94),
+                                            borderRadius: BorderRadius.circular(
+                                              10,
+                                            ),
+                                            border: Border.all(
+                                              color: Theme.of(context)
+                                                  .dividerColor
+                                                  .withValues(alpha: 0.7),
+                                            ),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black.withValues(
+                                                  alpha: 0.18,
+                                                ),
+                                                blurRadius: 10,
+                                                offset: const Offset(0, 3),
+                                              ),
+                                            ],
                                           ),
-                                          Semantics(
-                                            button: true,
-                                            label:
-                                            widget
-                                                .model
-                                                .viewAs90DegreeCorner
-                                                ? 'منظور 90°'
-                                                : 'مسقط مسطح 2D',
-                                            child: IconButton(
-                                              tooltip:
-                                              widget
-                                                  .model
-                                                  .viewAs90DegreeCorner
-                                                  ? Localization.translate(
-                                                'التبديل إلى المسقط المسطح 2D',
-                                                lang,
-                                              )
-                                                  : Localization.translate(
-                                                'التبديل إلى منظور الزاوية 90° (3D)',
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Semantics(
+                                                button: true,
+                                                label: 'تكبير الرسم',
+                                                child: IconButton(
+                                                  icon: const Icon(Icons.add),
+                                                  onPressed: () =>
+                                                      _changeDrawingZoom(
+                                                        _zoomStep,
+                                                        Offset(
+                                                          constraints.maxWidth /
+                                                              2,
+                                                          constraints
+                                                                  .maxHeight /
+                                                              2,
+                                                        ),
+                                                      ),
+                                                ),
+                                              ),
+                                              Container(
+                                                width: 26,
+                                                height: 1,
+                                                color: Theme.of(
+                                                  context,
+                                                ).dividerColor,
+                                              ),
+                                              Semantics(
+                                                button: true,
+                                                label: 'تصغير الرسم',
+                                                child: IconButton(
+                                                  icon: const Icon(
+                                                    Icons.remove,
+                                                  ),
+                                                  onPressed: () =>
+                                                      _changeDrawingZoom(
+                                                        1 / _zoomStep,
+                                                        Offset(
+                                                          constraints.maxWidth /
+                                                              2,
+                                                          constraints
+                                                                  .maxHeight /
+                                                              2,
+                                                        ),
+                                                      ),
+                                                ),
+                                              ),
+                                              Container(
+                                                width: 26,
+                                                height: 1,
+                                                color: Theme.of(
+                                                  context,
+                                                ).dividerColor,
+                                              ),
+                                              Semantics(
+                                                button: true,
+                                                label: 'إعادة حجم الرسم',
+                                                child: IconButton(
+                                                  icon: const Icon(
+                                                    Icons
+                                                        .center_focus_strong_outlined,
+                                                  ),
+                                                  onPressed: _resetDrawingZoom,
+                                                ),
+                                              ),
+                                              if (widget
+                                                      .model
+                                                      .usesProfileAngle &&
+                                                  widget
+                                                      .model
+                                                      .activeProfileAngleJunctions
+                                                      .isNotEmpty) ...[
+                                                Container(
+                                                  width: 26,
+                                                  height: 1,
+                                                  color: Theme.of(
+                                                    context,
+                                                  ).dividerColor,
+                                                ),
+                                                Semantics(
+                                                  button: true,
+                                                  label:
+                                                      widget
+                                                          .model
+                                                          .viewAs90DegreeCorner
+                                                      ? 'منظور 90°'
+                                                      : 'مسقط مسطح 2D',
+                                                  child: IconButton(
+                                                    tooltip:
+                                                        widget
+                                                            .model
+                                                            .viewAs90DegreeCorner
+                                                        ? Localization.translate(
+                                                            'التبديل إلى المسقط المسطح 2D',
+                                                            lang,
+                                                          )
+                                                        : Localization.translate(
+                                                            'التبديل إلى منظور الزاوية 90° (3D)',
+                                                            lang,
+                                                          ),
+                                                    icon: Icon(
+                                                      widget
+                                                              .model
+                                                              .viewAs90DegreeCorner
+                                                          ? Icons
+                                                                .view_in_ar_rounded
+                                                          : Icons
+                                                                .crop_square_rounded,
+                                                      color:
+                                                          widget
+                                                              .model
+                                                              .viewAs90DegreeCorner
+                                                          ? Colors.blue
+                                                          : null,
+                                                    ),
+                                                    onPressed: () {
+                                                      setState(() {
+                                                        widget.model
+                                                            .toggle90DegreeCornerView();
+                                                      });
+                                                    },
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                if (_paintbrushSecondsLeft > 0 &&
+                                    (_activePaintFinish != null ||
+                                        _activePaintZoneContent != null ||
+                                        _activePaintCellSash ||
+                                        _activePaintCellPanel ||
+                                        _activePaintGlassSpec != null))
+                                  Positioned(
+                                    top: 20,
+                                    right: 20,
+                                    child: GestureDetector(
+                                      onTap: _cancelPaintbrushMode,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            colors: [
+                                              Colors.blue.shade700,
+                                              Colors.blue.shade400,
+                                            ],
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            22,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withValues(
+                                                alpha: 0.3,
+                                              ),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 3),
+                                            ),
+                                          ],
+                                          border: Border.all(
+                                            color: Colors.white,
+                                            width: 1.5,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(
+                                              Icons.colorize_rounded,
+                                              color: Colors.white,
+                                              size: 16,
+                                            ),
+                                            const SizedBox(width: 5),
+                                            Text(
+                                              '$_paintbrushSecondsLeft ${_tr('ث')}',
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            const Icon(
+                                              Icons.close_rounded,
+                                              color: Colors.white70,
+                                              size: 14,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                if (_isWindowsDesktop &&
+                                    !_hidePresetCard &&
+                                    widget.model.zones.isEmpty &&
+                                    !widget.model.isShutterOnly &&
+                                    widget.model.drawingStart == null)
+                                  PositionedDirectional(
+                                    top: 16,
+                                    end: 16,
+                                    child: Container(
+                                      constraints: const BoxConstraints(
+                                        maxWidth: 270,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 12,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(
+                                          context,
+                                        ).cardColor.withValues(alpha: 0.96),
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(
+                                          color: Theme.of(
+                                            context,
+                                          ).dividerColor.withValues(alpha: 0.6),
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withValues(
+                                              alpha: 0.15,
+                                            ),
+                                            blurRadius: 12,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              _PresetThumbnailWidget(
+                                                preset: WindowPresetType
+                                                    .slidingNoShutter,
+                                                width: 32,
+                                                height: 32,
+                                                isDark:
+                                                    Theme.of(
+                                                      context,
+                                                    ).brightness ==
+                                                    Brightness.dark,
+                                                accentColor:
+                                                    Colors.blue.shade700,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Text(
+                                                  Localization.translate(
+                                                    'أنظمة ونماذج جاهزة للرسم السريع',
+                                                    lang,
+                                                  ),
+                                                  style: const TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                              InkWell(
+                                                onTap: () =>
+                                                    _setHidePresetCard(true),
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                                child: Padding(
+                                                  padding: const EdgeInsets.all(
+                                                    4,
+                                                  ),
+                                                  child: Icon(
+                                                    Icons.close_rounded,
+                                                    size: 18,
+                                                    color: Theme.of(
+                                                      context,
+                                                    ).hintColor,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            Localization.translate(
+                                              'أدخل أبعاد الإطار واختر النموذج المطلوب ليرسم تلقائياً بدقة',
+                                              lang,
+                                            ),
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color:
+                                                  Theme.of(
+                                                        context,
+                                                      ).brightness ==
+                                                      Brightness.dark
+                                                  ? Colors.white60
+                                                  : Colors.black54,
+                                            ),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 10),
+                                          ElevatedButton.icon(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  Colors.blue.shade700,
+                                              foregroundColor: Colors.white,
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 8,
+                                                  ),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                            ),
+                                            onPressed: () =>
+                                                _showPresetSystemsDialog(
+                                                  context,
+                                                ),
+                                            icon: const Icon(
+                                              Icons.touch_app_rounded,
+                                              size: 16,
+                                            ),
+                                            label: Text(
+                                              Localization.translate(
+                                                'اختيار نظام جاهز',
                                                 lang,
                                               ),
-                                              icon: Icon(
-                                                widget
-                                                    .model
-                                                    .viewAs90DegreeCorner
-                                                    ? Icons.view_in_ar_rounded
-                                                    : Icons.crop_square_rounded,
-                                                color:
-                                                widget
-                                                    .model
-                                                    .viewAs90DegreeCorner
-                                                    ? Colors.blue
-                                                    : null,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 12,
                                               ),
-                                              onPressed: () {
-                                                setState(() {
-                                                  widget.model
-                                                      .toggle90DegreeCornerView();
-                                                });
-                                              },
                                             ),
                                           ),
                                         ],
-                                      ],
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ),
-                            ),
-                          if (_paintbrushSecondsLeft > 0 &&
-                              (_activePaintFinish != null ||
-                                  _activePaintZoneContent != null ||
-                                  _activePaintCellSash ||
-                                  _activePaintCellPanel ||
-                                  _activePaintGlassSpec != null))
-                            Positioned(
-                              top: 20,
-                              right: 20,
-                              child: GestureDetector(
-                                onTap: _cancelPaintbrushMode,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
+                                if (_isMovementLocked &&
+                                    activeTopToolbar != null)
+                                  Positioned(
+                                    top: 0,
+                                    left: 0,
+                                    right: 0,
+                                    child: activeTopToolbar,
                                   ),
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [
-                                        Colors.blue.shade700,
-                                        Colors.blue.shade400,
-                                      ],
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                    ),
-                                    borderRadius: BorderRadius.circular(22),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withValues(
-                                          alpha: 0.3,
-                                        ),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 3),
-                                      ),
-                                    ],
-                                    border: Border.all(
-                                      color: Colors.white,
-                                      width: 1.5,
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(
-                                        Icons.colorize_rounded,
-                                        color: Colors.white,
-                                        size: 16,
-                                      ),
-                                      const SizedBox(width: 5),
-                                      Text(
-                                        '$_paintbrushSecondsLeft ${_tr('ث')}',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      const Icon(
-                                        Icons.close_rounded,
-                                        color: Colors.white70,
-                                        size: 14,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          if (_isWindowsDesktop &&
-                              !_hidePresetCard &&
-                              widget.model.zones.isEmpty &&
-                              !widget.model.isShutterOnly &&
-                              widget.model.drawingStart == null)
-                            PositionedDirectional(
-                              top: 16,
-                              end: 16,
-                              child: Container(
-                                constraints: const BoxConstraints(
-                                  maxWidth: 270,
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 12,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Theme
-                                      .of(
-                                    context,
-                                  )
-                                      .cardColor
-                                      .withValues(alpha: 0.96),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                    color: Theme
-                                        .of(
+                                if (_isWindowsDesktop)
+                                  AnimatedPositioned(
+                                    duration: const Duration(milliseconds: 250),
+                                    curve: Curves.easeOutCubic,
+                                    top:
+                                        (_isMovementLocked &&
+                                            activeTopToolbar != null)
+                                        ? 62
+                                        : 14,
+                                    left: _isLeftDrawerOpen ? 342 : 12,
+                                    bottom: 120,
+                                    child: _buildQuickActionsBar(
                                       context,
-                                    )
-                                        .dividerColor
-                                        .withValues(alpha: 0.6),
+                                      isVertical: true,
+                                    ),
+                                  )
+                                else
+                                  Positioned(
+                                    top:
+                                        (_isMovementLocked &&
+                                            activeTopToolbar != null)
+                                        ? 58
+                                        : 12,
+                                    left: 12,
+                                    right: 12,
+                                    child: Align(
+                                      alignment: AlignmentDirectional.topStart,
+                                      child: _buildQuickActionsBar(
+                                        context,
+                                        isVertical: false,
+                                      ),
+                                    ),
                                   ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(
-                                        alpha: 0.15,
-                                      ),
-                                      blurRadius: 12,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment:
-                                  CrossAxisAlignment.stretch,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        _PresetThumbnailWidget(
-                                          preset:
-                                          WindowPresetType.slidingNoShutter,
-                                          width: 32,
-                                          height: 32,
-                                          isDark:
-                                          Theme
-                                              .of(context)
-                                              .brightness ==
-                                              Brightness.dark,
-                                          accentColor: Colors.blue.shade700,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            Localization.translate(
-                                              'أنظمة ونماذج جاهزة للرسم السريع',
-                                              lang,
-                                            ),
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                        InkWell(
-                                          onTap: () => _setHidePresetCard(true),
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                          child: Padding(
-                                            padding: const EdgeInsets.all(4),
-                                            child: Icon(
-                                              Icons.close_rounded,
-                                              size: 18,
-                                              color: Theme
-                                                  .of(
-                                                context,
-                                              )
-                                                  .hintColor,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      Localization.translate(
-                                        'أدخل أبعاد الإطار واختر النموذج المطلوب ليرسم تلقائياً بدقة',
-                                        lang,
-                                      ),
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color:
-                                        Theme
-                                            .of(context)
-                                            .brightness ==
-                                            Brightness.dark
-                                            ? Colors.white60
-                                            : Colors.black54,
-                                      ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 10),
-                                    ElevatedButton.icon(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.blue.shade700,
-                                        foregroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 8,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                        ),
-                                      ),
-                                      onPressed: () =>
-                                          _showPresetSystemsDialog(context),
-                                      icon: const Icon(
-                                        Icons.touch_app_rounded,
-                                        size: 16,
-                                      ),
-                                      label: Text(
-                                        Localization.translate(
-                                          'اختيار نظام جاهز',
-                                          lang,
-                                        ),
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          if (_isMovementLocked && activeTopToolbar != null)
-                            Positioned(
-                              top: 0,
-                              left: 0,
-                              right: 0,
-                              child: activeTopToolbar,
-                            ),
-                          if (_isWindowsDesktop)
-                            AnimatedPositioned(
-                              duration: const Duration(milliseconds: 250),
-                              curve: Curves.easeOutCubic,
-                              top:
-                              (_isMovementLocked &&
-                                  activeTopToolbar != null)
-                                  ? 62
-                                  : 14,
-                              left: _isLeftDrawerOpen ? 342 : 12,
-                              bottom: 120,
-                              child: _buildQuickActionsBar(
-                                context,
-                                isVertical: true,
-                              ),
-                            )
-                          else
-                            Positioned(
-                              top:
-                              (_isMovementLocked &&
-                                  activeTopToolbar != null)
-                                  ? 58
-                                  : 12,
-                              left: 12,
-                              right: 12,
-                              child: Align(
-                                alignment: AlignmentDirectional.topStart,
-                                child: _buildQuickActionsBar(
-                                  context,
-                                  isVertical: false,
-                                ),
-                              ),
-                            ),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-                _buildInteractiveBottomPanel(context),
-              ],
-            ),
-
-            // 🔵 زر رفع القائمة السفلية عند إخفائها
-            if (!_isBottomPanelExpanded)
-              Positioned(
-                bottom: 8,
-                left: 8,
-                child: GestureDetector(
-                  onTap: () => setState(() => _isBottomPanelExpanded = true),
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade700,
-                      borderRadius: BorderRadius.circular(18),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black26,
-                          blurRadius: 6,
-                          offset: Offset(0, 3),
+                              ],
+                            );
+                          },
                         ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.keyboard_arrow_up_rounded,
-                      color: Colors.white,
-                      size: 22,
-                    ),
+                      ),
+                      _buildInteractiveBottomPanel(context),
+                    ],
                   ),
-                ),
-              ),
 
-            // 🟢 القائمة الجانبية اليسرى (Left Drawer) لخصائص الزجاج
-            if (!widget.model.isShutterOnly)
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-                left: _isLeftDrawerOpen ? 0 : -330,
-                top: 15,
-                bottom: 120,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 330,
-                      decoration: BoxDecoration(
-                        color: Theme
-                            .of(context)
-                            .brightness == Brightness.dark
-                            ? const Color(0xFF1E1E2C)
-                            : Colors.white,
-                        borderRadius: const BorderRadius.only(
-                          bottomRight: Radius.circular(15),
+                  // 🔵 زر رفع القائمة السفلية عند إخفائها
+                  if (!_isBottomPanelExpanded)
+                    Positioned(
+                      bottom: 8,
+                      left: 8,
+                      child: GestureDetector(
+                        onTap: () =>
+                            setState(() => _isBottomPanelExpanded = true),
+                        child: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade700,
+                            borderRadius: BorderRadius.circular(18),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black26,
+                                blurRadius: 6,
+                                offset: Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.keyboard_arrow_up_rounded,
+                            color: Colors.white,
+                            size: 22,
+                          ),
                         ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.1),
-                            blurRadius: 10,
-                            offset: const Offset(5, 0),
+                      ),
+                    ),
+
+                  // 🟢 القائمة الجانبية اليسرى (Left Drawer) لخصائص الزجاج
+                  if (!widget.model.isShutterOnly)
+                    AnimatedPositioned(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                      left: _isLeftDrawerOpen ? 0 : -330,
+                      top: 15,
+                      bottom: 120,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 330,
+                            decoration: BoxDecoration(
+                              color:
+                                  Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? const Color(0xFF1E1E2C)
+                                  : Colors.white,
+                              borderRadius: const BorderRadius.only(
+                                bottomRight: Radius.circular(15),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.1),
+                                  blurRadius: 10,
+                                  offset: const Offset(5, 0),
+                                ),
+                              ],
+                            ),
+                            child: _buildLeftDrawerContent(context),
+                          ),
+                          GestureDetector(
+                            onTap: () {
+                              if (!_isLeftDrawerOpen)
+                                widget.model.clearSelection();
+                              setState(
+                                () => _isLeftDrawerOpen = !_isLeftDrawerOpen,
+                              );
+                            },
+                            onVerticalDragUpdate: (details) {
+                              setState(() {
+                                _leftDrawerHandleTop += details.delta.dy;
+                                if (_leftDrawerHandleTop < 0) {
+                                  _leftDrawerHandleTop = 0;
+                                }
+                                double maxTop =
+                                    MediaQuery.of(context).size.height -
+                                    120 -
+                                    70 -
+                                    15;
+                                if (_leftDrawerHandleTop > maxTop) {
+                                  _leftDrawerHandleTop = maxTop;
+                                }
+                              });
+                            },
+                            child: Container(
+                              margin: EdgeInsets.only(
+                                top: _leftDrawerHandleTop,
+                              ),
+                              width: 40,
+                              height: 70,
+                              decoration: BoxDecoration(
+                                color:
+                                    Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? const Color(0xFF1E1E2C)
+                                    : Colors.white,
+                                borderRadius: const BorderRadius.horizontal(
+                                  right: Radius.circular(15),
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.15),
+                                    blurRadius: 8,
+                                    offset: const Offset(2, 0),
+                                  ),
+                                ],
+                              ),
+                              child: Icon(
+                                _isLeftDrawerOpen
+                                    ? Icons.keyboard_double_arrow_left_rounded
+                                    : Icons.keyboard_double_arrow_right_rounded,
+                                color:
+                                    Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? Colors.blue.shade300
+                                    : Colors.blue.shade800,
+                                size: 26,
+                              ),
+                            ),
                           ),
                         ],
                       ),
-                      child: _buildLeftDrawerContent(context),
                     ),
+
+                  // 🟢 طبقة التعتيم لإغلاق القائمة عند النقر خارجها
+                  if (_isDrawerOpen)
                     GestureDetector(
-                      onTap: () {
-                        if (!_isLeftDrawerOpen) widget.model.clearSelection();
-                        setState(() => _isLeftDrawerOpen = !_isLeftDrawerOpen);
-                      },
-                      onVerticalDragUpdate: (details) {
-                        setState(() {
-                          _leftDrawerHandleTop += details.delta.dy;
-                          if (_leftDrawerHandleTop < 0) {
-                            _leftDrawerHandleTop = 0;
-                          }
-                          double maxTop =
-                              MediaQuery
-                                  .of(context)
-                                  .size
-                                  .height -
+                      onTap: () => setState(() => _isDrawerOpen = false),
+                      child: Container(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        width: double.infinity,
+                        height: double.infinity,
+                      ),
+                    ),
+
+                  // 🟢 القائمة الجانبية (Drawer)
+                  // 🟢 القائمة الجانبية (Drawer) بعد التعديل لتخفيف الازدحام السفلي
+                  AnimatedPositioned(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                    right: _isDrawerOpen ? 0 : -330,
+                    top: 15,
+                    // 🟢 رفعناها لتكون في الجزء العلوي من الشاشة
+                    bottom: 120,
+                    // 🟢 ترك مسافة كبيرة جداً من الأسفل لمنع التداخل
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      // 🟢 جعل زر السحب في الأعلى بدلاً من المنتصف
+                      children: [
+                        GestureDetector(
+                          onTap: () =>
+                              setState(() => _isDrawerOpen = !_isDrawerOpen),
+                          onVerticalDragUpdate: (details) {
+                            setState(() {
+                              _rightDrawerHandleTop += details.delta.dy;
+                              if (_rightDrawerHandleTop < 0) {
+                                _rightDrawerHandleTop = 0;
+                              }
+                              double maxTop =
+                                  MediaQuery.of(context).size.height -
                                   120 -
                                   70 -
                                   15;
-                          if (_leftDrawerHandleTop > maxTop) {
-                            _leftDrawerHandleTop = maxTop;
-                          }
-                        });
-                      },
-                      child: Container(
-                        margin: EdgeInsets.only(top: _leftDrawerHandleTop),
-                        width: 40,
-                        height: 70,
-                        decoration: BoxDecoration(
-                          color: Theme
-                              .of(context)
-                              .brightness == Brightness.dark
-                              ? const Color(0xFF1E1E2C)
-                              : Colors.white,
-                          borderRadius: const BorderRadius.horizontal(
-                            right: Radius.circular(15),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.15),
-                              blurRadius: 8,
-                              offset: const Offset(2, 0),
+                              if (_rightDrawerHandleTop > maxTop) {
+                                _rightDrawerHandleTop = maxTop;
+                              }
+                            });
+                          },
+                          child: Container(
+                            margin: EdgeInsets.only(top: _rightDrawerHandleTop),
+                            // 🟢 إزاحة بسيطة للزر ليكون شكله أنيقاً
+                            width: 40,
+                            height: 70,
+                            decoration: BoxDecoration(
+                              color:
+                                  Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? const Color(0xFF1E1E2C)
+                                  : Colors.white,
+                              borderRadius: const BorderRadius.horizontal(
+                                left: Radius.circular(15),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.15),
+                                  blurRadius: 8,
+                                  offset: const Offset(-2, 0),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        child: Icon(
-                          _isLeftDrawerOpen
-                              ? Icons.keyboard_double_arrow_left_rounded
-                              : Icons.keyboard_double_arrow_right_rounded,
-                          color: Theme
-                              .of(context)
-                              .brightness == Brightness.dark
-                              ? Colors.blue.shade300
-                              : Colors.blue.shade800,
-                          size: 26,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-            // 🟢 طبقة التعتيم لإغلاق القائمة عند النقر خارجها
-            if (_isDrawerOpen)
-              GestureDetector(
-                onTap: () => setState(() => _isDrawerOpen = false),
-                child: Container(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  width: double.infinity,
-                  height: double.infinity,
-                ),
-              ),
-
-            // 🟢 القائمة الجانبية (Drawer)
-            // 🟢 القائمة الجانبية (Drawer) بعد التعديل لتخفيف الازدحام السفلي
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              right: _isDrawerOpen ? 0 : -330,
-              top: 15,
-              // 🟢 رفعناها لتكون في الجزء العلوي من الشاشة
-              bottom: 120,
-              // 🟢 ترك مسافة كبيرة جداً من الأسفل لمنع التداخل
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                // 🟢 جعل زر السحب في الأعلى بدلاً من المنتصف
-                children: [
-                  GestureDetector(
-                    onTap: () => setState(() => _isDrawerOpen = !_isDrawerOpen),
-                    onVerticalDragUpdate: (details) {
-                      setState(() {
-                        _rightDrawerHandleTop += details.delta.dy;
-                        if (_rightDrawerHandleTop < 0) {
-                          _rightDrawerHandleTop = 0;
-                        }
-                        double maxTop =
-                            MediaQuery
-                                .of(context)
-                                .size
-                                .height - 120 - 70 - 15;
-                        if (_rightDrawerHandleTop > maxTop) {
-                          _rightDrawerHandleTop = maxTop;
-                        }
-                      });
-                    },
-                    child: Container(
-                      margin: EdgeInsets.only(top: _rightDrawerHandleTop),
-                      // 🟢 إزاحة بسيطة للزر ليكون شكله أنيقاً
-                      width: 40,
-                      height: 70,
-                      decoration: BoxDecoration(
-                        color: Theme
-                            .of(context)
-                            .brightness == Brightness.dark
-                            ? const Color(0xFF1E1E2C)
-                            : Colors.white,
-                        borderRadius: const BorderRadius.horizontal(
-                          left: Radius.circular(15),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.15),
-                            blurRadius: 8,
-                            offset: const Offset(-2, 0),
+                            child: Icon(
+                              _isDrawerOpen
+                                  ? Icons.keyboard_double_arrow_right_rounded
+                                  : Icons.keyboard_double_arrow_left_rounded,
+                              color:
+                                  Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? Colors.blue.shade300
+                                  : Colors.blue.shade800,
+                              size: 26,
+                            ),
                           ),
-                        ],
-                      ),
-                      child: Icon(
-                        _isDrawerOpen
-                            ? Icons.keyboard_double_arrow_right_rounded
-                            : Icons.keyboard_double_arrow_left_rounded,
-                        color: Theme
-                            .of(context)
-                            .brightness == Brightness.dark
-                            ? Colors.blue.shade300
-                            : Colors.blue.shade800,
-                        size: 26,
-                      ),
-                    ),
-                  ),
-                  Container(
-                    width: 330,
-                    decoration: BoxDecoration(
-                      color: Theme
-                          .of(context)
-                          .brightness == Brightness.dark
-                          ? const Color(0xFF1E1E2C)
-                          : Colors.white,
-                      borderRadius: const BorderRadius.only(
-                        bottomLeft: Radius.circular(15),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
-                          blurRadius: 10,
-                          offset: const Offset(-5, 0),
+                        ),
+                        Container(
+                          width: 330,
+                          decoration: BoxDecoration(
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                ? const Color(0xFF1E1E2C)
+                                : Colors.white,
+                            borderRadius: const BorderRadius.only(
+                              bottomLeft: Radius.circular(15),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.1),
+                                blurRadius: 10,
+                                offset: const Offset(-5, 0),
+                              ),
+                            ],
+                          ),
+                          child: _buildDrawerContent(context),
                         ),
                       ],
                     ),
-                    child: _buildDrawerContent(context),
                   ),
                 ],
               ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -7007,31 +7241,28 @@ class _WindowViewState extends State<WindowView> {
     if (_isExitDialogOpen || !mounted) return;
     _isExitDialogOpen = true;
     try {
-      final lang = Provider
-          .of<AppSettingsProvider>(
+      final lang = Provider.of<AppSettingsProvider>(
         context,
         listen: false,
-      )
-          .language;
+      ).language;
       final shouldExit = await showDialog<bool>(
         context: context,
-        builder: (dialogContext) =>
-            AlertDialog(
-              title: Text(Localization.translate('تأكيد الخروج', lang)),
-              content: Text(
-                Localization.translate('هل تريد الخروج من صفحة الرسم؟', lang),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext, false),
-                  child: Text(Localization.translate('إلغاء', lang)),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(dialogContext, true),
-                  child: Text(Localization.translate('خروج', lang)),
-                ),
-              ],
+        builder: (dialogContext) => AlertDialog(
+          title: Text(Localization.translate('تأكيد الخروج', lang)),
+          content: Text(
+            Localization.translate('هل تريد الخروج من صفحة الرسم؟', lang),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(Localization.translate('إلغاء', lang)),
             ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(Localization.translate('خروج', lang)),
+            ),
+          ],
+        ),
       );
       if (shouldExit == true && mounted) {
         Navigator.of(
@@ -7049,12 +7280,8 @@ class _WindowViewState extends State<WindowView> {
       child: ListenableBuilder(
         listenable: widget.model,
         builder: (context, _) {
-          final isDark = Theme
-              .of(context)
-              .brightness == Brightness.dark;
-          final lang = Provider
-              .of<AppSettingsProvider>(context)
-              .language;
+          final isDark = Theme.of(context).brightness == Brightness.dark;
+          final lang = Provider.of<AppSettingsProvider>(context).language;
           final WindowZone? zone = widget.model.selectedZone;
           WindowZone? targetZone = zone;
           if (targetZone == null ||
@@ -7095,7 +7322,7 @@ class _WindowViewState extends State<WindowView> {
           // drawer from the neutral value and hide the panneau options.
           final GlassSpecification spec =
               zone?.getGlassForCell(widget.model.activeSubZone) ??
-                  _tempGlassSpec;
+              _tempGlassSpec;
           final structure = spec.structure;
           final slidingJointSpecs = widget.model.zones
               .where((z) => z.content == ZoneContent.slidingSash)
@@ -7103,7 +7330,8 @@ class _WindowViewState extends State<WindowView> {
               .toList();
 
           GlassSpecification fitDoubleGlassToParclose(
-              GlassSpecification candidate,) {
+            GlassSpecification candidate,
+          ) {
             if (candidate.structure != GlassStructure.double) {
               return candidate;
             }
@@ -7113,13 +7341,13 @@ class _WindowViewState extends State<WindowView> {
                 : widget.model.usesSlidingPrimaryProfiles;
             final suggested = widget.model
                 .suggestedIntercallThicknessForDoubleGlass(
-              thicknessOuter:
-              candidate.thicknessOuter ?? kDefaultGlassPaneThickness,
-              thicknessInner:
-              candidate.thicknessInner ?? kDefaultGlassPaneThickness,
-              jointTwoSides: candidate.jointTwoSides,
-              sliding: isSliding,
-            );
+                  thicknessOuter:
+                      candidate.thicknessOuter ?? kDefaultGlassPaneThickness,
+                  thicknessInner:
+                      candidate.thicknessInner ?? kDefaultGlassPaneThickness,
+                  jointTwoSides: candidate.jointTwoSides,
+                  sliding: isSliding,
+                );
             if (suggested != null) {
               return candidate.copyWith(intercallThickness: suggested);
             }
@@ -7154,8 +7382,8 @@ class _WindowViewState extends State<WindowView> {
             final glassTotal = spec.totalThickness(widget.model.allGlassCache);
             final fittedJointThickness = spec.fittedJoints.fold<double>(
               0.0,
-                  (sum, joint) =>
-              sum + (double.tryParse('${joint['thickness']}') ?? 0.0),
+              (sum, joint) =>
+                  sum + (double.tryParse('${joint['thickness']}') ?? 0.0),
             );
             final jointVitrage = spec.fittedJoints.isNotEmpty
                 ? fittedJointThickness
@@ -7168,7 +7396,7 @@ class _WindowViewState extends State<WindowView> {
             final isExact = remainingGap.abs() < 0.01;
             final isAbove = totalPack > maximum;
             final color =
-            isExact || (remainingGap >= 2.0 && remainingGap <= 6.0)
+                isExact || (remainingGap >= 2.0 && remainingGap <= 6.0)
                 ? Colors.green.shade700
                 : (isAbove ? Colors.red.shade700 : Colors.orange.shade800);
             final icon = isExact || (remainingGap >= 2.0 && remainingGap <= 6.0)
@@ -7177,12 +7405,12 @@ class _WindowViewState extends State<WindowView> {
 
             String message;
             final hasOpeningSystem = widget.model.zones.any(
-                  (candidate) =>
-              candidate.content == ZoneContent.singleSash ||
+              (candidate) =>
+                  candidate.content == ZoneContent.singleSash ||
                   candidate.content == ZoneContent.doubleSash,
             );
             final hasSlidingSystem = widget.model.zones.any(
-                  (candidate) => candidate.content == ZoneContent.slidingSash,
+              (candidate) => candidate.content == ZoneContent.slidingSash,
             );
             final openingPrefix = hasOpeningSystem && hasSlidingSystem
                 ? 'نظام الفتح (${widget.model.activeSeries?.name ?? ''}): '
@@ -7191,19 +7419,11 @@ class _WindowViewState extends State<WindowView> {
             if (widget.model.isPVC || jointVitrage <= 0) {
               message =
                   openingPrefix +
-                      (isExact
-                          ? '${Localization.translate(
-                          'سُمك الزجاج مطابق لسعة البيركلوز', lang).replaceAll(
-                          'البيركلوز',
-                          usesParclose ? 'البيركلوز' : 'الضلفة')}: ${glassTotal
-                          .toStringAsFixed(0)} مم'
-                          : isAbove
-                          ? 'تنبيه: سُمك الزجاج ${glassTotal.toStringAsFixed(
-                          0)} مم أكبر من $capacityLabel ${maximum
-                          .toStringAsFixed(0)} مم'
-                          : 'تنبيه: سُمك الزجاج ${glassTotal.toStringAsFixed(
-                          0)} مم أصغر من $capacityLabel ${maximum
-                          .toStringAsFixed(0)} مم');
+                  (isExact
+                      ? '${Localization.translate('سُمك الزجاج مطابق لسعة البيركلوز', lang).replaceAll('البيركلوز', usesParclose ? 'البيركلوز' : 'الضلفة')}: ${glassTotal.toStringAsFixed(0)} مم'
+                      : isAbove
+                      ? 'تنبيه: سُمك الزجاج ${glassTotal.toStringAsFixed(0)} مم أكبر من $capacityLabel ${maximum.toStringAsFixed(0)} مم'
+                      : 'تنبيه: سُمك الزجاج ${glassTotal.toStringAsFixed(0)} مم أصغر من $capacityLabel ${maximum.toStringAsFixed(0)} مم');
             } else {
               final glassStr = glassTotal.toStringAsFixed(0);
               final jointStr = jointVitrage.toStringAsFixed(0);
@@ -7214,17 +7434,17 @@ class _WindowViewState extends State<WindowView> {
               if (isAbove) {
                 message =
                     openingPrefix +
-                        'تنبيه: السُمك ($glassStr مم) + الجوانات ($jointStr مم) = $packStr مم يتجاوز $capacityLabel ($maxStr مم) بـ $gapStr مم.';
+                    'تنبيه: السُمك ($glassStr مم) + الجوانات ($jointStr مم) = $packStr مم يتجاوز $capacityLabel ($maxStr مم) بـ $gapStr مم.';
               } else if (remainingGap < 2.0) {
                 message = spec.fittedJoints.isNotEmpty && isExact
                     ? openingPrefix +
-                    'السُمك ($glassStr مم) + الجوانات المختارة ($jointStr مم) = $packStr مم، مطابق لـ $capacityLabel ($maxStr مم).'
+                          'السُمك ($glassStr مم) + الجوانات المختارة ($jointStr مم) = $packStr مم، مطابق لـ $capacityLabel ($maxStr مم).'
                     : openingPrefix +
-                    'السُمك ($glassStr مم) + الجوانات ($jointStr مم) = $packStr مم ($capacityLabel: $maxStr مم). الفراغ المتبقي ضيق جداً ($gapStr مم).';
+                          'السُمك ($glassStr مم) + الجوانات ($jointStr مم) = $packStr مم ($capacityLabel: $maxStr مم). الفراغ المتبقي ضيق جداً ($gapStr مم).';
               } else {
                 message =
                     openingPrefix +
-                        'سُمك الزجاج ($glassStr مم) + جوان الزجاج ($jointStr مم) = $packStr مم | $capacityLabel: $maxStr مم. إذاً الجوان المختار (Joint Bourrage) يجب أن يكون سُمكه $gapStr مم.';
+                    'سُمك الزجاج ($glassStr مم) + جوان الزجاج ($jointStr مم) = $packStr مم | $capacityLabel: $maxStr مم. إذاً الجوان المختار (Joint Bourrage) يجب أن يكون سُمكه $gapStr مم.';
               }
             }
 
@@ -7262,12 +7482,12 @@ class _WindowViewState extends State<WindowView> {
 
           Widget? buildSlidingParcloseThicknessInfo() {
             final hasOpeningSystem = widget.model.zones.any(
-                  (candidate) =>
-              candidate.content == ZoneContent.singleSash ||
+              (candidate) =>
+                  candidate.content == ZoneContent.singleSash ||
                   candidate.content == ZoneContent.doubleSash,
             );
             final hasSlidingSystem = widget.model.zones.any(
-                  (candidate) => candidate.content == ZoneContent.slidingSash,
+              (candidate) => candidate.content == ZoneContent.slidingSash,
             );
             if (!hasOpeningSystem ||
                 !hasSlidingSystem ||
@@ -7336,15 +7556,14 @@ class _WindowViewState extends State<WindowView> {
 
           final parcloseThicknessInfo = buildParcloseThicknessInfo();
           final slidingParcloseThicknessInfo =
-          buildSlidingParcloseThicknessInfo();
+              buildSlidingParcloseThicknessInfo();
           final showSlidingJointSideSelector =
               !widget.model.isSlidingPVC &&
-                  (widget.systemMode == 'sliding' ||
-                      widget.model.systemMode == 'sliding' ||
-                      widget.model.zones.any(
-                            (candidate) =>
-                        candidate.content == ZoneContent.slidingSash,
-                      ));
+              (widget.systemMode == 'sliding' ||
+                  widget.model.systemMode == 'sliding' ||
+                  widget.model.zones.any(
+                    (candidate) => candidate.content == ZoneContent.slidingSash,
+                  ));
           final fallbackIntercallChoices = <Map<String, dynamic>>[
             {'thickness': 6, 'name': '6 مم'},
             {'thickness': 8, 'name': '8 مم'},
@@ -7360,18 +7579,20 @@ class _WindowViewState extends State<WindowView> {
           );
           final requiredIntercall = structure == GlassStructure.double
               ? widget.model.suggestedIntercallThicknessForDoubleGlass(
-            thicknessOuter:
-            spec.thicknessOuter ?? kDefaultGlassPaneThickness,
-            thicknessInner:
-            spec.thicknessInner ?? kDefaultGlassPaneThickness,
-            jointTwoSides: spec.jointTwoSides,
-          )
+                  thicknessOuter:
+                      spec.thicknessOuter ?? kDefaultGlassPaneThickness,
+                  thicknessInner:
+                      spec.thicknessInner ?? kDefaultGlassPaneThickness,
+                  jointTwoSides: spec.jointTwoSides,
+                )
               : null;
 
-          Widget buildProcessingChip(String label,
-              GlassProcessing type,
-              bool isOuter,
-              void Function(GlassProcessing) onTap,) {
+          Widget buildProcessingChip(
+            String label,
+            GlassProcessing type,
+            bool isOuter,
+            void Function(GlassProcessing) onTap,
+          ) {
             final currentProc = isOuter
                 ? spec.processingOuter
                 : spec.processingInner;
@@ -7405,9 +7626,9 @@ class _WindowViewState extends State<WindowView> {
 
             final isTempered = isOuter
                 ? (spec.temperedOuter ||
-                spec.processingOuter == GlassProcessing.tempered)
+                      spec.processingOuter == GlassProcessing.tempered)
                 : (spec.temperedInner ||
-                spec.processingInner == GlassProcessing.tempered);
+                      spec.processingInner == GlassProcessing.tempered);
 
             void updateProcessing(GlassProcessing t) {
               final newSpec = spec.copyWith(
@@ -7475,19 +7696,19 @@ class _WindowViewState extends State<WindowView> {
                       Localization.translate('Simple', lang),
                       GlassProcessing.none,
                       isOuter,
-                          (t) => updateProcessing(t),
+                      (t) => updateProcessing(t),
                     ),
                     buildProcessingChip(
                       Localization.translate('Feuillette', lang),
                       GlassProcessing.laminated,
                       isOuter,
-                          (t) => updateProcessing(t),
+                      (t) => updateProcessing(t),
                     ),
                     buildProcessingChip(
                       Localization.translate('Low-e', lang),
                       GlassProcessing.lowE,
                       isOuter,
-                          (t) => updateProcessing(t),
+                      (t) => updateProcessing(t),
                     ),
                     FilterChip(
                       label: Text(
@@ -7497,8 +7718,8 @@ class _WindowViewState extends State<WindowView> {
                           color: isDark
                               ? Colors.white
                               : (isTempered
-                              ? Colors.blue.shade900
-                              : Colors.black87),
+                                    ? Colors.blue.shade900
+                                    : Colors.black87),
                         ),
                       ),
                       selected: isTempered,
@@ -7526,80 +7747,79 @@ class _WindowViewState extends State<WindowView> {
                   spacing: 6,
                   runSpacing: 4,
                   children:
-                  [
-                    GlassFinish.clair,
-                    GlassFinish.stopSol,
-                    GlassFinish.sable,
-                    GlassFinish.delta,
-                    GlassFinish.tuC,
-                    GlassFinish.nevada,
-                    GlassFinish.cuisine,
-                    GlassFinish.aFleur,
-                  ]
-                      .map(
-                        (f) =>
-                        Padding(
-                          padding: const EdgeInsets.only(right: 6),
-                          child: _ContentButton(
-                            label: _getFinishName(f),
-                            icon: Icons.blur_on_rounded,
-                            selected: finish == f,
-                            showWarning:
-                            widget.model.getPriceForFinish(f, color) ==
-                                0.0,
-                            onPressed: () {
-                              final GlassColor nextColor =
-                              f == GlassFinish.stopSol
-                                  ? (isOuter
-                                  ? spec.colorOuter
-                                  : spec.colorInner)
-                                  : GlassColor.transparent;
-                              double defThick = widget.model
-                                  .getThicknessForFinish(f, nextColor);
-                              if (defThick == 0.0) defThick = 5.0;
+                      [
+                            GlassFinish.clair,
+                            GlassFinish.stopSol,
+                            GlassFinish.sable,
+                            GlassFinish.delta,
+                            GlassFinish.tuC,
+                            GlassFinish.nevada,
+                            GlassFinish.cuisine,
+                            GlassFinish.aFleur,
+                          ]
+                          .map(
+                            (f) => Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: _ContentButton(
+                                label: _getFinishName(f),
+                                icon: Icons.blur_on_rounded,
+                                selected: finish == f,
+                                showWarning:
+                                    widget.model.getPriceForFinish(f, color) ==
+                                    0.0,
+                                onPressed: () {
+                                  final GlassColor nextColor =
+                                      f == GlassFinish.stopSol
+                                      ? (isOuter
+                                            ? spec.colorOuter
+                                            : spec.colorInner)
+                                      : GlassColor.transparent;
+                                  double defThick = widget.model
+                                      .getThicknessForFinish(f, nextColor);
+                                  if (defThick == 0.0) defThick = 5.0;
 
-                              final newSpec = fitDoubleGlassToParclose(
-                                spec.copyWith(
-                                  finishOuter: isOuter ? f : null,
-                                  finishInner: !isOuter ? f : null,
-                                  colorOuter: isOuter ? nextColor : null,
-                                  colorInner: !isOuter ? nextColor : null,
-                                  thicknessOuter: isOuter ? defThick : null,
-                                  thicknessInner: !isOuter
-                                      ? defThick
-                                      : null,
-                                ),
-                              );
-                              if (zone != null) {
-                                widget.model.updateSelectedZoneGlass(
-                                  finishOuter: isOuter ? f : null,
-                                  finishInner: !isOuter ? f : null,
-                                  colorOuter: isOuter ? nextColor : null,
-                                  colorInner: !isOuter ? nextColor : null,
-                                  thicknessOuter: isOuter ? defThick : null,
-                                  thicknessInner: !isOuter
-                                      ? defThick
-                                      : null,
-                                  intercallThickness:
-                                  newSpec.structure ==
-                                      GlassStructure.double
-                                      ? newSpec.intercallThickness
-                                      : null,
-                                );
-                              } else {
-                                setState(() {
-                                  _tempGlassSpec = newSpec;
-                                });
-                              }
-                              _startPaintbrushMode(glassSpec: newSpec);
-                              if (f == GlassFinish.stopSol) {
-                                _autoScrollDrawer();
-                              }
-                            },
-                          ),
-                        ),
-                  )
-                      .toList(),
+                                  final newSpec = fitDoubleGlassToParclose(
+                                    spec.copyWith(
+                                      finishOuter: isOuter ? f : null,
+                                      finishInner: !isOuter ? f : null,
+                                      colorOuter: isOuter ? nextColor : null,
+                                      colorInner: !isOuter ? nextColor : null,
+                                      thicknessOuter: isOuter ? defThick : null,
+                                      thicknessInner: !isOuter
+                                          ? defThick
+                                          : null,
+                                    ),
+                                  );
+                                  if (zone != null) {
+                                    widget.model.updateSelectedZoneGlass(
+                                      finishOuter: isOuter ? f : null,
+                                      finishInner: !isOuter ? f : null,
+                                      colorOuter: isOuter ? nextColor : null,
+                                      colorInner: !isOuter ? nextColor : null,
+                                      thicknessOuter: isOuter ? defThick : null,
+                                      thicknessInner: !isOuter
+                                          ? defThick
+                                          : null,
+                                      intercallThickness:
+                                          newSpec.structure ==
+                                              GlassStructure.double
+                                          ? newSpec.intercallThickness
+                                          : null,
+                                    );
+                                  } else {
+                                    setState(() {
+                                      _tempGlassSpec = newSpec;
+                                    });
+                                  }
+                                  _startPaintbrushMode(glassSpec: newSpec);
+                                  if (f == GlassFinish.stopSol) {
+                                    _autoScrollDrawer();
+                                  }
+                                },
+                              ),
+                            ),
+                          )
+                          .toList(),
                 ),
                 if (finish == GlassFinish.stopSol) ...[
                   Padding(
@@ -7619,27 +7839,26 @@ class _WindowViewState extends State<WindowView> {
                         runSpacing: 6,
                         children: GlassColor.values
                             .map(
-                              (c) =>
-                              Padding(
+                              (c) => Padding(
                                 padding: const EdgeInsets.only(right: 6),
                                 child: _ContentButton(
                                   label: _getColorName(c),
                                   icon: Icons.palette_rounded,
                                   selected: color == c,
                                   showWarning:
-                                  widget.model.getPriceForFinish(
-                                    finish,
-                                    c,
-                                  ) ==
+                                      widget.model.getPriceForFinish(
+                                        finish,
+                                        c,
+                                      ) ==
                                       0.0,
                                   onPressed: () {
                                     final double defThick = widget.model
                                         .getThicknessForFinish(
-                                      isOuter
-                                          ? spec.finishOuter
-                                          : spec.finishInner,
-                                      c,
-                                    );
+                                          isOuter
+                                              ? spec.finishOuter
+                                              : spec.finishInner,
+                                          c,
+                                        );
                                     double resolvedThick = defThick == 0.0
                                         ? 5.0
                                         : defThick;
@@ -7667,8 +7886,8 @@ class _WindowViewState extends State<WindowView> {
                                             ? resolvedThick
                                             : null,
                                         intercallThickness:
-                                        newSpec.structure ==
-                                            GlassStructure.double
+                                            newSpec.structure ==
+                                                GlassStructure.double
                                             ? newSpec.intercallThickness
                                             : null,
                                       );
@@ -7682,7 +7901,7 @@ class _WindowViewState extends State<WindowView> {
                                   },
                                 ),
                               ),
-                        )
+                            )
                             .toList(),
                       );
                     },
@@ -7708,8 +7927,8 @@ class _WindowViewState extends State<WindowView> {
                     final isSliding67Family = widget.model.isSliding67Family;
                     final isSliding =
                         widget.systemMode == 'sliding' ||
-                            widget.model.systemMode == 'sliding' ||
-                            zone?.content == ZoneContent.slidingSash;
+                        widget.model.systemMode == 'sliding' ||
+                        zone?.content == ZoneContent.slidingSash;
                     if (isSliding && isSliding67Family) {
                       final double minGasket = spec.jointTwoSides ? 4.0 : 2.0;
                       final double maxAllowed =
@@ -7717,15 +7936,15 @@ class _WindowViewState extends State<WindowView> {
                       if (spec.structure == GlassStructure.double) {
                         final double tOther = isOuter
                             ? (spec.thicknessInner ??
-                            kDefaultGlassPaneThickness)
+                                  kDefaultGlassPaneThickness)
                             : (spec.thicknessOuter ??
-                            kDefaultGlassPaneThickness);
+                                  kDefaultGlassPaneThickness);
                         final int intercall = spec.intercallThickness;
                         thicknesses = thicknesses
                             .where(
                               (thick) =>
-                          (thick + intercall + tOther) <= maxAllowed,
-                        )
+                                  (thick + intercall + tOther) <= maxAllowed,
+                            )
                             .toList();
                       } else {
                         thicknesses = thicknesses
@@ -7735,65 +7954,60 @@ class _WindowViewState extends State<WindowView> {
                     }
                     final double currentThickness = isOuter
                         ? (spec.thicknessOuter ??
-                        widget.model.getThicknessForFinish(finish, color))
+                              widget.model.getThicknessForFinish(finish, color))
                         : (spec.thicknessInner ??
-                        widget.model.getThicknessForFinish(
-                          finish,
-                          color,
-                        ));
+                              widget.model.getThicknessForFinish(
+                                finish,
+                                color,
+                              ));
 
                     return _HorizontalWheelScrollArea(
-                      builder: (context, controller) =>
-                          SingleChildScrollView(
-                            controller: controller,
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              children: thicknesses.map((thickVal) {
-                                final isSelected = currentThickness == thickVal;
-                                return Padding(
-                                  padding: const EdgeInsets.only(right: 6),
-                                  child: _ContentButton(
-                                    label: '${thickVal.toStringAsFixed(0)} مم',
-                                    icon: Icons.line_weight_rounded,
-                                    selected: isSelected,
-                                    onPressed: () {
-                                      final newSpec = fitDoubleGlassToParclose(
-                                        spec.copyWith(
-                                          thicknessOuter: isOuter
-                                              ? thickVal
-                                              : null,
-                                          thicknessInner: !isOuter
-                                              ? thickVal
-                                              : null,
-                                        ),
-                                      );
-                                      if (zone != null) {
-                                        widget.model.updateSelectedZoneGlass(
-                                          thicknessOuter: isOuter
-                                              ? thickVal
-                                              : null,
-                                          thicknessInner: !isOuter
-                                              ? thickVal
-                                              : null,
-                                          intercallThickness:
+                      builder: (context, controller) => SingleChildScrollView(
+                        controller: controller,
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: thicknesses.map((thickVal) {
+                            final isSelected = currentThickness == thickVal;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: _ContentButton(
+                                label: '${thickVal.toStringAsFixed(0)} مم',
+                                icon: Icons.line_weight_rounded,
+                                selected: isSelected,
+                                onPressed: () {
+                                  final newSpec = fitDoubleGlassToParclose(
+                                    spec.copyWith(
+                                      thicknessOuter: isOuter ? thickVal : null,
+                                      thicknessInner: !isOuter
+                                          ? thickVal
+                                          : null,
+                                    ),
+                                  );
+                                  if (zone != null) {
+                                    widget.model.updateSelectedZoneGlass(
+                                      thicknessOuter: isOuter ? thickVal : null,
+                                      thicknessInner: !isOuter
+                                          ? thickVal
+                                          : null,
+                                      intercallThickness:
                                           newSpec.structure ==
                                               GlassStructure.double
-                                              ? newSpec.intercallThickness
-                                              : null,
-                                        );
-                                      } else {
-                                        setState(() {
-                                          _tempGlassSpec = newSpec;
-                                        });
-                                      }
-                                      _startPaintbrushMode(glassSpec: newSpec);
-                                      _autoScrollDrawer();
-                                    },
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          ),
+                                          ? newSpec.intercallThickness
+                                          : null,
+                                    );
+                                  } else {
+                                    setState(() {
+                                      _tempGlassSpec = newSpec;
+                                    });
+                                  }
+                                  _startPaintbrushMode(glassSpec: newSpec);
+                                  _autoScrollDrawer();
+                                },
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
                     );
                   },
                 ),
@@ -7920,8 +8134,7 @@ class _WindowViewState extends State<WindowView> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'اليسرى: ${(targetZone.doubleSashRatio * 100)
-                                  .toInt()}%',
+                              'اليسرى: ${(targetZone.doubleSashRatio * 100).toInt()}%',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 11,
@@ -7929,8 +8142,7 @@ class _WindowViewState extends State<WindowView> {
                               ),
                             ),
                             Text(
-                              'اليمنى: ${((1.0 - targetZone.doubleSashRatio) *
-                                  100).toInt()}%',
+                              'اليمنى: ${((1.0 - targetZone.doubleSashRatio) * 100).toInt()}%',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 11,
@@ -7945,7 +8157,7 @@ class _WindowViewState extends State<WindowView> {
                           max: 0.85,
                           divisions: 70,
                           label:
-                          '${(targetZone.doubleSashRatio * 100).toInt()}%',
+                              '${(targetZone.doubleSashRatio * 100).toInt()}%',
                           onChanged: (val) {
                             widget.model.updateZoneDoubleSashRatio(
                               targetZone!.id,
@@ -7992,8 +8204,8 @@ class _WindowViewState extends State<WindowView> {
                             final double totalWidth =
                                 targetZone!.boundary.width;
                             final currentLeftWidth =
-                            (targetZone.doubleSashRatio * totalWidth)
-                                .toInt();
+                                (targetZone.doubleSashRatio * totalWidth)
+                                    .toInt();
                             if (!_leftSashFocusNode.hasFocus) {
                               _leftSashWidthController.text = currentLeftWidth
                                   .toString();
@@ -8020,8 +8232,7 @@ class _WindowViewState extends State<WindowView> {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(
-                                      'القياس لا يمكن أن يتجاوز 80% من مجموع عرض الضلفات (${maxVal
-                                          .toInt()} مم)',
+                                      'القياس لا يمكن أن يتجاوز 80% من مجموع عرض الضلفات (${maxVal.toInt()} مم)',
                                     ),
                                     backgroundColor: Colors.red,
                                   ),
@@ -8034,8 +8245,7 @@ class _WindowViewState extends State<WindowView> {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(
-                                      'القياس لا يمكن أن يقل عن 15% من مجموع عرض الضلفات (${minVal
-                                          .toInt()} مم)',
+                                      'القياس لا يمكن أن يقل عن 15% من مجموع عرض الضلفات (${minVal.toInt()} مم)',
                                     ),
                                     backgroundColor: Colors.red,
                                   ),
@@ -8070,10 +8280,10 @@ class _WindowViewState extends State<WindowView> {
                                           color: isDark ? Colors.white70 : null,
                                         ),
                                         contentPadding:
-                                        const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4,
-                                        ),
+                                            const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 4,
+                                            ),
                                         enabledBorder: OutlineInputBorder(
                                           borderRadius: BorderRadius.circular(
                                             6,
@@ -8156,193 +8366,180 @@ class _WindowViewState extends State<WindowView> {
                 ),
               ),
               _HorizontalWheelScrollArea(
-                builder: (context, controller) =>
-                    SingleChildScrollView(
-                      controller: controller,
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: GlassStructure.values
-                            .map(
-                              (s) =>
-                              Padding(
-                                padding: const EdgeInsets.only(right: 6),
-                                child: _ContentButton(
-                                  label: _getStructureName(s),
-                                  icon: Icons.layers_rounded,
-                                  selected: structure == s,
-                                  onPressed: () async {
-                                    String? defaultSubtype;
-                                    String? defaultColor;
-                                    if (s == GlassStructure.closed) {
-                                      final panneaux = widget.model
-                                          .allGlassCache
-                                          .where(
-                                            (g) =>
-                                        g['type']
-                                            .toString()
-                                            .toLowerCase() ==
+                builder: (context, controller) => SingleChildScrollView(
+                  controller: controller,
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: GlassStructure.values
+                        .map(
+                          (s) => Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: _ContentButton(
+                              label: _getStructureName(s),
+                              icon: Icons.layers_rounded,
+                              selected: structure == s,
+                              onPressed: () async {
+                                String? defaultSubtype;
+                                String? defaultColor;
+                                if (s == GlassStructure.closed) {
+                                  final panneaux = widget.model.allGlassCache
+                                      .where(
+                                        (g) =>
+                                            g['type']
+                                                .toString()
+                                                .toLowerCase() ==
                                             'panneau',
                                       )
-                                          .toList();
-                                      final subtypes = panneaux
-                                          .map(
-                                            (g) =>
-                                            (g['subtype'] ?? '').toString(),
+                                      .toList();
+                                  final subtypes = panneaux
+                                      .map(
+                                        (g) => (g['subtype'] ?? '').toString(),
                                       )
-                                          .where((s) => s.isNotEmpty)
-                                          .toSet()
-                                          .toList();
-                                      if (subtypes.isNotEmpty) {
-                                        final savedSubtype = spec
-                                            .panneauSubtype;
-                                        defaultSubtype =
+                                      .where((s) => s.isNotEmpty)
+                                      .toSet()
+                                      .toList();
+                                  if (subtypes.isNotEmpty) {
+                                    final savedSubtype = spec.panneauSubtype;
+                                    defaultSubtype =
                                         spec.structure ==
-                                            GlassStructure.closed &&
+                                                GlassStructure.closed &&
                                             savedSubtype != null &&
                                             subtypes.any(
-                                                  (value) =>
-                                              value.toLowerCase() ==
+                                              (value) =>
+                                                  value.toLowerCase() ==
                                                   savedSubtype.toLowerCase(),
                                             )
-                                            ? savedSubtype
-                                            : subtypes.firstWhere(
-                                              (value) =>
-                                          !isDecorPanelSubtype(value),
-                                          orElse: () => subtypes.first,
-                                        );
-                                        final subRows = panneaux
-                                            .where(
-                                              (g) =>
-                                          (g['subtype'] ?? '')
-                                              .toString()
-                                              .toLowerCase() ==
+                                        ? savedSubtype
+                                        : subtypes.firstWhere(
+                                            (value) =>
+                                                !isDecorPanelSubtype(value),
+                                            orElse: () => subtypes.first,
+                                          );
+                                    final subRows = panneaux
+                                        .where(
+                                          (g) =>
+                                              (g['subtype'] ?? '')
+                                                  .toString()
+                                                  .toLowerCase() ==
                                               defaultSubtype!.toLowerCase(),
                                         )
-                                            .toList();
-                                        if (subRows.isNotEmpty) {
-                                          final colorsList = subRows
-                                              .map(
-                                                (g) =>
-                                                (g['color'] ?? '')
-                                                    .toString()
-                                                    .trim(),
+                                        .toList();
+                                    if (subRows.isNotEmpty) {
+                                      final colorsList = subRows
+                                          .map(
+                                            (g) => (g['color'] ?? '')
+                                                .toString()
+                                                .trim(),
                                           )
-                                              .where((c) => c.isNotEmpty)
-                                              .toSet()
-                                              .toList();
-                                          if (colorsList.isNotEmpty) {
-                                            defaultColor =
-                                                spec.panneauColor ??
-                                                    colorsList.first;
-                                          }
-                                        }
+                                          .where((c) => c.isNotEmpty)
+                                          .toSet()
+                                          .toList();
+                                      if (colorsList.isNotEmpty) {
+                                        defaultColor =
+                                            spec.panneauColor ??
+                                            colorsList.first;
                                       }
                                     }
+                                  }
+                                }
 
-                                    double? defaultThickOuter;
-                                    double? defaultThickInner;
-                                    final GlassColor? structureColorOuter =
+                                double? defaultThickOuter;
+                                double? defaultThickInner;
+                                final GlassColor? structureColorOuter =
                                     s != GlassStructure.closed &&
                                         spec.finishOuter != GlassFinish.stopSol
-                                        ? GlassColor.transparent
-                                        : null;
-                                    final GlassColor? structureColorInner =
+                                    ? GlassColor.transparent
+                                    : null;
+                                final GlassColor? structureColorInner =
                                     s != GlassStructure.closed &&
                                         spec.finishInner != GlassFinish.stopSol
-                                        ? GlassColor.transparent
-                                        : null;
-                                    if (s == GlassStructure.double) {
-                                      defaultThickOuter =
-                                          spec.thicknessOuter ??
-                                              widget.model
-                                                  .getThicknessForFinish(
-                                                spec.finishOuter,
-                                                structureColorOuter ??
-                                                    spec.colorOuter,
-                                              );
-                                      defaultThickInner =
-                                          spec.thicknessInner ??
-                                              widget.model
-                                                  .getThicknessForFinish(
-                                                spec.finishInner,
-                                                structureColorInner ??
-                                                    spec.colorInner,
-                                              );
-                                      if (defaultThickOuter == 0.0) {
-                                        defaultThickOuter = 5.0;
-                                      }
-                                      if (defaultThickInner == 0.0) {
-                                        defaultThickInner = 5.0;
-                                      }
-                                    } else if (s == GlassStructure.simple) {
-                                      defaultThickOuter =
-                                          spec.thicknessOuter ??
-                                              widget.model
-                                                  .getThicknessForFinish(
-                                                spec.finishOuter,
-                                                structureColorOuter ??
-                                                    spec.colorOuter,
-                                              );
-                                      if (defaultThickOuter == 0.0) {
-                                        defaultThickOuter = 5.0;
-                                      }
-                                    }
+                                    ? GlassColor.transparent
+                                    : null;
+                                if (s == GlassStructure.double) {
+                                  defaultThickOuter =
+                                      spec.thicknessOuter ??
+                                      widget.model.getThicknessForFinish(
+                                        spec.finishOuter,
+                                        structureColorOuter ?? spec.colorOuter,
+                                      );
+                                  defaultThickInner =
+                                      spec.thicknessInner ??
+                                      widget.model.getThicknessForFinish(
+                                        spec.finishInner,
+                                        structureColorInner ?? spec.colorInner,
+                                      );
+                                  if (defaultThickOuter == 0.0) {
+                                    defaultThickOuter = 5.0;
+                                  }
+                                  if (defaultThickInner == 0.0) {
+                                    defaultThickInner = 5.0;
+                                  }
+                                } else if (s == GlassStructure.simple) {
+                                  defaultThickOuter =
+                                      spec.thicknessOuter ??
+                                      widget.model.getThicknessForFinish(
+                                        spec.finishOuter,
+                                        structureColorOuter ?? spec.colorOuter,
+                                      );
+                                  if (defaultThickOuter == 0.0) {
+                                    defaultThickOuter = 5.0;
+                                  }
+                                }
 
-                                    final newSpec = fitDoubleGlassToParclose(
-                                      spec.copyWith(
-                                        structure: s,
-                                        hasGas:
+                                final newSpec = fitDoubleGlassToParclose(
+                                  spec.copyWith(
+                                    structure: s,
+                                    hasGas:
                                         s == GlassStructure.double &&
                                             spec.structure !=
                                                 GlassStructure.double
-                                            ? true
-                                            : null,
-                                        panneauSubtype: defaultSubtype,
-                                        panneauColor: defaultColor,
-                                        colorOuter: structureColorOuter,
-                                        colorInner: structureColorInner,
-                                        thicknessOuter: defaultThickOuter,
-                                        thicknessInner: defaultThickInner,
-                                      ),
-                                    );
-                                    if (zone != null) {
-                                      await widget.model
-                                          .updateSelectedZoneGlass(
-                                        structure: s,
-                                        hasGas:
+                                        ? true
+                                        : null,
+                                    panneauSubtype: defaultSubtype,
+                                    panneauColor: defaultColor,
+                                    colorOuter: structureColorOuter,
+                                    colorInner: structureColorInner,
+                                    thicknessOuter: defaultThickOuter,
+                                    thicknessInner: defaultThickInner,
+                                  ),
+                                );
+                                if (zone != null) {
+                                  await widget.model.updateSelectedZoneGlass(
+                                    structure: s,
+                                    hasGas:
                                         s == GlassStructure.double &&
                                             spec.structure !=
                                                 GlassStructure.double
-                                            ? true
-                                            : null,
-                                        panneauSubtype: defaultSubtype,
-                                        panneauColor: defaultColor,
-                                        colorOuter: structureColorOuter,
-                                        colorInner: structureColorInner,
-                                        thicknessOuter: defaultThickOuter,
-                                        thicknessInner: defaultThickInner,
-                                        intercallThickness:
+                                        ? true
+                                        : null,
+                                    panneauSubtype: defaultSubtype,
+                                    panneauColor: defaultColor,
+                                    colorOuter: structureColorOuter,
+                                    colorInner: structureColorInner,
+                                    thicknessOuter: defaultThickOuter,
+                                    thicknessInner: defaultThickInner,
+                                    intercallThickness:
                                         newSpec.structure ==
                                             GlassStructure.double
-                                            ? newSpec.intercallThickness
-                                            : null,
-                                      );
-                                    } else {
-                                      setState(() {
-                                        _tempGlassSpec = newSpec;
-                                      });
-                                    }
-                                    _startPaintbrushMode(glassSpec: newSpec);
-                                    if (s == GlassStructure.double) {
-                                      _autoScrollDrawer();
-                                    }
-                                  },
-                                ),
-                              ),
+                                        ? newSpec.intercallThickness
+                                        : null,
+                                  );
+                                } else {
+                                  setState(() {
+                                    _tempGlassSpec = newSpec;
+                                  });
+                                }
+                                _startPaintbrushMode(glassSpec: newSpec);
+                                if (s == GlassStructure.double) {
+                                  _autoScrollDrawer();
+                                }
+                              },
+                            ),
+                          ),
                         )
-                            .toList(),
-                      ),
-                    ),
+                        .toList(),
+                  ),
+                ),
               ),
               const SizedBox(height: 8),
               if (structure == GlassStructure.closed) ...[
@@ -8358,8 +8555,8 @@ class _WindowViewState extends State<WindowView> {
                     final panneaux = widget.model.allGlassCache
                         .where(
                           (g) =>
-                      g['type'].toString().toLowerCase() == 'panneau',
-                    )
+                              g['type'].toString().toLowerCase() == 'panneau',
+                        )
                         .toList();
                     final subtypes = panneaux
                         .map((g) => (g['subtype'] ?? '').toString())
@@ -8409,192 +8606,191 @@ class _WindowViewState extends State<WindowView> {
                     }
 
                     return _HorizontalWheelScrollArea(
-                      builder: (context, controller) =>
-                          SingleChildScrollView(
-                            controller: controller,
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              children: subtypes.map((sub) {
-                                final isSelected =
-                                    (spec.panneauSubtype ?? '').toLowerCase() ==
-                                        sub.toLowerCase();
-                                final isBardage = isBardagePanelSubtype(sub);
-                                final isDecor = isDecorPanelSubtype(sub);
-                                return Padding(
-                                  padding: const EdgeInsets.only(right: 6),
-                                  child: _ContentButton(
-                                    label: getArabicSubtypeName(sub),
-                                    icon: getSubtypeIcon(sub),
-                                    selected: isSelected,
-                                    onPressed: () async {
-                                      final subRows = panneaux
-                                          .where(
-                                            (g) =>
-                                        (g['subtype'] ?? '')
-                                            .toString()
-                                            .toLowerCase() ==
+                      builder: (context, controller) => SingleChildScrollView(
+                        controller: controller,
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: subtypes.map((sub) {
+                            final isSelected =
+                                (spec.panneauSubtype ?? '').toLowerCase() ==
+                                sub.toLowerCase();
+                            final isBardage = isBardagePanelSubtype(sub);
+                            final isDecor = isDecorPanelSubtype(sub);
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: _ContentButton(
+                                label: getArabicSubtypeName(sub),
+                                icon: getSubtypeIcon(sub),
+                                selected: isSelected,
+                                onPressed: () async {
+                                  final subRows = panneaux
+                                      .where(
+                                        (g) =>
+                                            (g['subtype'] ?? '')
+                                                .toString()
+                                                .toLowerCase() ==
                                             sub.toLowerCase(),
                                       )
-                                          .toList();
-                                      final selectedFrameColor =
+                                      .toList();
+                                  final selectedFrameColor =
                                       (widget.model.selectedDbColor?['name'] ??
-                                          widget
-                                              .model
-                                              .selectedDbColor?['color_name'] ??
-                                          widget.model.frameColor.name)
+                                              widget
+                                                  .model
+                                                  .selectedDbColor?['color_name'] ??
+                                              widget.model.frameColor.name)
                                           .toString()
                                           .trim();
-                                      String firstColor = isBardage
-                                          ? selectedFrameColor
-                                          : 'أبيض';
-                                      if (!isBardage && subRows.isNotEmpty) {
-                                        final colorsList = subRows
-                                            .map(
-                                              (g) =>
-                                              (g['color'] ?? '')
-                                                  .toString()
-                                                  .trim(),
+                                  String firstColor = isBardage
+                                      ? selectedFrameColor
+                                      : 'أبيض';
+                                  if (!isBardage && subRows.isNotEmpty) {
+                                    final colorsList = subRows
+                                        .map(
+                                          (g) => (g['color'] ?? '')
+                                              .toString()
+                                              .trim(),
                                         )
-                                            .where((c) => c.isNotEmpty)
-                                            .toSet()
-                                            .toList();
-                                        if (colorsList.isNotEmpty) {
-                                          firstColor = colorsList.first;
-                                        }
-                                      }
+                                        .where((c) => c.isNotEmpty)
+                                        .toSet()
+                                        .toList();
+                                    if (colorsList.isNotEmpty) {
+                                      firstColor = colorsList.first;
+                                    }
+                                  }
 
-                                      final sLower = sub.toLowerCase();
-                                      final GlassFinish targetFinish;
-                                      if (isBardage) {
-                                        targetFinish = GlassFinish.bardage;
-                                      } else if (sLower.contains('resine') ||
-                                          sLower.contains('ارزين') ||
-                                          sLower.contains('أرزين')) {
-                                        targetFinish = GlassFinish.resine;
-                                      } else if (sLower.contains('plexi') ||
-                                          sLower.contains('بليكسي')) {
-                                        targetFinish = GlassFinish.plexyGlass;
-                                      } else if (sLower.contains('decor') ||
-                                          sLower.contains('ديكور')) {
-                                        targetFinish =
-                                            GlassFinish.paneauSandwitchDecore;
-                                      } else {
-                                        targetFinish =
-                                            GlassFinish.paneauSandwitch;
-                                      }
+                                  final sLower = sub.toLowerCase();
+                                  final GlassFinish targetFinish;
+                                  if (isBardage) {
+                                    targetFinish = GlassFinish.bardage;
+                                  } else if (sLower.contains('resine') ||
+                                      sLower.contains('ارزين') ||
+                                      sLower.contains('أرزين')) {
+                                    targetFinish = GlassFinish.resine;
+                                  } else if (sLower.contains('plexi') ||
+                                      sLower.contains('بليكسي')) {
+                                    targetFinish = GlassFinish.plexyGlass;
+                                  } else if (sLower.contains('decor') ||
+                                      sLower.contains('ديكور')) {
+                                    targetFinish =
+                                        GlassFinish.paneauSandwitchDecore;
+                                  } else {
+                                    targetFinish = GlassFinish.paneauSandwitch;
+                                  }
 
-                                      final bardageProfile = isBardage
-                                          ? widget
-                                          .model
-                                          .componentOverrides['البارداج (Bardage)']
-                                          : null;
-                                      final rawBardageThickness =
+                                  final bardageProfile = isBardage
+                                      ? widget
+                                            .model
+                                            .componentOverrides['البارداج (Bardage)']
+                                      : null;
+                                  final rawBardageThickness =
                                       bardageProfile?['thickness'];
-                                      final bardageThickness =
+                                  final bardageThickness =
                                       rawBardageThickness is num
-                                          ? rawBardageThickness.toDouble()
-                                          : double.tryParse(
-                                        rawBardageThickness?.toString() ?? '',
-                                      );
-                                      final rawBardageId = bardageProfile?['id'];
-                                      final bardageProfileId = rawBardageId is num
-                                          ? rawBardageId.toInt()
-                                          : int.tryParse(
-                                        rawBardageId?.toString() ?? '',
-                                      );
-                                      Map<String, dynamic>? decorProduct;
-                                      if (isDecor && subRows.isNotEmpty) {
-                                        decorProduct = subRows.firstWhere(
-                                              (row) =>
-                                          row['id']?.toString() ==
-                                              spec.panneauProductId?.toString(),
-                                          orElse: () => subRows.first,
+                                      ? rawBardageThickness.toDouble()
+                                      : double.tryParse(
+                                          rawBardageThickness?.toString() ?? '',
                                         );
-                                        final productColor =
+                                  final rawBardageId = bardageProfile?['id'];
+                                  final bardageProfileId = rawBardageId is num
+                                      ? rawBardageId.toInt()
+                                      : int.tryParse(
+                                          rawBardageId?.toString() ?? '',
+                                        );
+                                  Map<String, dynamic>? decorProduct;
+                                  if (isDecor && subRows.isNotEmpty) {
+                                    decorProduct = subRows.firstWhere(
+                                      (row) =>
+                                          row['id']?.toString() ==
+                                          spec.panneauProductId?.toString(),
+                                      orElse: () => subRows.first,
+                                    );
+                                    final productColor =
                                         (decorProduct['color'] ?? '')
                                             .toString()
                                             .trim();
-                                        if (productColor.isNotEmpty) {
-                                          firstColor = productColor;
-                                        }
-                                      }
-                                      final rawDecorId = decorProduct?['id'];
-                                      final decorProductId = rawDecorId is num
-                                          ? rawDecorId.toInt()
-                                          : int.tryParse(
-                                        rawDecorId?.toString() ?? '',
-                                      );
-                                      final decorThickness = decorProduct ==
-                                          null
-                                          ? null
-                                          : _catalogNumber(
-                                        decorProduct,
-                                        'thickness',
-                                      );
-                                      final newSpec = spec.copyWith(
-                                        panneauSubtype: sub,
-                                        panneauColor: firstColor,
-                                        bardageUsesFrameColor: isBardage
-                                            ? true
-                                            : spec.bardageUsesFrameColor,
-                                        structure: GlassStructure.closed,
-                                        finishOuter: targetFinish,
-                                        finishInner: targetFinish,
-                                        panneauProductId: isBardage
-                                            ? bardageProfileId
-                                            : decorProductId,
-                                        decorDesignCode: (isDecor && decorProduct != null)
-                                            ? decorProduct['decor_design_code']?.toString()
-                                            : null,
-                                        thicknessOuter: isBardage
-                                            ? bardageThickness
-                                            : decorThickness,
-                                      );
-                                      if (zone != null) {
-                                        if (isDecor) {
-                                          final placement =
+                                    if (productColor.isNotEmpty) {
+                                      firstColor = productColor;
+                                    }
+                                  }
+                                  final rawDecorId = decorProduct?['id'];
+                                  final decorProductId = rawDecorId is num
+                                      ? rawDecorId.toInt()
+                                      : int.tryParse(
+                                          rawDecorId?.toString() ?? '',
+                                        );
+                                  final decorThickness = decorProduct == null
+                                      ? null
+                                      : _catalogNumber(
+                                          decorProduct,
+                                          'thickness',
+                                        );
+                                  final newSpec = spec.copyWith(
+                                    panneauSubtype: sub,
+                                    panneauColor: firstColor,
+                                    bardageUsesFrameColor: isBardage
+                                        ? true
+                                        : spec.bardageUsesFrameColor,
+                                    structure: GlassStructure.closed,
+                                    finishOuter: targetFinish,
+                                    finishInner: targetFinish,
+                                    panneauProductId: isBardage
+                                        ? bardageProfileId
+                                        : decorProductId,
+                                    decorDesignCode:
+                                        (isDecor && decorProduct != null)
+                                        ? decorProduct['decor_design_code']
+                                              ?.toString()
+                                        : null,
+                                    thicknessOuter: isBardage
+                                        ? bardageThickness
+                                        : decorThickness,
+                                  );
+                                  if (zone != null) {
+                                    if (isDecor) {
+                                      final placement =
                                           await _prepareDecorPanelPlacement(
                                             zone: zone,
                                             cellId: widget.model.activeSubZone,
                                             spec: newSpec,
                                           );
-                                          if (!placement.allowed) return;
-                                          widget.model.activeSubZone =
-                                              placement.cellId;
-                                        }
-                                        await widget.model
-                                            .updateSelectedZoneGlass(
-                                          panneauSubtype: sub,
-                                          panneauColor: firstColor,
-                                          bardageUsesFrameColor: isBardage
-                                              ? true
-                                              : spec.bardageUsesFrameColor,
-                                          finishOuter: targetFinish,
-                                          finishInner: targetFinish,
-                                          structure: GlassStructure.closed,
-                                          panneauProductId: isBardage
-                                              ? bardageProfileId
-                                              : decorProductId,
-                                          decorDesignCode: (isDecor && decorProduct != null)
-                                              ? decorProduct['decor_design_code']?.toString()
-                                              : null,
-                                          thicknessOuter: isBardage
-                                              ? bardageThickness
-                                              : decorThickness,
-                                        );
-                                      } else {
-                                        setState(() {
-                                          _tempGlassSpec = newSpec;
-                                        });
-                                      }
-                                      _startPaintbrushMode(glassSpec: newSpec);
-                                      _autoScrollDrawer();
-                                    },
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          ),
+                                      if (!placement.allowed) return;
+                                      widget.model.activeSubZone =
+                                          placement.cellId;
+                                    }
+                                    await widget.model.updateSelectedZoneGlass(
+                                      panneauSubtype: sub,
+                                      panneauColor: firstColor,
+                                      bardageUsesFrameColor: isBardage
+                                          ? true
+                                          : spec.bardageUsesFrameColor,
+                                      finishOuter: targetFinish,
+                                      finishInner: targetFinish,
+                                      structure: GlassStructure.closed,
+                                      panneauProductId: isBardage
+                                          ? bardageProfileId
+                                          : decorProductId,
+                                      decorDesignCode:
+                                          (isDecor && decorProduct != null)
+                                          ? decorProduct['decor_design_code']
+                                                ?.toString()
+                                          : null,
+                                      thicknessOuter: isBardage
+                                          ? bardageThickness
+                                          : decorThickness,
+                                    );
+                                  } else {
+                                    setState(() {
+                                      _tempGlassSpec = newSpec;
+                                    });
+                                  }
+                                  _startPaintbrushMode(glassSpec: newSpec);
+                                  _autoScrollDrawer();
+                                },
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
                     );
                   },
                 ),
@@ -8614,7 +8810,7 @@ class _WindowViewState extends State<WindowView> {
                       final uniqueProducts = <String, Map<String, dynamic>>{};
                       for (final product in widget.model.allGlassCache) {
                         if (product['type'].toString().toLowerCase() !=
-                            'panneau' ||
+                                'panneau' ||
                             !isDecorPanelSubtype(
                               product['subtype']?.toString(),
                             )) {
@@ -8639,7 +8835,7 @@ class _WindowViewState extends State<WindowView> {
 
                       final currentProduct = uniqueProducts[currentId]!;
                       final currentDesignCode =
-                      currentProduct['decor_design_code']?.toString();
+                          currentProduct['decor_design_code']?.toString();
 
                       return Column(
                         children: [
@@ -8694,9 +8890,7 @@ class _WindowViewState extends State<WindowView> {
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
-                                        '$name - ${width.toStringAsFixed(
-                                            0)} × ${height.toStringAsFixed(
-                                            0)} مم',
+                                        '$name - ${width.toStringAsFixed(0)} × ${height.toStringAsFixed(0)} مم',
                                         overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(fontSize: 10),
                                       ),
@@ -8718,47 +8912,47 @@ class _WindowViewState extends State<WindowView> {
                                   .allGlassCache
                                   .where(
                                     (row) =>
-                                row['id']?.toString() == value &&
-                                    (row['color'] ?? '')
-                                        .toString()
-                                        .trim()
-                                        .isNotEmpty,
-                              )
+                                        row['id']?.toString() == value &&
+                                        (row['color'] ?? '')
+                                            .toString()
+                                            .trim()
+                                            .isNotEmpty,
+                                  )
                                   .map(
                                     (row) =>
-                                    (row['color'] ?? '').toString().trim(),
-                              )
+                                        (row['color'] ?? '').toString().trim(),
+                                  )
                                   .toList();
                               final selectedColor =
-                              colorsForProduct.any(
+                                  colorsForProduct.any(
                                     (color) =>
-                                color.toLowerCase() ==
-                                    (spec.panneauColor ?? '').toLowerCase(),
-                              )
+                                        color.toLowerCase() ==
+                                        (spec.panneauColor ?? '').toLowerCase(),
+                                  )
                                   ? spec.panneauColor
                                   : (colorsForProduct.isEmpty
-                                  ? spec.panneauColor
-                                  : colorsForProduct.first);
+                                        ? spec.panneauColor
+                                        : colorsForProduct.first);
                               final newSpec = spec.copyWith(
                                 panneauProductId: chosenId,
-                                decorDesignCode:
-                                    chosen['decor_design_code']?.toString(),
+                                decorDesignCode: chosen['decor_design_code']
+                                    ?.toString(),
                                 panneauColor: selectedColor,
                                 thicknessOuter: thickness,
                               );
                               if (zone != null) {
                                 final placement =
-                                await _prepareDecorPanelPlacement(
-                                  zone: zone,
-                                  cellId: widget.model.activeSubZone,
-                                  spec: newSpec,
-                                );
+                                    await _prepareDecorPanelPlacement(
+                                      zone: zone,
+                                      cellId: widget.model.activeSubZone,
+                                      spec: newSpec,
+                                    );
                                 if (!placement.allowed) return;
                                 widget.model.activeSubZone = placement.cellId;
                                 await widget.model.updateSelectedZoneGlass(
                                   panneauProductId: chosenId,
-                                  decorDesignCode:
-                                      chosen['decor_design_code']?.toString(),
+                                  decorDesignCode: chosen['decor_design_code']
+                                      ?.toString(),
                                   panneauColor: selectedColor,
                                   thicknessOuter: thickness,
                                 );
@@ -8806,21 +9000,21 @@ class _WindowViewState extends State<WindowView> {
                       final panneaux = widget.model.allGlassCache
                           .where(
                             (g) =>
-                        g['type'].toString().toLowerCase() == 'panneau',
-                      )
+                                g['type'].toString().toLowerCase() == 'panneau',
+                          )
                           .toList();
                       final activeSub = spec.panneauSubtype ?? '';
                       final activeIsDecor = isDecorPanelSubtype(activeSub);
                       final subRows = panneaux
                           .where(
                             (g) =>
-                        (g['subtype'] ?? '').toString().toLowerCase() ==
-                            activeSub.toLowerCase() &&
-                            (!activeIsDecor ||
-                                spec.panneauProductId == null ||
-                                g['id']?.toString() ==
-                                    spec.panneauProductId.toString()),
-                      )
+                                (g['subtype'] ?? '').toString().toLowerCase() ==
+                                    activeSub.toLowerCase() &&
+                                (!activeIsDecor ||
+                                    spec.panneauProductId == null ||
+                                    g['id']?.toString() ==
+                                        spec.panneauProductId.toString()),
+                          )
                           .toList();
                       List<String> allowedColors = [];
                       if (subRows.isNotEmpty) {
@@ -8835,324 +9029,357 @@ class _WindowViewState extends State<WindowView> {
                       }
 
                       return _HorizontalWheelScrollArea(
-                        builder: (context, controller) =>
-                            SingleChildScrollView(
-                              controller: controller,
-                              scrollDirection: Axis.horizontal,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    vertical: 4),
-                                child: Row(
-                                  children: allowedColors.map((colorName) {
-                                    final isSelected =
-                                        (spec.panneauColor ?? '')
-                                            .toLowerCase() ==
-                                            colorName.toLowerCase();
-                                    final fakeDbColor = {'name': colorName};
-                                    final woodImage = _getWoodTextureImage(
-                                      fakeDbColor,
-                                    );
-                                    final parsedColor = getEffectiveGradientColors(
-                                      FrameColor.white,
-                                      fakeDbColor,
-                                    )[1];
+                        builder: (context, controller) => SingleChildScrollView(
+                          controller: controller,
+                          scrollDirection: Axis.horizontal,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: Row(
+                              children: allowedColors.map((colorName) {
+                                final isSelected =
+                                    (spec.panneauColor ?? '').toLowerCase() ==
+                                    colorName.toLowerCase();
+                                final fakeDbColor = {'name': colorName};
+                                final woodImage = _getWoodTextureImage(
+                                  fakeDbColor,
+                                );
+                                final parsedColor = getEffectiveGradientColors(
+                                  FrameColor.white,
+                                  fakeDbColor,
+                                )[1];
 
-                                    return Padding(
-                                      padding: const EdgeInsets.only(right: 12),
-                                      child: GestureDetector(
-                                        onTap: () {
-                                          final newSpec = spec.copyWith(
-                                            panneauColor: colorName,
-                                          );
-                                          if (zone != null) {
-                                            widget.model
-                                                .updateSelectedZoneGlass(
-                                              panneauColor: colorName,
-                                            );
-                                          } else {
-                                            setState(() {
-                                              _tempGlassSpec = newSpec;
-                                            });
-                                          }
-                                          _startPaintbrushMode(
-                                              glassSpec: newSpec);
-                                        },
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Container(
-                                              width: isSelected ? 34 : 28,
-                                              height: isSelected ? 34 : 28,
-                                              decoration: BoxDecoration(
-                                                shape: BoxShape.circle,
-                                                color: woodImage != null
-                                                    ? null
-                                                    : parsedColor,
-                                                image: woodImage,
-                                                border: Border.all(
-                                                  color: isSelected
-                                                      ? Colors.blue
-                                                      : Colors.grey.shade400,
-                                                  width: isSelected ? 2.5 : 1.0,
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 12),
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      final newSpec = spec.copyWith(
+                                        panneauColor: colorName,
+                                      );
+                                      if (zone != null) {
+                                        widget.model.updateSelectedZoneGlass(
+                                          panneauColor: colorName,
+                                        );
+                                      } else {
+                                        setState(() {
+                                          _tempGlassSpec = newSpec;
+                                        });
+                                      }
+                                      _startPaintbrushMode(glassSpec: newSpec);
+                                    },
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          width: isSelected ? 34 : 28,
+                                          height: isSelected ? 34 : 28,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: woodImage != null
+                                                ? null
+                                                : parsedColor,
+                                            image: woodImage,
+                                            border: Border.all(
+                                              color: isSelected
+                                                  ? Colors.blue
+                                                  : Colors.grey.shade400,
+                                              width: isSelected ? 2.5 : 1.0,
+                                            ),
+                                            boxShadow: [
+                                              if (isSelected)
+                                                BoxShadow(
+                                                  color: Colors.blue.withValues(
+                                                    alpha: 0.3,
+                                                  ),
+                                                  blurRadius: 4,
+                                                  spreadRadius: 1,
                                                 ),
-                                                boxShadow: [
-                                                  if (isSelected)
-                                                    BoxShadow(
-                                                      color: Colors.blue
-                                                          .withValues(
-                                                        alpha: 0.3,
-                                                      ),
-                                                      blurRadius: 4,
-                                                      spreadRadius: 1,
-                                                    ),
-                                                ],
-                                              ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              colorName,
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: isSelected
-                                                    ? FontWeight.bold
-                                                    : FontWeight.normal,
-                                                color: isSelected
-                                                    ? Colors.blue.shade900
-                                                    : Colors.black87,
-                                              ),
-                                            ),
-                                          ],
+                                            ],
+                                          ),
                                         ),
-                                      ),
-                                    );
-                                  }).toList(),
-                                ),
-                              ),
-                            ),
-                      );
-                    },
-                  ),
-                ] else
-                  ...[
-                    // اختيار مقاس البارداج المتوفر في قاعدة البيانات
-                    Padding(
-                      padding: EdgeInsets.only(top: 12, bottom: 6),
-                      child: Text(
-                        _tr('مقاس وسماكة البارداج:'),
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ),
-                    Builder(
-                      builder: (context) {
-                        // 1. نبحث أولاً في بروفيلات السيستم/السلسلة الحالية عن قطاع بارداج
-                        final bardageSections =
-                        (activeSeriesForSystem?.sections ?? []).where((s) {
-                          final t = s.type.toLowerCase().trim();
-                          final n = s.name.toLowerCase().trim();
-                          return isBardagePanelSubtype(t) ||
-                              isBardagePanelSubtype(n);
-                        }).toList();
-
-                        final List<Map<String, dynamic>> productsList = [];
-
-                        if (bardageSections.isNotEmpty) {
-                          for (var s in bardageSections) {
-                            productsList.add(
-                                {...s.toMap(), 'is_profile': true});
-                          }
-                        }
-
-                        final savedProductId = spec.panneauProductId;
-                        final int? currentProductId =
-                        productsList.any((p) => p['id'] == savedProductId)
-                            ? savedProductId
-                            : (productsList.isNotEmpty
-                            ? productsList.first['id'] as int?
-                            : null);
-
-                        if (productsList.isEmpty) {
-                          return Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.red.shade50,
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: Colors.red.shade100),
-                            ),
-                            child: Text(
-                              _tr(
-                                'أضف بروفيل بارداش إلى هذه السيري وحدد عرضه الظاهر وسمكه وطول بارته ليتم الحساب.',
-                              ),
-                              style: TextStyle(fontSize: 9, color: Colors.red),
-                            ),
-                          );
-                        }
-
-                        return Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.grey.shade300),
-                          ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<int>(
-                              value: currentProductId,
-                              isExpanded: true,
-                              icon: const Icon(
-                                Icons.arrow_drop_down,
-                                color: Colors.blue,
-                              ),
-                              items: productsList.map((p) {
-                                final name = p['name']?.toString() ?? 'بارداج';
-                                final double dbVw =
-                                    (p['visible_width'] as num?)?.toDouble() ??
-                                        0.0;
-                                final double dbThick =
-                                    (p['thickness'] as num?)?.toDouble() ??
-                                        24.0;
-                                final double visibleW = dbVw > 0
-                                    ? dbVw
-                                    : dbThick;
-                                final double thickness = dbThick;
-                                return DropdownMenuItem<int>(
-                                  value: p['id'] as int?,
-                                  child: Text(
-                                    '$name - العرض: ${visibleW.toStringAsFixed(
-                                        0)} مم (السمك: ${thickness
-                                        .toStringAsFixed(0)} مم)',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w500,
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          colorName,
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: isSelected
+                                                ? FontWeight.bold
+                                                : FontWeight.normal,
+                                            color: isSelected
+                                                ? Colors.blue.shade900
+                                                : Colors.black87,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 );
                               }).toList(),
-                              onChanged: (val) async {
-                                if (val != null) {
-                                  final chosen = productsList.firstWhere(
-                                        (p) => p['id'] == val,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ] else ...[
+                  // اختيار مقاس البارداج المتوفر في قاعدة البيانات
+                  Padding(
+                    padding: EdgeInsets.only(top: 12, bottom: 6),
+                    child: Text(
+                      _tr('مقاس وسماكة البارداج:'),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                  Builder(
+                    builder: (context) {
+                      // 1. نبحث أولاً في بروفيلات السيستم/السلسلة الحالية عن قطاع بارداج
+                      final bardageSections =
+                          (activeSeriesForSystem?.sections ?? []).where((s) {
+                            final t = s.type.toLowerCase().trim();
+                            final n = s.name.toLowerCase().trim();
+                            return isBardagePanelSubtype(t) ||
+                                isBardagePanelSubtype(n);
+                          }).toList();
+
+                      final List<Map<String, dynamic>> productsList = [];
+
+                      if (bardageSections.isNotEmpty) {
+                        for (var s in bardageSections) {
+                          productsList.add({...s.toMap(), 'is_profile': true});
+                        }
+                      }
+
+                      final savedProductId = spec.panneauProductId;
+                      final int? currentProductId =
+                          productsList.any((p) => p['id'] == savedProductId)
+                          ? savedProductId
+                          : (productsList.isNotEmpty
+                                ? productsList.first['id'] as int?
+                                : null);
+
+                      if (productsList.isEmpty) {
+                        return Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade50,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: Colors.red.shade100),
+                          ),
+                          child: Text(
+                            _tr(
+                              'أضف بروفيل بارداش إلى هذه السيري وحدد عرضه الظاهر وسمكه وطول بارته ليتم الحساب.',
+                            ),
+                            style: TextStyle(fontSize: 9, color: Colors.red),
+                          ),
+                        );
+                      }
+
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<int>(
+                            value: currentProductId,
+                            isExpanded: true,
+                            icon: const Icon(
+                              Icons.arrow_drop_down,
+                              color: Colors.blue,
+                            ),
+                            items: productsList.map((p) {
+                              final name = p['name']?.toString() ?? 'بارداج';
+                              final double dbVw =
+                                  (p['visible_width'] as num?)?.toDouble() ??
+                                  0.0;
+                              final double dbThick =
+                                  (p['thickness'] as num?)?.toDouble() ?? 24.0;
+                              final double visibleW = dbVw > 0 ? dbVw : dbThick;
+                              final double thickness = dbThick;
+                              return DropdownMenuItem<int>(
+                                value: p['id'] as int?,
+                                child: Text(
+                                  '$name - العرض: ${visibleW.toStringAsFixed(0)} مم (السمك: ${thickness.toStringAsFixed(0)} مم)',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (val) async {
+                              if (val != null) {
+                                final chosen = productsList.firstWhere(
+                                  (p) => p['id'] == val,
+                                );
+                                final rawThickness = chosen['thickness'];
+                                final profileThickness = rawThickness is num
+                                    ? rawThickness.toDouble()
+                                    : double.tryParse(
+                                            rawThickness?.toString() ?? '',
+                                          ) ??
+                                          0.0;
+                                final newSpec = spec.copyWith(
+                                  panneauProductId: val,
+                                  thicknessOuter: profileThickness,
+                                );
+
+                                if (chosen['is_profile'] == true) {
+                                  final mutableChosen =
+                                      Map<String, dynamic>.from(chosen);
+                                  widget
+                                          .model
+                                          .componentOverrides['البارداج (Bardage)'] =
+                                      mutableChosen;
+                                  await widget.model
+                                      .refreshBardageColorPrices();
+                                } else {
+                                  widget.model.componentOverrides.remove(
+                                    'البارداج (Bardage)',
                                   );
-                                  final rawThickness = chosen['thickness'];
-                                  final profileThickness = rawThickness is num
-                                      ? rawThickness.toDouble()
-                                      : double.tryParse(
-                                    rawThickness?.toString() ?? '',
-                                  ) ??
-                                      0.0;
-                                  final newSpec = spec.copyWith(
+                                }
+
+                                if (zone != null) {
+                                  widget.model.updateSelectedZoneGlass(
                                     panneauProductId: val,
                                     thicknessOuter: profileThickness,
                                   );
-
-                                  if (chosen['is_profile'] == true) {
-                                    final mutableChosen =
-                                    Map<String, dynamic>.from(chosen);
-                                    widget
-                                        .model
-                                        .componentOverrides['البارداج (Bardage)'] =
-                                        mutableChosen;
-                                    await widget.model
-                                        .refreshBardageColorPrices();
-                                  } else {
-                                    widget.model.componentOverrides.remove(
-                                      'البارداج (Bardage)',
-                                    );
-                                  }
-
-                                  if (zone != null) {
-                                    widget.model.updateSelectedZoneGlass(
-                                      panneauProductId: val,
-                                      thicknessOuter: profileThickness,
-                                    );
-                                  } else {
-                                    setState(() {
-                                      _tempGlassSpec = newSpec;
-                                    });
-                                  }
-                                  _startPaintbrushMode(glassSpec: newSpec);
+                                } else {
+                                  setState(() {
+                                    _tempGlassSpec = newSpec;
+                                  });
                                 }
-                              },
-                            ),
+                                _startPaintbrushMode(glassSpec: newSpec);
+                              }
+                            },
                           ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 8),
-
-                    // البارداج يأخذ ألوان البروفيلات (السيري)
-                    Padding(
-                      padding: EdgeInsets.only(top: 8, bottom: 8),
-                      child: Text(
-                        _tr('لون البارداج:'),
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 11,
                         ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 8),
+
+                  // البارداج يأخذ ألوان البروفيلات (السيري)
+                  Padding(
+                    padding: EdgeInsets.only(top: 8, bottom: 8),
+                    child: Text(
+                      _tr('لون البارداج:'),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
                       ),
                     ),
-                    Builder(
-                      builder: (context) {
-                        final colorList = widget.model.availableColors;
-                        final frameColorName =
-                        (widget.model.selectedDbColor?['name'] ??
-                            widget.model.selectedDbColor?['color_name'] ??
-                            widget.model.frameColor.name)
-                            .toString()
-                            .trim();
-                        final effectiveColorName = widget.model
-                            .getBardageColorNameForSpec(spec);
+                  ),
+                  Builder(
+                    builder: (context) {
+                      final colorList = widget.model.availableColors;
+                      final frameColorName =
+                          (widget.model.selectedDbColor?['name'] ??
+                                  widget.model.selectedDbColor?['color_name'] ??
+                                  widget.model.frameColor.name)
+                              .toString()
+                              .trim();
+                      final effectiveColorName = widget.model
+                          .getBardageColorNameForSpec(spec);
 
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _HorizontalWheelScrollArea(
-                              builder: (context, controller) =>
-                                  SingleChildScrollView(
-                                    controller: controller,
-                                    scrollDirection: Axis.horizontal,
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 4,
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Padding(
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _HorizontalWheelScrollArea(
+                            builder: (context, controller) =>
+                                SingleChildScrollView(
+                                  controller: controller,
+                                  scrollDirection: Axis.horizontal,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 4,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            right: 10,
+                                          ),
+                                          child: ChoiceChip(
+                                            label: Text(
+                                              '${_tr('تلقائي:')} $frameColorName',
+                                              style: const TextStyle(
+                                                fontSize: 9,
+                                              ),
+                                            ),
+                                            avatar: const Icon(
+                                              Icons.sync_rounded,
+                                              size: 16,
+                                            ),
+                                            selected:
+                                                spec.bardageUsesFrameColor,
+                                            onSelected: (_) async {
+                                              final newSpec = spec.copyWith(
+                                                panneauColor: frameColorName,
+                                                bardageUsesFrameColor: true,
+                                              );
+                                              if (zone != null) {
+                                                await widget.model
+                                                    .updateSelectedZoneGlass(
+                                                      panneauColor:
+                                                          frameColorName,
+                                                      bardageUsesFrameColor:
+                                                          true,
+                                                    );
+                                              } else {
+                                                setState(() {
+                                                  _tempGlassSpec = newSpec;
+                                                });
+                                              }
+                                              _startPaintbrushMode(
+                                                glassSpec: newSpec,
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                        ...colorList.map((colorMap) {
+                                          final colorName =
+                                              (colorMap['name'] ??
+                                                      colorMap['color_name'] ??
+                                                      '')
+                                                  .toString();
+                                          final isSelected =
+                                              !spec.bardageUsesFrameColor &&
+                                              effectiveColorName
+                                                      .toLowerCase() ==
+                                                  colorName.toLowerCase();
+                                          final woodImage =
+                                              _getWoodTextureImage(colorMap);
+                                          final parsedColor =
+                                              getEffectiveGradientColors(
+                                                FrameColor.white,
+                                                colorMap,
+                                              )[1];
+
+                                          return Padding(
                                             padding: const EdgeInsets.only(
                                               right: 10,
                                             ),
-                                            child: ChoiceChip(
-                                              label: Text(
-                                                '${_tr(
-                                                    'تلقائي:')} $frameColorName',
-                                                style: const TextStyle(
-                                                  fontSize: 9,
-                                                ),
-                                              ),
-                                              avatar: const Icon(
-                                                Icons.sync_rounded,
-                                                size: 16,
-                                              ),
-                                              selected:
-                                              spec.bardageUsesFrameColor,
-                                              onSelected: (_) async {
+                                            child: GestureDetector(
+                                              onTap: () async {
                                                 final newSpec = spec.copyWith(
-                                                  panneauColor: frameColorName,
-                                                  bardageUsesFrameColor: true,
+                                                  panneauColor: colorName,
+                                                  bardageUsesFrameColor: false,
                                                 );
                                                 if (zone != null) {
                                                   await widget.model
                                                       .updateSelectedZoneGlass(
-                                                    panneauColor:
-                                                    frameColorName,
-                                                    bardageUsesFrameColor:
-                                                    true,
-                                                  );
+                                                        panneauColor: colorName,
+                                                        bardageUsesFrameColor:
+                                                            false,
+                                                      );
                                                 } else {
                                                   setState(() {
                                                     _tempGlassSpec = newSpec;
@@ -9162,501 +9389,422 @@ class _WindowViewState extends State<WindowView> {
                                                   glassSpec: newSpec,
                                                 );
                                               },
+                                              child: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Container(
+                                                    width: isSelected ? 34 : 28,
+                                                    height: isSelected
+                                                        ? 34
+                                                        : 28,
+                                                    decoration: BoxDecoration(
+                                                      shape: BoxShape.circle,
+                                                      color: woodImage != null
+                                                          ? null
+                                                          : parsedColor,
+                                                      image: woodImage,
+                                                      border: Border.all(
+                                                        color: isSelected
+                                                            ? Colors.blue
+                                                            : Colors
+                                                                  .grey
+                                                                  .shade400,
+                                                        width: isSelected
+                                                            ? 2.5
+                                                            : 1.0,
+                                                      ),
+                                                      boxShadow: [
+                                                        if (isSelected)
+                                                          BoxShadow(
+                                                            color: Colors.blue
+                                                                .withOpacity(
+                                                                  0.3,
+                                                                ),
+                                                            blurRadius: 4,
+                                                            spreadRadius: 1,
+                                                          ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  SizedBox(
+                                                    width: 42,
+                                                    child: Text(
+                                                      colorName,
+                                                      textAlign:
+                                                          TextAlign.center,
+                                                      maxLines: 2,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        fontSize: 9,
+                                                        fontWeight: isSelected
+                                                            ? FontWeight.bold
+                                                            : FontWeight.normal,
+                                                        color: isSelected
+                                                            ? Colors
+                                                                  .blue
+                                                                  .shade900
+                                                            : Colors.black87,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                             ),
-                                          ),
-                                          ...colorList.map((colorMap) {
-                                            final colorName =
-                                            (colorMap['name'] ??
-                                                colorMap['color_name'] ??
-                                                '')
-                                                .toString();
-                                            final isSelected =
-                                                !spec.bardageUsesFrameColor &&
-                                                    effectiveColorName
-                                                        .toLowerCase() ==
-                                                        colorName.toLowerCase();
-                                            final woodImage =
-                                            _getWoodTextureImage(colorMap);
-                                            final parsedColor =
-                                            getEffectiveGradientColors(
-                                              FrameColor.white,
-                                              colorMap,
-                                            )[1];
-
-                                            return Padding(
-                                              padding: const EdgeInsets.only(
-                                                right: 10,
-                                              ),
-                                              child: GestureDetector(
-                                                onTap: () async {
-                                                  final newSpec = spec.copyWith(
-                                                    panneauColor: colorName,
-                                                    bardageUsesFrameColor: false,
-                                                  );
-                                                  if (zone != null) {
-                                                    await widget.model
-                                                        .updateSelectedZoneGlass(
-                                                      panneauColor: colorName,
-                                                      bardageUsesFrameColor:
-                                                      false,
-                                                    );
-                                                  } else {
-                                                    setState(() {
-                                                      _tempGlassSpec = newSpec;
-                                                    });
-                                                  }
-                                                  _startPaintbrushMode(
-                                                    glassSpec: newSpec,
-                                                  );
-                                                },
-                                                child: Column(
-                                                  mainAxisSize: MainAxisSize
-                                                      .min,
-                                                  children: [
-                                                    Container(
-                                                      width: isSelected
-                                                          ? 34
-                                                          : 28,
-                                                      height: isSelected
-                                                          ? 34
-                                                          : 28,
-                                                      decoration: BoxDecoration(
-                                                        shape: BoxShape.circle,
-                                                        color: woodImage != null
-                                                            ? null
-                                                            : parsedColor,
-                                                        image: woodImage,
-                                                        border: Border.all(
-                                                          color: isSelected
-                                                              ? Colors.blue
-                                                              : Colors
-                                                              .grey
-                                                              .shade400,
-                                                          width: isSelected
-                                                              ? 2.5
-                                                              : 1.0,
-                                                        ),
-                                                        boxShadow: [
-                                                          if (isSelected)
-                                                            BoxShadow(
-                                                              color: Colors.blue
-                                                                  .withOpacity(
-                                                                0.3,
-                                                              ),
-                                                              blurRadius: 4,
-                                                              spreadRadius: 1,
-                                                            ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 4),
-                                                    SizedBox(
-                                                      width: 42,
-                                                      child: Text(
-                                                        colorName,
-                                                        textAlign:
-                                                        TextAlign.center,
-                                                        maxLines: 2,
-                                                        overflow:
-                                                        TextOverflow.ellipsis,
-                                                        style: TextStyle(
-                                                          fontSize: 9,
-                                                          fontWeight: isSelected
-                                                              ? FontWeight.bold
-                                                              : FontWeight
-                                                              .normal,
-                                                          color: isSelected
-                                                              ? Colors
-                                                              .blue
-                                                              .shade900
-                                                              : Colors.black87,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            );
-                                          }),
-                                        ],
-                                      ),
+                                          );
+                                        }),
+                                      ],
                                     ),
                                   ),
-                            ),
-                            if (colorList.isEmpty)
-                              Padding(
-                                padding: EdgeInsets.only(bottom: 8),
-                                child: Text(
-                                  _tr('لا توجد ألوان مضافة لهذه السلسلة.'),
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    color: Colors.red,
-                                  ),
+                                ),
+                          ),
+                          if (colorList.isEmpty)
+                            Padding(
+                              padding: EdgeInsets.only(bottom: 8),
+                              child: Text(
+                                _tr('لا توجد ألوان مضافة لهذه السلسلة.'),
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  color: Colors.red,
                                 ),
                               ),
-                            const SizedBox(height: 12),
-                            Text(
-                              _tr('اتجاه شرائح البارداج:'),
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 11,
-                              ),
                             ),
-                            const SizedBox(height: 6),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _ContentButton(
-                                    label: 'أفقي',
-                                    icon: Icons.reorder_rounded,
-                                    selected: !(spec.isVerticalBardage),
-                                    onPressed: () {
-                                      final newSpec = spec.copyWith(
+                          const SizedBox(height: 12),
+                          Text(
+                            _tr('اتجاه شرائح البارداج:'),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _ContentButton(
+                                  label: 'أفقي',
+                                  icon: Icons.reorder_rounded,
+                                  selected: !(spec.isVerticalBardage),
+                                  onPressed: () {
+                                    final newSpec = spec.copyWith(
+                                      isVerticalBardage: false,
+                                    );
+                                    if (zone != null &&
+                                        widget.model.activeSubZone != null) {
+                                      widget.model.updateSelectedZoneGlass(
                                         isVerticalBardage: false,
                                       );
-                                      if (zone != null &&
-                                          widget.model.activeSubZone != null) {
-                                        widget.model.updateSelectedZoneGlass(
-                                          isVerticalBardage: false,
-                                        );
-                                      } else {
-                                        setState(() {
-                                          _tempGlassSpec = newSpec;
-                                        });
-                                      }
-                                      _startPaintbrushMode(glassSpec: newSpec);
-                                    },
-                                  ),
+                                    } else {
+                                      setState(() {
+                                        _tempGlassSpec = newSpec;
+                                      });
+                                    }
+                                    _startPaintbrushMode(glassSpec: newSpec);
+                                  },
                                 ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: _ContentButton(
-                                    label: 'عمودي',
-                                    icon: Icons.view_week_rounded,
-                                    selected: spec.isVerticalBardage,
-                                    onPressed: () {
-                                      final newSpec = spec.copyWith(
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _ContentButton(
+                                  label: 'عمودي',
+                                  icon: Icons.view_week_rounded,
+                                  selected: spec.isVerticalBardage,
+                                  onPressed: () {
+                                    final newSpec = spec.copyWith(
+                                      isVerticalBardage: true,
+                                    );
+                                    if (zone != null &&
+                                        widget.model.activeSubZone != null) {
+                                      widget.model.updateSelectedZoneGlass(
                                         isVerticalBardage: true,
                                       );
-                                      if (zone != null &&
-                                          widget.model.activeSubZone != null) {
-                                        widget.model.updateSelectedZoneGlass(
-                                          isVerticalBardage: true,
-                                        );
-                                      } else {
-                                        setState(() {
-                                          _tempGlassSpec = newSpec;
-                                        });
-                                      }
-                                      _startPaintbrushMode(glassSpec: newSpec);
-                                    },
+                                    } else {
+                                      setState(() {
+                                        _tempGlassSpec = newSpec;
+                                      });
+                                    }
+                                    _startPaintbrushMode(glassSpec: newSpec);
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade50,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: Colors.orange.shade200),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.view_stream_rounded,
+                                  size: 12,
+                                  color: Colors.orange,
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  _tr('يُحسب بالمتر الطولي كبروفيل'),
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: Colors.orange,
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 10),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 5,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.orange.shade50,
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(
-                                    color: Colors.orange.shade200),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.view_stream_rounded,
-                                    size: 12,
-                                    color: Colors.orange,
-                                  ),
-                                  SizedBox(width: 4),
-                                  Text(
-                                    _tr('يُحسب بالمتر الطولي كبروفيل'),
-                                    style: TextStyle(
-                                      fontSize: 9,
-                                      color: Colors.orange,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ],
-              ] else
-                if (structure == GlassStructure.double) ...[
-                  const Divider(),
-                  Text(
-                    Localization.translate('الوجه الخارجي', lang),
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue,
-                      fontSize: 12,
-                    ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
-                  buildGlassLayer(true),
-                  const SizedBox(height: 8),
-                  const Divider(),
-                  Text(
-                    Localization.translate('الوجه الداخلي', lang),
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue,
-                      fontSize: 12,
-                    ),
+                ],
+              ] else if (structure == GlassStructure.double) ...[
+                const Divider(),
+                Text(
+                  Localization.translate('الوجه الخارجي', lang),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue,
+                    fontSize: 12,
                   ),
-                  buildGlassLayer(false),
-                  const SizedBox(height: 12),
-                  Text(
-                    Localization.translate(
-                      'سمك الفاصل (Intercall) — المقترح تلقائياً حسب Parclose:',
-                      lang,
-                    ),
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue,
-                      fontSize: 12,
-                    ),
+                ),
+                buildGlassLayer(true),
+                const SizedBox(height: 8),
+                const Divider(),
+                Text(
+                  Localization.translate('الوجه الداخلي', lang),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue,
+                    fontSize: 12,
                   ),
-                  const SizedBox(height: 6),
-                  if (requiredIntercall == null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Text(
-                        _tr(
-                          'لا توجد Parclose مناسبة لسماكة لوحي الزجاج المختارة. اختر Parclose مزدوجة متوافقة أولاً.',
-                        ),
-                        style: TextStyle(
-                          color: Colors.red.shade700,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
+                ),
+                buildGlassLayer(false),
+                const SizedBox(height: 12),
+                Text(
+                  Localization.translate(
+                    'سمك الفاصل (Intercall) — المقترح تلقائياً حسب Parclose:',
+                    lang,
+                  ),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                if (requiredIntercall == null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(
+                      _tr(
+                        'لا توجد Parclose مناسبة لسماكة لوحي الزجاج المختارة. اختر Parclose مزدوجة متوافقة أولاً.',
+                      ),
+                      style: TextStyle(
+                        color: Colors.red.shade700,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: intercallChoices.map((g) {
-                      int val = (g['thickness'] as num?)?.toInt() ?? 0;
-                      final isSliding =
-                          widget.systemMode == 'sliding' ||
-                              widget.model.systemMode == 'sliding' ||
-                              (zone != null &&
-                                  zone.content == ZoneContent.slidingSash);
-                      final double tOuter =
-                          spec.thicknessOuter ?? kDefaultGlassPaneThickness;
-                      final double tInner =
-                          spec.thicknessInner ?? kDefaultGlassPaneThickness;
-                      final double jointAllowance = isSliding
-                          ? (widget.model.selectedVitrageJointThickness(
-                        fallback: 2.0,
-                      ) *
-                          (spec.jointTwoSides ? 2 : 1))
-                          : (widget.model.selectedVitrageJointThickness(
-                        fallback: 2.0,
-                      ) +
-                          widget.model.selectedBourrageJointThickness(
-                            doubleGlass: true,
-                            fallback: 2.0,
-                          ));
-                      final maxCapacity = widget.model
-                          .glazingCapacityForStructure(
-                        GlassStructure.double,
-                        sliding: isSliding,
-                      );
-                      final totalWithJoint =
-                          tOuter + val + tInner + jointAllowance;
-                      final bool exceedsCapacity =
-                          maxCapacity != null && totalWithJoint > maxCapacity;
-                      final bool hasGlazingBead = widget.model
-                          .hasGlazingBeadForContext(sliding: isSliding);
+                  ),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: intercallChoices.map((g) {
+                    int val = (g['thickness'] as num?)?.toInt() ?? 0;
+                    final isSliding =
+                        widget.systemMode == 'sliding' ||
+                        widget.model.systemMode == 'sliding' ||
+                        (zone != null &&
+                            zone.content == ZoneContent.slidingSash);
+                    final double tOuter =
+                        spec.thicknessOuter ?? kDefaultGlassPaneThickness;
+                    final double tInner =
+                        spec.thicknessInner ?? kDefaultGlassPaneThickness;
+                    final double jointAllowance = isSliding
+                        ? (widget.model.selectedVitrageJointThickness(
+                                fallback: 2.0,
+                              ) *
+                              (spec.jointTwoSides ? 2 : 1))
+                        : (widget.model.selectedVitrageJointThickness(
+                                fallback: 2.0,
+                              ) +
+                              widget.model.selectedBourrageJointThickness(
+                                doubleGlass: true,
+                                fallback: 2.0,
+                              ));
+                    final maxCapacity = widget.model
+                        .glazingCapacityForStructure(
+                          GlassStructure.double,
+                          sliding: isSliding,
+                        );
+                    final totalWithJoint =
+                        tOuter + val + tInner + jointAllowance;
+                    final bool exceedsCapacity =
+                        maxCapacity != null && totalWithJoint > maxCapacity;
+                    final bool hasGlazingBead = widget.model
+                        .hasGlazingBeadForContext(sliding: isSliding);
 
-                      return _IntercallButton(
-                        thickness: val,
-                        selected: spec.intercallThickness == val,
-                        exceedsCapacity: exceedsCapacity,
-                        showWarning:
-                        widget.model.getPriceForIntercall(val) == 0.0,
-                        onPressed: () {
-                          if (exceedsCapacity) {
-                            ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  'لا يمكن استقبال فاصل (Intercal) $val مم:\n'
-                                      'السماكة الإجمالية مع الجوان (${totalWithJoint
-                                      .toStringAsFixed(
-                                      1)} مم) تتجاوز سعة ${hasGlazingBead
-                                      ? "الـ Parclose"
-                                      : "الضلفة"} القصوى (${maxCapacity
-                                      .toStringAsFixed(1)} مم).\n'
-                                      'يجب تغيير سماكة الزجاج أولاً ثم اختيار الـ Intercal.',
-                                ),
-                                backgroundColor: Colors.red.shade800,
-                                duration: const Duration(seconds: 4),
+                    return _IntercallButton(
+                      thickness: val,
+                      selected: spec.intercallThickness == val,
+                      exceedsCapacity: exceedsCapacity,
+                      showWarning:
+                          widget.model.getPriceForIntercall(val) == 0.0,
+                      onPressed: () {
+                        if (exceedsCapacity) {
+                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'لا يمكن استقبال فاصل (Intercal) $val مم:\n'
+                                'السماكة الإجمالية مع الجوان (${totalWithJoint.toStringAsFixed(1)} مم) تتجاوز سعة ${hasGlazingBead ? "الـ Parclose" : "الضلفة"} القصوى (${maxCapacity.toStringAsFixed(1)} مم).\n'
+                                'يجب تغيير سماكة الزجاج أولاً ثم اختيار الـ Intercal.',
                               ),
-                            );
-                            return;
-                          }
+                              backgroundColor: Colors.red.shade800,
+                              duration: const Duration(seconds: 4),
+                            ),
+                          );
+                          return;
+                        }
 
-                          String? warning;
-                          if (requiredIntercall == null) {
-                            warning =
-                            'تنبيه: لا توجد Parclose مطابقة تلقائياً لسماكة لوحي الزجاج. تحقق من الطلب قبل اعتماده.';
-                          } else if (val != requiredIntercall) {
-                            warning =
-                            'تنبيه: السماكة المقترحة مع Parclose هي $requiredIntercall مم، وتم اختيار $val مم يدوياً.';
-                          }
-                          final newSpec = spec.copyWith(
-                              intercallThickness: val);
+                        String? warning;
+                        if (requiredIntercall == null) {
+                          warning =
+                              'تنبيه: لا توجد Parclose مطابقة تلقائياً لسماكة لوحي الزجاج. تحقق من الطلب قبل اعتماده.';
+                        } else if (val != requiredIntercall) {
+                          warning =
+                              'تنبيه: السماكة المقترحة مع Parclose هي $requiredIntercall مم، وتم اختيار $val مم يدوياً.';
+                        }
+                        final newSpec = spec.copyWith(intercallThickness: val);
+                        if (zone != null) {
+                          widget.model.updateSelectedZoneGlass(
+                            intercallThickness: val,
+                          );
+                        } else {
+                          setState(() {
+                            _tempGlassSpec = newSpec;
+                          });
+                        }
+                        _startPaintbrushMode(glassSpec: newSpec);
+                        if (warning != null) {
+                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(warning),
+                              backgroundColor: Colors.orange.shade800,
+                            ),
+                          );
+                        }
+                      },
+                    );
+                  }).toList(),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.air_rounded,
+                        color: Colors.blue,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _tr('يحتوي على غاز (Gas)'),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const Spacer(),
+                      Switch(
+                        value: spec.hasGas,
+                        activeThumbColor: Colors.blue,
+                        onChanged: (val) {
+                          final newSpec = spec.copyWith(hasGas: val);
                           if (zone != null) {
-                            widget.model.updateSelectedZoneGlass(
-                              intercallThickness: val,
-                            );
+                            widget.model.updateSelectedZoneGlass(hasGas: val);
                           } else {
                             setState(() {
                               _tempGlassSpec = newSpec;
                             });
                           }
                           _startPaintbrushMode(glassSpec: newSpec);
-                          if (warning != null) {
-                            ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(warning),
-                                backgroundColor: Colors.orange.shade800,
-                              ),
-                            );
-                          }
                         },
-                      );
-                    }).toList(),
+                      ),
+                    ],
                   ),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
-                    child: Row(
+                ),
+                const Divider(),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      Localization.translate(
+                        'ديكور الزجاج المزدوج (ورود):',
+                        lang,
+                      ),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue,
+                        fontSize: 12,
+                      ),
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(
-                          Icons.air_rounded,
-                          color: Colors.blue,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 6),
                         Text(
-                          _tr('يحتوي على غاز (Gas)'),
+                          Localization.translate('وردات', lang),
                           style: TextStyle(
+                            fontSize: 11,
                             fontWeight: FontWeight.bold,
-                            fontSize: 12,
                           ),
                         ),
-                        const Spacer(),
-                        Switch(
-                          value: spec.hasGas,
-                          activeThumbColor: Colors.blue,
+                        Checkbox(
+                          value: spec.hasRosettes,
+                          activeColor: Colors.blue,
+                          visualDensity: VisualDensity.compact,
                           onChanged: (val) {
-                            final newSpec = spec.copyWith(hasGas: val);
-                            if (zone != null) {
-                              widget.model.updateSelectedZoneGlass(hasGas: val);
-                            } else {
-                              setState(() {
-                                _tempGlassSpec = newSpec;
-                              });
+                            if (val != null) {
+                              final newSpec = spec.copyWith(hasRosettes: val);
+                              if (zone != null) {
+                                widget.model.updateSelectedZoneGlassDecor(
+                                  hasRosettes: val,
+                                );
+                              } else {
+                                setState(() => _tempGlassSpec = newSpec);
+                              }
+                              _startPaintbrushMode(glassSpec: newSpec);
                             }
-                            _startPaintbrushMode(glassSpec: newSpec);
                           },
                         ),
                       ],
                     ),
-                  ),
-                  const Divider(),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        Localization.translate(
-                          'ديكور الزجاج المزدوج (ورود):',
-                          lang,
-                        ),
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue,
-                          fontSize: 12,
-                        ),
-                      ),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            Localization.translate('وردات', lang),
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Checkbox(
-                            value: spec.hasRosettes,
-                            activeColor: Colors.blue,
-                            visualDensity: VisualDensity.compact,
-                            onChanged: (val) {
-                              if (val != null) {
-                                final newSpec = spec.copyWith(hasRosettes: val);
-                                if (zone != null) {
-                                  widget.model.updateSelectedZoneGlassDecor(
-                                    hasRosettes: val,
-                                  );
-                                } else {
-                                  setState(() => _tempGlassSpec = newSpec);
-                                }
-                                _startPaintbrushMode(glassSpec: newSpec);
-                              }
-                            },
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      Text(
-                        Localization.translate('أفقي:', lang),
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.remove, size: 16),
-                        onPressed: () {
-                          if (spec.decorH > 0) {
-                            final newSpec = spec.copyWith(
-                              decorH: spec.decorH - 1,
-                            );
-                            if (zone != null) {
-                              widget.model.updateSelectedZoneGlassDecor(
-                                decorH: newSpec.decorH,
-                              );
-                            } else {
-                              setState(() => _tempGlassSpec = newSpec);
-                            }
-                            _startPaintbrushMode(glassSpec: newSpec);
-                          }
-                        },
-                      ),
-                      Text(
-                        '${spec.decorH}',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.add, size: 16),
-                        onPressed: () {
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Text(
+                      Localization.translate('أفقي:', lang),
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.remove, size: 16),
+                      onPressed: () {
+                        if (spec.decorH > 0) {
                           final newSpec = spec.copyWith(
-                              decorH: spec.decorH + 1);
+                            decorH: spec.decorH - 1,
+                          );
                           if (zone != null) {
                             widget.model.updateSelectedZoneGlassDecor(
                               decorH: newSpec.decorH,
@@ -9665,44 +9813,43 @@ class _WindowViewState extends State<WindowView> {
                             setState(() => _tempGlassSpec = newSpec);
                           }
                           _startPaintbrushMode(glassSpec: newSpec);
-                        },
-                      ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      Text(
-                        Localization.translate('عمودي:', lang),
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.remove, size: 16),
-                        onPressed: () {
-                          if (spec.decorV > 0) {
-                            final newSpec = spec.copyWith(
-                              decorV: spec.decorV - 1,
-                            );
-                            if (zone != null) {
-                              widget.model.updateSelectedZoneGlassDecor(
-                                decorV: newSpec.decorV,
-                              );
-                            } else {
-                              setState(() => _tempGlassSpec = newSpec);
-                            }
-                            _startPaintbrushMode(glassSpec: newSpec);
-                          }
-                        },
-                      ),
-                      Text(
-                        '${spec.decorV}',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.add, size: 16),
-                        onPressed: () {
+                        }
+                      },
+                    ),
+                    Text(
+                      '${spec.decorH}',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.add, size: 16),
+                      onPressed: () {
+                        final newSpec = spec.copyWith(decorH: spec.decorH + 1);
+                        if (zone != null) {
+                          widget.model.updateSelectedZoneGlassDecor(
+                            decorH: newSpec.decorH,
+                          );
+                        } else {
+                          setState(() => _tempGlassSpec = newSpec);
+                        }
+                        _startPaintbrushMode(glassSpec: newSpec);
+                      },
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    Text(
+                      Localization.translate('عمودي:', lang),
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.remove, size: 16),
+                      onPressed: () {
+                        if (spec.decorV > 0) {
                           final newSpec = spec.copyWith(
-                              decorV: spec.decorV + 1);
+                            decorV: spec.decorV - 1,
+                          );
                           if (zone != null) {
                             widget.model.updateSelectedZoneGlassDecor(
                               decorV: newSpec.decorV,
@@ -9711,82 +9858,271 @@ class _WindowViewState extends State<WindowView> {
                             setState(() => _tempGlassSpec = newSpec);
                           }
                           _startPaintbrushMode(glassSpec: newSpec);
-                        },
-                      ),
-                    ],
-                  ),
+                        }
+                      },
+                    ),
+                    Text(
+                      '${spec.decorV}',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.add, size: 16),
+                      onPressed: () {
+                        final newSpec = spec.copyWith(decorV: spec.decorV + 1);
+                        if (zone != null) {
+                          widget.model.updateSelectedZoneGlassDecor(
+                            decorV: newSpec.decorV,
+                          );
+                        } else {
+                          setState(() => _tempGlassSpec = newSpec);
+                        }
+                        _startPaintbrushMode(glassSpec: newSpec);
+                      },
+                    ),
+                  ],
+                ),
+                Builder(
+                  builder: (context) {
+                    final baguettes = widget.model.allGlassCache
+                        .where(
+                          (g) => g['type'].toString().toLowerCase().contains(
+                            'baguette',
+                          ),
+                        )
+                        .toList();
+
+                    if (baguettes.isEmpty) {
+                      return Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8.0),
+                        child: Text(
+                          _tr(
+                            'لا يوجد باجيت ديكور في قاعدة البيانات. يرجى إضافتها أولاً.',
+                          ),
+                          style: TextStyle(color: Colors.red, fontSize: 11),
+                        ),
+                      );
+                    }
+
+                    // Safe int id extraction
+                    int? specBaguetteId = (spec.decorBaguetteId is int)
+                        ? spec.decorBaguetteId as int
+                        : int.tryParse(spec.decorBaguetteId?.toString() ?? '');
+
+                    var selectedBaguette = baguettes.firstWhere(
+                      (b) => (b['id'] as num?)?.toInt() == specBaguetteId,
+                      orElse: () => baguettes.first,
+                    );
+
+                    final int selectedBaguetteId =
+                        (selectedBaguette['id'] as num?)?.toInt() ??
+                        (baguettes.first['id'] as num?)?.toInt() ??
+                        0;
+
+                    List<String> allowedColors = widget.model.allGlassCache
+                        .where(
+                          (g) =>
+                              (g['id'] as num?)?.toInt() == selectedBaguetteId,
+                        )
+                        .map((g) => g['color']?.toString() ?? '')
+                        .where((c) => c.isNotEmpty)
+                        .toList();
+                    if (allowedColors.isEmpty) {
+                      allowedColors = ['أبيض', 'ذهبي', 'فضي', 'رمادي'];
+                    }
+
+                    String currentDecorColor = spec.decorColor;
+                    if (!allowedColors.contains(currentDecorColor)) {
+                      currentDecorColor = allowedColors.first;
+                    }
+
+                    // Build unique items lists (no duplicate ids)
+                    final List<int> baguetteIds = [];
+                    final List<Map<String, dynamic>> uniqueBaguettes = [];
+                    for (final b in baguettes) {
+                      final id = (b['id'] as num?)?.toInt();
+                      if (id != null && !baguetteIds.contains(id)) {
+                        baguetteIds.add(id);
+                        uniqueBaguettes.add(b);
+                      }
+                    }
+
+                    // Ensure selected value is in list
+                    final int safeSelectedId =
+                        baguetteIds.contains(selectedBaguetteId)
+                        ? selectedBaguetteId
+                        : (baguetteIds.isNotEmpty ? baguetteIds.first : 0);
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              Localization.translate('نوع الباجيت:', lang),
+                              style: TextStyle(fontSize: 12),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<int>(
+                                  isExpanded: true,
+                                  value: safeSelectedId,
+                                  items: uniqueBaguettes.map((b) {
+                                    final id = (b['id'] as num?)?.toInt() ?? 0;
+                                    return DropdownMenuItem<int>(
+                                      value: id,
+                                      child: Text(
+                                        '${b['name']} (${b['thickness']} مم)',
+                                        style: const TextStyle(fontSize: 12),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    );
+                                  }).toList(),
+                                  onChanged: (val) {
+                                    if (val != null) {
+                                      final newBaguette = uniqueBaguettes
+                                          .firstWhere(
+                                            (b) =>
+                                                (b['id'] as num?)?.toInt() ==
+                                                val,
+                                            orElse: () => uniqueBaguettes.first,
+                                          );
+                                      final double newThickness =
+                                          (newBaguette['thickness'] as num?)
+                                              ?.toDouble() ??
+                                          0.0;
+                                      final allowedColorsList =
+                                          (newBaguette['color']?.toString() ??
+                                                  '')
+                                              .split(',')
+                                              .map((c) => c.trim())
+                                              .where((c) => c.isNotEmpty)
+                                              .toList();
+                                      final String newColor =
+                                          allowedColorsList.isNotEmpty
+                                          ? allowedColorsList.first
+                                          : 'أبيض';
+
+                                      final newSpec = spec.copyWith(
+                                        decorBaguetteId: val,
+                                        decorThickness: newThickness,
+                                        decorColor: newColor,
+                                      );
+
+                                      if (zone != null) {
+                                        widget.model
+                                            .updateSelectedZoneGlassDecor(
+                                              decorBaguetteId: val,
+                                              decorThickness: newThickness,
+                                              decorColor: newColor,
+                                            );
+                                      } else {
+                                        setState(
+                                          () => _tempGlassSpec = newSpec,
+                                        );
+                                      }
+                                      _startPaintbrushMode(glassSpec: newSpec);
+                                    }
+                                  },
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            Text(
+                              Localization.translate('اللون:', lang),
+                              style: TextStyle(fontSize: 12),
+                            ),
+                            const Spacer(),
+                            DropdownButton<String>(
+                              value: currentDecorColor,
+                              items: allowedColors.map((colorName) {
+                                return DropdownMenuItem<String>(
+                                  value: colorName,
+                                  child: Text(
+                                    colorName,
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (val) {
+                                if (val != null) {
+                                  final newSpec = spec.copyWith(
+                                    decorColor: val,
+                                  );
+                                  if (zone != null) {
+                                    widget.model.updateSelectedZoneGlassDecor(
+                                      decorColor: val,
+                                    );
+                                  } else {
+                                    setState(() => _tempGlassSpec = newSpec);
+                                  }
+                                  _startPaintbrushMode(glassSpec: newSpec);
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      ],
+                    );
+                  },
+                ),
+                if (spec.hasRosettes) ...[
+                  const SizedBox(height: 8),
                   Builder(
                     builder: (context) {
-                      final baguettes = widget.model.allGlassCache
+                      final rosettes = widget.model.allGlassCache
                           .where(
-                            (g) =>
-                            g['type'].toString().toLowerCase().contains(
-                              'baguette',
+                            (g) => g['type'].toString().toLowerCase().contains(
+                              'rosette',
                             ),
-                      )
+                          )
                           .toList();
 
-                      if (baguettes.isEmpty) {
+                      if (rosettes.isEmpty) {
                         return Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8.0),
+                          padding: EdgeInsets.symmetric(vertical: 4.0),
                           child: Text(
-                            _tr(
-                              'لا يوجد باجيت ديكور في قاعدة البيانات. يرجى إضافتها أولاً.',
+                            Localization.translate(
+                              'لا توجد وردات ديكور في قاعدة البيانات. يرجى إضافتها أولاً.',
+                              lang,
                             ),
                             style: TextStyle(color: Colors.red, fontSize: 11),
                           ),
                         );
                       }
 
-                      // Safe int id extraction
-                      int? specBaguetteId = (spec.decorBaguetteId is int)
-                          ? spec.decorBaguetteId as int
-                          : int.tryParse(spec.decorBaguetteId?.toString() ??
-                          '');
+                      // Safe int id extraction for rosette
+                      int? specRosetteId = (spec.decorRosetteId is int)
+                          ? spec.decorRosetteId as int
+                          : int.tryParse(spec.decorRosetteId?.toString() ?? '');
 
-                      var selectedBaguette = baguettes.firstWhere(
-                            (b) => (b['id'] as num?)?.toInt() == specBaguetteId,
-                        orElse: () => baguettes.first,
-                      );
-
-                      final int selectedBaguetteId =
-                          (selectedBaguette['id'] as num?)?.toInt() ??
-                              (baguettes.first['id'] as num?)?.toInt() ??
-                              0;
-
-                      List<String> allowedColors = widget.model.allGlassCache
-                          .where(
-                            (g) =>
-                        (g['id'] as num?)?.toInt() == selectedBaguetteId,
-                      )
-                          .map((g) => g['color']?.toString() ?? '')
-                          .where((c) => c.isNotEmpty)
-                          .toList();
-                      if (allowedColors.isEmpty) {
-                        allowedColors = ['أبيض', 'ذهبي', 'فضي', 'رمادي'];
-                      }
-
-                      String currentDecorColor = spec.decorColor;
-                      if (!allowedColors.contains(currentDecorColor)) {
-                        currentDecorColor = allowedColors.first;
-                      }
-
-                      // Build unique items lists (no duplicate ids)
-                      final List<int> baguetteIds = [];
-                      final List<Map<String, dynamic>> uniqueBaguettes = [];
-                      for (final b in baguettes) {
-                        final id = (b['id'] as num?)?.toInt();
-                        if (id != null && !baguetteIds.contains(id)) {
-                          baguetteIds.add(id);
-                          uniqueBaguettes.add(b);
+                      // Build unique rosette items (no duplicate ids)
+                      final List<int> rosetteIds = [];
+                      final List<Map<String, dynamic>> uniqueRosettes = [];
+                      for (final r in rosettes) {
+                        final id = (r['id'] as num?)?.toInt();
+                        if (id != null && !rosetteIds.contains(id)) {
+                          rosetteIds.add(id);
+                          uniqueRosettes.add(r);
                         }
                       }
 
-                      // Ensure selected value is in list
-                      final int safeSelectedId =
-                      baguetteIds.contains(selectedBaguetteId)
-                          ? selectedBaguetteId
-                          : (baguetteIds.isNotEmpty ? baguetteIds.first : 0);
+                      var selectedRosette = uniqueRosettes.firstWhere(
+                        (r) => (r['id'] as num?)?.toInt() == specRosetteId,
+                        orElse: () => uniqueRosettes.first,
+                      );
+
+                      final int selectedRosetteId =
+                          (selectedRosette['id'] as num?)?.toInt() ??
+                          (rosetteIds.isNotEmpty ? rosetteIds.first : 0);
+
+                      final int safeRosetteId =
+                          rosetteIds.contains(selectedRosetteId)
+                          ? selectedRosetteId
+                          : (rosetteIds.isNotEmpty ? rosetteIds.first : 0);
 
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -9794,7 +10130,7 @@ class _WindowViewState extends State<WindowView> {
                           Row(
                             children: [
                               Text(
-                                Localization.translate('نوع الباجيت:', lang),
+                                _tr('نوع الوردة:'),
                                 style: TextStyle(fontSize: 12),
                               ),
                               const SizedBox(width: 8),
@@ -9802,14 +10138,14 @@ class _WindowViewState extends State<WindowView> {
                                 child: DropdownButtonHideUnderline(
                                   child: DropdownButton<int>(
                                     isExpanded: true,
-                                    value: safeSelectedId,
-                                    items: uniqueBaguettes.map((b) {
-                                      final id = (b['id'] as num?)?.toInt() ??
-                                          0;
+                                    value: safeRosetteId,
+                                    items: uniqueRosettes.map((r) {
+                                      final id =
+                                          (r['id'] as num?)?.toInt() ?? 0;
                                       return DropdownMenuItem<int>(
                                         value: id,
                                         child: Text(
-                                          '${b['name']} (${b['thickness']} مم)',
+                                          r['name'].toString(),
                                           style: const TextStyle(fontSize: 12),
                                           overflow: TextOverflow.ellipsis,
                                         ),
@@ -9817,49 +10153,22 @@ class _WindowViewState extends State<WindowView> {
                                     }).toList(),
                                     onChanged: (val) {
                                       if (val != null) {
-                                        final newBaguette = uniqueBaguettes
-                                            .firstWhere(
-                                              (b) =>
-                                          (b['id'] as num?)?.toInt() ==
-                                              val,
-                                          orElse: () => uniqueBaguettes.first,
-                                        );
-                                        final double newThickness =
-                                            (newBaguette['thickness'] as num?)
-                                                ?.toDouble() ??
-                                                0.0;
-                                        final allowedColorsList =
-                                        (newBaguette['color']?.toString() ??
-                                            '')
-                                            .split(',')
-                                            .map((c) => c.trim())
-                                            .where((c) => c.isNotEmpty)
-                                            .toList();
-                                        final String newColor =
-                                        allowedColorsList.isNotEmpty
-                                            ? allowedColorsList.first
-                                            : 'أبيض';
-
                                         final newSpec = spec.copyWith(
-                                          decorBaguetteId: val,
-                                          decorThickness: newThickness,
-                                          decorColor: newColor,
+                                          decorRosetteId: val,
                                         );
-
                                         if (zone != null) {
                                           widget.model
                                               .updateSelectedZoneGlassDecor(
-                                            decorBaguetteId: val,
-                                            decorThickness: newThickness,
-                                            decorColor: newColor,
-                                          );
+                                                decorRosetteId: val,
+                                              );
                                         } else {
                                           setState(
-                                                () => _tempGlassSpec = newSpec,
+                                            () => _tempGlassSpec = newSpec,
                                           );
                                         }
                                         _startPaintbrushMode(
-                                            glassSpec: newSpec);
+                                          glassSpec: newSpec,
+                                        );
                                       }
                                     },
                                   ),
@@ -9867,39 +10176,71 @@ class _WindowViewState extends State<WindowView> {
                               ),
                             ],
                           ),
+                          const SizedBox(height: 8),
                           Row(
                             children: [
-                              Text(
-                                Localization.translate('اللون:', lang),
+                              const Text(
+                                'شكل الوردة:',
                                 style: TextStyle(fontSize: 12),
                               ),
-                              const Spacer(),
-                              DropdownButton<String>(
-                                value: currentDecorColor,
-                                items: allowedColors.map((colorName) {
-                                  return DropdownMenuItem<String>(
-                                    value: colorName,
-                                    child: Text(
-                                      colorName,
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
-                                  );
-                                }).toList(),
-                                onChanged: (val) {
-                                  if (val != null) {
-                                    final newSpec = spec.copyWith(
-                                      decorColor: val,
-                                    );
-                                    if (zone != null) {
-                                      widget.model.updateSelectedZoneGlassDecor(
-                                        decorColor: val,
-                                      );
-                                    } else {
-                                      setState(() => _tempGlassSpec = newSpec);
-                                    }
-                                    _startPaintbrushMode(glassSpec: newSpec);
-                                  }
-                                },
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<int>(
+                                    isExpanded: true,
+                                    value: spec.rosetteShape,
+                                    items: [
+                                      DropdownMenuItem(
+                                        value: 1,
+                                        child: Text(
+                                          _tr('شكل 1 (نجمة)'),
+                                          style: TextStyle(fontSize: 12),
+                                        ),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 2,
+                                        child: Text(
+                                          _tr('شكل 2 (منحني)'),
+                                          style: TextStyle(fontSize: 12),
+                                        ),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 3,
+                                        child: Text(
+                                          _tr('شكل 3 (باروكي)'),
+                                          style: TextStyle(fontSize: 12),
+                                        ),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 4,
+                                        child: Text(
+                                          _tr('شكل 4 (معين مصمت)'),
+                                          style: TextStyle(fontSize: 12),
+                                        ),
+                                      ),
+                                    ],
+                                    onChanged: (val) {
+                                      if (val != null) {
+                                        final newSpec = spec.copyWith(
+                                          rosetteShape: val,
+                                        );
+                                        if (zone != null) {
+                                          widget.model
+                                              .updateSelectedZoneGlassDecor(
+                                                rosetteShape: val,
+                                              );
+                                        } else {
+                                          setState(
+                                            () => _tempGlassSpec = newSpec,
+                                          );
+                                        }
+                                        _startPaintbrushMode(
+                                          glassSpec: newSpec,
+                                        );
+                                      }
+                                    },
+                                  ),
+                                ),
                               ),
                             ],
                           ),
@@ -9907,197 +10248,11 @@ class _WindowViewState extends State<WindowView> {
                       );
                     },
                   ),
-                  if (spec.hasRosettes) ...[
-                    const SizedBox(height: 8),
-                    Builder(
-                      builder: (context) {
-                        final rosettes = widget.model.allGlassCache
-                            .where(
-                              (g) =>
-                              g['type'].toString().toLowerCase().contains(
-                                'rosette',
-                              ),
-                        )
-                            .toList();
-
-                        if (rosettes.isEmpty) {
-                          return Padding(
-                            padding: EdgeInsets.symmetric(vertical: 4.0),
-                            child: Text(
-                              Localization.translate(
-                                'لا توجد وردات ديكور في قاعدة البيانات. يرجى إضافتها أولاً.',
-                                lang,
-                              ),
-                              style: TextStyle(color: Colors.red, fontSize: 11),
-                            ),
-                          );
-                        }
-
-                        // Safe int id extraction for rosette
-                        int? specRosetteId = (spec.decorRosetteId is int)
-                            ? spec.decorRosetteId as int
-                            : int.tryParse(
-                            spec.decorRosetteId?.toString() ?? '');
-
-                        // Build unique rosette items (no duplicate ids)
-                        final List<int> rosetteIds = [];
-                        final List<Map<String, dynamic>> uniqueRosettes = [];
-                        for (final r in rosettes) {
-                          final id = (r['id'] as num?)?.toInt();
-                          if (id != null && !rosetteIds.contains(id)) {
-                            rosetteIds.add(id);
-                            uniqueRosettes.add(r);
-                          }
-                        }
-
-                        var selectedRosette = uniqueRosettes.firstWhere(
-                              (r) =>
-                          (r['id'] as num?)?.toInt() == specRosetteId,
-                          orElse: () => uniqueRosettes.first,
-                        );
-
-                        final int selectedRosetteId =
-                            (selectedRosette['id'] as num?)?.toInt() ??
-                                (rosetteIds.isNotEmpty ? rosetteIds.first : 0);
-
-                        final int safeRosetteId =
-                        rosetteIds.contains(selectedRosetteId)
-                            ? selectedRosetteId
-                            : (rosetteIds.isNotEmpty ? rosetteIds.first : 0);
-
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Text(
-                                  _tr('نوع الوردة:'),
-                                  style: TextStyle(fontSize: 12),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: DropdownButtonHideUnderline(
-                                    child: DropdownButton<int>(
-                                      isExpanded: true,
-                                      value: safeRosetteId,
-                                      items: uniqueRosettes.map((r) {
-                                        final id =
-                                            (r['id'] as num?)?.toInt() ?? 0;
-                                        return DropdownMenuItem<int>(
-                                          value: id,
-                                          child: Text(
-                                            r['name'].toString(),
-                                            style: const TextStyle(
-                                                fontSize: 12),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        );
-                                      }).toList(),
-                                      onChanged: (val) {
-                                        if (val != null) {
-                                          final newSpec = spec.copyWith(
-                                            decorRosetteId: val,
-                                          );
-                                          if (zone != null) {
-                                            widget.model
-                                                .updateSelectedZoneGlassDecor(
-                                              decorRosetteId: val,
-                                            );
-                                          } else {
-                                            setState(
-                                                  () =>
-                                              _tempGlassSpec = newSpec,
-                                            );
-                                          }
-                                          _startPaintbrushMode(
-                                            glassSpec: newSpec,
-                                          );
-                                        }
-                                      },
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                const Text(
-                                  'شكل الوردة:',
-                                  style: TextStyle(fontSize: 12),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: DropdownButtonHideUnderline(
-                                    child: DropdownButton<int>(
-                                      isExpanded: true,
-                                      value: spec.rosetteShape,
-                                      items: [
-                                        DropdownMenuItem(
-                                          value: 1,
-                                          child: Text(
-                                            _tr('شكل 1 (نجمة)'),
-                                            style: TextStyle(fontSize: 12),
-                                          ),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: 2,
-                                          child: Text(
-                                            _tr('شكل 2 (منحني)'),
-                                            style: TextStyle(fontSize: 12),
-                                          ),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: 3,
-                                          child: Text(
-                                            _tr('شكل 3 (باروكي)'),
-                                            style: TextStyle(fontSize: 12),
-                                          ),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: 4,
-                                          child: Text(
-                                            _tr('شكل 4 (معين مصمت)'),
-                                            style: TextStyle(fontSize: 12),
-                                          ),
-                                        ),
-                                      ],
-                                      onChanged: (val) {
-                                        if (val != null) {
-                                          final newSpec = spec.copyWith(
-                                            rosetteShape: val,
-                                          );
-                                          if (zone != null) {
-                                            widget.model
-                                                .updateSelectedZoneGlassDecor(
-                                              rosetteShape: val,
-                                            );
-                                          } else {
-                                            setState(
-                                                  () =>
-                                              _tempGlassSpec = newSpec,
-                                            );
-                                          }
-                                          _startPaintbrushMode(
-                                            glassSpec: newSpec,
-                                          );
-                                        }
-                                      },
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ],
-                ] else
-                  ...[
-                    const SizedBox(height: 8),
-                    buildGlassLayer(true),
-                  ],
+                ],
+              ] else ...[
+                const SizedBox(height: 8),
+                buildGlassLayer(true),
+              ],
             ],
           );
         },
@@ -10111,9 +10266,7 @@ class _WindowViewState extends State<WindowView> {
       child: ListenableBuilder(
         listenable: widget.model,
         builder: (context, _) {
-          final lang = Provider
-              .of<AppSettingsProvider>(context)
-              .language;
+          final lang = Provider.of<AppSettingsProvider>(context).language;
           final slidingZones = widget.model.zones
               .where((z) => z.content == ZoneContent.slidingSash)
               .toList();
@@ -10128,11 +10281,11 @@ class _WindowViewState extends State<WindowView> {
           final int sashesCount = firstSlidingZone?.slidingSashesCount ?? 2;
           final bool hasMeetingInCenter =
               (firstSlidingZone?.slidingFaceToFace ?? false) &&
-                  firstSlidingZone != null &&
-                  isSlidingFaceToFaceLayout(
-                    trackCount: firstSlidingZone.slidingTrackCount,
-                    sashCount: sashesCount,
-                  );
+              firstSlidingZone != null &&
+              isSlidingFaceToFaceLayout(
+                trackCount: firstSlidingZone.slidingTrackCount,
+                sashCount: sashesCount,
+              );
           final centralKeys = firstSlidingZone == null
               ? const <String>[]
               : slidingCentralEdgeKeys(
@@ -10166,9 +10319,11 @@ class _WindowViewState extends State<WindowView> {
             );
           }
 
-          Widget buildCompactSlimOption(String label,
-              String key,
-              WindowZone zone,) {
+          Widget buildCompactSlimOption(
+            String label,
+            String key,
+            WindowZone zone,
+          ) {
             return Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -10294,16 +10449,12 @@ class _WindowViewState extends State<WindowView> {
                   ),
                   decoration: BoxDecoration(
                     color: widget.model.isInternalView
-                        ? (Theme
-                        .of(context)
-                        .brightness == Brightness.dark
-                        ? Colors.blue.shade900.withValues(alpha: 0.3)
-                        : Colors.blue.shade50)
-                        : (Theme
-                        .of(context)
-                        .brightness == Brightness.dark
-                        ? Colors.orange.shade900.withValues(alpha: 0.3)
-                        : Colors.orange.shade50),
+                        ? (Theme.of(context).brightness == Brightness.dark
+                              ? Colors.blue.shade900.withValues(alpha: 0.3)
+                              : Colors.blue.shade50)
+                        : (Theme.of(context).brightness == Brightness.dark
+                              ? Colors.orange.shade900.withValues(alpha: 0.3)
+                              : Colors.orange.shade50),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                       color: widget.model.isInternalView
@@ -10321,16 +10472,12 @@ class _WindowViewState extends State<WindowView> {
                             : Icons.flip_camera_android,
                         size: 20,
                         color: widget.model.isInternalView
-                            ? (Theme
-                            .of(context)
-                            .brightness == Brightness.dark
-                            ? Colors.blue.shade300
-                            : Colors.blue.shade900)
-                            : (Theme
-                            .of(context)
-                            .brightness == Brightness.dark
-                            ? Colors.orange.shade300
-                            : Colors.orange.shade900),
+                            ? (Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.blue.shade300
+                                  : Colors.blue.shade900)
+                            : (Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.orange.shade300
+                                  : Colors.orange.shade900),
                       ),
                       const SizedBox(width: 10),
                       Text(
@@ -10341,16 +10488,12 @@ class _WindowViewState extends State<WindowView> {
                           fontWeight: FontWeight.bold,
                           fontSize: 13,
                           color: widget.model.isInternalView
-                              ? (Theme
-                              .of(context)
-                              .brightness == Brightness.dark
-                              ? Colors.blue.shade300
-                              : Colors.blue.shade900)
-                              : (Theme
-                              .of(context)
-                              .brightness == Brightness.dark
-                              ? Colors.orange.shade300
-                              : Colors.orange.shade900),
+                              ? (Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.blue.shade300
+                                    : Colors.blue.shade900)
+                              : (Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.orange.shade300
+                                    : Colors.orange.shade900),
                         ),
                       ),
                     ],
@@ -10376,10 +10519,7 @@ class _WindowViewState extends State<WindowView> {
 
               Text(
                 widget.model.selectedDbColor != null
-                    ? '${Localization.translate('اللون:', lang)} ${Localization
-                    .translate(
-                    (widget.model.selectedDbColor!['name'] ?? '').toString(),
-                    lang)}'
+                    ? '${Localization.translate('اللون:', lang)} ${Localization.translate((widget.model.selectedDbColor!['name'] ?? '').toString(), lang)}'
                     : Localization.translate('لون الألمنيوم', lang),
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
@@ -10391,58 +10531,55 @@ class _WindowViewState extends State<WindowView> {
                 spacing: 6,
                 runSpacing: 6,
                 children:
-                widget.model.colorsLoading &&
-                    widget.model.availableColors.isEmpty
+                    widget.model.colorsLoading &&
+                        widget.model.availableColors.isEmpty
                     ? const [
-                  SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ]
-                    : widget.model.availableColors.map((dbColor) {
-                  final isSelected =
-                      widget.model.selectedDbColor != null &&
-                          widget.model.selectedDbColor!['id'] ==
-                              dbColor['id'];
-                  Color parsedColor = getEffectiveGradientColors(
-                    FrameColor.white,
-                    dbColor,
-                  )[1];
-                  final woodImage = _getWoodTextureImage(dbColor);
-                  return GestureDetector(
-                    onTap: () {
-                      widget.model.selectProfileColorWithDefaults(
-                        dbColor,
-                      );
-                      widget.model.refreshUI();
-                    },
-                    child: Container(
-                      width: isSelected ? 30 : 25,
-                      height: isSelected ? 30 : 25,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: woodImage != null ? null : parsedColor,
-                        image: woodImage,
-                        border: Border.all(
-                          color: isSelected
-                              ? Colors.blue
-                              : Colors.grey.shade400,
-                          width: isSelected ? 2.5 : 1.0,
+                        SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         ),
-                      ),
-                    ),
-                  );
-                }).toList(),
+                      ]
+                    : widget.model.availableColors.map((dbColor) {
+                        final isSelected =
+                            widget.model.selectedDbColor != null &&
+                            widget.model.selectedDbColor!['id'] ==
+                                dbColor['id'];
+                        Color parsedColor = getEffectiveGradientColors(
+                          FrameColor.white,
+                          dbColor,
+                        )[1];
+                        final woodImage = _getWoodTextureImage(dbColor);
+                        return GestureDetector(
+                          onTap: () {
+                            widget.model.selectProfileColorWithDefaults(
+                              dbColor,
+                            );
+                            widget.model.refreshUI();
+                          },
+                          child: Container(
+                            width: isSelected ? 30 : 25,
+                            height: isSelected ? 30 : 25,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: woodImage != null ? null : parsedColor,
+                              image: woodImage,
+                              border: Border.all(
+                                color: isSelected
+                                    ? Colors.blue
+                                    : Colors.grey.shade400,
+                                width: isSelected ? 2.5 : 1.0,
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
               ),
               const SizedBox(height: 15),
 
               Text(
                 widget.model.selectedAccessoryColor != null
-                    ? '${Localization.translate(
-                    'لون الإكسسوارات:', lang)} ${Localization.translate(
-                    (widget.model.selectedAccessoryColor!['name'] ?? '')
-                        .toString(), lang)}'
+                    ? '${Localization.translate('لون الإكسسوارات:', lang)} ${Localization.translate((widget.model.selectedAccessoryColor!['name'] ?? '').toString(), lang)}'
                     : Localization.translate('لون الإكسسوارات (افتراضي)', lang),
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
@@ -10456,8 +10593,8 @@ class _WindowViewState extends State<WindowView> {
                 children: widget.model.availableAccessoryColors.map((dbColor) {
                   final isSelected =
                       widget.model.selectedAccessoryColor != null &&
-                          widget.model.selectedAccessoryColor!['id'] ==
-                              dbColor['id'];
+                      widget.model.selectedAccessoryColor!['id'] ==
+                          dbColor['id'];
                   Color parsedColor = getEffectiveGradientColors(
                     FrameColor.white,
                     dbColor,
@@ -10654,11 +10791,9 @@ class _WindowViewState extends State<WindowView> {
                 );
               }()),
               if (widget.model.hasSideCovers) ...[
-                if ((widget.model
-                    .getSectionByType('frame')
-                    ?.couvreJointWidth ??
-                    0) ==
-                    0 &&
+                if ((widget.model.getSectionByType('frame')?.couvreJointWidth ??
+                            0) ==
+                        0 &&
                     widget.model.canUseStandaloneSideCover &&
                     widget.model.availableSideCovers.length > 1)
                   Padding(
@@ -10679,9 +10814,9 @@ class _WindowViewState extends State<WindowView> {
                         ),
                       ),
                       value:
-                      widget.model.availableSideCovers.any(
+                          widget.model.availableSideCovers.any(
                             (c) => c.id == widget.model.selectedSideCover?.id,
-                      )
+                          )
                           ? widget.model.selectedSideCover?.id
                           : widget.model.availableSideCovers.first.id,
                       items: widget.model.availableSideCovers.map((cover) {
@@ -10768,12 +10903,12 @@ class _WindowViewState extends State<WindowView> {
                 (() {
                   final isArchedOrSlanted =
                       widget.model.archHeight > 0 ||
-                          widget.model.topSlantLeftY != 0 ||
-                          widget.model.topSlantRightY != 0;
+                      widget.model.topSlantLeftY != 0 ||
+                      widget.model.topSlantRightY != 0;
                   return SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(
-                      Localization.translate('الستار (Volet)', lang),
+                      Localization.translate('الستار', lang),
                       style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.bold,
@@ -10781,15 +10916,15 @@ class _WindowViewState extends State<WindowView> {
                     ),
                     subtitle: isArchedOrSlanted
                         ? Text(
-                      Localization.translate(
-                        'الستار غير مدعوم للأشكال المقوسة أو المائلة',
-                        lang,
-                      ),
-                      style: const TextStyle(
-                        color: Colors.red,
-                        fontSize: 11,
-                      ),
-                    )
+                            Localization.translate(
+                              'الستار غير مدعوم للأشكال المقوسة أو المائلة',
+                              lang,
+                            ),
+                            style: const TextStyle(
+                              color: Colors.red,
+                              fontSize: 11,
+                            ),
+                          )
                         : null,
                     value: widget.model.hasShutter,
                     activeThumbColor: Colors.blue,
@@ -10857,8 +10992,8 @@ class _WindowViewState extends State<WindowView> {
                             Expanded(
                               child: Text(
                                 widget.model.localizedShutterWidthWarning(
-                                  lang,
-                                ) ??
+                                      lang,
+                                    ) ??
                                     widget.model.shutterWidthWarning!,
                                 style: TextStyle(
                                   color: Colors.orange.shade900,
@@ -10891,8 +11026,8 @@ class _WindowViewState extends State<WindowView> {
                                 lang == AppLanguage.french
                                     ? 'Appliquer la recommandation'
                                     : (lang == AppLanguage.english
-                                    ? 'Apply recommendation'
-                                    : 'تطبيق المقترح'),
+                                          ? 'Apply recommendation'
+                                          : 'تطبيق المقترح'),
                                 style: const TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.bold,
@@ -11037,7 +11172,7 @@ class _WindowViewState extends State<WindowView> {
                         onPressed: () {
                           setState(() {
                             widget.model.motorHasInterrupteur =
-                            !widget.model.motorHasInterrupteur;
+                                !widget.model.motorHasInterrupteur;
                             widget.model.refreshUI();
                           });
                         },
@@ -11049,7 +11184,7 @@ class _WindowViewState extends State<WindowView> {
                         onPressed: () {
                           setState(() {
                             widget.model.motorHasTelecommande =
-                            !widget.model.motorHasTelecommande;
+                                !widget.model.motorHasTelecommande;
                             widget.model.refreshUI();
                           });
                         },
@@ -11113,9 +11248,7 @@ class _WindowViewState extends State<WindowView> {
                 const SizedBox(height: 10),
                 _ContentButton(
                   label: widget.model.isShutterSplit
-                      ? '${Localization.translate(
-                      'فصل الصناديق', lang)} (${widget.model
-                      .effectiveShutterSplits.length})'
+                      ? '${Localization.translate('فصل الصناديق', lang)} (${widget.model.effectiveShutterSplits.length})'
                       : Localization.translate('فصل الصناديق', lang),
                   icon: Icons.view_column_rounded,
                   selected: widget.model.isShutterSplit,
@@ -11152,9 +11285,9 @@ class _WindowViewState extends State<WindowView> {
                   subtitle: Text(
                     widget.model.frameRoleRequiredInAllScopes('seuil')
                         ? Localization.translate(
-                      'مفعل حتميًا حسب قواعد السلسلة',
-                      lang,
-                    )
+                            'مفعل حتميًا حسب قواعد السلسلة',
+                            lang,
+                          )
                         : Localization.translate('يستبدل الإطار السفلي', lang),
                   ),
                   value: widget.model.frameRoleEnabledInAnyScope('seuil'),
@@ -11176,19 +11309,19 @@ class _WindowViewState extends State<WindowView> {
                   subtitle: Text(
                     widget.model.frameRoleEnabledInAnyScope('seuil')
                         ? Localization.translate(
-                      'غير متاح مع بروفيل C / Seuil',
-                      lang,
-                    )
+                            'غير متاح مع بروفيل C / Seuil',
+                            lang,
+                          )
                         : Localization.translate(
-                      'يتطلب الإطار السفلي ويضيف الغطاء والبوشون تلقائياً',
-                      lang,
-                    ),
+                            'يتطلب الإطار السفلي ويضيف الغطاء والبوشون تلقائياً',
+                            lang,
+                          ),
                   ),
                   value: widget.model.useOptionalCaniveau,
                   activeThumbColor: Colors.blue,
                   onChanged:
-                  widget.model.frameRoleEnabledInAnyScope('seuil') ||
-                      !widget.model.canEnableCaniveau
+                      widget.model.frameRoleEnabledInAnyScope('seuil') ||
+                          !widget.model.canEnableCaniveau
                       ? null
                       : widget.model.toggleCaniveau,
                 ),
@@ -11205,8 +11338,8 @@ class _WindowViewState extends State<WindowView> {
                         isSelected: [0, 1, 2]
                             .map(
                               (mode) =>
-                          widget.model.optionalBavetteMode == mode,
-                        )
+                                  widget.model.optionalBavetteMode == mode,
+                            )
                             .toList(),
                         onPressed: widget.model.setOptionalBavetteMode,
                         children: [
@@ -11241,31 +11374,31 @@ class _WindowViewState extends State<WindowView> {
                   subtitle: Text(
                     widget.model.frameRoleRequiredInAllScopes('cache_dormant')
                         ? Localization.translate(
-                      'مفعل حتميًا حسب قواعد السلسلة',
-                      lang,
-                    )
+                            'مفعل حتميًا حسب قواعد السلسلة',
+                            lang,
+                          )
                         : Localization.translate(
-                      'يتبع فقط جهات الإطار الموجودة',
-                      lang,
-                    ),
+                            'يتبع فقط جهات الإطار الموجودة',
+                            lang,
+                          ),
                   ),
                   value: widget.model.frameRoleEnabledInAnyScope(
                     'cache_dormant',
                   ),
                   activeThumbColor: Colors.blue,
                   onChanged:
-                  widget.model.frameRoleRequiredInAllScopes('cache_dormant')
+                      widget.model.frameRoleRequiredInAllScopes('cache_dormant')
                       ? null
                       : widget.model.toggleCacheDormant,
                 ),
 
               if (widget.model.hasOptionalTriangleLink &&
                   (widget.model.getConfiguredSectionForRole('triangle') !=
-                      null ||
+                          null ||
                       widget.model.getConfiguredSectionForRole(
-                        'triangle',
-                        useSlidingSeries: true,
-                      ) !=
+                            'triangle',
+                            useSlidingSeries: true,
+                          ) !=
                           null))
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
@@ -11365,7 +11498,7 @@ class _WindowViewState extends State<WindowView> {
                                       padding: EdgeInsets.zero,
                                       minimumSize: Size.zero,
                                       tapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
+                                          MaterialTapTargetSize.shrinkWrap,
                                     ),
                                     child: Text(
                                       Localization.translate('الكل', lang),
@@ -11384,7 +11517,7 @@ class _WindowViewState extends State<WindowView> {
                                       padding: EdgeInsets.zero,
                                       minimumSize: Size.zero,
                                       tapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
+                                          MaterialTapTargetSize.shrinkWrap,
                                     ),
                                     child: Text(
                                       Localization.translate('إلغاء', lang),
@@ -11409,7 +11542,7 @@ class _WindowViewState extends State<WindowView> {
                           isSelected: [0, 1, 2, 3]
                               .map(
                                 (mode) => widget.model.profileAngleMode == mode,
-                          )
+                              )
                               .toList(),
                           onPressed: (index) {
                             setState(() {
@@ -11454,26 +11587,25 @@ class _WindowViewState extends State<WindowView> {
               ),
 
               if (widget.model.getConfiguredSectionForRole(
-                'cache_rail',
-                useSlidingSeries: true,
-              ) !=
+                    'cache_rail',
+                    useSlidingSeries: true,
+                  ) !=
                   null)
                 Builder(
                   builder: (context) {
                     final tracks = widget.model.zones
                         .where(
                           (zone) => zone.content == ZoneContent.slidingSash,
-                    )
+                        )
                         .fold<int>(
-                      2,
-                          (current, zone) =>
-                          math.max(
+                          2,
+                          (current, zone) => math.max(
                             current,
                             zone.slidingTrackCount > 0
                                 ? zone.slidingTrackCount
                                 : zone.slidingSashesCount,
                           ),
-                    );
+                        );
                     final maximum = math.max(0, tracks - 1);
                     final enabled = widget.model.useOptionalCacheRail;
                     return Column(
@@ -11537,7 +11669,7 @@ class _WindowViewState extends State<WindowView> {
                     },
                   ),
                 if (widget.model.zones.any(
-                      (z) => z.content == ZoneContent.doubleSash,
+                  (z) => z.content == ZoneContent.doubleSash,
                 ))
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
@@ -11583,30 +11715,29 @@ class _WindowViewState extends State<WindowView> {
                       ..._sashProfiles,
                       ..._slidingSashProfiles,
                       ...?(widget.model.effectiveSlidingSeries ??
-                          widget.model.activeSlidingSeries)
+                              widget.model.activeSlidingSeries)
                           ?.sections
                           .map((section) => section.toMap()),
                     ];
                     final bool isSupported = montantProfiles.any(
-                          (item) =>
-                      _isSlidingMontantCandidate(item, central: false) ||
+                      (item) =>
+                          _isSlidingMontantCandidate(item, central: false) ||
                           _isSlidingMontantCandidate(item, central: true),
                     );
 
                     final bool hasThreePiece =
                         (widget
-                            .model
-                            .effectiveSlidingSeries
-                            ?.hasThreePieceSash ??
+                                .model
+                                .effectiveSlidingSeries
+                                ?.hasThreePieceSash ??
                             widget
                                 .model
                                 .activeSlidingSeries
                                 ?.hasThreePieceSash ??
                             false) ||
-                            '${widget.model.effectiveSlidingSeries?.name ??
-                                widget.model.activeSlidingSeries?.name ?? ''}'
-                                .toLowerCase()
-                                .contains('tpr');
+                        '${widget.model.effectiveSlidingSeries?.name ?? widget.model.activeSlidingSeries?.name ?? ''}'
+                            .toLowerCase()
+                            .contains('tpr');
 
                     // 2. إذا كانت السلسلة فيها مونطو منزلق (3 قطع) أو تم اختيار عمود مستقل ببراغي
                     if (hasThreePiece &&
@@ -11649,19 +11780,18 @@ class _WindowViewState extends State<WindowView> {
                                   'lateral_3',
                                   firstSlidingZone,
                                 ),
-                              ] else
-                                ...[
-                                  buildCompactOption(
-                                    Localization.translate('يسرى', lang),
-                                    'lateral_0',
-                                    firstSlidingZone,
-                                  ),
-                                  buildCompactOption(
-                                    Localization.translate('يمنى', lang),
-                                    'lateral_1',
-                                    firstSlidingZone,
-                                  ),
-                                ],
+                              ] else ...[
+                                buildCompactOption(
+                                  Localization.translate('يسرى', lang),
+                                  'lateral_0',
+                                  firstSlidingZone,
+                                ),
+                                buildCompactOption(
+                                  Localization.translate('يمنى', lang),
+                                  'lateral_1',
+                                  firstSlidingZone,
+                                ),
+                              ],
                             ],
                           ),
                           const SizedBox(height: 10),
@@ -11678,42 +11808,39 @@ class _WindowViewState extends State<WindowView> {
                                   widget
                                       .model
                                       .componentOverrides['قائم وسطي معزز (Sash Central Renforcé)']?['name'] ??
-                                      widget
-                                          .model
-                                          .componentOverrides['قائم وسطي (Sash Central)']?['name'] ??
-                                      widget.model
-                                          .getSlidingSectionByType(
+                                  widget
+                                      .model
+                                      .componentOverrides['قائم وسطي (Sash Central)']?['name'] ??
+                                  widget.model
+                                      .getSlidingSectionByType(
                                         'sash_central_reinforced',
                                       )
-                                          ?.name ??
-                                      widget.model
-                                          .getSlidingSectionByType(
+                                      ?.name ??
+                                  widget.model
+                                      .getSlidingSectionByType(
                                         'chicane_renforcee',
                                       )
-                                          ?.name ??
-                                      widget.model
-                                          .getSlidingSectionByType('chicane')
-                                          ?.name;
+                                      ?.name ??
+                                  widget.model
+                                      .getSlidingSectionByType('chicane')
+                                      ?.name;
                               if (linkedCentral != null &&
-                                  linkedCentral
-                                      .toString()
-                                      .isNotEmpty) {
+                                  linkedCentral.toString().isNotEmpty) {
                                 final rawProfile = linkedCentral.toString();
                                 final localizedProfile =
-                                rawProfile.toLowerCase() ==
-                                    'ouvrant central'
+                                    rawProfile.toLowerCase() ==
+                                        'ouvrant central'
                                     ? switch (lang) {
-                                  AppLanguage.arabic =>
-                                  'القائم الوسطي للضلفة',
-                                  AppLanguage.french => 'Ouvrant central',
-                                  AppLanguage.english => 'Central sash',
-                                }
+                                        AppLanguage.arabic =>
+                                          'القائم الوسطي للضلفة',
+                                        AppLanguage.french => 'Ouvrant central',
+                                        AppLanguage.english => 'Central sash',
+                                      }
                                     : rawProfile;
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 4),
                                   child: Text(
-                                    '${Localization.translate(
-                                        'البروفيل:', lang)} $localizedProfile',
+                                    '${Localization.translate('البروفيل:', lang)} $localizedProfile',
                                     style: TextStyle(
                                       fontSize: 11,
                                       color: Colors.blue.shade700,
@@ -11730,8 +11857,7 @@ class _WindowViewState extends State<WindowView> {
                               return SizedBox(
                                 width: 120,
                                 child: buildCompactOption(
-                                  '${Localization.translate(
-                                      'مركز', lang)} ${index + 1}',
+                                  '${Localization.translate('مركز', lang)} ${index + 1}',
                                   centralKeys[index],
                                   firstSlidingZone,
                                 ),
@@ -11781,8 +11907,7 @@ class _WindowViewState extends State<WindowView> {
                         .getSlidingSlimCandidates();
                     if (slimCandidates.isNotEmpty && firstSlidingZone != null) {
                       final allSlimSelected = centralKeys.every(
-                            (k) =>
-                        firstSlidingZone.slidingMontantSlim[k] == true,
+                        (k) => firstSlidingZone.slidingMontantSlim[k] == true,
                       );
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -11817,13 +11942,13 @@ class _WindowViewState extends State<WindowView> {
                                 label: Text(
                                   allSlimSelected
                                       ? Localization.translate(
-                                    'إلغاء الكل',
-                                    lang,
-                                  )
+                                          'إلغاء الكل',
+                                          lang,
+                                        )
                                       : Localization.translate(
-                                    'تحديد الكل',
-                                    lang,
-                                  ),
+                                          'تحديد الكل',
+                                          lang,
+                                        ),
                                   style: const TextStyle(fontSize: 11),
                                 ),
                                 onPressed: () {
@@ -11832,23 +11957,25 @@ class _WindowViewState extends State<WindowView> {
                                     if (newVal) {
                                       for (final key in centralKeys) {
                                         firstSlidingZone
-                                            .slidingMontantSlim[key] = true;
+                                                .slidingMontantSlim[key] =
+                                            true;
                                       }
                                     } else {
                                       // Cancel means no Slim member remains in
                                       // this sash, including obsolete keys from
                                       // an earlier leaf-count configuration.
-                                      firstSlidingZone.slidingMontantSlim.clear();
+                                      firstSlidingZone.slidingMontantSlim
+                                          .clear();
                                     }
                                     if (newVal &&
                                         widget
-                                            .model
-                                            .selectedSlimMontantProfile ==
+                                                .model
+                                                .selectedSlimMontantProfile ==
                                             null) {
                                       widget.model
                                           .applySlidingMontantSlimOverride(
-                                        slimCandidates.first,
-                                      );
+                                            slimCandidates.first,
+                                          );
                                     }
                                   });
                                   widget.model
@@ -11863,8 +11990,7 @@ class _WindowViewState extends State<WindowView> {
                               return SizedBox(
                                 width: 120,
                                 child: buildCompactSlimOption(
-                                  '${Localization.translate(
-                                      'مركز', lang)} ${index + 1}',
+                                  '${Localization.translate('مركز', lang)} ${index + 1}',
                                   centralKeys[index],
                                   firstSlidingZone,
                                 ),
@@ -11929,7 +12055,7 @@ class _WindowViewState extends State<WindowView> {
       final isRight = hit.isDoubleSashRight;
       final sashT =
           zone.sashThickness ??
-              widget.model.getSectionThickness('sash', fallback: 45.0);
+          widget.model.getSectionThickness('sash', fallback: 45.0);
       final dividerT = widget.model.getSectionThickness(
         'mullion',
         fallback: sashT,
@@ -12022,19 +12148,15 @@ class _WindowViewState extends State<WindowView> {
     }
 
     final ctrl = TextEditingController(text: _shownDimensionText(currentValue));
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
 
     showDialog(
       context: context,
       builder: (context) {
-        final isDark = Theme
-            .of(context)
-            .brightness == Brightness.dark;
+        final isDark = Theme.of(context).brightness == Brightness.dark;
         return AlertDialog(
           backgroundColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
           title: Text(
@@ -12091,10 +12213,10 @@ class _WindowViewState extends State<WindowView> {
                       final isRight = hit.isDoubleSashRight;
                       final sashT =
                           zone.sashThickness ??
-                              widget.model.getSectionThickness(
-                                'sash',
-                                fallback: 45.0,
-                              );
+                          widget.model.getSectionThickness(
+                            'sash',
+                            fallback: 45.0,
+                          );
                       final dividerT = widget.model.getSectionThickness(
                         'mullion',
                         fallback: sashT,
@@ -12162,12 +12284,12 @@ class _WindowViewState extends State<WindowView> {
                           double rightAdjusted = leftAdjusted + val;
                           double right =
                               rightAdjusted +
-                                  (col < cols - 1 ? dividerT / 2 : 0);
+                              (col < cols - 1 ? dividerT / 2 : 0);
                           double newRightRatio =
-                          ((right - glassR.left) / glassR.width).clamp(
-                            0.05,
-                            0.95,
-                          );
+                              ((right - glassR.left) / glassR.width).clamp(
+                                0.05,
+                                0.95,
+                              );
                           widget.model.updateZoneInnerVDivisionRatio(
                             hit.zoneId,
                             isRight,
@@ -12184,10 +12306,10 @@ class _WindowViewState extends State<WindowView> {
                           double leftNew =
                               leftAdjusted - (col > 0 ? dividerT / 2 : 0);
                           double newLeftRatio =
-                          ((leftNew - glassR.left) / glassR.width).clamp(
-                            0.05,
-                            0.95,
-                          );
+                              ((leftNew - glassR.left) / glassR.width).clamp(
+                                0.05,
+                                0.95,
+                              );
                           widget.model.updateZoneInnerVDivisionRatio(
                             hit.zoneId,
                             isRight,
@@ -12206,12 +12328,12 @@ class _WindowViewState extends State<WindowView> {
                           double bottomAdjusted = topAdjusted + val;
                           double bottom =
                               bottomAdjusted +
-                                  (row < rows - 1 ? dividerT / 2 : 0);
+                              (row < rows - 1 ? dividerT / 2 : 0);
                           double newBottomRatio =
-                          ((bottom - glassR.top) / glassR.height).clamp(
-                            0.05,
-                            0.95,
-                          );
+                              ((bottom - glassR.top) / glassR.height).clamp(
+                                0.05,
+                                0.95,
+                              );
                           widget.model.updateZoneInnerHDivisionRatio(
                             hit.zoneId,
                             isRight,
@@ -12228,10 +12350,10 @@ class _WindowViewState extends State<WindowView> {
                           double topNew =
                               topAdjusted - (row > 0 ? dividerT / 2 : 0);
                           double newTopRatio =
-                          ((topNew - glassR.top) / glassR.height).clamp(
-                            0.05,
-                            0.95,
-                          );
+                              ((topNew - glassR.top) / glassR.height).clamp(
+                                0.05,
+                                0.95,
+                              );
                           widget.model.updateZoneInnerHDivisionRatio(
                             hit.zoneId,
                             isRight,
@@ -12246,12 +12368,12 @@ class _WindowViewState extends State<WindowView> {
                         val + (widget.model.isPVC ? 5.0 : 0.0);
                     final totalCutWidth =
                         zone.boundary.width +
-                            _openingSashOverlapForDrawing() * 2;
+                        _openingSashOverlapForDrawing() * 2;
                     final visualLeftRatio =
-                    (hit.isDoubleSashLeft
-                        ? rawVisualSashSize / totalCutWidth
-                        : 1.0 - (rawVisualSashSize / totalCutWidth))
-                        .clamp(0.15, 0.85);
+                        (hit.isDoubleSashLeft
+                                ? rawVisualSashSize / totalCutWidth
+                                : 1.0 - (rawVisualSashSize / totalCutWidth))
+                            .clamp(0.15, 0.85);
                     final ratio = widget.model.isInternalView
                         ? visualLeftRatio
                         : 1.0 - visualLeftRatio;
@@ -12283,36 +12405,28 @@ class _WindowViewState extends State<WindowView> {
   void _showFrameResizeDialog(BuildContext context, InnerDimensionHit hit) {
     final zone = widget.model.zones.firstWhere((z) => z.id == hit.zoneId);
     final double pt = widget.model.profileThickness;
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     double outerVal;
     String title;
     if (hit.isWidth) {
       outerVal =
-          widget.model
-              .frameRectForZone(hit.zoneId)
-              ?.width ??
-              zone.boundary.width + 2 * pt;
+          widget.model.frameRectForZone(hit.zoneId)?.width ??
+          zone.boundary.width + 2 * pt;
       title = 'تعديل عرض الإطار (خارجي)';
     } else {
       outerVal =
-          widget.model
-              .frameRectForZone(hit.zoneId)
-              ?.height ??
-              zone.boundary.height + 2 * pt;
+          widget.model.frameRectForZone(hit.zoneId)?.height ??
+          zone.boundary.height + 2 * pt;
       title = 'تعديل ارتفاع الإطار (خارجي)';
     }
     final ctrl = TextEditingController(text: outerVal.toInt().toString());
     showDialog(
       context: context,
       builder: (ctx) {
-        final isDark = Theme
-            .of(ctx)
-            .brightness == Brightness.dark;
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
         return AlertDialog(
           backgroundColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
           title: Text(
@@ -12385,9 +12499,11 @@ class _WindowViewState extends State<WindowView> {
     );
   }
 
-  Future<void> _showDesktopContextMenu(BuildContext context,
-      Offset globalPosition,
-      Offset localPosition,) async {
+  Future<void> _showDesktopContextMenu(
+    BuildContext context,
+    Offset globalPosition,
+    Offset localPosition,
+  ) async {
     final modelPos = _getModelPos(localPosition);
 
     // 1. Check if shutter is clicked
@@ -12419,9 +12535,7 @@ class _WindowViewState extends State<WindowView> {
       widget.model.selectAt(modelPos, isLongPress: false);
     }
 
-    final isDark = Theme
-        .of(context)
-        .brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final selectedZone = widget.model.selectedZone;
     final isFrame = widget.model.selection.type == SelectionType.frame;
 
@@ -12452,8 +12566,8 @@ class _WindowViewState extends State<WindowView> {
                 _isShutterSelected
                     ? Icons.menu_rounded
                     : (isFrame
-                    ? Icons.crop_square_rounded
-                    : Icons.window_rounded),
+                          ? Icons.crop_square_rounded
+                          : Icons.window_rounded),
                 size: 16,
                 color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
               ),
@@ -12740,7 +12854,7 @@ class _WindowViewState extends State<WindowView> {
   }) {
     final itemColor =
         color ??
-            (enabled ? (isDark ? Colors.white : Colors.black87) : Colors.grey);
+        (enabled ? (isDark ? Colors.white : Colors.black87) : Colors.grey);
     return PopupMenuItem<String>(
       value: value,
       enabled: enabled,
@@ -12753,12 +12867,10 @@ class _WindowViewState extends State<WindowView> {
             child: Text(
               Localization.translate(
                 label,
-                Provider
-                    .of<AppSettingsProvider>(
+                Provider.of<AppSettingsProvider>(
                   context,
                   listen: false,
-                )
-                    .language,
+                ).language,
               ),
               style: TextStyle(
                 fontSize: 13,
@@ -12773,12 +12885,10 @@ class _WindowViewState extends State<WindowView> {
   }
 
   void _showResizeDialog(BuildContext context, {required bool focusWidth}) {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     final widthCtrl = TextEditingController(
       text: widget.model.width > 0 ? widget.model.width.toInt().toString() : '',
     );
@@ -12810,9 +12920,7 @@ class _WindowViewState extends State<WindowView> {
       context: context,
       builder: (context) {
         dialogContext = context;
-        final isDark = Theme
-            .of(context)
-            .brightness == Brightness.dark;
+        final isDark = Theme.of(context).brightness == Brightness.dark;
         return AlertDialog(
           backgroundColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
           title: Text(
@@ -12931,101 +13039,97 @@ class _WindowViewState extends State<WindowView> {
   }
 
   void _showPresetSystemsDialog(BuildContext context) {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
-    final isDark = Theme
-        .of(context)
-        .brightness == Brightness.dark;
+    ).language;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final presets =
-    <
-        ({
-        WindowPresetType type,
-        String title,
-        String subtitle,
-        double defaultW,
-        double defaultH,
-        IconData icon,
-        Color accentColor,
-        })
-    >[
-      (
-      type: WindowPresetType.windowNoShutter,
-      title: 'نافذة بدون ستار',
-      subtitle: 'دلفة أو دلفتين تفتح جانبياً حسب العرض',
-      defaultW: 1200.0,
-      defaultH: 1200.0,
-      icon: Icons.window_rounded,
-      accentColor: Colors.blue,
-      ),
-      (
-      type: WindowPresetType.windowWithShutter,
-      title: 'نافذة مع ستار',
-      subtitle: 'دلفة أو دلفتين مع صندوق الستار (Monobloc)',
-      defaultW: 1200.0,
-      defaultH: 1400.0,
-      icon: Icons.layers_rounded,
-      accentColor: Colors.teal,
-      ),
-      (
-      type: WindowPresetType.slidingNoShutter,
-      title: 'نافذة جرارة بدون ستار',
-      subtitle: 'نافذة منزلقة بضلفتين (2 Vantaux)',
-      defaultW: 1400.0,
-      defaultH: 1200.0,
-      icon: Icons.sync_alt_rounded,
-      accentColor: Colors.indigo,
-      ),
-      (
-      type: WindowPresetType.slidingWithShutter,
-      title: 'نافذة جرارة مع الستار',
-      subtitle: 'نافذة منزلقة بضلفتين مع صندوق الستار',
-      defaultW: 1400.0,
-      defaultH: 1400.0,
-      icon: Icons.dock_rounded,
-      accentColor: Colors.cyan,
-      ),
-      (
-      type: WindowPresetType.singleDoor,
-      title: 'باب بضلفة واحدة مع قفل',
-      subtitle: 'بروفيل ضلفة 105، قفل بمفتاح وبدون إطار سفلي',
-      defaultW: 900.0,
-      defaultH: 2100.0,
-      icon: Icons.door_back_door_rounded,
-      accentColor: Colors.deepOrange,
-      ),
-      (
-      type: WindowPresetType.doubleDoor,
-      title: 'باب بضلفتين مع قفل',
-      subtitle: 'ضلفتين 105، قفل بمفتاح وبدون إطار سفلي',
-      defaultW: 1600.0,
-      defaultH: 2100.0,
-      icon: Icons.meeting_room_rounded,
-      accentColor: Colors.purple,
-      ),
-      (
-      type: WindowPresetType.shutterOnly,
-      title: 'ستار وحده',
-      subtitle: 'صندوق وشفرات الستار مع المجاري فقط',
-      defaultW: 1200.0,
-      defaultH: 1200.0,
-      icon: Icons.table_rows_rounded,
-      accentColor: Colors.orange,
-      ),
-      (
-      type: WindowPresetType.topOpeningSmallWindow,
-      title: 'نافذة صغيرة تفتح من الأعلى',
-      subtitle: 'مفصلات سفلية وتفتح من الأعلى (Soufflet)',
-      defaultW: 600.0,
-      defaultH: 500.0,
-      icon: Icons.vertical_align_top_rounded,
-      accentColor: Colors.green,
-      ),
-    ];
+        <
+          ({
+            WindowPresetType type,
+            String title,
+            String subtitle,
+            double defaultW,
+            double defaultH,
+            IconData icon,
+            Color accentColor,
+          })
+        >[
+          (
+            type: WindowPresetType.windowNoShutter,
+            title: 'نافذة بدون ستار',
+            subtitle: 'دلفة أو دلفتين تفتح جانبياً حسب العرض',
+            defaultW: 1200.0,
+            defaultH: 1200.0,
+            icon: Icons.window_rounded,
+            accentColor: Colors.blue,
+          ),
+          (
+            type: WindowPresetType.windowWithShutter,
+            title: 'نافذة مع ستار',
+            subtitle: 'دلفة أو دلفتين مع صندوق الستار (Monobloc)',
+            defaultW: 1200.0,
+            defaultH: 1400.0,
+            icon: Icons.layers_rounded,
+            accentColor: Colors.teal,
+          ),
+          (
+            type: WindowPresetType.slidingNoShutter,
+            title: 'نافذة جرارة بدون ستار',
+            subtitle: 'نافذة منزلقة بضلفتين (2 Vantaux)',
+            defaultW: 1400.0,
+            defaultH: 1200.0,
+            icon: Icons.sync_alt_rounded,
+            accentColor: Colors.indigo,
+          ),
+          (
+            type: WindowPresetType.slidingWithShutter,
+            title: 'نافذة جرارة مع الستار',
+            subtitle: 'نافذة منزلقة بضلفتين مع صندوق الستار',
+            defaultW: 1400.0,
+            defaultH: 1400.0,
+            icon: Icons.dock_rounded,
+            accentColor: Colors.cyan,
+          ),
+          (
+            type: WindowPresetType.singleDoor,
+            title: 'باب بضلفة واحدة مع قفل',
+            subtitle: 'بروفيل ضلفة 105، قفل بمفتاح وبدون إطار سفلي',
+            defaultW: 900.0,
+            defaultH: 2100.0,
+            icon: Icons.door_back_door_rounded,
+            accentColor: Colors.deepOrange,
+          ),
+          (
+            type: WindowPresetType.doubleDoor,
+            title: 'باب بضلفتين مع قفل',
+            subtitle: 'ضلفتين 105، قفل بمفتاح وبدون إطار سفلي',
+            defaultW: 1600.0,
+            defaultH: 2100.0,
+            icon: Icons.meeting_room_rounded,
+            accentColor: Colors.purple,
+          ),
+          (
+            type: WindowPresetType.shutterOnly,
+            title: 'ستار وحده',
+            subtitle: 'صندوق وشفرات الستار مع المجاري فقط',
+            defaultW: 1200.0,
+            defaultH: 1200.0,
+            icon: Icons.table_rows_rounded,
+            accentColor: Colors.orange,
+          ),
+          (
+            type: WindowPresetType.topOpeningSmallWindow,
+            title: 'نافذة صغيرة تفتح من الأعلى',
+            subtitle: 'مفصلات سفلية وتفتح من الأعلى (Soufflet)',
+            defaultW: 600.0,
+            defaultH: 500.0,
+            icon: Icons.vertical_align_top_rounded,
+            accentColor: Colors.green,
+          ),
+        ];
 
     WindowPresetType selectedType = WindowPresetType.windowNoShutter;
     final initialW = widget.model.width > 200 ? widget.model.width : 1200.0;
@@ -13065,7 +13169,7 @@ class _WindowViewState extends State<WindowView> {
             }
 
             final currentPreset = presets.firstWhere(
-                  (p) => p.type == selectedType,
+              (p) => p.type == selectedType,
             );
 
             return AlertDialog(
@@ -13253,18 +13357,18 @@ class _WindowViewState extends State<WindowView> {
                               decoration: BoxDecoration(
                                 color: isSelected
                                     ? preset.accentColor.withValues(
-                                  alpha: isDark ? 0.25 : 0.12,
-                                )
+                                        alpha: isDark ? 0.25 : 0.12,
+                                      )
                                     : (isDark
-                                    ? const Color(0xFF252538)
-                                    : Colors.grey.shade50),
+                                          ? const Color(0xFF252538)
+                                          : Colors.grey.shade50),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
                                   color: isSelected
                                       ? preset.accentColor
                                       : (isDark
-                                      ? Colors.white12
-                                      : Colors.grey.shade300),
+                                            ? Colors.white12
+                                            : Colors.grey.shade300),
                                   width: isSelected ? 2 : 1,
                                 ),
                               ),
@@ -13281,7 +13385,7 @@ class _WindowViewState extends State<WindowView> {
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           Localization.translate(
@@ -13294,8 +13398,8 @@ class _WindowViewState extends State<WindowView> {
                                             color: isSelected
                                                 ? preset.accentColor
                                                 : (isDark
-                                                ? Colors.white
-                                                : Colors.black87),
+                                                      ? Colors.white
+                                                      : Colors.black87),
                                           ),
                                         ),
                                         const SizedBox(height: 2),
@@ -13315,11 +13419,7 @@ class _WindowViewState extends State<WindowView> {
                                         ),
                                         const SizedBox(height: 4),
                                         Text(
-                                          '${Localization.translate(
-                                              'القياس الافتراضي',
-                                              lang)}: ${preset.defaultW
-                                              .toInt()} × ${preset.defaultH
-                                              .toInt()}',
+                                          '${Localization.translate('القياس الافتراضي', lang)}: ${preset.defaultW.toInt()} × ${preset.defaultH.toInt()}',
                                           style: TextStyle(
                                             fontSize: 9.5,
                                             color: preset.accentColor
@@ -13404,23 +13504,23 @@ class _WindowViewState extends State<WindowView> {
       final type = (raw['type'] ?? '').toString().toLowerCase();
       final isFrameFlag =
           raw['is_frame'] == 1 ||
-              raw['isFrame'] == true ||
-              raw['is_frame']?.toString() == '1';
+          raw['isFrame'] == true ||
+          raw['is_frame']?.toString() == '1';
       final isFrame =
           isFrameFlag ||
-              type == 'frame' ||
-              type == 'cadre' ||
-              type == 'dormant' ||
-              type == 'إطار';
+          type == 'frame' ||
+          type == 'cadre' ||
+          type == 'dormant' ||
+          type == 'إطار';
       if (!isFrame) return;
       final coverWidth = readDimension(raw, 'couvre_joint_width');
       final hasIntegratedCover =
           coverWidth > 0.5 ||
-              name.toLowerCase().contains('مدمج') ||
-              name.toLowerCase().contains('intégré') ||
-              name.toLowerCase().contains('integre') ||
-              name.toLowerCase().contains('monobloc') ||
-              type.contains('monobloc');
+          name.toLowerCase().contains('مدمج') ||
+          name.toLowerCase().contains('intégré') ||
+          name.toLowerCase().contains('integre') ||
+          name.toLowerCase().contains('monobloc') ||
+          type.contains('monobloc');
       if (hasIntegratedCover) return;
       final idKey = (raw['id'] ?? '$code:$name').toString();
       if (!seenIds.add(idKey)) return;
@@ -13445,8 +13545,10 @@ class _WindowViewState extends State<WindowView> {
     return frames;
   }
 
-  bool _selectedMullionFrameMatches(Map<String, dynamic> frame,
-      MullionProfileType type,) {
+  bool _selectedMullionFrameMatches(
+    Map<String, dynamic> frame,
+    MullionProfileType type,
+  ) {
     final selection = widget.model.selection;
     if (selection.type != SelectionType.mullion ||
         selection.isHorizontalMullion == null ||
@@ -13454,8 +13556,7 @@ class _WindowViewState extends State<WindowView> {
       return false;
     }
     final key =
-        '${selection.isHorizontalMullion! ? 'H' : 'V'}_${selection
-        .mullionPosition!.toStringAsFixed(1)}';
+        '${selection.isHorizontalMullion! ? 'H' : 'V'}_${selection.mullionPosition!.toStringAsFixed(1)}';
     final currentType =
         widget.model.mullionProfiles[key] ?? MullionProfileType.standard;
     final current = widget.model.mullionSectionOverrides[key];
@@ -13463,8 +13564,10 @@ class _WindowViewState extends State<WindowView> {
     return current['id']?.toString() == frame['id']?.toString();
   }
 
-  Future<void> _applyMullionFrameSection(MullionProfileType type,
-      Map<String, dynamic> frame,) async {
+  Future<void> _applyMullionFrameSection(
+    MullionProfileType type,
+    Map<String, dynamic> frame,
+  ) async {
     final mutable = Map<String, dynamic>.from(frame);
     mutable['calculated_price'] = await _sectionPriceForSelectedColor(mutable);
     if (!mounted) return;
@@ -13473,8 +13576,10 @@ class _WindowViewState extends State<WindowView> {
     });
   }
 
-  Future<void> _showMullionFrameSelectorDialog(BuildContext context,
-      MullionProfileType type,) async {
+  Future<void> _showMullionFrameSelectorDialog(
+    BuildContext context,
+    MullionProfileType type,
+  ) async {
     final frames = _availableMullionFrameSections();
     final title = type == MullionProfileType.flat
         ? 'Cadre doublé - اختر إطار التقسيم'
@@ -13482,64 +13587,60 @@ class _WindowViewState extends State<WindowView> {
 
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) =>
-          SimpleDialog(
-            title: Text(title),
-            children: [
-              if (frames.isEmpty)
-                Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text(
-                    _tr('لا توجد إطارات متوفرة لهذه السلسلة'),
-                    textDirection: TextDirection.rtl,
-                  ),
-                )
-              else
-                ...frames.map((frame) {
-                  final code = (frame['code'] ?? '').toString();
-                  final name = (frame['name'] ?? 'بدون اسم').toString();
-                  final label = code.isEmpty ? name : '$code - $name';
-                  final selected = _selectedMullionFrameMatches(frame, type);
-                  return SimpleDialogOption(
-                    onPressed: () async {
-                      Navigator.pop(dialogContext);
-                      await _applyMullionFrameSection(type, frame);
-                    },
-                    child: Row(
-                      children: [
-                        SectionImageWidget(
-                          code: code,
-                          name: name,
-                          imagePath: frame['image_path']?.toString(),
-                          size: 28,
-                          fallbackIcon: type == MullionProfileType.flat
-                              ? Icons.splitscreen_rounded
-                              : Icons.view_headline_rounded,
-                          fallbackColor: selected
-                              ? Colors.blue.shade700
-                              : Colors.grey.shade500,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(child: Text(label)),
-                        if (selected)
-                          Icon(
-                              Icons.check_circle, color: Colors.green.shade700),
-                      ],
+      builder: (dialogContext) => SimpleDialog(
+        title: Text(title),
+        children: [
+          if (frames.isEmpty)
+            Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                _tr('لا توجد إطارات متوفرة لهذه السلسلة'),
+                textDirection: TextDirection.rtl,
+              ),
+            )
+          else
+            ...frames.map((frame) {
+              final code = (frame['code'] ?? '').toString();
+              final name = (frame['name'] ?? 'بدون اسم').toString();
+              final label = code.isEmpty ? name : '$code - $name';
+              final selected = _selectedMullionFrameMatches(frame, type);
+              return SimpleDialogOption(
+                onPressed: () async {
+                  Navigator.pop(dialogContext);
+                  await _applyMullionFrameSection(type, frame);
+                },
+                child: Row(
+                  children: [
+                    SectionImageWidget(
+                      code: code,
+                      name: name,
+                      imagePath: frame['image_path']?.toString(),
+                      size: 28,
+                      fallbackIcon: type == MullionProfileType.flat
+                          ? Icons.splitscreen_rounded
+                          : Icons.view_headline_rounded,
+                      fallbackColor: selected
+                          ? Colors.blue.shade700
+                          : Colors.grey.shade500,
                     ),
-                  );
-                }),
-            ],
-          ),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(label)),
+                    if (selected)
+                      Icon(Icons.check_circle, color: Colors.green.shade700),
+                  ],
+                ),
+              );
+            }),
+        ],
+      ),
     );
   }
 
   Future<void> _showMullionTypeDialog(BuildContext context) async {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     final selection = widget.model.selection;
     if (selection.type != SelectionType.mullion ||
         selection.isHorizontalMullion == null ||
@@ -13548,15 +13649,16 @@ class _WindowViewState extends State<WindowView> {
     }
 
     final key =
-        '${selection.isHorizontalMullion! ? 'H' : 'V'}_${selection
-        .mullionPosition!.toStringAsFixed(1)}';
+        '${selection.isHorizontalMullion! ? 'H' : 'V'}_${selection.mullionPosition!.toStringAsFixed(1)}';
     final currentType =
         widget.model.mullionProfiles[key] ?? MullionProfileType.standard;
 
-    SimpleDialogOption typeOption(BuildContext dialogContext,
-        MullionProfileType type,
-        String label,
-        IconData icon,) {
+    SimpleDialogOption typeOption(
+      BuildContext dialogContext,
+      MullionProfileType type,
+      String label,
+      IconData icon,
+    ) {
       return SimpleDialogOption(
         onPressed: () {
           Navigator.pop(dialogContext);
@@ -13589,60 +13691,56 @@ class _WindowViewState extends State<WindowView> {
 
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) =>
-          SimpleDialog(
-            title: Text(Localization.translate('نوع التقسيم', lang)),
-            children: [
-              typeOption(
-                dialogContext,
-                MullionProfileType.standard,
-                Localization.translate('Traverse — تقسيم عادي', lang),
-                Icons.horizontal_rule_rounded,
-              ),
-              typeOption(
-                dialogContext,
-                MullionProfileType.flat,
-                Localization.translate('Cadre double — إطار مزدوج', lang),
-                Icons.splitscreen_rounded,
-              ),
-              typeOption(
-                dialogContext,
-                MullionProfileType.grooved,
-                Localization.translate('Cadre 140 — إطار بتجويف واحد', lang),
-                Icons.view_headline_rounded,
-              ),
-              if (currentType == MullionProfileType.grooved)
-                SimpleDialogOption(
-                  onPressed: () {
-                    widget.model.toggleGroovedMullionCavity(
-                      selection.isHorizontalMullion!,
-                      selection.mullionPosition!,
-                    );
-                    Navigator.pop(dialogContext);
-                  },
-                  child: Row(
-                    children: [
-                      const Icon(Icons.swap_horiz_rounded, color: Colors.blue),
-                      const SizedBox(width: 12),
-                      Text(Localization.translate('عكس اتجاه التجويف', lang)),
-                    ],
-                  ),
-                ),
-            ],
+      builder: (dialogContext) => SimpleDialog(
+        title: Text(Localization.translate('نوع التقسيم', lang)),
+        children: [
+          typeOption(
+            dialogContext,
+            MullionProfileType.standard,
+            Localization.translate('Traverse — تقسيم عادي', lang),
+            Icons.horizontal_rule_rounded,
           ),
+          typeOption(
+            dialogContext,
+            MullionProfileType.flat,
+            Localization.translate('Cadre double — إطار مزدوج', lang),
+            Icons.splitscreen_rounded,
+          ),
+          typeOption(
+            dialogContext,
+            MullionProfileType.grooved,
+            Localization.translate('Cadre 140 — إطار بتجويف واحد', lang),
+            Icons.view_headline_rounded,
+          ),
+          if (currentType == MullionProfileType.grooved)
+            SimpleDialogOption(
+              onPressed: () {
+                widget.model.toggleGroovedMullionCavity(
+                  selection.isHorizontalMullion!,
+                  selection.mullionPosition!,
+                );
+                Navigator.pop(dialogContext);
+              },
+              child: Row(
+                children: [
+                  const Icon(Icons.swap_horiz_rounded, color: Colors.blue),
+                  const SizedBox(width: 12),
+                  Text(Localization.translate('عكس اتجاه التجويف', lang)),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 
   Widget _buildMullionToolbar(BuildContext context) {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     String key =
-        "${widget.model.selection.isHorizontalMullion! ? 'H' : 'V'}_${widget
-        .model.selection.mullionPosition!.toStringAsFixed(1)}";
+        "${widget.model.selection.isHorizontalMullion! ? 'H' : 'V'}_${widget.model.selection.mullionPosition!.toStringAsFixed(1)}";
     MullionProfileType currentType =
         widget.model.mullionProfiles[key] ?? MullionProfileType.standard;
     Widget toolbarButton({
@@ -13715,22 +13813,20 @@ class _WindowViewState extends State<WindowView> {
               icon: Icons.splitscreen_rounded,
               selected: currentType == MullionProfileType.flat,
               showSubmenuIndicator: true,
-              onPressed: () =>
-                  _showMullionFrameSelectorDialog(
-                    context,
-                    MullionProfileType.flat,
-                  ),
+              onPressed: () => _showMullionFrameSelectorDialog(
+                context,
+                MullionProfileType.flat,
+              ),
             ),
             toolbarButton(
               label: 'Cadre 140',
               icon: Icons.view_headline_rounded,
               selected: currentType == MullionProfileType.grooved,
               showSubmenuIndicator: true,
-              onPressed: () =>
-                  _showMullionFrameSelectorDialog(
-                    context,
-                    MullionProfileType.grooved,
-                  ),
+              onPressed: () => _showMullionFrameSelectorDialog(
+                context,
+                MullionProfileType.grooved,
+              ),
             ),
             if (currentType == MullionProfileType.grooved)
               toolbarButton(
@@ -13740,11 +13836,10 @@ class _WindowViewState extends State<WindowView> {
                   widget.model.selection.isHorizontalMullion!,
                   widget.model.selection.mullionPosition!,
                 ),
-                onPressed: () =>
-                    widget.model.toggleGroovedMullionCavity(
-                      widget.model.selection.isHorizontalMullion!,
-                      widget.model.selection.mullionPosition!,
-                    ),
+                onPressed: () => widget.model.toggleGroovedMullionCavity(
+                  widget.model.selection.isHorizontalMullion!,
+                  widget.model.selection.mullionPosition!,
+                ),
               ),
             const SizedBox(width: 12),
             ElevatedButton.icon(
@@ -13773,12 +13868,10 @@ class _WindowViewState extends State<WindowView> {
   }
 
   Widget _buildInnerDivisionToolbar(BuildContext context) {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       color: Colors.blue.shade900.withValues(alpha: 0.8),
@@ -13808,12 +13901,10 @@ class _WindowViewState extends State<WindowView> {
   }
 
   Widget _buildFrameToolbar(BuildContext context) {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       color: Colors.indigo.shade900.withValues(alpha: 0.85),
@@ -13829,9 +13920,7 @@ class _WindowViewState extends State<WindowView> {
             ),
           ),
           const Spacer(),
-          if (widget.model
-              .getFrameRects()
-              .length > 1)
+          if (widget.model.getFrameRects().length > 1)
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red.shade600,
@@ -13852,9 +13941,11 @@ class _WindowViewState extends State<WindowView> {
     );
   }
 
-  Widget buildSideCoverSegmentsControl(BuildContext context,
-      WindowModel model,
-      AppLanguage lang,) {
+  Widget buildSideCoverSegmentsControl(
+    BuildContext context,
+    WindowModel model,
+    AppLanguage lang,
+  ) {
     if (!model.hasSideCovers) return const SizedBox.shrink();
 
     String labelFor(String side) {
@@ -13878,13 +13969,13 @@ class _WindowViewState extends State<WindowView> {
       return Tooltip(
         message: !allowed
             ? Localization.translate(
-          'بروفيل هذه الجهة لا يقبل غطاء جانبي',
-          lang,
-        )
+                'بروفيل هذه الجهة لا يقبل غطاء جانبي',
+                lang,
+              )
             : Localization.translate(
-          'ضغطة للتفعيل أو التعطيل، واضغط مطولا لتخصيص الغطاء',
-          lang,
-        ),
+                'ضغطة للتفعيل أو التعطيل، واضغط مطولا لتخصيص الغطاء',
+                lang,
+              ),
         child: Stack(
           children: [
             FilterChip(
@@ -13909,8 +14000,7 @@ class _WindowViewState extends State<WindowView> {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
-                          'بروفيل الإطار الحالي في الجهة (${labelFor(
-                              side)}) لا يسمح بتركيب غطاء جانبي.',
+                          'بروفيل الإطار الحالي في الجهة (${labelFor(side)}) لا يسمح بتركيب غطاء جانبي.',
                         ),
                         backgroundColor: Colors.orange.shade800,
                         duration: const Duration(seconds: 2),
@@ -13958,8 +14048,10 @@ class _WindowViewState extends State<WindowView> {
     );
   }
 
-  Future<void> _showSideCoverSegmentDialog(BuildContext context,
-      String side,) async {
+  Future<void> _showSideCoverSegmentDialog(
+    BuildContext context,
+    String side,
+  ) async {
     // Long-press callbacks can finish after WindowView has been removed
     // (for example when the user confirms another dialog or leaves the page).
     // Keep one live page context and never use the callback's stale context
@@ -13967,12 +14059,10 @@ class _WindowViewState extends State<WindowView> {
     if (!mounted || !context.mounted) return;
     final pageContext = this.context;
     final model = widget.model;
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       pageContext,
       listen: false,
-    )
-        .language;
+    ).language;
     final sideLength = model.sideCoverSideLength(side);
     if (sideLength <= 0) return;
 
@@ -14003,216 +14093,190 @@ class _WindowViewState extends State<WindowView> {
     try {
       await showDialog<void>(
         context: pageContext,
-        builder: (dialogContext) =>
-            StatefulBuilder(
-              builder: (dialogContext, setDialogState) {
-                final startLabel = fromTrailing ? trailing : leading;
-                final endLabel = fromTrailing ? leading : trailing;
-                return AlertDialog(
-                  title: Text(
-                    '${Localization.translate(
-                        'تخصيص غطاء الجهة', lang)} ${Localization.translate(
-                        sideLabel, lang)}',
-                  ),
-                  content: SingleChildScrollView(
-                    child: SizedBox(
-                      width: 330,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            final startLabel = fromTrailing ? trailing : leading;
+            final endLabel = fromTrailing ? leading : trailing;
+            return AlertDialog(
+              title: Text(
+                '${Localization.translate('تخصيص غطاء الجهة', lang)} ${Localization.translate(sideLabel, lang)}',
+              ),
+              content: SingleChildScrollView(
+                child: SizedBox(
+                  width: 330,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 8,
                         children: [
-                          Wrap(
-                            spacing: 8,
-                            children: [
-                              ChoiceChip(
-                                label: Text(
-                                  '${Localization.translate(
-                                      'من', lang)} ${Localization.translate(
-                                      leading, lang)}',
-                                ),
-                                selected: !fromTrailing,
-                                onSelected: (_) =>
-                                    setDialogState(() {
-                                      fromTrailing = false;
-                                    }),
-                              ),
-                              ChoiceChip(
-                                label: Text(
-                                  '${Localization.translate(
-                                      'من', lang)} ${Localization.translate(
-                                      trailing, lang)}',
-                                ),
-                                selected: fromTrailing,
-                                onSelected: (_) =>
-                                    setDialogState(() {
-                                      fromTrailing = true;
-                                    }),
-                              ),
-                            ],
+                          ChoiceChip(
+                            label: Text(
+                              '${Localization.translate('من', lang)} ${Localization.translate(leading, lang)}',
+                            ),
+                            selected: !fromTrailing,
+                            onSelected: (_) => setDialogState(() {
+                              fromTrailing = false;
+                            }),
                           ),
-                          SwitchListTile(
-                            contentPadding: EdgeInsets.zero,
-                            dense: true,
-                            title: Text(
-                              Localization.translate(
-                                'إدخال النهاية بدل الطول',
-                                lang,
-                              ),
+                          ChoiceChip(
+                            label: Text(
+                              '${Localization.translate('من', lang)} ${Localization.translate(trailing, lang)}',
                             ),
-                            value: useEndOffset,
-                            onChanged: (value) =>
-                                setDialogState(() {
-                                  useEndOffset = value;
-                                }),
-                          ),
-                          TextField(
-                            controller: startController,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: InputDecoration(
-                              labelText:
-                              '${Localization.translate(
-                                  'بداية الغطاء من', lang)} ${Localization
-                                  .translate(startLabel, lang)} (${Localization
-                                  .translate('مم', lang)})',
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          TextField(
-                            controller: secondController,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: InputDecoration(
-                              labelText: useEndOffset
-                                  ? '${Localization.translate(
-                                  'نهاية الغطاء قبل', lang)} ${Localization
-                                  .translate(endLabel, lang)} (${Localization
-                                  .translate('مم', lang)})'
-                                  : Localization.translate(
-                                'طول الغطاء على الإطار (مم)',
-                                lang,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          TextField(
-                            controller: visibleController,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: InputDecoration(
-                              labelText: Localization.translate(
-                                'العرض الظاهر خارج الإطار (مم)',
-                                lang,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            '${Localization.translate(
-                                'طول الجهة:', lang)} ${sideLength
-                                .toStringAsFixed(0)} ${Localization.translate(
-                                'مم', lang)}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.blueGrey,
-                            ),
+                            selected: fromTrailing,
+                            onSelected: (_) => setDialogState(() {
+                              fromTrailing = true;
+                            }),
                           ),
                         ],
                       ),
-                    ),
-                  ),
-                  actions: [
-                    if (existing != null)
-                      TextButton.icon(
-                        onPressed: () {
-                          if (!dialogContext.mounted) return;
-                          removeExistingSegment = true;
-                          Navigator.of(dialogContext).pop();
-                        },
-                        icon: const Icon(
-                            Icons.delete_outline, color: Colors.red),
-                        label: Text(
-                          Localization.translate('حذف', lang),
-                          style: const TextStyle(color: Colors.red),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: Text(
+                          Localization.translate(
+                            'إدخال النهاية بدل الطول',
+                            lang,
+                          ),
+                        ),
+                        value: useEndOffset,
+                        onChanged: (value) => setDialogState(() {
+                          useEndOffset = value;
+                        }),
+                      ),
+                      TextField(
+                        controller: startController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText:
+                              '${Localization.translate('بداية الغطاء من', lang)} ${Localization.translate(startLabel, lang)} (${Localization.translate('مم', lang)})',
                         ),
                       ),
-                    TextButton(
-                      onPressed: () {
-                        if (dialogContext.mounted) {
-                          Navigator.of(dialogContext).pop();
-                        }
-                      },
-                      child: Text(Localization.translate('إلغاء', lang)),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: secondController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: useEndOffset
+                              ? '${Localization.translate('نهاية الغطاء قبل', lang)} ${Localization.translate(endLabel, lang)} (${Localization.translate('مم', lang)})'
+                              : Localization.translate(
+                                  'طول الغطاء على الإطار (مم)',
+                                  lang,
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: visibleController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: Localization.translate(
+                            'العرض الظاهر خارج الإطار (مم)',
+                            lang,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        '${Localization.translate('طول الجهة:', lang)} ${sideLength.toStringAsFixed(0)} ${Localization.translate('مم', lang)}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.blueGrey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                if (existing != null)
+                  TextButton.icon(
+                    onPressed: () {
+                      if (!dialogContext.mounted) return;
+                      removeExistingSegment = true;
+                      Navigator.of(dialogContext).pop();
+                    },
+                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                    label: Text(
+                      Localization.translate('حذف', lang),
+                      style: const TextStyle(color: Colors.red),
                     ),
-                    ElevatedButton(
-                      onPressed: () {
-                        final first = readValue(startController);
-                        final second = readValue(secondController);
-                        final visible = readValue(visibleController);
-                        if (first < 0 || second < 0 || visible < 0) {
-                          if (pageContext.mounted) {
-                            ScaffoldMessenger
-                                .maybeOf(pageContext)
-                                ?.showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  Localization.translate(
-                                      'أدخل قياسات صحيحة', lang),
-                                ),
-                              ),
-                            );
-                          }
-                          return;
-                        }
-
-                        double start;
-                        double end;
-                        if (!fromTrailing) {
-                          start = first;
-                          end =
-                          useEndOffset ? sideLength - second : start + second;
-                        } else {
-                          end = sideLength - first;
-                          start = useEndOffset ? second : end - second;
-                        }
-                        start = start.clamp(0.0, sideLength).toDouble();
-                        end = end.clamp(0.0, sideLength).toDouble();
-                        if (end <= start) {
-                          if (pageContext.mounted) {
-                            ScaffoldMessenger
-                                .maybeOf(pageContext)
-                                ?.showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  Localization.translate(
-                                    'يجب أن تكون نهاية الغطاء بعد بدايته',
-                                    lang,
-                                  ),
-                                ),
-                              ),
-                            );
-                          }
-                          return;
-                        }
-
-                        if (!mounted || !dialogContext.mounted) return;
-                        segmentToSave = SideCoverSegment(
-                          side: side,
-                          startOffset: start,
-                          endOffset: end,
-                          visibleWidth: visible,
+                  ),
+                TextButton(
+                  onPressed: () {
+                    if (dialogContext.mounted) {
+                      Navigator.of(dialogContext).pop();
+                    }
+                  },
+                  child: Text(Localization.translate('إلغاء', lang)),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    final first = readValue(startController);
+                    final second = readValue(secondController);
+                    final visible = readValue(visibleController);
+                    if (first < 0 || second < 0 || visible < 0) {
+                      if (pageContext.mounted) {
+                        ScaffoldMessenger.maybeOf(pageContext)?.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              Localization.translate('أدخل قياسات صحيحة', lang),
+                            ),
+                          ),
                         );
-                        Navigator.of(dialogContext).pop();
-                      },
-                      child: Text(Localization.translate('حفظ', lang)),
-                    ),
-                  ],
-                );
-              },
-            ),
+                      }
+                      return;
+                    }
+
+                    double start;
+                    double end;
+                    if (!fromTrailing) {
+                      start = first;
+                      end = useEndOffset ? sideLength - second : start + second;
+                    } else {
+                      end = sideLength - first;
+                      start = useEndOffset ? second : end - second;
+                    }
+                    start = start.clamp(0.0, sideLength).toDouble();
+                    end = end.clamp(0.0, sideLength).toDouble();
+                    if (end <= start) {
+                      if (pageContext.mounted) {
+                        ScaffoldMessenger.maybeOf(pageContext)?.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              Localization.translate(
+                                'يجب أن تكون نهاية الغطاء بعد بدايته',
+                                lang,
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+                      return;
+                    }
+
+                    if (!mounted || !dialogContext.mounted) return;
+                    segmentToSave = SideCoverSegment(
+                      side: side,
+                      startOffset: start,
+                      endOffset: end,
+                      visibleWidth: visible,
+                    );
+                    Navigator.of(dialogContext).pop();
+                  },
+                  child: Text(Localization.translate('حفظ', lang)),
+                ),
+              ],
+            );
+          },
+        ),
       );
 
       // `showDialog` completes when Navigator.pop is called, while the dialog
@@ -14233,9 +14297,11 @@ class _WindowViewState extends State<WindowView> {
     }
   }
 
-  Widget buildShutterSidesControl(BuildContext context,
-      WindowModel model,
-      AppLanguage lang,) {
+  Widget buildShutterSidesControl(
+    BuildContext context,
+    WindowModel model,
+    AppLanguage lang,
+  ) {
     if (!model.hasSideCovers && !model.hasShutter) {
       return const SizedBox.shrink();
     }
@@ -14268,7 +14334,7 @@ class _WindowViewState extends State<WindowView> {
               labelStyle: const TextStyle(fontSize: 10),
               label: Text(Localization.translate('سفلية', lang)),
               selected:
-              model.hasBottomFrame &&
+                  model.hasBottomFrame &&
                   !model.removedShutterSides.contains('bottom'),
               onSelected: model.hasBottomFrame
                   ? (_) => model.toggleShutterSide('bottom')
@@ -14283,12 +14349,10 @@ class _WindowViewState extends State<WindowView> {
   Future<void> _showDrawingDefaultSeriesDialog() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     String t(String value) => Localization.translate(value, lang);
     final opening = <int, AluminumSeries>{};
     final sliding = <int, AluminumSeries>{};
@@ -14305,111 +14369,104 @@ class _WindowViewState extends State<WindowView> {
     var saving = false;
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) =>
-          StatefulBuilder(
-            builder: (context, update) {
-              Widget selector(String label,
-                  Map<int, AluminumSeries> items,
-                  int? selected,
-                  ValueChanged<int?> changed,) {
-                return DropdownButtonFormField<int>(
-                  value: items.containsKey(selected) ? selected : null,
-                  isExpanded: true,
-                  decoration: InputDecoration(labelText: t(label)),
-                  hint: Text(t('تلقائي (افتراضي النظام)')),
-                  items: items.values
-                      .map(
-                        (series) =>
-                        DropdownMenuItem<int>(
-                          value: series.id,
-                          child: Text(
-                              series.name, overflow: TextOverflow.ellipsis),
-                        ),
-                  )
-                      .toList(),
-                  onChanged: saving ? null : changed,
-                );
-              }
-
-              return AlertDialog(
-                title: Text(t('السلاسل الافتراضية للورشة')),
-                content: SizedBox(
-                  width: 420,
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          t(
-                              'اختر السلاسل للنوافذ الجديدة. لن يتغير الرسم الحالي.'),
-                        ),
-                        const SizedBox(height: 16),
-                        selector(
-                          'سلسلة الفتح الافتراضية (Battant):',
-                          opening,
-                          openingId,
-                              (value) => update(() => openingId = value),
-                        ),
-                        const SizedBox(height: 16),
-                        selector(
-                          'سلسلة المنزلق الافتراضية (Coulissant):',
-                          sliding,
-                          slidingId,
-                              (value) => update(() => slidingId = value),
-                        ),
-                      ],
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, update) {
+          Widget selector(
+            String label,
+            Map<int, AluminumSeries> items,
+            int? selected,
+            ValueChanged<int?> changed,
+          ) {
+            return DropdownButtonFormField<int>(
+              value: items.containsKey(selected) ? selected : null,
+              isExpanded: true,
+              decoration: InputDecoration(labelText: t(label)),
+              hint: Text(t('تلقائي (افتراضي النظام)')),
+              items: items.values
+                  .map(
+                    (series) => DropdownMenuItem<int>(
+                      value: series.id,
+                      child: Text(series.name, overflow: TextOverflow.ellipsis),
                     ),
-                  ),
+                  )
+                  .toList(),
+              onChanged: saving ? null : changed,
+            );
+          }
+
+          return AlertDialog(
+            title: Text(t('السلاسل الافتراضية للورشة')),
+            content: SizedBox(
+              width: 420,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      t('اختر السلاسل للنوافذ الجديدة. لن يتغير الرسم الحالي.'),
+                    ),
+                    const SizedBox(height: 16),
+                    selector(
+                      'سلسلة الفتح الافتراضية (Battant):',
+                      opening,
+                      openingId,
+                      (value) => update(() => openingId = value),
+                    ),
+                    const SizedBox(height: 16),
+                    selector(
+                      'سلسلة المنزلق الافتراضية (Coulissant):',
+                      sliding,
+                      slidingId,
+                      (value) => update(() => slidingId = value),
+                    ),
+                  ],
                 ),
-                actions: [
-                  TextButton(
-                    onPressed: saving ? null : () =>
-                        Navigator.pop(dialogContext),
-                    child: Text(t('إلغاء')),
-                  ),
-                  FilledButton(
-                    onPressed: saving
-                        ? null
-                        : () async {
-                      update(() => saving = true);
-                      if (openingId != null) {
-                        await prefs.setInt(
-                          'default_opening_series_id',
-                          openingId!,
-                        );
-                      }
-                      if (slidingId != null) {
-                        await prefs.setInt(
-                          'default_sliding_series_id',
-                          slidingId!,
-                        );
-                      }
-                      if (dialogContext.mounted) Navigator.pop(dialogContext);
-                    },
-                    child: Text(t('حفظ')),
-                  ),
-                ],
-              );
-            },
-          ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: saving ? null : () => Navigator.pop(dialogContext),
+                child: Text(t('إلغاء')),
+              ),
+              FilledButton(
+                onPressed: saving
+                    ? null
+                    : () async {
+                        update(() => saving = true);
+                        if (openingId != null) {
+                          await prefs.setInt(
+                            'default_opening_series_id',
+                            openingId!,
+                          );
+                        }
+                        if (slidingId != null) {
+                          await prefs.setInt(
+                            'default_sliding_series_id',
+                            slidingId!,
+                          );
+                        }
+                        if (dialogContext.mounted) Navigator.pop(dialogContext);
+                      },
+                child: Text(t('حفظ')),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 
   AppBar _buildAppBar(BuildContext context) {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
-    final isDark = Theme
-        .of(context)
-        .brightness == Brightness.dark;
+    ).language;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isStandaloneShutterContext =
         widget.model.isShutterOnly || widget.model.drawNextShapeAsShutterOnly;
     final isShutterContext = isStandaloneShutterContext || _isShutterSelected;
     final rawShutterColorItems =
-    widget.model.availableAccessoryColors.isNotEmpty
+        widget.model.availableAccessoryColors.isNotEmpty
         ? widget.model.availableAccessoryColors
         : widget.model.availableColors;
     final shutterColorItems = <Map<String, dynamic>>[];
@@ -14423,24 +14480,24 @@ class _WindowViewState extends State<WindowView> {
     final selectedShutterColorId = widget.model.effectiveShutterColor?['id']
         ?.toString();
     final selectedShutterColor =
-    (selectedShutterColorId != null &&
-        shutterColorItems.any(
+        (selectedShutterColorId != null &&
+            shutterColorItems.any(
               (color) => color['id']?.toString() == selectedShutterColorId,
-        ))
+            ))
         ? shutterColorItems.firstWhere(
-          (color) => color['id']?.toString() == selectedShutterColorId,
-    )
+            (color) => color['id']?.toString() == selectedShutterColorId,
+          )
         : null;
     // The selectors describe the drawing itself, not the route that happened
     // to open it. An edited sliding-only drawing can arrive through the
     // mixed editor route, so using `widget.systemMode` here showed the false
     // hints "سلسلة الفتح / Gamme coulissant" instead of its saved BS90.
     final hasSliding = widget.model.zones.any(
-          (zone) => zone.content == ZoneContent.slidingSash,
+      (zone) => zone.content == ZoneContent.slidingSash,
     );
     final hasOpening = widget.model.zones.any(
-          (zone) =>
-      zone.content == ZoneContent.singleSash ||
+      (zone) =>
+          zone.content == ZoneContent.singleSash ||
           zone.content == ZoneContent.doubleSash,
     );
 
@@ -14481,11 +14538,11 @@ class _WindowViewState extends State<WindowView> {
 
     // القيمة الفعالة لسلسلة الفتح
     final safeOpeningValue =
-    (widget.model.activeSeries != null &&
-        openingItemsList.any((s) => s.id == widget.model.activeSeries!.id))
+        (widget.model.activeSeries != null &&
+            openingItemsList.any((s) => s.id == widget.model.activeSeries!.id))
         ? openingItemsList.firstWhere(
-          (s) => s.id == widget.model.activeSeries!.id,
-    )
+            (s) => s.id == widget.model.activeSeries!.id,
+          )
         : (openingItemsList.isNotEmpty ? openingItemsList.first : null);
 
     if (widget.model.activeSeries == null && safeOpeningValue != null) {
@@ -14536,9 +14593,9 @@ class _WindowViewState extends State<WindowView> {
       final sameSystemSliding = activeOpeningSystem.series
           .where(
             (s) =>
-        isSlidingSeriesForDrawing(s) &&
-            !isOpeningSeriesForDrawing(s, activeOpeningSystem),
-      )
+                isSlidingSeriesForDrawing(s) &&
+                !isOpeningSeriesForDrawing(s, activeOpeningSystem),
+          )
           .toList();
       if (sameSystemSliding.isNotEmpty) {
         final cur = widget.model.activeSlidingSeries;
@@ -14550,13 +14607,13 @@ class _WindowViewState extends State<WindowView> {
 
     // القيمة الفعالة لسلسلة المنزلق
     final safeSlidingValue =
-    (widget.model.activeSlidingSeries != null &&
-        slidingItemsList.any(
+        (widget.model.activeSlidingSeries != null &&
+            slidingItemsList.any(
               (s) => s.id == widget.model.activeSlidingSeries!.id,
-        ))
+            ))
         ? slidingItemsList.firstWhere(
-          (s) => s.id == widget.model.activeSlidingSeries!.id,
-    )
+            (s) => s.id == widget.model.activeSlidingSeries!.id,
+          )
         : (slidingItemsList.isNotEmpty ? slidingItemsList.first : null);
 
     if (widget.model.activeSlidingSeries == null && safeSlidingValue != null) {
@@ -14612,18 +14669,18 @@ class _WindowViewState extends State<WindowView> {
                   underline: const SizedBox(),
                   icon: _isWindowsDesktop
                       ? Icon(
-                    Icons.keyboard_arrow_down,
-                    color: isDark
-                        ? Colors.orange.shade300
-                        : Colors.orange.shade800,
-                    size: 18,
-                  )
+                          Icons.keyboard_arrow_down,
+                          color: isDark
+                              ? Colors.orange.shade300
+                              : Colors.orange.shade800,
+                          size: 18,
+                        )
                       : const SizedBox.shrink(),
                   iconSize: _isWindowsDesktop ? 24 : 0,
                   items: shutterColorItems.map((colorData) {
                     final colorName =
-                    (colorData['name'] ?? colorData['color_name'] ?? '')
-                        .toString();
+                        (colorData['name'] ?? colorData['color_name'] ?? '')
+                            .toString();
                     final parsedColor = getEffectiveGradientColors(
                       FrameColor.white,
                       colorData,
@@ -14668,7 +14725,7 @@ class _WindowViewState extends State<WindowView> {
                   onChanged: (newColor) {
                     if (newColor == null) return;
                     widget.model.selectedShutterColor =
-                    Map<String, dynamic>.from(newColor);
+                        Map<String, dynamic>.from(newColor);
                     unawaited(widget.model.updateShutterDefaultsIfNeeded());
                     widget.model.refreshUI();
                   },
@@ -14718,12 +14775,12 @@ class _WindowViewState extends State<WindowView> {
                     underline: const SizedBox(),
                     icon: _isWindowsDesktop
                         ? Icon(
-                      Icons.keyboard_arrow_down,
-                      color: isDark
-                          ? Colors.blue.shade300
-                          : Colors.blue.shade800,
-                      size: 18,
-                    )
+                            Icons.keyboard_arrow_down,
+                            color: isDark
+                                ? Colors.blue.shade300
+                                : Colors.blue.shade800,
+                            size: 18,
+                          )
                         : const SizedBox.shrink(),
                     iconSize: _isWindowsDesktop ? 24 : 0,
                     items: openingItemsList.map((series) {
@@ -14754,9 +14811,9 @@ class _WindowViewState extends State<WindowView> {
                           final compatibleSliding = ownerSystem.series
                               .where(
                                 (s) =>
-                            isSlidingSeriesForDrawing(s) &&
-                                !isOpeningSeriesForDrawing(s, ownerSystem),
-                          )
+                                    isSlidingSeriesForDrawing(s) &&
+                                    !isOpeningSeriesForDrawing(s, ownerSystem),
+                              )
                               .toList();
                           if (compatibleSliding.isNotEmpty) {
                             await widget.model.setActiveSlidingSeries(
@@ -14819,12 +14876,12 @@ class _WindowViewState extends State<WindowView> {
                     underline: const SizedBox(),
                     icon: _isWindowsDesktop
                         ? Icon(
-                      Icons.keyboard_arrow_down,
-                      color: isDark
-                          ? Colors.green.shade300
-                          : Colors.green.shade800,
-                      size: 18,
-                    )
+                            Icons.keyboard_arrow_down,
+                            color: isDark
+                                ? Colors.green.shade300
+                                : Colors.green.shade800,
+                            size: 18,
+                          )
                         : const SizedBox.shrink(),
                     iconSize: _isWindowsDesktop ? 24 : 0,
                     items: slidingItemsList.map((series) {
@@ -14865,16 +14922,16 @@ class _WindowViewState extends State<WindowView> {
               constraints: const BoxConstraints(),
               onPressed: widget.model.canUndo
                   ? () {
-                widget.model.undo();
-                if (_isShutterSelected &&
-                    !widget.model.isShutterOnly &&
-                    (widget.model.zones.isNotEmpty ||
-                        !widget.model.hasShutter)) {
-                  setState(() {
-                    _isShutterSelected = false;
-                  });
-                }
-              }
+                      widget.model.undo();
+                      if (_isShutterSelected &&
+                          !widget.model.isShutterOnly &&
+                          (widget.model.zones.isNotEmpty ||
+                              !widget.model.hasShutter)) {
+                        setState(() {
+                          _isShutterSelected = false;
+                        });
+                      }
+                    }
                   : null,
               icon: const Icon(Icons.undo_rounded),
               tooltip: Localization.translate('تراجع', lang),
@@ -14887,13 +14944,13 @@ class _WindowViewState extends State<WindowView> {
               constraints: const BoxConstraints(),
               onPressed: widget.model.canRedo
                   ? () {
-                widget.model.redo();
-                if (widget.model.isShutterOnly && !_isShutterSelected) {
-                  setState(() {
-                    _isShutterSelected = true;
-                  });
-                }
-              }
+                      widget.model.redo();
+                      if (widget.model.isShutterOnly && !_isShutterSelected) {
+                        setState(() {
+                          _isShutterSelected = true;
+                        });
+                      }
+                    }
                   : null,
               icon: const Icon(Icons.redo_rounded),
               tooltip: Localization.translate('إعادة', lang),
@@ -14913,9 +14970,9 @@ class _WindowViewState extends State<WindowView> {
               ),
               tooltip: widget.model.copyPreviousFrameSize
                   ? Localization.translate(
-                'نسخ قياس الإطار السابق: مفعّل',
-                lang,
-              )
+                      'نسخ قياس الإطار السابق: مفعّل',
+                      lang,
+                    )
                   : Localization.translate('نسخ قياس الإطار السابق', lang),
               onPressed: widget.model.toggleCopyPreviousFrameSize,
             ),
@@ -15035,12 +15092,8 @@ class _WindowViewState extends State<WindowView> {
   }
 
   Widget _buildSplitToolbar(BuildContext context, bool hasSelection) {
-    final lang = Provider
-        .of<AppSettingsProvider>(context)
-        .language;
-    final isDark = Theme
-        .of(context)
-        .brightness == Brightness.dark;
+    final lang = Provider.of<AppSettingsProvider>(context).language;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       color: isDark ? const Color(0xFF1E1E2C) : Colors.white,
@@ -15116,8 +15169,7 @@ class _WindowViewState extends State<WindowView> {
                   ),
                 ),
                 child: Text(
-                  'Dim: ${widget.model.width.toInt()} * ${widget.model.height
-                      .toInt()}',
+                  'Dim: ${widget.model.width.toInt()} * ${widget.model.height.toInt()}',
                   style: TextStyle(
                     fontSize: 12,
                     color: isDark ? Colors.blue.shade300 : Colors.blue.shade900,
@@ -15223,9 +15275,7 @@ class _WindowViewState extends State<WindowView> {
                       const SizedBox(width: 5),
                       Text(
                         widget.model.isShutterSplit
-                            ? '${Localization.translate(
-                            'فصل الصناديق', lang)} (${widget.model
-                            .effectiveShutterSplits.length})'
+                            ? '${Localization.translate('فصل الصناديق', lang)} (${widget.model.effectiveShutterSplits.length})'
                             : Localization.translate('فصل الصناديق', lang),
                         style: const TextStyle(
                           fontSize: 12,
@@ -15274,59 +15324,54 @@ class _WindowViewState extends State<WindowView> {
   void _showClearAllDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) =>
-          AlertDialog(
-            backgroundColor: Colors.white,
-            title: Row(
-              children: [
-                Icon(Icons.warning_amber_rounded, color: Colors.red),
-                SizedBox(width: 8),
-                Text(
-                  _tr('مسح الرسم'),
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold, color: Colors.red),
-                ),
-              ],
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red),
+            SizedBox(width: 8),
+            Text(
+              _tr('مسح الرسم'),
+              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
             ),
-            content: Text(
-              _tr('هل أنت متأكد أنك تريد مسح الرسم بالكامل والبدء من جديد؟'),
-              style: TextStyle(fontWeight: FontWeight.bold),
+          ],
+        ),
+        content: Text(
+          _tr('هل أنت متأكد أنك تريد مسح الرسم بالكامل والبدء من جديد؟'),
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              _tr('إلغاء'),
+              style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(
-                  _tr('إلغاء'),
-                  style: TextStyle(
-                      color: Colors.grey, fontWeight: FontWeight.bold),
-                ),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                onPressed: () {
-                  widget.model.clearAll();
-                  Navigator.pop(context);
-                },
-                child: Text(
-                  _tr('نعم، امسح'),
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
           ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              widget.model.clearAll();
+              Navigator.pop(context);
+            },
+            child: Text(
+              _tr('نعم، امسح'),
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   void _showProfileAngleDialog(BuildContext context) {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     final junctions = widget.model.getAdjacentFrameJunctions();
     final hasJunctions = junctions.isNotEmpty;
 
@@ -15421,9 +15466,9 @@ class _WindowViewState extends State<WindowView> {
                                       fontWeight: FontWeight.bold,
                                       fontSize: 12.5,
                                       color:
-                                      widget
-                                          .model
-                                          .frameSwitchedForProfileAngle
+                                          widget
+                                              .model
+                                              .frameSwitchedForProfileAngle
                                           ? Colors.green.shade900
                                           : Colors.blue.shade900,
                                     ),
@@ -15431,14 +15476,11 @@ class _WindowViewState extends State<WindowView> {
                                   const SizedBox(height: 3),
                                   Text(
                                     widget.model.frameSwitchedForProfileAngle
-                                        ? '${Localization.translate(
-                                        'تم استبدال الإطار تلقائياً بإطار بدون غطاء مدمج مطابق في العرض الظاهر ليناسب زاوية 90°:',
-                                        lang)} (${widget.model
-                                        .profileAngleFrameSwitchNotice ?? ""})'
+                                        ? '${Localization.translate('تم استبدال الإطار تلقائياً بإطار بدون غطاء مدمج مطابق في العرض الظاهر ليناسب زاوية 90°:', lang)} (${widget.model.profileAngleFrameSwitchNotice ?? ""})'
                                         : Localization.translate(
-                                      'لا يمكن تركيب إطار بغطاء مدمج عند الزاوية 90°؛ يقوم النظام تلقائياً باختيار إطار بدون غطاء مدمج مطابق تماماً في العرض الظاهر.',
-                                      lang,
-                                    ),
+                                            'لا يمكن تركيب إطار بغطاء مدمج عند الزاوية 90°؛ يقوم النظام تلقائياً باختيار إطار بدون غطاء مدمج مطابق تماماً في العرض الظاهر.',
+                                            lang,
+                                          ),
                                     style: TextStyle(
                                       fontSize: 11.5,
                                       color: Colors.grey.shade800,
@@ -15512,9 +15554,7 @@ class _WindowViewState extends State<WindowView> {
                             elevation: isSelected ? 2 : 0,
                             color: isSelected
                                 ? Colors.blue.withOpacity(0.08)
-                                : Theme
-                                .of(context)
-                                .cardColor,
+                                : Theme.of(context).cardColor,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                               side: BorderSide(
@@ -15539,8 +15579,7 @@ class _WindowViewState extends State<WindowView> {
                               ),
                               subtitle: Text(
                                 Localization.translate(
-                                  'طول القطاع: ${j.height.toStringAsFixed(
-                                      0)} مم',
+                                  'طول القطاع: ${j.height.toStringAsFixed(0)} مم',
                                   lang,
                                 ),
                                 style: const TextStyle(fontSize: 12),
@@ -15564,16 +15603,16 @@ class _WindowViewState extends State<WindowView> {
                             borderRadius: BorderRadius.circular(8),
                             side: BorderSide(
                               color:
-                              widget
-                                  .model
-                                  .activeProfileAngleJunctions
-                                  .isEmpty
+                                  widget
+                                      .model
+                                      .activeProfileAngleJunctions
+                                      .isEmpty
                                   ? Colors.red.shade300
                                   : Colors.grey.shade300,
                             ),
                           ),
                           tileColor:
-                          widget.model.activeProfileAngleJunctions.isEmpty
+                              widget.model.activeProfileAngleJunctions.isEmpty
                               ? Colors.red.withOpacity(0.06)
                               : null,
                           leading: const Icon(
@@ -15598,7 +15637,7 @@ class _WindowViewState extends State<WindowView> {
                             style: const TextStyle(fontSize: 12),
                           ),
                           trailing:
-                          widget.model.activeProfileAngleJunctions.isEmpty
+                              widget.model.activeProfileAngleJunctions.isEmpty
                               ? const Icon(Icons.check, color: Colors.red)
                               : null,
                           onTap: () {
@@ -15778,18 +15817,15 @@ class _WindowViewState extends State<WindowView> {
       widget.model.selection.zoneId,
     );
     if (frame == null) return;
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
-    String tr(String ar, String fr, String en) =>
-        switch (lang) {
-          AppLanguage.french => fr,
-          AppLanguage.english => en,
-          AppLanguage.arabic => ar,
-        };
+    ).language;
+    String tr(String ar, String fr, String en) => switch (lang) {
+      AppLanguage.french => fr,
+      AppLanguage.english => en,
+      AppLanguage.arabic => ar,
+    };
 
     final sliding = widget.model.frameUsesSlidingSeries(frame);
     final base = widget.model.frameSectionForRect(frame)?.toMap();
@@ -15801,18 +15837,17 @@ class _WindowViewState extends State<WindowView> {
           .toLowerCase();
       if (role == 'sliding_frame' || role == 'frame_sliding') return true;
       final uScope =
-      (row['usage_scope'] ??
-          row['design_usage_scope'] ??
-          row['sharing_usage_scope'] ??
-          '')
-          .toString()
-          .toLowerCase();
+          (row['usage_scope'] ??
+                  row['design_usage_scope'] ??
+                  row['sharing_usage_scope'] ??
+                  '')
+              .toString()
+              .toLowerCase();
       if (uScope == 'sliding') return true;
       if (uScope == 'opening' || uScope == 'ouvrant') return false;
       final text =
-      '${row['label'] ?? ''} ${row['name'] ?? ''} ${row['type'] ??
-          ''} ${row['code'] ?? ''}'
-          .toLowerCase();
+          '${row['label'] ?? ''} ${row['name'] ?? ''} ${row['type'] ?? ''} ${row['code'] ?? ''}'
+              .toLowerCase();
       return RegExp(
         r'\b\d+\s*rail|raill|monorail|couliss|glissi|galandage|سحاب|منزلق|جرار',
       ).hasMatch(text);
@@ -15821,10 +15856,10 @@ class _WindowViewState extends State<WindowView> {
     final raw = sliding
         ? _slidingFrameProfiles.where((r) => isRowSliding(r)).toList()
         : (_openingFrameProfiles.isNotEmpty
-        ? _openingFrameProfiles
-        : _frameProfiles)
-        .where((r) => !isRowSliding(r))
-        .toList();
+                  ? _openingFrameProfiles
+                  : _frameProfiles)
+              .where((r) => !isRowSliding(r))
+              .toList();
 
     final allRows = <Map<String, dynamic>>[...raw];
     if (widget.model.hasFrameJoinRules) {
@@ -15884,180 +15919,169 @@ class _WindowViewState extends State<WindowView> {
     final selectedSides = <String>{};
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) =>
-          StatefulBuilder(
-            builder: (context, setDialogState) {
-              Widget sideButton(String side, IconData icon, String label) {
-                final selected = selectedSides.contains(side);
-                final override = widget.model.frameSideOverrideForRect(
-                    frame, side);
-                return FilterChip(
-                  selected: selected,
-                  avatar: Icon(icon, size: 18),
-                  label: Text(
-                    override == null
-                        ? label
-                        : '$label • ${(override['code'] ?? override['name'] ??
-                        '').toString()}',
-                  ),
-                  onSelected: (value) =>
-                      setDialogState(() {
-                        value ? selectedSides.add(side) : selectedSides.remove(
-                            side);
-                      }),
-                );
-              }
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Widget sideButton(String side, IconData icon, String label) {
+            final selected = selectedSides.contains(side);
+            final override = widget.model.frameSideOverrideForRect(frame, side);
+            return FilterChip(
+              selected: selected,
+              avatar: Icon(icon, size: 18),
+              label: Text(
+                override == null
+                    ? label
+                    : '$label • ${(override['code'] ?? override['name'] ?? '').toString()}',
+              ),
+              onSelected: (value) => setDialogState(() {
+                value ? selectedSides.add(side) : selectedSides.remove(side);
+              }),
+            );
+          }
 
-              return AlertDialog(
-                title: Text(
-                  tr(
-                    'تخصيص قطع الإطار حسب الجهة',
-                    'Personnaliser les côtés du dormant',
-                    'Customize frame sides',
-                  ),
-                ),
-                content: SizedBox(
-                  width: 620,
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          tr(
-                            'حدد جهة أو عدة جهات، ثم اختر الإطار الذي ستُقطع منه. تظهر هنا فقط الإطارات المرتبطة والمتوافقة.',
-                            'Sélectionnez un ou plusieurs côtés, puis le dormant utilisé. Seuls les dormants liés et compatibles sont affichés.',
-                            'Select one or more sides, then choose the frame profile. Only linked compatible frames are shown.',
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            sideButton(
-                              'top',
-                              Icons.arrow_upward,
-                              tr('علوي', 'Haut', 'Top'),
-                            ),
-                            sideButton(
-                              'right',
-                              Icons.arrow_forward,
-                              tr('يمين', 'Droite', 'Right'),
-                            ),
-                            sideButton(
-                              'bottom',
-                              Icons.arrow_downward,
-                              tr('سفلي', 'Bas', 'Bottom'),
-                            ),
-                            sideButton(
-                              'left',
-                              Icons.arrow_back,
-                              tr('يسار', 'Gauche', 'Left'),
-                            ),
-                          ],
-                        ),
-                        const Divider(height: 28),
-                        ...candidates.map((item) {
-                          final code = (item['code'] ?? '').toString();
-                          final name = (item['name'] ?? '').toString();
-                          return ListTile(
-                            minVerticalPadding: 8,
-                            leading: Container(
-                              width: 62,
-                              height: 62,
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color:
-                                Theme
-                                    .of(context)
-                                    .brightness == Brightness.dark
-                                    ? Colors.white10
-                                    : Colors.grey.shade50,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color:
-                                  Theme
-                                      .of(context)
-                                      .brightness ==
-                                      Brightness.dark
-                                      ? Colors.white24
-                                      : Colors.grey.shade300,
-                                ),
-                              ),
-                              child: SectionImageWidget(
-                                code: code,
-                                name: name,
-                                imagePath: item['image_path']?.toString(),
-                                size: 54,
-                                fallbackIcon: Icons.crop_square_rounded,
-                              ),
-                            ),
-                            title: Text(
-                              [code, name].where((e) => e.isNotEmpty).join(
-                                  ' - '),
-                            ),
-                            subtitle: Text(
-                              ((item['couvre_joint_width'] as num?)
-                                  ?.toDouble() ??
-                                  0) >
-                                  0
-                                  ? tr(
-                                'بغطاء جانبي مدمج',
-                                'Avec couvre-joint intégré',
-                                'Integrated side cover',
-                              )
-                                  : tr(
-                                'بدون غطاء جانبي مدمج',
-                                'Sans couvre-joint intégré',
-                                'Without integrated side cover',
-                              ),
-                            ),
-                            enabled: selectedSides.isNotEmpty,
-                            onTap: selectedSides.isEmpty
-                                ? null
-                                : () {
-                              widget.model.setFrameSideOverrides(
-                                frame,
-                                selectedSides,
-                                item,
-                              );
-                              Navigator.pop(dialogContext);
-                            },
-                          );
-                        }),
-                      ],
-                    ),
-                  ),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: selectedSides.isEmpty
-                        ? null
-                        : () {
-                      widget.model.setFrameSideOverrides(
-                        frame,
-                        selectedSides,
-                        null,
-                      );
-                      Navigator.pop(dialogContext);
-                    },
-                    child: Text(
+          return AlertDialog(
+            title: Text(
+              tr(
+                'تخصيص قطع الإطار حسب الجهة',
+                'Personnaliser les côtés du dormant',
+                'Customize frame sides',
+              ),
+            ),
+            content: SizedBox(
+              width: 620,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
                       tr(
-                        'استعادة الإطار الأصلي',
-                        'Rétablir le dormant',
-                        'Restore original frame',
+                        'حدد جهة أو عدة جهات، ثم اختر الإطار الذي ستُقطع منه. تظهر هنا فقط الإطارات المرتبطة والمتوافقة.',
+                        'Sélectionnez un ou plusieurs côtés, puis le dormant utilisé. Seuls les dormants liés et compatibles sont affichés.',
+                        'Select one or more sides, then choose the frame profile. Only linked compatible frames are shown.',
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        sideButton(
+                          'top',
+                          Icons.arrow_upward,
+                          tr('علوي', 'Haut', 'Top'),
+                        ),
+                        sideButton(
+                          'right',
+                          Icons.arrow_forward,
+                          tr('يمين', 'Droite', 'Right'),
+                        ),
+                        sideButton(
+                          'bottom',
+                          Icons.arrow_downward,
+                          tr('سفلي', 'Bas', 'Bottom'),
+                        ),
+                        sideButton(
+                          'left',
+                          Icons.arrow_back,
+                          tr('يسار', 'Gauche', 'Left'),
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 28),
+                    ...candidates.map((item) {
+                      final code = (item['code'] ?? '').toString();
+                      final name = (item['name'] ?? '').toString();
+                      return ListTile(
+                        minVerticalPadding: 8,
+                        leading: Container(
+                          width: 62,
+                          height: 62,
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white10
+                                : Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color:
+                                  Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? Colors.white24
+                                  : Colors.grey.shade300,
+                            ),
+                          ),
+                          child: SectionImageWidget(
+                            code: code,
+                            name: name,
+                            imagePath: item['image_path']?.toString(),
+                            size: 54,
+                            fallbackIcon: Icons.crop_square_rounded,
+                          ),
+                        ),
+                        title: Text(
+                          [code, name].where((e) => e.isNotEmpty).join(' - '),
+                        ),
+                        subtitle: Text(
+                          ((item['couvre_joint_width'] as num?)?.toDouble() ??
+                                      0) >
+                                  0
+                              ? tr(
+                                  'بغطاء جانبي مدمج',
+                                  'Avec couvre-joint intégré',
+                                  'Integrated side cover',
+                                )
+                              : tr(
+                                  'بدون غطاء جانبي مدمج',
+                                  'Sans couvre-joint intégré',
+                                  'Without integrated side cover',
+                                ),
+                        ),
+                        enabled: selectedSides.isNotEmpty,
+                        onTap: selectedSides.isEmpty
+                            ? null
+                            : () {
+                                widget.model.setFrameSideOverrides(
+                                  frame,
+                                  selectedSides,
+                                  item,
+                                );
+                                Navigator.pop(dialogContext);
+                              },
+                      );
+                    }),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: selectedSides.isEmpty
+                    ? null
+                    : () {
+                        widget.model.setFrameSideOverrides(
+                          frame,
+                          selectedSides,
+                          null,
+                        );
+                        Navigator.pop(dialogContext);
+                      },
+                child: Text(
+                  tr(
+                    'استعادة الإطار الأصلي',
+                    'Rétablir le dormant',
+                    'Restore original frame',
                   ),
-                  TextButton(
-                    onPressed: () => Navigator.pop(dialogContext),
-                    child: Text(tr('إغلاق', 'Fermer', 'Close')),
-                  ),
-                ],
-              );
-            },
-          ),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text(tr('إغلاق', 'Fermer', 'Close')),
+              ),
+            ],
+          );
+        },
+      ),
     );
     if (mounted) setState(() {});
   }
@@ -16067,27 +16091,27 @@ class _WindowViewState extends State<WindowView> {
     if (zone == null) return;
     final isSashTarget =
         zone.content == ZoneContent.singleSash ||
-            zone.content == ZoneContent.doubleSash;
+        zone.content == ZoneContent.doubleSash;
     final selectedRight =
         zone.content == ZoneContent.doubleSash &&
-            widget.model.activeSubZone?.startsWith('right') == true;
+        widget.model.activeSubZone?.startsWith('right') == true;
     Rect measurementRect = zone.boundary;
     if (zone.content == ZoneContent.doubleSash) {
       final splitX =
           zone.boundary.left + zone.boundary.width * zone.doubleSashRatio;
       measurementRect = selectedRight
           ? Rect.fromLTRB(
-        splitX + 2,
-        zone.boundary.top,
-        zone.boundary.right,
-        zone.boundary.bottom,
-      )
+              splitX + 2,
+              zone.boundary.top,
+              zone.boundary.right,
+              zone.boundary.bottom,
+            )
           : Rect.fromLTRB(
-        zone.boundary.left,
-        zone.boundary.top,
-        splitX - 2,
-        zone.boundary.bottom,
-      );
+              zone.boundary.left,
+              zone.boundary.top,
+              splitX - 2,
+              zone.boundary.bottom,
+            );
     }
     if (isSashTarget) {
       measurementRect = widget.model.getSafeGlassRect(
@@ -16113,15 +16137,11 @@ class _WindowViewState extends State<WindowView> {
     TextEditingController part1Ctrl = TextEditingController();
     TextEditingController part2Ctrl = TextEditingController();
 
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
-    final isDark = Theme
-        .of(context)
-        .brightness == Brightness.dark;
+    ).language;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final textColor = isDark ? Colors.white : Colors.black;
     final subtextColor = isDark ? Colors.white70 : Colors.black87;
     final bgColor = isDark ? const Color(0xFF1E1E2C) : Colors.white;
@@ -16130,14 +16150,11 @@ class _WindowViewState extends State<WindowView> {
     String getRemainingText() {
       if (parts == 2) {
         double p1 = double.tryParse(part1Ctrl.text) ?? 0;
-        return '${Localization.translate('المتبقي', lang)}: ${(totalNetSize -
-            p1).toStringAsFixed(1)} mm';
+        return '${Localization.translate('المتبقي', lang)}: ${(totalNetSize - p1).toStringAsFixed(1)} mm';
       } else if (parts == 3) {
         double p1 = double.tryParse(part1Ctrl.text) ?? 0;
         double p2 = double.tryParse(part2Ctrl.text) ?? 0;
-        return '${Localization.translate(
-            'القطعة الوسطى', lang)}: ${(totalNetSize - p1 - p2).toStringAsFixed(
-            1)} mm';
+        return '${Localization.translate('القطعة الوسطى', lang)}: ${(totalNetSize - p1 - p2).toStringAsFixed(1)} mm';
       }
       return '';
     }
@@ -16189,12 +16206,11 @@ class _WindowViewState extends State<WindowView> {
                       ),
                       value: false,
                       groupValue: isEqualSplit,
-                      onChanged: (v) =>
-                          setState(() {
-                            isEqualSplit = v!;
-                            part1Ctrl.clear();
-                            part2Ctrl.clear();
-                          }),
+                      onChanged: (v) => setState(() {
+                        isEqualSplit = v!;
+                        part1Ctrl.clear();
+                        part2Ctrl.clear();
+                      }),
                       activeColor: Colors.blue,
                     ),
                     Divider(
@@ -16261,15 +16277,13 @@ class _WindowViewState extends State<WindowView> {
                             ),
                             items: List.generate(9, (index) => index + 2)
                                 .map(
-                                  (e) =>
-                                  DropdownMenuItem(
+                                  (e) => DropdownMenuItem(
                                     value: e,
                                     child: Text(
-                                      '$e ${Localization.translate(
-                                          'قطع', lang)}',
+                                      '$e ${Localization.translate('قطع', lang)}',
                                     ),
                                   ),
-                            )
+                                )
                                 .toList(),
                             onChanged: (v) => setState(() => parts = v!),
                           ),
@@ -16302,30 +16316,25 @@ class _WindowViewState extends State<WindowView> {
                                 ),
                                 items: [2, 3]
                                     .map(
-                                      (e) =>
-                                      DropdownMenuItem(
+                                      (e) => DropdownMenuItem(
                                         value: e,
                                         child: Text(
-                                          '$e ${Localization.translate(
-                                              'قطع', lang)}',
+                                          '$e ${Localization.translate('قطع', lang)}',
                                         ),
                                       ),
-                                )
+                                    )
                                     .toList(),
-                                onChanged: (v) =>
-                                    setState(() {
-                                      parts = v!;
-                                      part1Ctrl.clear();
-                                      part2Ctrl.clear();
-                                    }),
+                                onChanged: (v) => setState(() {
+                                  parts = v!;
+                                  part1Ctrl.clear();
+                                  part2Ctrl.clear();
+                                }),
                               ),
                             ],
                           ),
                           const SizedBox(height: 10),
                           Text(
-                            '${Localization.translate(
-                                'إجمالي القياس الصافي', lang)}: ${totalNetSize
-                                .toStringAsFixed(1)} mm',
+                            '${Localization.translate('إجمالي القياس الصافي', lang)}: ${totalNetSize.toStringAsFixed(1)} mm',
                             style: const TextStyle(
                               color: Colors.red,
                               fontWeight: FontWeight.bold,
@@ -16362,13 +16371,13 @@ class _WindowViewState extends State<WindowView> {
                                       child: Text(
                                         isHorizontal
                                             ? Localization.translate(
-                                          'من الأعلى',
-                                          lang,
-                                        )
+                                                'من الأعلى',
+                                                lang,
+                                              )
                                             : Localization.translate(
-                                          'من اليسار',
-                                          lang,
-                                        ),
+                                                'من اليسار',
+                                                lang,
+                                              ),
                                       ),
                                     ),
                                     DropdownMenuItem(
@@ -16376,13 +16385,13 @@ class _WindowViewState extends State<WindowView> {
                                       child: Text(
                                         isHorizontal
                                             ? Localization.translate(
-                                          'من الأسفل',
-                                          lang,
-                                        )
+                                                'من الأسفل',
+                                                lang,
+                                              )
                                             : Localization.translate(
-                                          'من اليمين',
-                                          lang,
-                                        ),
+                                                'من اليمين',
+                                                lang,
+                                              ),
                                       ),
                                     ),
                                   ],
@@ -16431,84 +16440,83 @@ class _WindowViewState extends State<WindowView> {
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                          ] else
-                            if (parts == 3) ...[
-                              TextField(
-                                controller: part1Ctrl,
-                                onChanged: (_) => setState(() {}),
-                                style: TextStyle(
-                                  color: textColor,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18,
+                          ] else if (parts == 3) ...[
+                            TextField(
+                              controller: part1Ctrl,
+                              onChanged: (_) => setState(() {}),
+                              style: TextStyle(
+                                color: textColor,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                              ),
+                              decoration: InputDecoration(
+                                labelText: Localization.translate(
+                                  isHorizontal
+                                      ? 'القطعة العلوية (mm)'
+                                      : 'القطعة اليسرى (mm)',
+                                  lang,
                                 ),
-                                decoration: InputDecoration(
-                                  labelText: Localization.translate(
-                                    isHorizontal
-                                        ? 'القطعة العلوية (mm)'
-                                        : 'القطعة اليسرى (mm)',
-                                    lang,
-                                  ),
-                                  labelStyle: TextStyle(
+                                labelStyle: TextStyle(
+                                  color: isDark
+                                      ? Colors.white70
+                                      : Colors.black54,
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderSide: BorderSide(
                                     color: isDark
-                                        ? Colors.white70
-                                        : Colors.black54,
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderSide: BorderSide(
-                                      color: isDark
-                                          ? Colors.white24
-                                          : Colors.grey,
-                                    ),
-                                  ),
-                                  focusedBorder: const OutlineInputBorder(
-                                    borderSide: BorderSide(color: Colors.blue),
+                                        ? Colors.white24
+                                        : Colors.grey,
                                   ),
                                 ),
-                                keyboardType: TextInputType.number,
+                                focusedBorder: const OutlineInputBorder(
+                                  borderSide: BorderSide(color: Colors.blue),
+                                ),
                               ),
-                              const SizedBox(height: 10),
-                              TextField(
-                                controller: part2Ctrl,
-                                onChanged: (_) => setState(() {}),
-                                style: TextStyle(
-                                  color: textColor,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18,
+                              keyboardType: TextInputType.number,
+                            ),
+                            const SizedBox(height: 10),
+                            TextField(
+                              controller: part2Ctrl,
+                              onChanged: (_) => setState(() {}),
+                              style: TextStyle(
+                                color: textColor,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                              ),
+                              decoration: InputDecoration(
+                                labelText: Localization.translate(
+                                  isHorizontal
+                                      ? 'القطعة السفلية (mm)'
+                                      : 'القطعة اليمنى (mm)',
+                                  lang,
                                 ),
-                                decoration: InputDecoration(
-                                  labelText: Localization.translate(
-                                    isHorizontal
-                                        ? 'القطعة السفلية (mm)'
-                                        : 'القطعة اليمنى (mm)',
-                                    lang,
-                                  ),
-                                  labelStyle: TextStyle(
+                                labelStyle: TextStyle(
+                                  color: isDark
+                                      ? Colors.white70
+                                      : Colors.black54,
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderSide: BorderSide(
                                     color: isDark
-                                        ? Colors.white70
-                                        : Colors.black54,
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderSide: BorderSide(
-                                      color: isDark
-                                          ? Colors.white24
-                                          : Colors.grey,
-                                    ),
-                                  ),
-                                  focusedBorder: const OutlineInputBorder(
-                                    borderSide: BorderSide(color: Colors.blue),
+                                        ? Colors.white24
+                                        : Colors.grey,
                                   ),
                                 ),
-                                keyboardType: TextInputType.number,
-                              ),
-                              const SizedBox(height: 10),
-                              Text(
-                                getRemainingText(),
-                                style: const TextStyle(
-                                  color: Colors.blue,
-                                  fontWeight: FontWeight.bold,
+                                focusedBorder: const OutlineInputBorder(
+                                  borderSide: BorderSide(color: Colors.blue),
                                 ),
                               ),
-                            ],
+                              keyboardType: TextInputType.number,
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              getRemainingText(),
+                              style: const TextStyle(
+                                color: Colors.blue,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                   ],
@@ -16525,13 +16533,13 @@ class _WindowViewState extends State<WindowView> {
                   },
                   child: Text(
                     (zone.content != ZoneContent.empty &&
-                        zone.content != ZoneContent.fixedGlass)
+                            zone.content != ZoneContent.fixedGlass)
                         ? Localization.translate('حذف التقسيم', lang)
                         : Localization.translate('إلغاء', lang),
                     style: TextStyle(
                       color:
-                      (zone.content != ZoneContent.empty &&
-                          zone.content != ZoneContent.fixedGlass)
+                          (zone.content != ZoneContent.empty &&
+                              zone.content != ZoneContent.fixedGlass)
                           ? Colors.red
                           : (isDark ? Colors.white60 : Colors.grey),
                       fontWeight: FontWeight.bold,
@@ -16576,7 +16584,7 @@ class _WindowViewState extends State<WindowView> {
                       if (parts == 2) {
                         double val =
                             double.tryParse(part1Ctrl.text) ??
-                                (totalNetSize / 2);
+                            (totalNetSize / 2);
                         customSizes.add(val);
                         if (isHorizontal) {
                           widget.model.splitSelectedZoneHorizontal(
@@ -16594,10 +16602,10 @@ class _WindowViewState extends State<WindowView> {
                       } else if (parts == 3) {
                         double val1 =
                             double.tryParse(part1Ctrl.text) ??
-                                (totalNetSize / 3);
+                            (totalNetSize / 3);
                         double val2 =
                             double.tryParse(part2Ctrl.text) ??
-                                (totalNetSize / 3);
+                            (totalNetSize / 3);
                         customSizes.addAll([val1, val2]);
                         if (isHorizontal) {
                           widget.model.splitSelectedZoneHorizontal(
@@ -16632,12 +16640,10 @@ class _WindowViewState extends State<WindowView> {
 
   Widget _buildContentToolbar(BuildContext context) {
     final zone = widget.model.selectedZone!;
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     String seriesName = activeSeriesForSystem != null
         ? activeSeriesForSystem!.name.toLowerCase()
         : '';
@@ -16648,8 +16654,8 @@ class _WindowViewState extends State<WindowView> {
         : seriesName;
     final useSlidingFrame =
         widget.model.usesSlidingPrimaryProfiles ||
-            zone.content == ZoneContent.slidingSash ||
-            widget.systemMode == 'sliding';
+        zone.content == ZoneContent.slidingSash ||
+        widget.systemMode == 'sliding';
     final selectedFrame = useSlidingFrame
         ? widget.model.getSlidingBaseFrameSection()?.toMap()
         : widget.model.frameOverride;
@@ -16657,10 +16663,7 @@ class _WindowViewState extends State<WindowView> {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       constraints: BoxConstraints(
-        maxHeight: MediaQuery
-            .of(context)
-            .size
-            .height * 0.40,
+        maxHeight: MediaQuery.of(context).size.height * 0.40,
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
@@ -16700,42 +16703,39 @@ class _WindowViewState extends State<WindowView> {
                       final useSlidingProfiles = useSlidingFrame;
                       final selected = await showDialog<Map<String, dynamic>>(
                         context: context,
-                        builder: (context) =>
-                            ProfileSelectorDialog(
-                              profileType: 'Frame',
-                              seriesId: useSlidingProfiles
-                                  ? (widget.model.effectiveSlidingSeries?.id ??
-                                  widget.model.activeSlidingSeries?.id)
-                                  : widget.model.activeSeries?.id,
-                              materialType: useSlidingProfiles
-                                  ? (widget.model.isSlidingPVC
-                                  ? 'PVC'
-                                  : 'Aluminium')
-                                  : (widget.model.isPVC ? 'PVC' : 'Aluminium'),
-                              hasShutter: widget.model.hasShutter,
-                              isCaissonTunnel: widget.model.isCaissonTunnel,
-                              hasSideCovers: widget.model.hasSideCovers,
-                              multiFrameDrawing:
-                              widget.model
-                                  .getFrameRects()
-                                  .length > 1,
-                              accessoryDrawingMode: useSlidingProfiles
-                                  ? AccessoryDrawingMode.sliding
-                                  : AccessoryDrawingMode.opening,
-                              hasSimpleGlassForReducer:
+                        builder: (context) => ProfileSelectorDialog(
+                          profileType: 'Frame',
+                          seriesId: useSlidingProfiles
+                              ? (widget.model.effectiveSlidingSeries?.id ??
+                                    widget.model.activeSlidingSeries?.id)
+                              : widget.model.activeSeries?.id,
+                          materialType: useSlidingProfiles
+                              ? (widget.model.isSlidingPVC
+                                    ? 'PVC'
+                                    : 'Aluminium')
+                              : (widget.model.isPVC ? 'PVC' : 'Aluminium'),
+                          hasShutter: widget.model.hasShutter,
+                          isCaissonTunnel: widget.model.isCaissonTunnel,
+                          hasSideCovers: widget.model.hasSideCovers,
+                          multiFrameDrawing:
+                              widget.model.getFrameRects().length > 1,
+                          accessoryDrawingMode: useSlidingProfiles
+                              ? AccessoryDrawingMode.sliding
+                              : AccessoryDrawingMode.opening,
+                          hasSimpleGlassForReducer:
                               widget.model.hasSimpleGlassForReducer,
-                              hasDoubleGlassForRules:
+                          hasDoubleGlassForRules:
                               widget.model.hasDoubleGlassForRules,
-                            ),
+                        ),
                       );
                       if (selected != null) {
                         final mutableSelected = Map<String, dynamic>.from(
                           selected,
                         );
                         mutableSelected['calculated_price'] =
-                        await _sectionPriceForSelectedColor(
-                          mutableSelected,
-                        );
+                            await _sectionPriceForSelectedColor(
+                              mutableSelected,
+                            );
 
                         setState(() {
                           widget.model.applyFrameOverride(
@@ -16757,62 +16757,61 @@ class _WindowViewState extends State<WindowView> {
                       builder: (context) {
                         final isSliding =
                             zone.content == ZoneContent.slidingSash ||
-                                widget.systemMode == 'sliding';
+                            widget.systemMode == 'sliding';
                         final activeSashOverride = isSliding
                             ? (zone.slidingSashOverride ??
-                            widget.model.slidingSashOverride)
+                                  widget.model.slidingSashOverride)
                             : (zone.sashOverride ?? widget.model.sashOverride);
                         return _ContentButton(
                           label: activeSashOverride != null
                               ? '${activeSashOverride['name']}'
                               : Localization.translate(
-                            'اختر الظلفة (Sash)',
-                            lang,
-                          ),
+                                  'اختر الظلفة (Sash)',
+                                  lang,
+                                ),
                           icon: Icons.format_paint_rounded,
                           selected: activeSashOverride != null,
                           onPressed: () async {
                             final useSlidingProfiles = isSliding;
                             final selected =
-                            await showDialog<Map<String, dynamic>>(
-                              context: context,
-                              builder: (context) =>
-                                  ProfileSelectorDialog(
+                                await showDialog<Map<String, dynamic>>(
+                                  context: context,
+                                  builder: (context) => ProfileSelectorDialog(
                                     profileType: 'sash',
                                     seriesId: useSlidingProfiles
                                         ? (widget
-                                        .model
-                                        .effectiveSlidingSeries
-                                        ?.id ??
-                                        widget
-                                            .model
-                                            .activeSlidingSeries
-                                            ?.id)
+                                                  .model
+                                                  .effectiveSlidingSeries
+                                                  ?.id ??
+                                              widget
+                                                  .model
+                                                  .activeSlidingSeries
+                                                  ?.id)
                                         : widget.model.activeSeries?.id,
                                     materialType: useSlidingProfiles
                                         ? (widget.model.isSlidingPVC
-                                        ? 'PVC'
-                                        : 'Aluminium')
+                                              ? 'PVC'
+                                              : 'Aluminium')
                                         : (widget.model.isPVC
-                                        ? 'PVC'
-                                        : 'Aluminium'),
+                                              ? 'PVC'
+                                              : 'Aluminium'),
                                     accessoryDrawingMode: useSlidingProfiles
                                         ? AccessoryDrawingMode.sliding
                                         : AccessoryDrawingMode.opening,
                                     hasSimpleGlassForReducer:
-                                    widget.model.hasSimpleGlassForReducer,
+                                        widget.model.hasSimpleGlassForReducer,
                                     hasDoubleGlassForRules:
-                                    widget.model.hasDoubleGlassForRules,
+                                        widget.model.hasDoubleGlassForRules,
                                   ),
-                            );
+                                );
                             if (selected != null) {
                               final mutableSelected = Map<String, dynamic>.from(
                                 selected,
                               );
                               mutableSelected['calculated_price'] =
-                              await _sectionPriceForSelectedColor(
-                                mutableSelected,
-                              );
+                                  await _sectionPriceForSelectedColor(
+                                    mutableSelected,
+                                  );
 
                               setState(() {
                                 widget.model.applySashOverride(
@@ -16838,12 +16837,12 @@ class _WindowViewState extends State<WindowView> {
                                 zone.sashOverride!['code']
                                     ?.toString()
                                     .toLowerCase() ??
-                                    '';
+                                '';
                             final name =
                                 zone.sashOverride!['name']
                                     ?.toString()
                                     .toLowerCase() ??
-                                    '';
+                                '';
                             if (code.contains('104') || name.contains('104')) {
                               isCur105 = false;
                             } else if (code.contains('105') ||
@@ -16859,7 +16858,7 @@ class _WindowViewState extends State<WindowView> {
                           bool has104105Option = false;
                           if (widget.model.activeSeries != null) {
                             for (var sec
-                            in widget.model.activeSeries!.sections) {
+                                in widget.model.activeSeries!.sections) {
                               if (sec.type.toLowerCase() == 'sash' &&
                                   (sec.code.contains('105') ||
                                       sec.code.contains('porte') ||
@@ -16878,13 +16877,13 @@ class _WindowViewState extends State<WindowView> {
                               _ContentButton(
                                 label: isCur105
                                     ? Localization.translate(
-                                  'الظلفة 105 (صندوق باب)',
-                                  lang,
-                                )
+                                        'الظلفة 105 (صندوق باب)',
+                                        lang,
+                                      )
                                     : Localization.translate(
-                                  'الظلفة 104 (نافذة)',
-                                  lang,
-                                ),
+                                        'الظلفة 104 (نافذة)',
+                                        lang,
+                                      ),
                                 icon: Icons.door_front_door_outlined,
                                 selected: isCur105,
                                 onPressed: () async {
@@ -16954,7 +16953,7 @@ class _WindowViewState extends State<WindowView> {
                             icon: Icons.more_horiz_outlined,
                             selected: zone.slidingSecondCentralHandle,
                             enabled:
-                            zone.slidingFaceToFace &&
+                                zone.slidingFaceToFace &&
                                 zone.slidingCentralHandle,
                             onPressed: () {
                               if (!zone.slidingCentralHandle) return;
@@ -16969,23 +16968,21 @@ class _WindowViewState extends State<WindowView> {
                     ],
                     const SizedBox(width: 8),
                     ...(zone.content == ZoneContent.doubleSash ||
-                        zone.content == ZoneContent.slidingSash
-                        ? [OpenDirection.left, OpenDirection.right]
-                        : OpenDirection.values)
+                                zone.content == ZoneContent.slidingSash
+                            ? [OpenDirection.left, OpenDirection.right]
+                            : OpenDirection.values)
                         .map(
-                          (dir) =>
-                          Padding(
+                          (dir) => Padding(
                             padding: const EdgeInsets.only(right: 8),
                             child: _ContentButton(
                               label: _getDirectionName(dir),
                               icon: Icons.open_with_rounded,
                               selected: zone.openDirection == dir,
-                              onPressed: () =>
-                                  widget.model
-                                      .setSelectedZoneOpenDirection(dir),
+                              onPressed: () => widget.model
+                                  .setSelectedZoneOpenDirection(dir),
                             ),
                           ),
-                    ),
+                        ),
                   ],
                 ],
               ),
@@ -17055,7 +17052,7 @@ class _WindowViewState extends State<WindowView> {
                         label: _slidingCountLabel(2, lang),
                         icon: Icons.sync_alt_rounded,
                         selected:
-                        zone.content == ZoneContent.slidingSash &&
+                            zone.content == ZoneContent.slidingSash &&
                             zone.slidingSashesCount == 2,
                         onPressed: () async {
                           if (widget.model.hasArchOrSlant) {
@@ -17086,7 +17083,7 @@ class _WindowViewState extends State<WindowView> {
                           label: _slidingCountLabel(3, lang),
                           icon: Icons.sync_alt_rounded,
                           selected:
-                          zone.content == ZoneContent.slidingSash &&
+                              zone.content == ZoneContent.slidingSash &&
                               zone.slidingSashesCount == 3,
                           onPressed: () async {
                             if (widget.model.hasArchOrSlant) {
@@ -17114,7 +17111,7 @@ class _WindowViewState extends State<WindowView> {
                           label: _slidingCountLabel(4, lang),
                           icon: Icons.sync_alt_rounded,
                           selected:
-                          zone.content == ZoneContent.slidingSash &&
+                              zone.content == ZoneContent.slidingSash &&
                               zone.slidingSashesCount == 4,
                           onPressed: () async {
                             if (widget.model.hasArchOrSlant) {
@@ -17142,7 +17139,7 @@ class _WindowViewState extends State<WindowView> {
                       label: _slidingCountLabel(2, lang),
                       icon: Icons.sync_alt_rounded,
                       selected:
-                      zone.content == ZoneContent.slidingSash &&
+                          zone.content == ZoneContent.slidingSash &&
                           zone.slidingSashesCount == 2,
                       onPressed: () async {
                         if (widget.model.hasArchOrSlant) {
@@ -17173,7 +17170,7 @@ class _WindowViewState extends State<WindowView> {
                         label: _slidingCountLabel(3, lang),
                         icon: Icons.sync_alt_rounded,
                         selected:
-                        zone.content == ZoneContent.slidingSash &&
+                            zone.content == ZoneContent.slidingSash &&
                             zone.slidingSashesCount == 3,
                         onPressed: () async {
                           if (widget.model.hasArchOrSlant) {
@@ -17201,7 +17198,7 @@ class _WindowViewState extends State<WindowView> {
                         label: _slidingCountLabel(4, lang),
                         icon: Icons.sync_alt_rounded,
                         selected:
-                        zone.content == ZoneContent.slidingSash &&
+                            zone.content == ZoneContent.slidingSash &&
                             zone.slidingSashesCount == 4,
                         onPressed: () async {
                           if (widget.model.hasArchOrSlant) {
@@ -17229,9 +17226,7 @@ class _WindowViewState extends State<WindowView> {
             if (zone.content == ZoneContent.slidingSash) ...[
               const SizedBox(height: 12),
               Text(
-                _trackTitle(context
-                    .read<AppSettingsProvider>()
-                    .language),
+                _trackTitle(context.read<AppSettingsProvider>().language),
                 style: const TextStyle(
                   color: Colors.black87,
                   fontSize: 12,
@@ -17244,24 +17239,20 @@ class _WindowViewState extends State<WindowView> {
                 child: Row(
                   children: [2, 3, 4, 5]
                       .map(
-                        (count) =>
-                        Padding(
+                        (count) => Padding(
                           padding: const EdgeInsets.only(right: 8),
                           child: _ContentButton(
                             label: _trackCountLabel(
                               count,
-                              context
-                                  .read<AppSettingsProvider>()
-                                  .language,
+                              context.read<AppSettingsProvider>().language,
                             ),
                             icon: Icons.view_week_rounded,
                             selected: zone.slidingTrackCount == count,
-                            onPressed: () =>
-                                widget.model
-                                    .setSelectedZoneSlidingTracks(count),
+                            onPressed: () => widget.model
+                                .setSelectedZoneSlidingTracks(count),
                           ),
                         ),
-                  )
+                      )
                       .toList(),
                 ),
               ),
@@ -17270,9 +17261,7 @@ class _WindowViewState extends State<WindowView> {
                 _frameTrackCompositionLabel(
                   zone.slidingTrackCount,
                   widget.model.selectedSlidingFrameIsComplete,
-                  context
-                      .read<AppSettingsProvider>()
-                      .language,
+                  context.read<AppSettingsProvider>().language,
                 ),
                 style: TextStyle(color: Colors.grey.shade700, fontSize: 11),
               ),
@@ -17300,12 +17289,12 @@ class _WindowViewState extends State<WindowView> {
                             zone.content == ZoneContent.doubleSash)) ...[
                       _ContentButton(
                         label:
-                        zone.cellIsSash[widget.model.activeSubZone!] == true
+                            zone.cellIsSash[widget.model.activeSubZone!] == true
                             ? 'دلفة داخلية (نشطة)'
                             : 'إضافة دلفة داخلية',
                         icon: Icons.window,
                         selected:
-                        zone.cellIsSash[widget.model.activeSubZone!] ==
+                            zone.cellIsSash[widget.model.activeSubZone!] ==
                             true,
                         onPressed: () {
                           setState(() {
@@ -17316,17 +17305,17 @@ class _WindowViewState extends State<WindowView> {
                       const SizedBox(width: 8),
                       _ContentButton(
                         label:
-                        zone.cellIsDoubleSash[widget
-                            .model
-                            .activeSubZone!] ==
-                            true
+                            zone.cellIsDoubleSash[widget
+                                    .model
+                                    .activeSubZone!] ==
+                                true
                             ? 'ضلفتان داخليتان (نشطة)'
                             : 'إضافة ضلفتان داخليتان',
                         icon: Icons.window,
                         selected:
-                        zone.cellIsDoubleSash[widget
-                            .model
-                            .activeSubZone!] ==
+                            zone.cellIsDoubleSash[widget
+                                .model
+                                .activeSubZone!] ==
                             true,
                         onPressed: () {
                           setState(() {
@@ -17335,7 +17324,7 @@ class _WindowViewState extends State<WindowView> {
                         },
                       ),
                       if (zone.cellIsSash[widget.model.activeSubZone!] ==
-                          true ||
+                              true ||
                           zone.cellIsDoubleSash[widget.model.activeSubZone!] ==
                               true) ...[
                         const SizedBox(width: 8),
@@ -17344,18 +17333,18 @@ class _WindowViewState extends State<WindowView> {
                             final cellKey = widget.model.activeSubZone!;
                             bool isCellSash105 = false;
                             final currentOverride =
-                            zone.cellSashOverrides[cellKey];
+                                zone.cellSashOverrides[cellKey];
                             if (currentOverride != null) {
                               final code =
                                   currentOverride['code']
                                       ?.toString()
                                       .toLowerCase() ??
-                                      '';
+                                  '';
                               final name =
                                   currentOverride['name']
                                       ?.toString()
                                       .toLowerCase() ??
-                                      '';
+                                  '';
                               if (code.contains('104') ||
                                   name.contains('104')) {
                                 isCellSash105 = false;
@@ -17413,7 +17402,7 @@ class _WindowViewState extends State<WindowView> {
                                 zone.cellIsDoubleSash[cellKey] == true;
                             final currentDir = () {
                               final currentOverride =
-                              zone.cellSashOverrides[cellKey];
+                                  zone.cellSashOverrides[cellKey];
                               final defaultDir = isDouble
                                   ? OpenDirection.right
                                   : OpenDirection.left;
@@ -17422,7 +17411,7 @@ class _WindowViewState extends State<WindowView> {
                                 final dirStr = currentOverride['openDirection']
                                     .toString();
                                 return OpenDirection.values.firstWhere(
-                                      (d) => d.name == dirStr,
+                                  (d) => d.name == dirStr,
                                   orElse: () => defaultDir,
                                 );
                               }
@@ -17433,14 +17422,13 @@ class _WindowViewState extends State<WindowView> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 ...(isDouble
-                                    ? [
-                                  OpenDirection.left,
-                                  OpenDirection.right,
-                                ]
-                                    : OpenDirection.values)
+                                        ? [
+                                            OpenDirection.left,
+                                            OpenDirection.right,
+                                          ]
+                                        : OpenDirection.values)
                                     .map(
-                                      (dir) =>
-                                      Padding(
+                                      (dir) => Padding(
                                         padding: const EdgeInsets.only(left: 8),
                                         child: _ContentButton(
                                           label: _getDirectionName(dir),
@@ -17450,14 +17438,14 @@ class _WindowViewState extends State<WindowView> {
                                             setState(() {
                                               widget.model
                                                   .setCellSashOpenDirection(
-                                                cellKey,
-                                                dir,
-                                              );
+                                                    cellKey,
+                                                    dir,
+                                                  );
                                             });
                                           },
                                         ),
                                       ),
-                                ),
+                                    ),
                               ],
                             );
                           },
@@ -17475,12 +17463,10 @@ class _WindowViewState extends State<WindowView> {
   }
 
   String _getStructureName(GlassStructure s) {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     switch (s) {
       case GlassStructure.simple:
         return Localization.translate('عادي', lang);
@@ -17492,12 +17478,10 @@ class _WindowViewState extends State<WindowView> {
   }
 
   String _getFinishName(GlassFinish f) {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     String name = '';
     switch (f) {
       case GlassFinish.clair:
@@ -17553,12 +17537,10 @@ class _WindowViewState extends State<WindowView> {
   }
 
   String _getColorName(GlassColor c) {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     String name = '';
     switch (c) {
       case GlassColor.transparent:
@@ -17587,12 +17569,10 @@ class _WindowViewState extends State<WindowView> {
   }
 
   String _getClosedColoreName(ClosedGlassColor d) {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     String name = '';
     switch (d) {
       case ClosedGlassColor.transparent:
@@ -17630,12 +17610,10 @@ class _WindowViewState extends State<WindowView> {
   }
 
   String _getDirectionName(OpenDirection d) {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     String name = '';
     switch (d) {
       case OpenDirection.left:
@@ -17665,7 +17643,8 @@ class _WindowViewState extends State<WindowView> {
   }
 
   Future<double> _sectionPriceForSelectedColor(
-      Map<String, dynamic> item,) async {
+    Map<String, dynamic> item,
+  ) async {
     final sectionId = _catalogRowId(item);
     final colorId = _selectedProfileColorId();
     if (sectionId == null || colorId == null) return 0.0;
@@ -17677,13 +17656,15 @@ class _WindowViewState extends State<WindowView> {
     }
   }
 
-  bool _isReinforcedMontant(Map<String, dynamic> item, {
+  bool _isReinforcedMontant(
+    Map<String, dynamic> item, {
     required bool central,
   }) {
     return widget.model.isSlidingMontantReinforced(item, central: central);
   }
 
-  bool _isSlidingMontantCandidate(Map<String, dynamic> item, {
+  bool _isSlidingMontantCandidate(
+    Map<String, dynamic> item, {
     required bool central,
   }) {
     return widget.model.isSlidingMontantCandidate(item, central: central);
@@ -17696,71 +17677,69 @@ class _WindowViewState extends State<WindowView> {
 
     final hasReinforced = central
         ? widget.model.zones.any(
-          (zone) =>
-          zone.slidingMontantReinforced.entries.any(
-                (entry) => entry.key.startsWith('central_') && entry.value,
-          ),
-    )
+            (zone) => zone.slidingMontantReinforced.entries.any(
+              (entry) => entry.key.startsWith('central_') && entry.value,
+            ),
+          )
         : widget.model.zones.any(
-          (zone) =>
-          zone.slidingMontantReinforced.entries.any(
-                (entry) => entry.key.startsWith('lateral_') && entry.value,
-          ),
-    );
+            (zone) => zone.slidingMontantReinforced.entries.any(
+              (entry) => entry.key.startsWith('lateral_') && entry.value,
+            ),
+          );
 
     final hasNormal = central
         ? widget.model.zones.any((zone) {
-      if (zone.content != ZoneContent.slidingSash) return false;
-      final sashes = zone.slidingSashesCount > 0
-          ? zone.slidingSashesCount
-          : 2;
-      final bool hasMeetingInCenter =
-          zone.slidingFaceToFace &&
-              isSlidingFaceToFaceLayout(
-                trackCount: zone.slidingTrackCount,
-                sashCount: sashes,
-              );
-      final centralCount = hasMeetingInCenter
-          ? (sashes == 4 ? 4 : 8)
-          : math.max(0, (sashes * 2) - 2);
-      for (var i = 0; i < centralCount; i++) {
-        if (zone.slidingMontantReinforced['central_$i'] != true) {
-          return true;
-        }
-      }
-      return false;
-    })
+            if (zone.content != ZoneContent.slidingSash) return false;
+            final sashes = zone.slidingSashesCount > 0
+                ? zone.slidingSashesCount
+                : 2;
+            final bool hasMeetingInCenter =
+                zone.slidingFaceToFace &&
+                isSlidingFaceToFaceLayout(
+                  trackCount: zone.slidingTrackCount,
+                  sashCount: sashes,
+                );
+            final centralCount = hasMeetingInCenter
+                ? (sashes == 4 ? 4 : 8)
+                : math.max(0, (sashes * 2) - 2);
+            for (var i = 0; i < centralCount; i++) {
+              if (zone.slidingMontantReinforced['central_$i'] != true) {
+                return true;
+              }
+            }
+            return false;
+          })
         : widget.model.zones.any((zone) {
-      if (zone.content != ZoneContent.slidingSash) return false;
-      final sashes = zone.slidingSashesCount > 0
-          ? zone.slidingSashesCount
-          : 2;
-      final bool hasMeetingInCenter =
-          zone.slidingFaceToFace &&
-              isSlidingFaceToFaceLayout(
-                trackCount: zone.slidingTrackCount,
-                sashCount: sashes,
-              );
-      final lateralCount = hasMeetingInCenter ? 4 : 2;
-      for (var i = 0; i < lateralCount; i++) {
-        if (zone.slidingMontantReinforced['lateral_$i'] != true) {
-          return true;
-        }
-      }
-      return false;
-    });
+            if (zone.content != ZoneContent.slidingSash) return false;
+            final sashes = zone.slidingSashesCount > 0
+                ? zone.slidingSashesCount
+                : 2;
+            final bool hasMeetingInCenter =
+                zone.slidingFaceToFace &&
+                isSlidingFaceToFaceLayout(
+                  trackCount: zone.slidingTrackCount,
+                  sashCount: sashes,
+                );
+            final lateralCount = hasMeetingInCenter ? 4 : 2;
+            for (var i = 0; i < lateralCount; i++) {
+              if (zone.slidingMontantReinforced['lateral_$i'] != true) {
+                return true;
+              }
+            }
+            return false;
+          });
 
     final allCandidates =
-    <Map<String, dynamic>>[
-      ..._sashProfiles,
-      ..._slidingSashProfiles,
-      ...?(widget.model.effectiveSlidingSeries ??
-          widget.model.activeSlidingSeries)
-          ?.sections
-          .map((s) => s.toMap()),
-    ]
-        .where((item) => _isSlidingMontantCandidate(item, central: central))
-        .toList();
+        <Map<String, dynamic>>[
+              ..._sashProfiles,
+              ..._slidingSashProfiles,
+              ...?(widget.model.effectiveSlidingSeries ??
+                      widget.model.activeSlidingSeries)
+                  ?.sections
+                  .map((s) => s.toMap()),
+            ]
+            .where((item) => _isSlidingMontantCandidate(item, central: central))
+            .toList();
 
     if (allCandidates.isEmpty) return;
 
@@ -17779,9 +17758,8 @@ class _WindowViewState extends State<WindowView> {
         if (rCandidates.isEmpty && central) {
           final chicaneCandidates = allCandidates.where((item) {
             final t =
-            '${item['type'] ?? ''} ${item['name'] ??
-                ''} ${item['design_role_key'] ?? ''}'
-                .toLowerCase();
+                '${item['type'] ?? ''} ${item['name'] ?? ''} ${item['design_role_key'] ?? ''}'
+                    .toLowerCase();
             return t.contains('chicane') ||
                 t.contains('شيكان') ||
                 t.contains('renforc') ||
@@ -17810,9 +17788,9 @@ class _WindowViewState extends State<WindowView> {
     if (hasNormal) {
       final hasAnyNormalOverride =
           widget.model.componentOverrides.containsKey(normalKey) ||
-              widget.model.componentOverrides.containsKey(
-                central ? 'قائم وسطي (Central)' : 'قائم جانبي (Lateral)',
-              );
+          widget.model.componentOverrides.containsKey(
+            central ? 'قائم وسطي (Central)' : 'قائم جانبي (Lateral)',
+          );
       if (!hasAnyNormalOverride) {
         final nCandidates = allCandidates
             .where((item) => !_isReinforcedMontant(item, central: central))
@@ -17891,9 +17869,9 @@ class _WindowViewState extends State<WindowView> {
   Widget _buildInteractiveBottomPanel(BuildContext context) {
     final hasSelection =
         widget.model.selectedZone != null ||
-            widget.model.selection.type == SelectionType.frame ||
-            widget.model.selection.type == SelectionType.mullion ||
-            widget.model.zones.isNotEmpty;
+        widget.model.selection.type == SelectionType.frame ||
+        widget.model.selection.type == SelectionType.mullion ||
+        widget.model.zones.isNotEmpty;
     final isMullionSelected =
         widget.model.selection.type == SelectionType.mullion;
 
@@ -17914,15 +17892,11 @@ class _WindowViewState extends State<WindowView> {
       return const SizedBox.shrink();
     }
 
-    final isDark = Theme
-        .of(context)
-        .brightness == Brightness.dark;
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
@@ -17952,10 +17926,9 @@ class _WindowViewState extends State<WindowView> {
                   IconButton(
                     tooltip: Localization.translate('إخفاء', lang),
                     visualDensity: VisualDensity.compact,
-                    onPressed: () =>
-                        setState(() {
-                          _isBottomPanelExpanded = false;
-                        }),
+                    onPressed: () => setState(() {
+                      _isBottomPanelExpanded = false;
+                    }),
                     icon: Icon(
                       Icons.keyboard_arrow_down_rounded,
                       color: Colors.blue.shade700,
@@ -18060,20 +18033,19 @@ class _WindowViewState extends State<WindowView> {
                   vertical: 8,
                 ),
                 child: _HorizontalWheelScrollArea(
-                  builder: (context, controller) =>
-                      SingleChildScrollView(
-                        controller: controller,
-                        scrollDirection: Axis.horizontal,
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        child: Align(
-                          alignment: AlignmentDirectional.topStart,
-                          child: Row(
-                            children: _arrangeInTwoRows(
-                              _buildTier2Options(context, isMullionSelected),
-                            ),
-                          ),
+                  builder: (context, controller) => SingleChildScrollView(
+                    controller: controller,
+                    scrollDirection: Axis.horizontal,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: Align(
+                      alignment: AlignmentDirectional.topStart,
+                      child: Row(
+                        children: _arrangeInTwoRows(
+                          _buildTier2Options(context, isMullionSelected),
                         ),
                       ),
+                    ),
+                  ),
                 ),
               ),
             ] else
@@ -18091,21 +18063,20 @@ class _WindowViewState extends State<WindowView> {
   /// selected. Choosing an item arms the paint tool; the next click on a
   /// frame applies the type instead of opening the panel automatically.
   Widget _buildZoneContentPaintPicker(BuildContext context) {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     final canUseOpening = widget.systemMode != 'sliding';
     final canUseSliding =
         widget.systemMode == 'mixed' || widget.systemMode == 'sliding';
 
-    Widget option(String label,
-        IconData icon,
-        ZoneContent content, {
-          int? slidingSashesCount,
-        }) {
+    Widget option(
+      String label,
+      IconData icon,
+      ZoneContent content, {
+      int? slidingSashesCount,
+    }) {
       return Padding(
         padding: const EdgeInsetsDirectional.only(end: 8),
         child: _ContentButton(
@@ -18139,42 +18110,40 @@ class _WindowViewState extends State<WindowView> {
           const SizedBox(height: 6),
           Expanded(
             child: _HorizontalWheelScrollArea(
-              builder: (context, controller) =>
-                  SingleChildScrollView(
-                    controller: controller,
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        option('فارغة', Icons.crop_free_rounded,
-                            ZoneContent.empty),
-                        if (canUseOpening)
-                          option(
-                            'زجاج ثابت',
-                            Icons.window_rounded,
-                            ZoneContent.fixedGlass,
-                          ),
-                        if (canUseOpening)
-                          option(
-                            'ضلفة واحدة',
-                            Icons.door_back_door_rounded,
-                            ZoneContent.singleSash,
-                          ),
-                        if (canUseOpening)
-                          option(
-                            'ضلفتان',
-                            Icons.garage_rounded,
-                            ZoneContent.doubleSash,
-                          ),
-                        if (canUseSliding)
-                          option(
-                            'منزلق 2',
-                            Icons.sync_alt_rounded,
-                            ZoneContent.slidingSash,
-                            slidingSashesCount: 2,
-                          ),
-                      ],
-                    ),
-                  ),
+              builder: (context, controller) => SingleChildScrollView(
+                controller: controller,
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    option('فارغة', Icons.crop_free_rounded, ZoneContent.empty),
+                    if (canUseOpening)
+                      option(
+                        'زجاج ثابت',
+                        Icons.window_rounded,
+                        ZoneContent.fixedGlass,
+                      ),
+                    if (canUseOpening)
+                      option(
+                        'ضلفة واحدة',
+                        Icons.door_back_door_rounded,
+                        ZoneContent.singleSash,
+                      ),
+                    if (canUseOpening)
+                      option(
+                        'ضلفتان',
+                        Icons.garage_rounded,
+                        ZoneContent.doubleSash,
+                      ),
+                    if (canUseSliding)
+                      option(
+                        'منزلق 2',
+                        Icons.sync_alt_rounded,
+                        ZoneContent.slidingSash,
+                        slidingSashesCount: 2,
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],
@@ -18185,9 +18154,7 @@ class _WindowViewState extends State<WindowView> {
   Widget _buildShutterBottomPanel(BuildContext context) {
     final isMullionSelected =
         widget.model.selection.type == SelectionType.mullion;
-    final isDark = Theme
-        .of(context)
-        .brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       decoration: BoxDecoration(
@@ -18212,11 +18179,10 @@ class _WindowViewState extends State<WindowView> {
           mainAxisSize: MainAxisSize.min,
           children: [
             GestureDetector(
-              onTap: () =>
-                  setState(() {
-                    _isBottomPanelExpanded = false;
-                    _isShutterSelected = false;
-                  }),
+              onTap: () => setState(() {
+                _isBottomPanelExpanded = false;
+                _isShutterSelected = false;
+              }),
               child: Container(
                 width: double.infinity,
                 color: Colors.transparent,
@@ -18243,30 +18209,29 @@ class _WindowViewState extends State<WindowView> {
               height: 110,
               child: _loadingShutterOptions
                   ? const Center(
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              )
-                  : _HorizontalWheelScrollArea(
-                builder: (context, controller) =>
-                    SingleChildScrollView(
-                      controller: controller,
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       ),
-                      child: Row(
-                        // Caissons, blades and tracks can have long labels.
-                        // Keep every shutter option on one horizontally
-                        // scrollable row instead of forcing two tall rows
-                        // into the fixed bottom-panel height.
-                        children: _buildShutterTier2Options(context),
+                    )
+                  : _HorizontalWheelScrollArea(
+                      builder: (context, controller) => SingleChildScrollView(
+                        controller: controller,
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        child: Row(
+                          // Caissons, blades and tracks can have long labels.
+                          // Keep every shutter option on one horizontally
+                          // scrollable row instead of forcing two tall rows
+                          // into the fixed bottom-panel height.
+                          children: _buildShutterTier2Options(context),
+                        ),
                       ),
                     ),
-              ),
             ),
           ],
         ),
@@ -18275,12 +18240,10 @@ class _WindowViewState extends State<WindowView> {
   }
 
   Widget _buildShutterTier1TabBar() {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     final tabs = [
       {'id': 0, 'label': 'شائع', 'icon': Icons.tune_rounded},
       {'id': 1, 'label': 'الصندوق', 'icon': Icons.inbox_rounded},
@@ -18292,58 +18255,57 @@ class _WindowViewState extends State<WindowView> {
     return SizedBox(
       height: 44,
       child: _HorizontalWheelScrollArea(
-        builder: (context, controller) =>
-            ListView.builder(
-              controller: controller,
-              scrollDirection: Axis.horizontal,
-              itemCount: tabs.length,
-              itemBuilder: (context, index) {
-                final tab = tabs[index];
-                final id = tab['id'] as int;
-                final isSelected = _activeShutterTab == id;
-                return InkWell(
-                  onTap: () => setState(() => _activeShutterTab = id),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(
-                          color: isSelected
-                              ? Colors.orange.shade700
-                              : Colors.transparent,
-                          width: 2.5,
-                        ),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          tab['icon'] as IconData,
-                          size: 15,
-                          color: isSelected
-                              ? Colors.orange.shade700
-                              : Colors.grey.shade600,
-                        ),
-                        const SizedBox(width: 5),
-                        Text(
-                          Localization.translate(tab['label'] as String, lang),
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: isSelected
-                                ? FontWeight.bold
-                                : FontWeight.normal,
-                            color: isSelected
-                                ? Colors.orange.shade700
-                                : Colors.grey.shade700,
-                          ),
-                        ),
-                      ],
+        builder: (context, controller) => ListView.builder(
+          controller: controller,
+          scrollDirection: Axis.horizontal,
+          itemCount: tabs.length,
+          itemBuilder: (context, index) {
+            final tab = tabs[index];
+            final id = tab['id'] as int;
+            final isSelected = _activeShutterTab == id;
+            return InkWell(
+              onTap: () => setState(() => _activeShutterTab = id),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: isSelected
+                          ? Colors.orange.shade700
+                          : Colors.transparent,
+                      width: 2.5,
                     ),
                   ),
-                );
-              },
-            ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      tab['icon'] as IconData,
+                      size: 15,
+                      color: isSelected
+                          ? Colors.orange.shade700
+                          : Colors.grey.shade600,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      Localization.translate(tab['label'] as String, lang),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isSelected
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                        color: isSelected
+                            ? Colors.orange.shade700
+                            : Colors.grey.shade700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -18367,13 +18329,17 @@ class _WindowViewState extends State<WindowView> {
 
   // تبويب شائع: تفعيل/إلغاء الستار + Caisson Tunnel
   List<Widget> _buildShutterCommonOptions(BuildContext context) {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
     final items = <Widget>[];
 
     if (!widget.model.isShutterOnly) {
       // تفعيل/إلغاء الستار
       items.add(
         _ShutterChip(
-          label: 'الستار (Volet)',
+          label: Localization.translate('الستار', lang),
           icon: Icons.layers_rounded,
           selected: widget.model.hasShutter,
           color: Colors.orange,
@@ -18390,12 +18356,10 @@ class _WindowViewState extends State<WindowView> {
     }
 
     if (widget.model.hasShutter && widget.model.shutterWidthWarning != null) {
-      final lang = Provider
-          .of<AppSettingsProvider>(
+      final lang = Provider.of<AppSettingsProvider>(
         context,
         listen: false,
-      )
-          .language;
+      ).language;
       final rec = widget.model.recommendedShutterBlade;
       items.add(
         Container(
@@ -18451,8 +18415,8 @@ class _WindowViewState extends State<WindowView> {
                       lang == AppLanguage.french
                           ? 'Appliquer la recommandation'
                           : (lang == AppLanguage.english
-                          ? 'Apply recommendation'
-                          : 'تطبيق المقترح'),
+                                ? 'Apply recommendation'
+                                : 'تطبيق المقترح'),
                       style: const TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
@@ -18489,7 +18453,7 @@ class _WindowViewState extends State<WindowView> {
     // صندوق النفق
     items.add(
       _ShutterChip(
-        label: 'صندوق النفق (Caisson tunnel)',
+        label: Localization.translate('صندوق النفق (Caisson tunnel)', lang),
         icon: Icons.horizontal_rule_rounded,
         selected: widget.model.isCaissonTunnel,
         color: Colors.deepPurple,
@@ -18544,8 +18508,8 @@ class _WindowViewState extends State<WindowView> {
       final isSelected = isTunnelOption
           ? widget.model.isCaissonTunnel
           : (!widget.model.isCaissonTunnel &&
-          currentId != null &&
-          opt['id'] == currentId);
+                currentId != null &&
+                opt['id'] == currentId);
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -18597,12 +18561,10 @@ class _WindowViewState extends State<WindowView> {
         ),
       ];
     }
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     final current = widget.model.componentOverrides['الشرائح (Lames)'];
     final currentId = current?['id'];
     final list = _shutterLamesOptions.map<Widget>((opt) {
@@ -18636,11 +18598,11 @@ class _WindowViewState extends State<WindowView> {
               await widget.model.updateShutterDefaultsIfNeeded();
               if (!mounted) return;
               final selected =
-              widget.model.componentOverrides['الشرائح (Lames)'];
+                  widget.model.componentOverrides['الشرائح (Lames)'];
               if (selected?['id'] != opt['id']) return;
               final warning =
                   widget.model.localizedShutterWidthWarning(lang) ??
-                      widget.model.shutterWidthWarning;
+                  widget.model.shutterWidthWarning;
               if (warning != null) {
                 final rec = widget.model.recommendedShutterBlade;
                 ScaffoldMessenger.of(context)
@@ -18652,19 +18614,19 @@ class _WindowViewState extends State<WindowView> {
                       duration: const Duration(seconds: 8),
                       action: rec != null
                           ? SnackBarAction(
-                        label: lang == AppLanguage.french
-                            ? 'Appliquer'
-                            : (lang == AppLanguage.english
-                            ? 'Apply'
-                            : 'تطبيق المقترح'),
-                        textColor: Colors.yellowAccent,
-                        onPressed: () async {
-                          widget.model.applyRecommendedShutterBlade();
-                          await widget.model
-                              .updateShutterDefaultsIfNeeded();
-                          if (mounted) setState(() {});
-                        },
-                      )
+                              label: lang == AppLanguage.french
+                                  ? 'Appliquer'
+                                  : (lang == AppLanguage.english
+                                        ? 'Apply'
+                                        : 'تطبيق المقترح'),
+                              textColor: Colors.yellowAccent,
+                              onPressed: () async {
+                                widget.model.applyRecommendedShutterBlade();
+                                await widget.model
+                                    .updateShutterDefaultsIfNeeded();
+                                if (mounted) setState(() {});
+                              },
+                            )
                           : null,
                     ),
                   );
@@ -18680,7 +18642,7 @@ class _WindowViewState extends State<WindowView> {
     if (widget.model.shutterWidthWarning != null) {
       final warning =
           widget.model.localizedShutterWidthWarning(lang) ??
-              widget.model.shutterWidthWarning!;
+          widget.model.shutterWidthWarning!;
       final rec = widget.model.recommendedShutterBlade;
       list.add(
         Padding(
@@ -18754,15 +18716,15 @@ class _WindowViewState extends State<WindowView> {
     final requiredTrackMeasurement = selectedBlade == null
         ? null
         : WindowModel.shutterMeasurementKey(
-      Map<String, dynamic>.from(selectedBlade),
-      preferTrackMeasurement: true,
-    );
+            Map<String, dynamic>.from(selectedBlade),
+            preferTrackMeasurement: true,
+          );
     final compatibleOptions = selectedBlade == null
         ? _shutterCoulisseOptions
         : WindowModel.compatibleShutterTracks(
-      Map<String, dynamic>.from(selectedBlade),
-      _shutterCoulisseOptions,
-    );
+            Map<String, dynamic>.from(selectedBlade),
+            _shutterCoulisseOptions,
+          );
     final options = requiredTrackMeasurement == null
         ? _shutterCoulisseOptions
         : compatibleOptions;
@@ -18824,9 +18786,9 @@ class _WindowViewState extends State<WindowView> {
       final val = mech['value'] as String;
       final isSelected =
           widget.model.shutterMechanism == val ||
-              (val == 'منايفال' &&
-                  (widget.model.shutterMechanism == 'مانيفال' ||
-                      widget.model.shutterMechanism == 'مانيفر'));
+          (val == 'منايفال' &&
+              (widget.model.shutterMechanism == 'مانيفال' ||
+                  widget.model.shutterMechanism == 'مانيفر'));
       items.add(
         _ShutterChip(
           label: mech['label'] as String,
@@ -18855,7 +18817,7 @@ class _WindowViewState extends State<WindowView> {
           onTap: () {
             setState(() {
               widget.model.motorHasInterrupteur =
-              !widget.model.motorHasInterrupteur;
+                  !widget.model.motorHasInterrupteur;
               widget.model.refreshUI();
             });
           },
@@ -18873,7 +18835,7 @@ class _WindowViewState extends State<WindowView> {
           onTap: () {
             setState(() {
               widget.model.motorHasTelecommande =
-              !widget.model.motorHasTelecommande;
+                  !widget.model.motorHasTelecommande;
               widget.model.refreshUI();
             });
           },
@@ -18885,12 +18847,10 @@ class _WindowViewState extends State<WindowView> {
   }
 
   Widget _buildTier1TabBar(bool isMullionSelected) {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     final List<Map<String, dynamic>> tabs = [
       {'id': 0, 'label': 'شائع', 'icon': Icons.tune_rounded},
       {'id': 1, 'label': 'إطار', 'icon': Icons.border_outer_rounded},
@@ -18900,104 +18860,99 @@ class _WindowViewState extends State<WindowView> {
       {'id': 4, 'label': 'زجاج / حشوات', 'icon': Icons.grid_on_rounded},
       {'id': 5, 'label': 'مقابض', 'icon': Icons.vpn_key_rounded},
       if (widget.model.hasShutter)
-        {'id': 6, 'label': 'الستار (Volet)', 'icon': Icons.layers_rounded},
+        {'id': 6, 'label': 'الستار', 'icon': Icons.layers_rounded},
     ];
 
     return SizedBox(
       height: 44,
       child: _HorizontalWheelScrollArea(
-        builder: (context, controller) =>
-            ListView.builder(
-              controller: controller,
-              scrollDirection: Axis.horizontal,
-              itemCount: tabs.length,
-              itemBuilder: (context, index) {
-                final tab = tabs[index];
-                final id = tab['id'] as int;
-                final isSelected = _isShutterSelected
-                    ? (id == 6)
-                    : (_activeBottomTab == id);
+        builder: (context, controller) => ListView.builder(
+          controller: controller,
+          scrollDirection: Axis.horizontal,
+          itemCount: tabs.length,
+          itemBuilder: (context, index) {
+            final tab = tabs[index];
+            final id = tab['id'] as int;
+            final isSelected = _isShutterSelected
+                ? (id == 6)
+                : (_activeBottomTab == id);
 
-                return InkWell(
-                  onTap: () => _switchToBottomTab(id),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(
-                          color: isSelected ? Colors.blue : Colors.transparent,
-                          width: 2.5,
-                        ),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          tab['icon'] as IconData,
-                          size: 16,
-                          color: isSelected
-                              ? Colors.blue
-                              : (Theme
-                              .of(context)
-                              .brightness == Brightness.dark
-                              ? Colors.white54
-                              : Colors.grey.shade600),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          Localization.translate(tab['label'] as String, lang),
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: isSelected
-                                ? FontWeight.bold
-                                : FontWeight.normal,
-                            color: isSelected
-                                ? Colors.blue
-                                : (Theme
-                                .of(context)
-                                .brightness == Brightness.dark
-                                ? Colors.white60
-                                : Colors.grey.shade700),
-                          ),
-                        ),
-                      ],
+            return InkWell(
+              onTap: () => _switchToBottomTab(id),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: isSelected ? Colors.blue : Colors.transparent,
+                      width: 2.5,
                     ),
                   ),
-                );
-              },
-            ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      tab['icon'] as IconData,
+                      size: 16,
+                      color: isSelected
+                          ? Colors.blue
+                          : (Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white54
+                                : Colors.grey.shade600),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      Localization.translate(tab['label'] as String, lang),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: isSelected
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                        color: isSelected
+                            ? Colors.blue
+                            : (Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.white60
+                                  : Colors.grey.shade700),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
 
-  List<Widget> _buildTier2Options(BuildContext context,
-      bool isMullionSelected,) {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+  List<Widget> _buildTier2Options(
+    BuildContext context,
+    bool isMullionSelected,
+  ) {
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     final WindowZone? currentZone =
         widget.model.selectedZone ??
-            (widget.model.zones.isNotEmpty ? widget.model.zones.first : null);
+        (widget.model.zones.isNotEmpty ? widget.model.zones.first : null);
     if (currentZone == null && !isMullionSelected && _activeBottomTab != 1)
       return [];
     final WindowZone zone =
         currentZone ??
-            (widget.model.zones.isNotEmpty
-                ? widget.model.zones.first
-                : WindowZone(
-              id: '_fallback',
-              boundary: Rect.fromLTWH(
-                0,
-                0,
-                widget.model.width,
-                widget.model.height,
-              ),
-              content: ZoneContent.empty,
-            ));
+        (widget.model.zones.isNotEmpty
+            ? widget.model.zones.first
+            : WindowZone(
+                id: '_fallback',
+                boundary: Rect.fromLTWH(
+                  0,
+                  0,
+                  widget.model.width,
+                  widget.model.height,
+                ),
+                content: ZoneContent.empty,
+              ));
 
     final supportedSlidingCounts = widget.model.supportedSlidingSashCounts;
     final supportedTrackCounts = widget.model.supportedSlidingTrackCounts;
@@ -19106,7 +19061,7 @@ class _WindowViewState extends State<WindowView> {
                 label: Localization.translate('منزلق 2', lang),
                 icon: Icons.sync_alt_rounded,
                 selected:
-                zone.content == ZoneContent.slidingSash &&
+                    zone.content == ZoneContent.slidingSash &&
                     zone.slidingSashesCount == 2,
                 onPressed: () async {
                   if (widget.model.hasArchOrSlant) {
@@ -19136,7 +19091,7 @@ class _WindowViewState extends State<WindowView> {
                   label: Localization.translate('منزلق 3', lang),
                   icon: Icons.sync_alt_rounded,
                   selected:
-                  zone.content == ZoneContent.slidingSash &&
+                      zone.content == ZoneContent.slidingSash &&
                       zone.slidingSashesCount == 3,
                   onPressed: () async {
                     if (widget.model.hasArchOrSlant) {
@@ -19167,7 +19122,7 @@ class _WindowViewState extends State<WindowView> {
                   label: Localization.translate('منزلق 4', lang),
                   icon: Icons.sync_alt_rounded,
                   selected:
-                  zone.content == ZoneContent.slidingSash &&
+                      zone.content == ZoneContent.slidingSash &&
                       zone.slidingSashesCount == 4,
                   onPressed: () async {
                     if (widget.model.hasArchOrSlant) {
@@ -19197,7 +19152,7 @@ class _WindowViewState extends State<WindowView> {
               label: _slidingCountLabel(2, lang),
               icon: Icons.sync_alt_rounded,
               selected:
-              zone.content == ZoneContent.slidingSash &&
+                  zone.content == ZoneContent.slidingSash &&
                   zone.slidingSashesCount == 2,
               onPressed: () async {
                 if (widget.model.hasArchOrSlant) {
@@ -19224,7 +19179,7 @@ class _WindowViewState extends State<WindowView> {
                 label: _slidingCountLabel(3, lang),
                 icon: Icons.sync_alt_rounded,
                 selected:
-                zone.content == ZoneContent.slidingSash &&
+                    zone.content == ZoneContent.slidingSash &&
                     zone.slidingSashesCount == 3,
                 onPressed: () async {
                   if (widget.model.hasArchOrSlant) {
@@ -19252,7 +19207,7 @@ class _WindowViewState extends State<WindowView> {
                 label: _slidingCountLabel(4, lang),
                 icon: Icons.sync_alt_rounded,
                 selected:
-                zone.content == ZoneContent.slidingSash &&
+                    zone.content == ZoneContent.slidingSash &&
                     zone.slidingSashesCount == 4,
                 onPressed: () async {
                   if (widget.model.hasArchOrSlant) {
@@ -19283,7 +19238,7 @@ class _WindowViewState extends State<WindowView> {
                 label: _slidingCountLabel(count, lang),
                 icon: Icons.sync_alt_rounded,
                 selected:
-                zone.content == ZoneContent.slidingSash &&
+                    zone.content == ZoneContent.slidingSash &&
                     zone.slidingSashesCount == count,
                 onPressed: () async {
                   if (widget.model.hasArchOrSlant) {
@@ -19312,8 +19267,7 @@ class _WindowViewState extends State<WindowView> {
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           );
-          for (final count in supportedTrackCounts.toList()
-            ..sort()) {
+          for (final count in supportedTrackCounts.toList()..sort()) {
             children.add(const SizedBox(width: 8));
             children.add(
               _ContentButton(
@@ -19351,7 +19305,7 @@ class _WindowViewState extends State<WindowView> {
                 'cache_rail',
                 useSlidingSeries: true,
               ) !=
-                  null;
+              null;
           if (supportsCacheRail) {
             final cacheRailPerSide = math.max(0, zone.slidingTrackCount - 1);
             children.add(const SizedBox(width: 8));
@@ -19362,10 +19316,9 @@ class _WindowViewState extends State<WindowView> {
                     : 'كاش راي: غير مفعّل',
                 icon: Icons.view_sidebar_rounded,
                 selected: widget.model.useOptionalCacheRail,
-                onPressed: () =>
-                    widget.model.toggleCacheRail(
-                      !widget.model.useOptionalCacheRail,
-                    ),
+                onPressed: () => widget.model.toggleCacheRail(
+                  !widget.model.useOptionalCacheRail,
+                ),
               ),
             );
           }
@@ -19394,17 +19347,18 @@ class _WindowViewState extends State<WindowView> {
       case 1: // إطار (Frame settings)
         final bool selectedZoneUsesSlidingFrame =
             zone.content == ZoneContent.slidingSash ||
-                (widget.systemMode == 'sliding' &&
-                    zone.content != ZoneContent.empty &&
-                    zone.content != ZoneContent.fixedGlass);
+            (widget.systemMode == 'sliding' &&
+                zone.content != ZoneContent.empty &&
+                zone.content != ZoneContent.fixedGlass);
         final bool selectedZoneUsesOpeningFrame =
             !selectedZoneUsesSlidingFrame &&
-                (zone.content == ZoneContent.singleSash ||
-                    zone.content == ZoneContent.doubleSash ||
-                    zone.content == ZoneContent.fixedGlass ||
-                    zone.content == ZoneContent.empty);
+            (zone.content == ZoneContent.singleSash ||
+                zone.content == ZoneContent.doubleSash ||
+                zone.content == ZoneContent.fixedGlass ||
+                zone.content == ZoneContent.empty);
 
-        bool isFrameCompatibleWithCurrentDrawing(Map<String, dynamic> item, {
+        bool isFrameCompatibleWithCurrentDrawing(
+          Map<String, dynamic> item, {
           required bool sliding,
         }) {
           bool readBool(Object? value, {required bool fallback}) {
@@ -19481,7 +19435,7 @@ class _WindowViewState extends State<WindowView> {
             .map((e) => e.section.id)
             .toSet();
         final personalizedFrameProfiles =
-        <({Map<String, dynamic> profile, bool sliding})>[];
+            <({Map<String, dynamic> profile, bool sliding})>[];
         final personalizedFrameIds = <int>{};
         for (final frame in widget.model.getFrameRects()) {
           final sliding = widget.model.frameUsesSlidingSeries(frame);
@@ -19491,23 +19445,23 @@ class _WindowViewState extends State<WindowView> {
             final id = _catalogRowId(override);
             if (id == null || !personalizedFrameIds.add(id)) continue;
             personalizedFrameProfiles.add((
-            profile: override,
-            sliding: sliding,
+              profile: override,
+              sliding: sliding,
             ));
           }
         }
 
         List<Map<String, dynamic>> profilesForPickerMode(
-            List<Map<String, dynamic>> profiles, {
-              required bool sliding,
-            }) {
+          List<Map<String, dynamic>> profiles, {
+          required bool sliding,
+        }) {
           if (_showAllFrameProfiles) return profiles.toList();
 
           final currentMap = sliding
               ? (widget.model.slidingFrameOverride ??
-              widget.model.getSlidingBaseFrameSection()?.toMap())
+                    widget.model.getSlidingBaseFrameSection()?.toMap())
               : (widget.model.frameOverride ??
-              widget.model.getSectionByType('frame')?.toMap());
+                    widget.model.getSectionByType('frame')?.toMap());
           final currentId = currentMap == null
               ? null
               : _catalogRowId(currentMap);
@@ -19527,12 +19481,12 @@ class _WindowViewState extends State<WindowView> {
         final rawOpeningProfiles = (widget.systemMode == 'sliding')
             ? <Map<String, dynamic>>[]
             : (widget.systemMode == 'mixed'
-            ? (_openingFrameProfiles.isNotEmpty
-            ? _openingFrameProfiles
-            : _frameProfiles)
-            : (_openingFrameProfiles.isNotEmpty
-            ? _openingFrameProfiles
-            : _frameProfiles));
+                  ? (_openingFrameProfiles.isNotEmpty
+                        ? _openingFrameProfiles
+                        : _frameProfiles)
+                  : (_openingFrameProfiles.isNotEmpty
+                        ? _openingFrameProfiles
+                        : _frameProfiles));
         final openingProfiles = profilesForPickerMode(
           rawOpeningProfiles,
           sliding: false,
@@ -19541,21 +19495,21 @@ class _WindowViewState extends State<WindowView> {
         // drawing. A Project Baton door must not display sliding frames just
         // because the route supports both families.
         final drawingHasSlidingFrame = widget.model.zones.any(
-              (candidate) => candidate.content == ZoneContent.slidingSash,
+          (candidate) => candidate.content == ZoneContent.slidingSash,
         );
         final rawSlidingProfiles =
-        (drawingHasSlidingFrame || selectedZoneUsesSlidingFrame)
+            (drawingHasSlidingFrame || selectedZoneUsesSlidingFrame)
             ? _slidingFrameProfiles
             : <Map<String, dynamic>>[];
         final slidingProfiles =
-        profilesForPickerMode(rawSlidingProfiles, sliding: true)
-        // The one-track profile is an automatic extension selected from
-        // the series rules; it is not a replacement for the two-track
-        // base frame and therefore must not be shown in this picker.
-            .where(
-              (profile) => !widget.model.isSlidingFrameExtension(profile),
-        )
-            .toList();
+            profilesForPickerMode(rawSlidingProfiles, sliding: true)
+                // The one-track profile is an automatic extension selected from
+                // the series rules; it is not a replacement for the two-track
+                // base frame and therefore must not be shown in this picker.
+                .where(
+                  (profile) => !widget.model.isSlidingFrameExtension(profile),
+                )
+                .toList();
 
         for (final entry in angleJunctionFrames.values) {
           final targetList = entry.sliding ? slidingProfiles : openingProfiles;
@@ -19573,7 +19527,8 @@ class _WindowViewState extends State<WindowView> {
           }
         }
 
-        Future<void> selectFrameProfile(Map<String, dynamic> item, {
+        Future<void> selectFrameProfile(
+          Map<String, dynamic> item, {
           required bool sliding,
         }) async {
           final selectedMap = sliding
@@ -19613,8 +19568,8 @@ class _WindowViewState extends State<WindowView> {
           );
           final removesSideCover =
               widget.model.hasSideCovers &&
-                  !integratedCover &&
-                  !allowsStandaloneCover;
+              !integratedCover &&
+              !allowsStandaloneCover;
           final removesShutter = widget.model.hasShutter && !allowedWithShutter;
 
           var removesProfileAngle = false;
@@ -19625,7 +19580,7 @@ class _WindowViewState extends State<WindowView> {
                     currentFrame: AluminumSection.fromMap(item),
                     sliding: sliding,
                   ) ==
-                      null;
+                  null;
             } catch (_) {
               removesProfileAngle = true;
             }
@@ -19642,46 +19597,44 @@ class _WindowViewState extends State<WindowView> {
           if (impacts.isNotEmpty) {
             final confirmed = await showDialog<bool>(
               context: context,
-              builder: (dialogContext) =>
-                  AlertDialog(
-                    title: Text(
-                        Localization.translate('تأكيد تغيير الإطار', lang)),
-                    content: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          Localization.translate(
-                            'هذا الإطار غير متوافق مع بعض تجهيزات الرسم. إذا تابعت:',
-                            lang,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        for (final impact in impacts)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 6),
-                            child: Text('• $impact'),
-                          ),
-                      ],
+              builder: (dialogContext) => AlertDialog(
+                title: Text(Localization.translate('تأكيد تغيير الإطار', lang)),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      Localization.translate(
+                        'هذا الإطار غير متوافق مع بعض تجهيزات الرسم. إذا تابعت:',
+                        lang,
+                      ),
                     ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(dialogContext, false),
-                        child: Text(Localization.translate('إلغاء', lang)),
+                    const SizedBox(height: 12),
+                    for (final impact in impacts)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text('• $impact'),
                       ),
-                      FilledButton(
-                        onPressed: () => Navigator.pop(dialogContext, true),
-                        child: Text(Localization.translate('متابعة', lang)),
-                      ),
-                    ],
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, false),
+                    child: Text(Localization.translate('إلغاء', lang)),
                   ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(dialogContext, true),
+                    child: Text(Localization.translate('متابعة', lang)),
+                  ),
+                ],
+              ),
             );
             if (confirmed != true || !mounted) return;
           }
 
           final mutableSelected = Map<String, dynamic>.from(item);
           mutableSelected['calculated_price'] =
-          await _sectionPriceForSelectedColor(mutableSelected);
+              await _sectionPriceForSelectedColor(mutableSelected);
           if (!mounted) return;
           if (removesShutter) widget.model.toggleShutter(false);
           if (removesProfileAngle) widget.model.clearProfileAngle();
@@ -19702,42 +19655,37 @@ class _WindowViewState extends State<WindowView> {
         }
 
         final Map<String, dynamic>? activeOpeningFrameMap =
-        widget.model
-            .getFrameRects()
-            .length > 1 &&
-            (widget.model.frameOverride == null ||
-                !openingProfiles.any(
+            widget.model.getFrameRects().length > 1 &&
+                (widget.model.frameOverride == null ||
+                    !openingProfiles.any(
                       (p) => p['id'] == widget.model.frameOverride?['id'],
-                )) &&
-            openingProfiles.isNotEmpty
+                    )) &&
+                openingProfiles.isNotEmpty
             ? openingProfiles.first
             : widget.model.frameOverride;
 
         final Map<String, dynamic>? activeSlidingFrameMap =
-        widget.model
-            .getFrameRects()
-            .length > 1 &&
-            (widget.model.slidingFrameOverride == null ||
-                !slidingProfiles.any(
+            widget.model.getFrameRects().length > 1 &&
+                (widget.model.slidingFrameOverride == null ||
+                    !slidingProfiles.any(
                       (p) =>
-                  p['id'] == widget.model.slidingFrameOverride?['id'],
-                )) &&
-            slidingProfiles.isNotEmpty
+                          p['id'] == widget.model.slidingFrameOverride?['id'],
+                    )) &&
+                slidingProfiles.isNotEmpty
             ? slidingProfiles.first
             : widget.model.getSlidingBaseFrameSection()?.toMap();
 
         final hasBothFrameFamilies =
             openingProfiles.isNotEmpty && slidingProfiles.isNotEmpty;
 
-        void addFrameProfileButtons(List<Map<String, dynamic>> profiles, {
+        void addFrameProfileButtons(
+          List<Map<String, dynamic>> profiles, {
           required bool sliding,
           required String prefix,
         }) {
           for (var item in profiles) {
             final codeStr =
-            (item['code'] != null && item['code']
-                .toString()
-                .isNotEmpty)
+                (item['code'] != null && item['code'].toString().isNotEmpty)
                 ? '${item['code']} - '
                 : '';
             final nameStr = item['name'] ?? 'بدون اسم';
@@ -19790,8 +19738,7 @@ class _WindowViewState extends State<WindowView> {
                   ? Localization.translate('منزلق', lang)
                   : Localization.translate('فتح', lang);
               final label =
-                  '${Localization.translate(
-                  'إطار زاوية 90°', lang)} ($typeLabel): $codeStr${sec.name}';
+                  '${Localization.translate('إطار زاوية 90°', lang)} ($typeLabel): $codeStr${sec.name}';
               final btn = Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: _ProfileButton(
@@ -19803,9 +19750,7 @@ class _WindowViewState extends State<WindowView> {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
-                          '${Localization.translate(
-                              'إطار زاوية 90° معتمد في جدول الكمية والتكلفة',
-                              lang)}: $codeStr${sec.name}',
+                          '${Localization.translate('إطار زاوية 90° معتمد في جدول الكمية والتكلفة', lang)}: $codeStr${sec.name}',
                         ),
                         duration: const Duration(seconds: 2),
                       ),
@@ -19893,16 +19838,12 @@ class _WindowViewState extends State<WindowView> {
         }
 
         // بروفيل الزاوية وصلة بين إطارين مستقلين، فلا يظهر لإطار واحد.
-        if (widget.model
-            .getFrameRects()
-            .length >= 2) {
+        if (widget.model.getFrameRects().length >= 2) {
           children.add(const SizedBox(width: 8));
           children.add(
             _ContentButton(
               label: widget.model.usesProfileAngle
-                  ? '${Localization.translate(
-                  'بروفيل زاوية 90°', lang)}: ${widget.model
-                  .localizedProfileAngleModeName(lang)}'
+                  ? '${Localization.translate('بروفيل زاوية 90°', lang)}: ${widget.model.localizedProfileAngleModeName(lang)}'
                   : Localization.translate('إضافة بروفيل زاوية 90°', lang),
               icon: Icons.square_foot_rounded,
               selected: widget.model.usesProfileAngle,
@@ -19939,7 +19880,7 @@ class _WindowViewState extends State<WindowView> {
               'seuil',
               useSlidingSeries: selectedFrameUsesSlidingSeries,
             ) !=
-                null;
+            null;
         if (selectedSeriesHasC) {
           final cIsRequired = widget.model.isConfiguredRoleRequired(
             'seuil',
@@ -19968,23 +19909,23 @@ class _WindowViewState extends State<WindowView> {
       case 2: // ورقة (Sash settings)
         final bool isSliding =
             widget.systemMode == 'sliding' ||
-                (widget.systemMode == 'mixed' &&
-                    zone.content == ZoneContent.slidingSash);
+            (widget.systemMode == 'mixed' &&
+                zone.content == ZoneContent.slidingSash);
         final expectedSashSeriesId = isSliding
             ? (widget.model.effectiveSlidingSeries?.id ??
-            widget.model.activeSlidingSeries?.id)
+                  widget.model.activeSlidingSeries?.id)
             : widget.model.activeSeries?.id;
         final sashProfiles = isSliding
             ? (_slidingSashProfiles.isNotEmpty
-            ? _slidingSashProfiles
-            : (_loadedSeriesId == expectedSashSeriesId
-            ? _sashProfiles
-            : const <Map<String, dynamic>>[]))
+                  ? _slidingSashProfiles
+                  : (_loadedSeriesId == expectedSashSeriesId
+                        ? _sashProfiles
+                        : const <Map<String, dynamic>>[]))
             : (_openingSashProfiles.isNotEmpty
-            ? _openingSashProfiles
-            : (_loadedSeriesId == expectedSashSeriesId
-            ? _sashProfiles
-            : const <Map<String, dynamic>>[]));
+                  ? _openingSashProfiles
+                  : (_loadedSeriesId == expectedSashSeriesId
+                        ? _sashProfiles
+                        : const <Map<String, dynamic>>[]));
         if (!isSliding) {
           children.add(
             _ContentButton(
@@ -20020,20 +19961,21 @@ class _WindowViewState extends State<WindowView> {
           );
         } else if (isSliding) {
           List<Map<String, dynamic>> uniqueProfiles(
-              Iterable<Map<String, dynamic>> profiles,) {
+            Iterable<Map<String, dynamic>> profiles,
+          ) {
             final seen = <String>{};
             return profiles.where((profile) {
               final key =
                   _catalogRowId(profile)?.toString() ??
-                      '${profile['code'] ?? ''}|${profile['name'] ?? ''}';
+                  '${profile['code'] ?? ''}|${profile['name'] ?? ''}';
               return seen.add(key);
             }).toList();
           }
 
           final lateralProfiles = uniqueProfiles(
             sashProfiles.where(
-                  (s) =>
-              _isSlidingMontantCandidate(s, central: false) &&
+              (s) =>
+                  _isSlidingMontantCandidate(s, central: false) &&
                   (!_pvcMontantReinforcementDisabled ||
                       !_isReinforcedMontant(s, central: false)),
             ),
@@ -20041,8 +19983,8 @@ class _WindowViewState extends State<WindowView> {
 
           final centralProfiles = uniqueProfiles(
             sashProfiles.where(
-                  (s) =>
-              _isSlidingMontantCandidate(s, central: true) &&
+              (s) =>
+                  _isSlidingMontantCandidate(s, central: true) &&
                   (!_pvcMontantReinforcementDisabled ||
                       !_isReinforcedMontant(s, central: true)),
             ),
@@ -20064,10 +20006,10 @@ class _WindowViewState extends State<WindowView> {
                   .toLowerCase();
               final isMontant =
                   _isSlidingMontantCandidate(profile, central: false) ||
-                      _isSlidingMontantCandidate(profile, central: true);
+                  _isSlidingMontantCandidate(profile, central: true);
               final isTraverse = traverseProfiles.any(
-                    (candidate) =>
-                _catalogRowId(candidate) == _catalogRowId(profile),
+                (candidate) =>
+                    _catalogRowId(candidate) == _catalogRowId(profile),
               );
               final isSlim = widget.model.isSlidingMontantSlimCandidate(
                 profile,
@@ -20102,10 +20044,10 @@ class _WindowViewState extends State<WindowView> {
             for (final item in baseSashProfiles) {
               final activeSlidingSash =
                   widget.model.selectedZone?.slidingSashOverride ??
-                      widget.model.slidingSashOverride;
+                  widget.model.slidingSashOverride;
               final selected =
                   activeSlidingSash?['id']?.toString() ==
-                      item['id']?.toString();
+                  item['id']?.toString();
               final code = '${item['code'] ?? ''}'.trim();
               final name = '${item['name'] ?? 'بدون اسم'}'.trim();
               children.add(
@@ -20119,7 +20061,7 @@ class _WindowViewState extends State<WindowView> {
                     onPressed: () async {
                       final chosen = Map<String, dynamic>.from(item);
                       chosen['calculated_price'] =
-                      await _sectionPriceForSelectedColor(chosen);
+                          await _sectionPriceForSelectedColor(chosen);
                       if (!mounted) return;
                       setState(() {
                         widget.model.applySashOverride(
@@ -20144,14 +20086,13 @@ class _WindowViewState extends State<WindowView> {
 
             final bool hasAnyReinforced =
                 !_pvcMontantReinforcementDisabled &&
-                    widget.model.zones.any(
-                          (z) =>
+                widget.model.zones.any(
+                  (z) =>
                       z.content == ZoneContent.slidingSash &&
-                          z.slidingMontantReinforced.entries.any(
-                                (e) =>
-                            e.key.startsWith('lateral_') && e.value == true,
-                          ),
-                    );
+                      z.slidingMontantReinforced.entries.any(
+                        (e) => e.key.startsWith('lateral_') && e.value == true,
+                      ),
+                );
 
             final bool hasAnyNormal = widget.model.zones.any((z) {
               if (z.content != ZoneContent.slidingSash) return false;
@@ -20160,10 +20101,10 @@ class _WindowViewState extends State<WindowView> {
                   : 2;
               final bool hasMeetingInCenter =
                   z.slidingFaceToFace &&
-                      isSlidingFaceToFaceLayout(
-                        trackCount: z.slidingTrackCount,
-                        sashCount: sashes,
-                      );
+                  isSlidingFaceToFaceLayout(
+                    trackCount: z.slidingTrackCount,
+                    sashCount: sashes,
+                  );
               final lateralCount = hasMeetingInCenter ? 4 : 2;
               for (var i = 0; i < lateralCount; i++) {
                 if (z.slidingMontantReinforced['lateral_$i'] != true) {
@@ -20184,10 +20125,9 @@ class _WindowViewState extends State<WindowView> {
                 widget.model.componentOverrides[itemIsReinforced
                     ? 'قائم جانبي معزز (Sash Lateral Renforcé)'
                     : 'قائم جانبي (Sash Lateral)'] ??
-                    (!itemIsReinforced
-                        ? widget.model
-                        .componentOverrides['قائم جانبي (Lateral)']
-                        : null);
+                (!itemIsReinforced
+                    ? widget.model.componentOverrides['قائم جانبي (Lateral)']
+                    : null);
             if (current is Map &&
                 current['id']?.toString() == '${item['id']}') {
               return true;
@@ -20195,8 +20135,8 @@ class _WindowViewState extends State<WindowView> {
             if (current != null) return false;
 
             final firstMatching = lateralProfiles.firstWhere(
-                  (p) =>
-              widget.model.isSlidingMontantReinforced(p, central: false) ==
+              (p) =>
+                  widget.model.isSlidingMontantReinforced(p, central: false) ==
                   itemIsReinforced,
               orElse: () => lateralProfiles.first,
             );
@@ -20214,10 +20154,9 @@ class _WindowViewState extends State<WindowView> {
                 .toLowerCase();
             final isChicane =
                 role == 'chicane' ||
-                    itemText.contains('chicane') ||
-                    itemText.contains('شيكان');
-            final hasSlimCentral =
-                widget.model.hasActiveSlidingMontantSlim;
+                itemText.contains('chicane') ||
+                itemText.contains('شيكان');
+            final hasSlimCentral = widget.model.hasActiveSlidingMontantSlim;
             if (isChicane && hasSlimCentral) return false;
 
             final bool itemIsReinforced = widget.model
@@ -20225,14 +20164,13 @@ class _WindowViewState extends State<WindowView> {
 
             final bool hasAnyReinforced =
                 !_pvcMontantReinforcementDisabled &&
-                    widget.model.zones.any(
-                          (z) =>
+                widget.model.zones.any(
+                  (z) =>
                       z.content == ZoneContent.slidingSash &&
-                          z.slidingMontantReinforced.entries.any(
-                                (e) =>
-                            e.key.startsWith('central_') && e.value == true,
-                          ),
-                    );
+                      z.slidingMontantReinforced.entries.any(
+                        (e) => e.key.startsWith('central_') && e.value == true,
+                      ),
+                );
 
             final bool hasAnyNormal = widget.model.zones.any((z) {
               if (z.content != ZoneContent.slidingSash) return false;
@@ -20241,10 +20179,10 @@ class _WindowViewState extends State<WindowView> {
                   : 2;
               final bool hasMeetingInCenter =
                   z.slidingFaceToFace &&
-                      isSlidingFaceToFaceLayout(
-                        trackCount: z.slidingTrackCount,
-                        sashCount: sashes,
-                      );
+                  isSlidingFaceToFaceLayout(
+                    trackCount: z.slidingTrackCount,
+                    sashCount: sashes,
+                  );
               final centralCount = hasMeetingInCenter
                   ? (sashes == 4 ? 4 : 8)
                   : math.max(0, (sashes * 2) - 2);
@@ -20267,11 +20205,10 @@ class _WindowViewState extends State<WindowView> {
                 widget.model.componentOverrides[itemIsReinforced
                     ? 'قائم وسطي معزز (Sash Central Renforcé)'
                     : 'قائم وسطي (Sash Central)'] ??
-                    (!itemIsReinforced
-                        ? (widget.model
-                        .componentOverrides['قائم وسطي (Central)'] ??
-                        widget.model.componentOverrides['الشيكان (Chicane)'])
-                        : null);
+                (!itemIsReinforced
+                    ? (widget.model.componentOverrides['قائم وسطي (Central)'] ??
+                          widget.model.componentOverrides['الشيكان (Chicane)'])
+                    : null);
             if (current is Map &&
                 current['id']?.toString() == '${item['id']}') {
               return true;
@@ -20279,8 +20216,8 @@ class _WindowViewState extends State<WindowView> {
             if (current != null) return false;
 
             final firstMatching = centralProfiles.firstWhere(
-                  (p) =>
-              widget.model.isSlidingMontantReinforced(p, central: true) ==
+              (p) =>
+                  widget.model.isSlidingMontantReinforced(p, central: true) ==
                   itemIsReinforced,
               orElse: () => centralProfiles.first,
             );
@@ -20290,7 +20227,7 @@ class _WindowViewState extends State<WindowView> {
           void selectLateral(Map<String, dynamic> item) async {
             final mutableSelected = Map<String, dynamic>.from(item);
             mutableSelected['calculated_price'] =
-            await _sectionPriceForSelectedColor(mutableSelected);
+                await _sectionPriceForSelectedColor(mutableSelected);
 
             if (traverseProfiles.isNotEmpty &&
                 widget.model.componentOverrides['سكة الظلفة (Sash Traverse)'] ==
@@ -20299,7 +20236,7 @@ class _WindowViewState extends State<WindowView> {
                 traverseProfiles.first,
               );
               chosenTraverse['calculated_price'] =
-              await _sectionPriceForSelectedColor(chosenTraverse);
+                  await _sectionPriceForSelectedColor(chosenTraverse);
               widget.model.componentOverrides['سكة الظلفة (Sash Traverse)'] =
                   chosenTraverse;
             }
@@ -20318,7 +20255,7 @@ class _WindowViewState extends State<WindowView> {
           void selectCentral(Map<String, dynamic> item) async {
             final mutableSelected = Map<String, dynamic>.from(item);
             mutableSelected['calculated_price'] =
-            await _sectionPriceForSelectedColor(mutableSelected);
+                await _sectionPriceForSelectedColor(mutableSelected);
             final role = '${item['design_role_key'] ?? ''}'
                 .trim()
                 .toLowerCase();
@@ -20326,8 +20263,8 @@ class _WindowViewState extends State<WindowView> {
                 .toLowerCase();
             final isChicane =
                 role == 'chicane' ||
-                    itemText.contains('chicane') ||
-                    itemText.contains('شيكان');
+                itemText.contains('chicane') ||
+                itemText.contains('شيكان');
 
             if (traverseProfiles.isNotEmpty &&
                 widget.model.componentOverrides['سكة الظلفة (Sash Traverse)'] ==
@@ -20336,7 +20273,7 @@ class _WindowViewState extends State<WindowView> {
                 traverseProfiles.first,
               );
               chosenTraverse['calculated_price'] =
-              await _sectionPriceForSelectedColor(chosenTraverse);
+                  await _sectionPriceForSelectedColor(chosenTraverse);
               widget.model.componentOverrides['سكة الظلفة (Sash Traverse)'] =
                   chosenTraverse;
             }
@@ -20368,10 +20305,9 @@ class _WindowViewState extends State<WindowView> {
               (widget.model.effectiveSlidingSeries?.hasThreePieceSash ??
                   widget.model.activeSlidingSeries?.hasThreePieceSash ??
                   false) ||
-                  '${widget.model.effectiveSlidingSeries?.name ??
-                      widget.model.activeSlidingSeries?.name ?? ''}'
-                      .toLowerCase()
-                      .contains('tpr');
+              '${widget.model.effectiveSlidingSeries?.name ?? widget.model.activeSlidingSeries?.name ?? ''}'
+                  .toLowerCase()
+                  .contains('tpr');
 
           if (hasThreePieceSliding && lateralProfiles.isNotEmpty) {
             // Add Lateral label
@@ -20391,9 +20327,7 @@ class _WindowViewState extends State<WindowView> {
 
             for (var item in lateralProfiles) {
               final codeStr =
-              (item['code'] != null && item['code']
-                  .toString()
-                  .isNotEmpty)
+                  (item['code'] != null && item['code'].toString().isNotEmpty)
                   ? '${item['code']} - '
                   : '';
               final nameStr = item['name'] ?? 'بدون اسم';
@@ -20435,9 +20369,7 @@ class _WindowViewState extends State<WindowView> {
 
             for (var item in centralProfiles) {
               final codeStr =
-              (item['code'] != null && item['code']
-                  .toString()
-                  .isNotEmpty)
+                  (item['code'] != null && item['code'].toString().isNotEmpty)
                   ? '${item['code']} - '
                   : '';
               final nameStr = item['name'] ?? 'بدون اسم';
@@ -20479,7 +20411,7 @@ class _WindowViewState extends State<WindowView> {
                       .model
                       .componentOverrides['سكة الظلفة (Sash Traverse)']?['id']
                       ?.toString() ==
-                      item['id']?.toString();
+                  item['id']?.toString();
               children.add(
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
@@ -20491,11 +20423,11 @@ class _WindowViewState extends State<WindowView> {
                     onPressed: () async {
                       final chosen = Map<String, dynamic>.from(item);
                       chosen['calculated_price'] =
-                      await _sectionPriceForSelectedColor(chosen);
+                          await _sectionPriceForSelectedColor(chosen);
                       setState(() {
                         widget
-                            .model
-                            .componentOverrides['سكة الظلفة (Sash Traverse)'] =
+                                .model
+                                .componentOverrides['سكة الظلفة (Sash Traverse)'] =
                             chosen;
                         widget.model.refreshUI();
                       });
@@ -20520,8 +20452,7 @@ class _WindowViewState extends State<WindowView> {
                 ),
               ),
             );
-            final activeSlimProfile =
-                widget.model.selectedSlimMontantProfile;
+            final activeSlimProfile = widget.model.selectedSlimMontantProfile;
             for (final item in slimProfiles) {
               final selected =
                   activeSlimProfile != null &&
@@ -20537,7 +20468,7 @@ class _WindowViewState extends State<WindowView> {
                     onPressed: () async {
                       final chosen = Map<String, dynamic>.from(item);
                       chosen['calculated_price'] =
-                      await _sectionPriceForSelectedColor(chosen);
+                          await _sectionPriceForSelectedColor(chosen);
                       setState(() {
                         widget.model.applySlidingMontantSlimOverride(chosen);
                         widget.model.refreshUI();
@@ -20551,9 +20482,7 @@ class _WindowViewState extends State<WindowView> {
         } else {
           for (var item in sashProfiles) {
             final codeStr =
-            (item['code'] != null && item['code']
-                .toString()
-                .isNotEmpty)
+                (item['code'] != null && item['code'].toString().isNotEmpty)
                 ? '${item['code']} - '
                 : '';
             final nameStr = item['name'] ?? 'بدون اسم';
@@ -20562,7 +20491,7 @@ class _WindowViewState extends State<WindowView> {
                 zone.sashOverride ?? widget.model.sashOverride;
             final isSelected =
                 currentSashOverride != null &&
-                    currentSashOverride['id'] == item['id'];
+                currentSashOverride['id'] == item['id'];
 
             children.add(
               Padding(
@@ -20575,7 +20504,7 @@ class _WindowViewState extends State<WindowView> {
                   onPressed: () async {
                     final mutableSelected = Map<String, dynamic>.from(item);
                     mutableSelected['calculated_price'] =
-                    await _sectionPriceForSelectedColor(mutableSelected);
+                        await _sectionPriceForSelectedColor(mutableSelected);
                     setState(() {
                       widget.model.applySashOverride(
                         mutableSelected,
@@ -20597,25 +20526,24 @@ class _WindowViewState extends State<WindowView> {
             zone.content == ZoneContent.slidingSash) {
           children.add(const SizedBox(width: 8));
           final allowedDirections =
-          (zone.content == ZoneContent.doubleSash ||
-              zone.content == ZoneContent.slidingSash ||
-              !widget.model.hasBottomFrame)
+              (zone.content == ZoneContent.doubleSash ||
+                  zone.content == ZoneContent.slidingSash ||
+                  !widget.model.hasBottomFrame)
               ? [OpenDirection.left, OpenDirection.right]
               : OpenDirection.values;
 
           children.addAll(
             allowedDirections.map(
-                  (dir) =>
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: _ContentButton(
-                      label: _getDirectionName(dir),
-                      icon: Icons.open_with_rounded,
-                      selected: zone.openDirection == dir,
-                      onPressed: () =>
-                          widget.model.setSelectedZoneOpenDirection(dir),
-                    ),
-                  ),
+              (dir) => Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: _ContentButton(
+                  label: _getDirectionName(dir),
+                  icon: Icons.open_with_rounded,
+                  selected: zone.openDirection == dir,
+                  onPressed: () =>
+                      widget.model.setSelectedZoneOpenDirection(dir),
+                ),
+              ),
             ),
           );
         }
@@ -20868,7 +20796,7 @@ class _WindowViewState extends State<WindowView> {
                       final dirStr = currentOverride['openDirection']
                           .toString();
                       return OpenDirection.values.firstWhere(
-                            (d) => d.name == dirStr,
+                        (d) => d.name == dirStr,
                         orElse: () => defaultDir,
                       );
                     }
@@ -20879,11 +20807,10 @@ class _WindowViewState extends State<WindowView> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       ...(isDouble
-                          ? [OpenDirection.left, OpenDirection.right]
-                          : OpenDirection.values)
+                              ? [OpenDirection.left, OpenDirection.right]
+                              : OpenDirection.values)
                           .map(
-                            (dir) =>
-                            Padding(
+                            (dir) => Padding(
                               padding: const EdgeInsets.only(left: 8),
                               child: _ContentButton(
                                 label: _getDirectionName(dir),
@@ -20899,7 +20826,7 @@ class _WindowViewState extends State<WindowView> {
                                 },
                               ),
                             ),
-                      ),
+                          ),
                     ],
                   );
                 },
@@ -20931,16 +20858,13 @@ class _WindowViewState extends State<WindowView> {
       case 3: // عامود (Mullion settings)
         if (isMullionSelected) {
           String key =
-              "${widget.model.selection.isHorizontalMullion!
-              ? 'H'
-              : 'V'}_${widget.model.selection.mullionPosition!.toStringAsFixed(
-              1)}";
+              "${widget.model.selection.isHorizontalMullion! ? 'H' : 'V'}_${widget.model.selection.mullionPosition!.toStringAsFixed(1)}";
           MullionProfileType currentType =
               widget.model.mullionProfiles[key] ?? MullionProfileType.standard;
           final canFlipGroove =
               currentType == MullionProfileType.grooved &&
-                  widget.model.selection.isHorizontalMullion != null &&
-                  widget.model.selection.mullionPosition != null;
+              widget.model.selection.isHorizontalMullion != null &&
+              widget.model.selection.mullionPosition != null;
 
           children.add(
             _ContentButton(
@@ -20976,11 +20900,10 @@ class _WindowViewState extends State<WindowView> {
               icon: Icons.splitscreen_rounded,
               selected: currentType == MullionProfileType.flat,
               showSubmenuIndicator: true,
-              onPressed: () =>
-                  _showMullionFrameSelectorDialog(
-                    context,
-                    MullionProfileType.flat,
-                  ),
+              onPressed: () => _showMullionFrameSelectorDialog(
+                context,
+                MullionProfileType.flat,
+              ),
             ),
           );
           children.add(const SizedBox(width: 8));
@@ -20991,11 +20914,10 @@ class _WindowViewState extends State<WindowView> {
               icon: Icons.view_headline_rounded,
               selected: currentType == MullionProfileType.grooved,
               showSubmenuIndicator: true,
-              onPressed: () =>
-                  _showMullionFrameSelectorDialog(
-                    context,
-                    MullionProfileType.grooved,
-                  ),
+              onPressed: () => _showMullionFrameSelectorDialog(
+                context,
+                MullionProfileType.grooved,
+              ),
             ),
           );
           if (canFlipGroove) {
@@ -21032,22 +20954,20 @@ class _WindowViewState extends State<WindowView> {
       case 4: // زجاج / حشوات (Glass settings)
         final GlassSpecification spec = zone != null
             ? (widget.model.activeSubZone != null
-            ? zone.getGlassForCell(widget.model.activeSubZone)
-            : zone.glass)
+                  ? zone.getGlassForCell(widget.model.activeSubZone)
+                  : zone.glass)
             : const GlassSpecification();
 
         final bool isSliding =
             widget.systemMode == 'sliding' ||
-                (widget.systemMode == 'mixed' &&
-                    zone != null &&
-                    zone.content == ZoneContent.slidingSash);
+            (widget.systemMode == 'mixed' &&
+                zone != null &&
+                zone.content == ZoneContent.slidingSash);
         if (!isSliding) {
           final parcloseOverride =
-          widget.model.componentOverrides['باكيت الزجاج (Parclose)'];
+              widget.model.componentOverrides['باكيت الزجاج (Parclose)'];
           final parcloseLabel = parcloseOverride != null
-              ? '${Localization.translate('Parclose',
-              lang)}: ${parcloseOverride['code']} (${(parcloseOverride['max_glass_thickness'] as num?)
-              ?.toDouble() ?? 0.0} ${Localization.translate('مم', lang)})'
+              ? '${Localization.translate('Parclose', lang)}: ${parcloseOverride['code']} (${(parcloseOverride['max_glass_thickness'] as num?)?.toDouble() ?? 0.0} ${Localization.translate('مم', lang)})'
               : Localization.translate('Choisir la parclose', lang);
           children.add(
             Padding(
@@ -21111,9 +21031,7 @@ class _WindowViewState extends State<WindowView> {
           return structName;
         }
 
-        final isDark = Theme
-            .of(context)
-            .brightness == Brightness.dark;
+        final isDark = Theme.of(context).brightness == Brightness.dark;
         final String glassDesc = getGlassDescription(spec, lang);
 
         children.add(
@@ -21141,8 +21059,7 @@ class _WindowViewState extends State<WindowView> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    '${Localization.translate(
-                        'الزجاج الحالي', lang)}: $glassDesc',
+                    '${Localization.translate('الزجاج الحالي', lang)}: $glassDesc',
                     style: TextStyle(
                       color: isDark ? Colors.white : Colors.blue.shade900,
                       fontSize: 12,
@@ -21242,7 +21159,7 @@ class _WindowViewState extends State<WindowView> {
                   label: Localization.translate('Poignée fenêtre', lang),
                   icon: Icons.window_rounded,
                   selected:
-                  zone.lockType == LockType.none &&
+                      zone.lockType == LockType.none &&
                       zone.useOctoHandle != true &&
                       zone.usePvcHandleOnAlu == true,
                   onPressed: () {
@@ -21310,7 +21227,7 @@ class _WindowViewState extends State<WindowView> {
                     label: Localization.translate('مقبض نافذة', lang),
                     icon: Icons.door_back_door_rounded,
                     selected:
-                    zone.lockType == LockType.none &&
+                        zone.lockType == LockType.none &&
                         zone.useOctoHandle != true,
                     onPressed: () {
                       setState(() {
@@ -21326,7 +21243,7 @@ class _WindowViewState extends State<WindowView> {
                     label: Localization.translate('مقبض نافذة', lang),
                     icon: Icons.door_back_door_rounded,
                     selected:
-                    zone.lockType == LockType.none &&
+                        zone.lockType == LockType.none &&
                         zone.useOctoHandle != true,
                     onPressed: () {
                       setState(() {
@@ -21342,7 +21259,7 @@ class _WindowViewState extends State<WindowView> {
                     label: Localization.translate('مقبض أوكتو', lang),
                     icon: Icons.radio_button_checked_rounded,
                     selected:
-                    zone.lockType == LockType.none &&
+                        zone.lockType == LockType.none &&
                         zone.useOctoHandle == true,
                     onPressed: () {
                       setState(() {
@@ -21366,7 +21283,7 @@ class _WindowViewState extends State<WindowView> {
                       : Localization.translate('مقبض كريمون', lang),
                   icon: Icons.door_back_door_rounded,
                   selected:
-                  zone.lockType == LockType.none &&
+                      zone.lockType == LockType.none &&
                       zone.useOctoHandle != true &&
                       zone.usePvcHandleOnAlu != true,
                   onPressed: () {
@@ -21423,7 +21340,7 @@ class _WindowViewState extends State<WindowView> {
                     label: Localization.translate('مقبض أوكتو', lang),
                     icon: Icons.radio_button_checked_rounded,
                     selected:
-                    zone.lockType == LockType.none &&
+                        zone.lockType == LockType.none &&
                         zone.useOctoHandle == true,
                     onPressed: () {
                       setState(() {
@@ -21490,7 +21407,7 @@ class _WindowViewState extends State<WindowView> {
                       : Localization.translate('Poignée fenêtre', lang),
                   icon: Icons.window_rounded,
                   selected:
-                  zone.lockType == LockType.none &&
+                      zone.lockType == LockType.none &&
                       zone.useOctoHandle != true &&
                       zone.usePvcHandleOnAlu == true,
                   onPressed: () {
@@ -21512,7 +21429,7 @@ class _WindowViewState extends State<WindowView> {
                       : Localization.translate('Poignée fenêtre', lang),
                   icon: Icons.window_rounded,
                   selected:
-                  zone.lockType == LockType.none &&
+                      zone.lockType == LockType.none &&
                       zone.useOctoHandle != true &&
                       zone.usePvcHandleOnAlu == true,
                   onPressed: () {
@@ -21533,7 +21450,7 @@ class _WindowViewState extends State<WindowView> {
                     label: Localization.translate('مقبض كريمون', lang),
                     icon: Icons.door_back_door_rounded,
                     selected:
-                    zone.lockType == LockType.none &&
+                        zone.lockType == LockType.none &&
                         zone.useOctoHandle != true &&
                         zone.usePvcHandleOnAlu != true,
                     onPressed: () {
@@ -21550,7 +21467,7 @@ class _WindowViewState extends State<WindowView> {
                     label: Localization.translate('مقبض كريمون', lang),
                     icon: Icons.door_back_door_rounded,
                     selected:
-                    zone.lockType == LockType.none &&
+                        zone.lockType == LockType.none &&
                         zone.useOctoHandle != true &&
                         zone.usePvcHandleOnAlu != true,
                     onPressed: () {
@@ -21568,7 +21485,7 @@ class _WindowViewState extends State<WindowView> {
                     label: Localization.translate('مقبض أوكتو', lang),
                     icon: Icons.radio_button_checked_rounded,
                     selected:
-                    zone.lockType == LockType.none &&
+                        zone.lockType == LockType.none &&
                         zone.useOctoHandle == true &&
                         zone.usePvcHandleOnAlu != true,
                     onPressed: () {
@@ -21656,13 +21573,9 @@ class _WindowViewState extends State<WindowView> {
 
   Widget _buildCollapsedStatusBar(BuildContext context) {
     final zone = widget.model.selectedZone;
-    final lang = Provider
-        .of<AppSettingsProvider>(context)
-        .language;
+    final lang = Provider.of<AppSettingsProvider>(context).language;
 
-    final isDark = Theme
-        .of(context)
-        .brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       decoration: BoxDecoration(
@@ -21684,14 +21597,10 @@ class _WindowViewState extends State<WindowView> {
                 Text(
                   zone == null
                       ? Localization.translate(
-                    'انقر لتحديد وتعديل أي منطقة',
-                    lang,
-                  )
-                      : '${Localization.translate(
-                      'المنطقة المحددة', lang)}: ${Localization.translate(
-                      zone.content.name, lang)}  |  ${Localization.translate(
-                      'الأبعاد', lang)}: ${zone.boundary.width.toInt()} × ${zone
-                      .boundary.height.toInt()} mm',
+                          'انقر لتحديد وتعديل أي منطقة',
+                          lang,
+                        )
+                      : '${Localization.translate('المنطقة المحددة', lang)}: ${Localization.translate(zone.content.name, lang)}  |  ${Localization.translate('الأبعاد', lang)}: ${zone.boundary.width.toInt()} × ${zone.boundary.height.toInt()} mm',
                   style: TextStyle(
                     color: isDark ? Colors.white70 : Colors.black54,
                     fontSize: 12,
@@ -21765,16 +21674,16 @@ class _WindowViewState extends State<WindowView> {
   }
 
   Future<void> _openMaterialConsumptionScreen(BuildContext context) async {
-// حماية: إذا كان تحميل السلسلة والكتالوج جارياً، ننتظر حتى ينتهي تماماً
-// حتى لا تأخذ شاشة الكميات السلسلة الافتراضية بالخطأ
+    // حماية: إذا كان تحميل السلسلة والكتالوج جارياً، ننتظر حتى ينتهي تماماً
+    // حتى لا تأخذ شاشة الكميات السلسلة الافتراضية بالخطأ
     if (widget.model.colorsLoading) {
       await widget.model.loadCatalogData(widget.systemMode);
     }
     if (widget.model.zones.any(
-          (zone) =>
-      zone.glass.glazingFitValid == false ||
+      (zone) =>
+          zone.glass.glazingFitValid == false ||
           zone.cellGlassSpec.values.any(
-                (spec) => spec.glazingFitValid == false,
+            (spec) => spec.glazingFitValid == false,
           ),
     )) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -21786,19 +21695,17 @@ class _WindowViewState extends State<WindowView> {
       );
       return;
     }
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     final hasWindowContent = widget.model.zones.any(
-          (z) => z.content != ZoneContent.empty,
+      (z) => z.content != ZoneContent.empty,
     );
     final hasReadyShutterOnly =
         widget.model.isShutterOnly &&
-            widget.model.width > 0 &&
-            widget.model.height > 0;
+        widget.model.width > 0 &&
+        widget.model.height > 0;
 
     if (!hasReadyShutterOnly && !hasWindowContent) {
       final message = widget.model.drawNextShapeAsShutterOnly
@@ -21859,17 +21766,15 @@ class _WindowViewState extends State<WindowView> {
   }
 
   Future<void> _addDrawingAndCalculate(BuildContext context) async {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     final hasInvalidGlazing = widget.model.zones.any(
-          (zone) =>
-      zone.glass.glazingFitValid == false ||
+      (zone) =>
+          zone.glass.glazingFitValid == false ||
           zone.cellGlassSpec.values.any(
-                (spec) => spec.glazingFitValid == false,
+            (spec) => spec.glazingFitValid == false,
           ),
     );
     if (hasInvalidGlazing) {
@@ -21888,12 +21793,12 @@ class _WindowViewState extends State<WindowView> {
     }
 
     final hasWindowContent = widget.model.zones.any(
-          (z) => z.content != ZoneContent.empty,
+      (z) => z.content != ZoneContent.empty,
     );
     final hasReadyShutterOnly =
         widget.model.isShutterOnly &&
-            widget.model.width > 0 &&
-            widget.model.height > 0;
+        widget.model.width > 0 &&
+        widget.model.height > 0;
     if (!hasReadyShutterOnly && !hasWindowContent) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -21908,6 +21813,38 @@ class _WindowViewState extends State<WindowView> {
       );
       return;
     }
+
+    // Use the exact same initialization, catalogue stabilization, BOM and
+    // selling-price pipeline as the quantity/cost table.  Maintaining a
+    // second shortened calculator here caused different totals for profiles,
+    // panels and shutters depending on which button the user pressed.
+    widget.model.clearSelection();
+    final calculated = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MaterialConsumptionScreen(
+          model: widget.model,
+          autoCalculateAndSave: true,
+        ),
+      ),
+    );
+    if (!context.mounted) return;
+    if (calculated == true) {
+      Navigator.pop(context, widget.model);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            Localization.translate(
+              'تعذر احتساب السعر. راجع أسعار المكونات في جدول الكمية والتكلفة.',
+              lang,
+            ),
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+    return;
 
     // إظهار مؤشر تحميل احتساب السعر
     showDialog(
@@ -21967,8 +21904,8 @@ class _WindowViewState extends State<WindowView> {
         bom = updatedBom;
       }
       var method =
-      CostMethod.values[prefs.getInt('app_cost_method') ??
-          CostMethod.percentage.index];
+          CostMethod.values[prefs.getInt('app_cost_method') ??
+              CostMethod.percentage.index];
       if (widget.model.isShutterOnly && method == CostMethod.linearMeter) {
         method = CostMethod.percentage;
       }
@@ -21985,7 +21922,7 @@ class _WindowViewState extends State<WindowView> {
               whereArgs: [type, 0],
               limit: 1,
             ) ??
-                [];
+            [];
         return rows.isEmpty
             ? 0.0
             : (rows.first['price_per_sqm'] as num?)?.toDouble() ?? 0.0;
@@ -21995,8 +21932,8 @@ class _WindowViewState extends State<WindowView> {
       double linearMeterPrice = 0.0;
       final seriesId =
           widget.model.activeFrameSeries?.id ??
-              widget.model.effectiveSlidingSeries?.id ??
-              widget.model.activeSeries?.id;
+          widget.model.effectiveSlidingSeries?.id ??
+          widget.model.activeSeries?.id;
       final rawColorId = widget.model.selectedDbColor?['id'];
       final colorId = rawColorId is num
           ? rawColorId.toInt()
@@ -22018,11 +21955,11 @@ class _WindowViewState extends State<WindowView> {
                 whereArgs: [seriesId],
                 limit: 1,
               ) ??
-                  [];
+              [];
           if (seriesRows.isNotEmpty) {
             linearMeterPrice =
                 (seriesRows.first['price_per_meter'] as num?)?.toDouble() ??
-                    0.0;
+                0.0;
           }
         }
       }
@@ -22102,7 +22039,7 @@ class _WindowViewState extends State<WindowView> {
     final List<Map<String, dynamic>> res = await d.query(
       'Sections',
       where:
-      'series_id = ? AND (type = ? OR type LIKE ? OR name LIKE ? OR TRIM(code) = ?)',
+          'series_id = ? AND (type = ? OR type LIKE ? OR name LIKE ? OR TRIM(code) = ?)',
       whereArgs: [
         activeSeriesForSystem!.id,
         'parclose',
@@ -22134,25 +22071,23 @@ class _WindowViewState extends State<WindowView> {
         .toList();
     final availableParcloses = requiredDoubleThickness > 0
         ? res.where((item) {
-      final raw = item['max_glass_thickness'];
-      final capacity = raw is num
-          ? raw.toDouble()
-          : double.tryParse(raw?.toString() ?? '');
-      return (capacity ?? 0) >=
-          (requiredDoubleThickness > 10.0
-              ? requiredDoubleThickness
-              : 10.0);
-    }).toList()
+            final raw = item['max_glass_thickness'];
+            final capacity = raw is num
+                ? raw.toDouble()
+                : double.tryParse(raw?.toString() ?? '');
+            return (capacity ?? 0) >=
+                (requiredDoubleThickness > 10.0
+                    ? requiredDoubleThickness
+                    : 10.0);
+          }).toList()
         : (simple514.isNotEmpty ? simple514 : res);
 
     if (!context.mounted) return;
 
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
 
     showDialog(
       context: context,
@@ -22161,61 +22096,58 @@ class _WindowViewState extends State<WindowView> {
           title: Text(Localization.translate('Choisir la parclose', lang)),
           content: availableParcloses.isEmpty
               ? Text(
-            Localization.translate(
-              'لا توجد عناصر باكيت زجاج مسجلة لهذه السلسلة في قاعدة البيانات',
-              lang,
-            ),
-          )
+                  Localization.translate(
+                    'لا توجد عناصر باكيت زجاج مسجلة لهذه السلسلة في قاعدة البيانات',
+                    lang,
+                  ),
+                )
               : SizedBox(
-            width: double.maxFinite,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: availableParcloses.length,
-              itemBuilder: (context, index) {
-                final item = availableParcloses[index];
-                final double maxThickness =
-                    (item['max_glass_thickness'] as num?)?.toDouble() ??
-                        0.0;
-                return ListTile(
-                  title: Text('${item['code']} - ${item['name']}'),
-                  subtitle: Text(
-                    '${Localization.translate('السمك الأقصى للزجاج',
-                        lang)}: $maxThickness ${Localization.translate(
-                        'مم', lang)}',
-                  ),
-                  trailing: Icon(
-                    widget.model
-                        .componentOverrides['باكيت الزجاج (Parclose)']?['id'] ==
-                        item['id']
-                        ? Icons.check_circle
-                        : Icons.circle_outlined,
-                    color: Colors.green,
-                  ),
-                  onTap: () async {
-                    final mutableItem = Map<String, dynamic>.from(item);
-                    final colorId = widget.model.selectedDbColor?['id'];
-                    final double price = await dbInstance.getSectionPrice(
-                      item['id'] as int,
-                      colorId,
-                    );
-                    mutableItem['calculated_price'] = price;
+                  width: double.maxFinite,
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: availableParcloses.length,
+                    itemBuilder: (context, index) {
+                      final item = availableParcloses[index];
+                      final double maxThickness =
+                          (item['max_glass_thickness'] as num?)?.toDouble() ??
+                          0.0;
+                      return ListTile(
+                        title: Text('${item['code']} - ${item['name']}'),
+                        subtitle: Text(
+                          '${Localization.translate('السمك الأقصى للزجاج', lang)}: $maxThickness ${Localization.translate('مم', lang)}',
+                        ),
+                        trailing: Icon(
+                          widget.model.componentOverrides['باكيت الزجاج (Parclose)']?['id'] ==
+                                  item['id']
+                              ? Icons.check_circle
+                              : Icons.circle_outlined,
+                          color: Colors.green,
+                        ),
+                        onTap: () async {
+                          final mutableItem = Map<String, dynamic>.from(item);
+                          final colorId = widget.model.selectedDbColor?['id'];
+                          final double price = await dbInstance.getSectionPrice(
+                            item['id'] as int,
+                            colorId,
+                          );
+                          mutableItem['calculated_price'] = price;
 
-                    setState(() {
-                      widget
-                          .model
-                          .componentOverrides['باكيت الزجاج (Parclose)'] =
-                          mutableItem;
-                    });
-                    widget.model
-                        .fitDoubleGlassIntercallsToSelectedParclose();
-                    await widget.model.updateGlassGasket();
-                    widget.model.refreshUI();
-                    if (context.mounted) Navigator.pop(context);
-                  },
-                );
-              },
-            ),
-          ),
+                          setState(() {
+                            widget
+                                    .model
+                                    .componentOverrides['باكيت الزجاج (Parclose)'] =
+                                mutableItem;
+                          });
+                          widget.model
+                              .fitDoubleGlassIntercallsToSelectedParclose();
+                          await widget.model.updateGlassGasket();
+                          widget.model.refreshUI();
+                          if (context.mounted) Navigator.pop(context);
+                        },
+                      );
+                    },
+                  ),
+                ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -22287,9 +22219,7 @@ class _IntercallButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme
-        .of(context)
-        .brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       onTap: onPressed,
       child: AnimatedContainer(
@@ -22298,12 +22228,12 @@ class _IntercallButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected
               ? (isDark
-              ? Colors.blue.shade900.withValues(alpha: 0.3)
-              : Colors.blue.shade50)
+                    ? Colors.blue.shade900.withValues(alpha: 0.3)
+                    : Colors.blue.shade50)
               : exceedsCapacity
               ? (isDark
-              ? Colors.red.shade900.withValues(alpha: 0.15)
-              : Colors.red.shade50)
+                    ? Colors.red.shade900.withValues(alpha: 0.15)
+                    : Colors.red.shade50)
               : (isDark ? const Color(0xFF2E2E3E) : Colors.white),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
@@ -22324,10 +22254,10 @@ class _IntercallButton extends StatelessWidget {
                 color: isDark
                     ? (exceedsCapacity ? Colors.red.shade300 : Colors.white)
                     : (selected
-                    ? Colors.blue.shade900
-                    : exceedsCapacity
-                    ? Colors.red.shade700
-                    : Colors.grey.shade800),
+                          ? Colors.blue.shade900
+                          : exceedsCapacity
+                          ? Colors.red.shade700
+                          : Colors.grey.shade800),
                 fontSize: 12,
                 fontWeight: selected ? FontWeight.bold : FontWeight.normal,
               ),
@@ -22342,10 +22272,10 @@ class _IntercallButton extends StatelessWidget {
                   color: isDark
                       ? (exceedsCapacity ? Colors.red.shade400 : Colors.white)
                       : (selected
-                      ? Colors.blue
-                      : exceedsCapacity
-                      ? Colors.red.shade400
-                      : Colors.grey.shade500),
+                            ? Colors.blue
+                            : exceedsCapacity
+                            ? Colors.red.shade400
+                            : Colors.grey.shade500),
                 ),
                 Text(
                   thickness.toString(),
@@ -22353,10 +22283,10 @@ class _IntercallButton extends StatelessWidget {
                     color: isDark
                         ? Colors.white
                         : (selected
-                        ? Colors.blue.shade700
-                        : exceedsCapacity
-                        ? Colors.red.shade900
-                        : Colors.black87),
+                              ? Colors.blue.shade700
+                              : exceedsCapacity
+                              ? Colors.red.shade900
+                              : Colors.black87),
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
                   ),
@@ -22370,10 +22300,10 @@ class _IntercallButton extends StatelessWidget {
                 color: isDark
                     ? (exceedsCapacity ? Colors.red.shade300 : Colors.white)
                     : (selected
-                    ? Colors.blue.shade900
-                    : exceedsCapacity
-                    ? Colors.red.shade700
-                    : Colors.grey.shade800),
+                          ? Colors.blue.shade900
+                          : exceedsCapacity
+                          ? Colors.red.shade700
+                          : Colors.grey.shade800),
                 fontSize: 12,
                 fontWeight: selected ? FontWeight.bold : FontWeight.normal,
               ),
@@ -22385,15 +22315,14 @@ class _IntercallButton extends StatelessWidget {
                 color: isDark ? Colors.red.shade400 : Colors.red.shade700,
                 size: 15,
               ),
-            ] else
-              if (showWarning) ...[
-                const SizedBox(width: 5),
-                const Icon(
-                  Icons.warning_amber_rounded,
-                  color: Colors.orange,
-                  size: 16,
-                ),
-              ],
+            ] else if (showWarning) ...[
+              const SizedBox(width: 5),
+              const Icon(
+                Icons.warning_amber_rounded,
+                color: Colors.orange,
+                size: 16,
+              ),
+            ],
           ],
         ),
       ),
@@ -22418,9 +22347,7 @@ class _ToolButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme
-        .of(context)
-        .brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final disabledBg = isDark ? const Color(0xFF2E2E3E) : Colors.grey.shade200;
     final disabledFg = isDark ? Colors.white38 : Colors.grey;
     return ElevatedButton.icon(
@@ -22466,12 +22393,10 @@ class _ShutterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     final foreground = enabled
         ? (selected ? color : Colors.grey.shade600)
         : Colors.grey.shade400;
@@ -22482,9 +22407,9 @@ class _ShutterChip extends StatelessWidget {
       message: enabled
           ? Localization.translate(label, lang)
           : Localization.translate(
-        disabledHint ?? 'غير متاح لهذا المقاس',
-        lang,
-      ),
+              disabledHint ?? 'غير متاح لهذا المقاس',
+              lang,
+            ),
       child: GestureDetector(
         onTap: enabled ? onTap : null,
         child: AnimatedContainer(
@@ -22546,9 +22471,7 @@ class _ContentButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme
-        .of(context)
-        .brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       onTap: enabled ? onPressed : null,
       child: AnimatedOpacity(
@@ -22560,8 +22483,8 @@ class _ContentButton extends StatelessWidget {
           decoration: BoxDecoration(
             color: selected
                 ? (isDark
-                ? Colors.blue.shade900.withValues(alpha: 0.3)
-                : Colors.blue.shade50)
+                      ? Colors.blue.shade900.withValues(alpha: 0.3)
+                      : Colors.blue.shade50)
                 : (isDark ? const Color(0xFF2E2E3E) : Colors.white),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
@@ -22585,19 +22508,17 @@ class _ContentButton extends StatelessWidget {
               Text(
                 Localization.translate(
                   label,
-                  Provider
-                      .of<AppSettingsProvider>(
+                  Provider.of<AppSettingsProvider>(
                     context,
                     listen: false,
-                  )
-                      .language,
+                  ).language,
                 ),
                 style: TextStyle(
                   color: isDark
                       ? Colors.white
                       : (selected
-                      ? Colors.blue.shade900
-                      : Colors.grey.shade800),
+                            ? Colors.blue.shade900
+                            : Colors.grey.shade800),
                   fontSize: 12,
                   fontWeight: selected ? FontWeight.bold : FontWeight.normal,
                 ),
@@ -22610,8 +22531,8 @@ class _ContentButton extends StatelessWidget {
                   color: isDark
                       ? Colors.white70
                       : (selected
-                      ? Colors.blue.shade900
-                      : Colors.grey.shade600),
+                            ? Colors.blue.shade900
+                            : Colors.grey.shade600),
                 ),
               ],
               if (showWarning) ...[
@@ -22630,6 +22551,140 @@ class _ContentButton extends StatelessWidget {
   }
 }
 
+/// Lightweight editor overlay. Selection changes repaint only this layer;
+/// profiles, glass, textures, decorations and dimensions stay cached below.
+class WorkspaceSelectionPainter extends CustomPainter {
+  final WindowModel model;
+  final double userScale;
+  final Offset userPan;
+
+  WorkspaceSelectionPainter({
+    required this.model,
+    this.userScale = 1.0,
+    this.userPan = Offset.zero,
+  }) : super(repaint: model);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final scale = model.canvasScale * userScale;
+    if (scale <= 0) return;
+    canvas.save();
+    canvas.translate(model.canvasDx + userPan.dx, model.canvasDy + userPan.dy);
+    canvas.scale(scale);
+
+    final selection = model.selection;
+    final fill = Paint()
+      ..color = Colors.green.shade600.withValues(alpha: 0.28)
+      ..style = PaintingStyle.fill;
+    final outline = Paint()
+      ..color = Colors.green.shade700
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.0 / scale;
+
+    if (selection.type == SelectionType.frame) {
+      final key = selection.zoneId;
+      final rect = key == null
+          ? Rect.fromLTWH(0, 0, model.width, model.height)
+          : model.frameRectForSelection(key);
+      if (rect != null) {
+        canvas.drawRect(rect, outline);
+        final side = 18.0 / scale;
+        final handleFill = Paint()
+          ..color = Colors.green.shade600
+          ..style = PaintingStyle.fill;
+        final handleBorder = Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5 / scale;
+        for (final center in <Offset>[
+          rect.topLeft,
+          Offset(rect.center.dx, rect.top),
+          rect.topRight,
+          Offset(rect.right, rect.center.dy),
+          rect.bottomRight,
+          Offset(rect.center.dx, rect.bottom),
+          rect.bottomLeft,
+          Offset(rect.left, rect.center.dy),
+        ]) {
+          final handle = Rect.fromCenter(
+            center: center,
+            width: side,
+            height: side,
+          );
+          canvas.drawRect(handle, handleFill);
+          canvas.drawRect(handle, handleBorder);
+        }
+      }
+
+      if (model.canBeArchedOrSlanted &&
+          (key == null || key == 'frame:0' || model.getFrameRects().length <= 1)) {
+        final radius = 10.0 / scale;
+        final amber = Paint()
+          ..color = Colors.amber.shade800
+          ..style = PaintingStyle.fill;
+        final amberInner = Paint()
+          ..color = Colors.amber.shade300
+          ..style = PaintingStyle.fill;
+        final whiteBorder = Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.0 / scale;
+        void handle(Offset center) {
+          canvas.drawCircle(center, radius, amber);
+          canvas.drawCircle(center, radius * 0.45, amberInner);
+          canvas.drawCircle(center, radius, whiteBorder);
+        }
+
+        handle(Offset(0, model.topSlantLeftY));
+        handle(Offset(model.width, model.topSlantRightY));
+        handle(
+          Offset(
+            model.width / 2,
+            math.min(model.topSlantLeftY, model.topSlantRightY) -
+                model.archHeight * 2,
+          ),
+        );
+      }
+    } else if (selection.type == SelectionType.zone ||
+        selection.type == SelectionType.innerDivision) {
+      final zoneId = selection.zoneId;
+      WindowZone? zone;
+      for (final candidate in model.zones) {
+        if (candidate.id == zoneId) {
+          zone = candidate;
+          break;
+        }
+      }
+      if (zone != null) {
+        canvas.drawRect(zone.boundary, fill);
+        canvas.drawRect(zone.boundary, outline);
+      }
+    } else if (selection.type == SelectionType.mullion &&
+        selection.mullionPosition != null) {
+      final horizontal = selection.isHorizontalMullion ?? false;
+      final position = selection.mullionPosition!;
+      final start = selection.mullionStart ?? 0.0;
+      final end = selection.mullionEnd ??
+          (horizontal ? model.width : model.height);
+      final thickness = math.max(8.0, model.mullionThickness);
+      final rect = horizontal
+          ? Rect.fromLTRB(start, position - thickness / 2, end, position + thickness / 2)
+          : Rect.fromLTRB(position - thickness / 2, start, position + thickness / 2, end);
+      canvas.drawRect(rect, fill);
+      canvas.drawRect(rect, outline);
+    }
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant WorkspaceSelectionPainter oldDelegate) {
+    return oldDelegate.model != model ||
+        oldDelegate.userScale != userScale ||
+        oldDelegate.userPan != userPan;
+  }
+}
+
 class AppWorkspacePainter extends CustomPainter {
   final WindowModel model;
   final double userScale;
@@ -22639,7 +22694,7 @@ class AppWorkspacePainter extends CustomPainter {
     required this.model,
     this.userScale = 1.0,
     this.userPan = Offset.zero,
-  }) : super(repaint: model);
+  }) : super(repaint: model.drawingRepaint);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -22653,7 +22708,7 @@ class AppWorkspacePainter extends CustomPainter {
       final painter = WindowPainter(
         model: model,
         showDrawingDimensions: true,
-        showSelection: true,
+        showSelection: false,
       );
       painter.paint(canvas, size);
       // Keep the exterior dimensions outside the frame, then add compact
@@ -22664,96 +22719,11 @@ class AppWorkspacePainter extends CustomPainter {
         _paintDrawingProfileDimensions(canvas, model);
       }
 
-      final selectedFrameKey = model.selection.type == SelectionType.frame
-          ? model.selection.zoneId
-          : null;
-      if (selectedFrameKey != null) {
-        final frameRect = model.frameRectForSelection(selectedFrameKey);
-        if (frameRect != null) {
-          final side = 18.0 / (model.canvasScale * userScale);
-          final outline = Paint()
-            ..color = Colors.green.shade700
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 3.0 / (model.canvasScale * userScale);
-          final fill = Paint()
-            ..color = Colors.green.shade600
-            ..style = PaintingStyle.fill;
-          final border = Paint()
-            ..color = Colors.white
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.5 / (model.canvasScale * userScale);
-
-          canvas.drawRect(frameRect, outline);
-          final handles = <Offset>[
-            frameRect.topLeft,
-            Offset(frameRect.center.dx, frameRect.top),
-            frameRect.topRight,
-            Offset(frameRect.right, frameRect.center.dy),
-            frameRect.bottomRight,
-            Offset(frameRect.center.dx, frameRect.bottom),
-            frameRect.bottomLeft,
-            Offset(frameRect.left, frameRect.center.dy),
-          ];
-          for (final center in handles) {
-            final rect = Rect.fromCenter(
-              center: center,
-              width: side,
-              height: side,
-            );
-            canvas.drawRect(rect, fill);
-            canvas.drawRect(rect, border);
-          }
-        }
-      }
-
-      if (model.canBeArchedOrSlanted &&
-          model.selection.type == SelectionType.frame &&
-          (model.selection.zoneId == null ||
-              model.selection.zoneId == 'frame:0' ||
-              model
-                  .getFrameRects()
-                  .length <= 1)) {
-        final double radius = 10.0 / (model.canvasScale * userScale);
-        final fillPaint = Paint()
-          ..color = Colors.amber.shade800
-          ..style = PaintingStyle.fill;
-        final innerPaint = Paint()
-          ..color = Colors.amber.shade300
-          ..style = PaintingStyle.fill;
-        final borderPaint = Paint()
-          ..color = Colors.white
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.0 / (model.canvasScale * userScale);
-        final shadowPaint = Paint()
-          ..color = Colors.black.withValues(alpha: 0.35)
-          ..style = PaintingStyle.fill;
-
-        void drawHandle(Offset center) {
-          canvas.drawCircle(
-            center + Offset(0, 1.5 / (model.canvasScale * userScale)),
-            radius,
-            shadowPaint,
-          );
-          canvas.drawCircle(center, radius, fillPaint);
-          canvas.drawCircle(center, radius * 0.45, innerPaint);
-          canvas.drawCircle(center, radius, borderPaint);
-        }
-
-        drawHandle(Offset(0, model.topSlantLeftY));
-        drawHandle(Offset(model.width, model.topSlantRightY));
-        drawHandle(
-          Offset(
-            model.width / 2,
-            math.min(model.topSlantLeftY, model.topSlantRightY) -
-                (model.archHeight * 2),
-          ),
-        );
-      }
     }
 
     if ((model.zones.isEmpty ||
-        model.drawingMode == 'add_frame' ||
-        model.drawingMode == 'shutter_only') &&
+            model.drawingMode == 'add_frame' ||
+            model.drawingMode == 'shutter_only') &&
         model.isDrawingMode &&
         model.drawingStart != null &&
         model.drawingCurrent != null) {
@@ -22788,7 +22758,7 @@ class AppWorkspacePainter extends CustomPainter {
       // Hide zone dimensions when sashes are added (show only for empty frame or fixed glass)
       final showZoneDimensions =
           zone.content == ZoneContent.empty ||
-              zone.content == ZoneContent.fixedGlass;
+          zone.content == ZoneContent.fixedGlass;
       if (!showZoneDimensions) continue;
 
       final editableWidth = r.width < innerWidth - 2;
@@ -22814,13 +22784,14 @@ class AppWorkspacePainter extends CustomPainter {
     }
   }
 
-  void _paintZoneRegionLabel(Canvas canvas,
-      String text,
-      Offset center,
-      double maxMainAxis, {
-        bool vertical = false,
-        required bool editable,
-      }) {
+  void _paintZoneRegionLabel(
+    Canvas canvas,
+    String text,
+    Offset center,
+    double maxMainAxis, {
+    bool vertical = false,
+    required bool editable,
+  }) {
     double fontSize = math.min(34.0, math.max(16.0, maxMainAxis * 0.18));
     late TextPainter painter;
     while (true) {
@@ -22842,8 +22813,7 @@ class AppWorkspacePainter extends CustomPainter {
           ),
         ),
         textDirection: TextDirection.ltr,
-      )
-        ..layout();
+      )..layout();
       if (painter.width <= maxMainAxis || fontSize <= 10) break;
       fontSize -= 1.0;
     }
@@ -22880,13 +22850,13 @@ class AppWorkspacePainter extends CustomPainter {
     final integratedCoverWidth = model.integratedFrameSideCoverWidth;
     final hasIntegratedCover =
         model.isIntegratedFrame &&
-            model.hasSideCovers &&
-            model.isSideCoverAllowed &&
-            integratedCoverWidth > 0;
+        model.hasSideCovers &&
+        model.isSideCoverAllowed &&
+        integratedCoverWidth > 0;
     final hasSeparateCover =
         !model.isIntegratedFrame &&
-            model.hasSideCovers &&
-            model.canUseStandaloneSideCover;
+        model.hasSideCovers &&
+        model.canUseStandaloneSideCover;
     final separateCover = model.selectedSideCover;
     final separateCoverWidth = model.standaloneSideCoverWidth;
     final separateCoverThickness = model.standaloneSideCoverThickness;
@@ -22927,14 +22897,12 @@ class AppWorkspacePainter extends CustomPainter {
       for (final frame in frameRects) {
         final frameSectionForLabel = model.frameSectionForRect(frame);
         final effectiveFrameCode =
-        (frameSectionForLabel?.code ?? '')
-            .trim()
-            .isNotEmpty
+            (frameSectionForLabel?.code ?? '').trim().isNotEmpty
             ? frameSectionForLabel!.code.trim()
             : (model.frameUsesSlidingSeries(frame) &&
-            slidingFrameCode.isNotEmpty
-            ? slidingFrameCode
-            : frameCode);
+                      slidingFrameCode.isNotEmpty
+                  ? slidingFrameCode
+                  : frameCode);
         String sideFrameCode(String side) {
           final override = model.frameSideOverrideForRect(frame, side);
           final code = (override?['code'] ?? '').toString().trim();
@@ -22947,26 +22915,26 @@ class AppWorkspacePainter extends CustomPainter {
             : model.height;
         final frameWidth =
             (isOnlyFrame ? model.width : frame.width) +
-                weldAllowance -
-                (hasSeparateCoverLeft &&
+            weldAllowance -
+            (hasSeparateCoverLeft &&
                     (isOnlyFrame || (frame.left - minFrameLeft).abs() < 0.1)
-                    ? separateCoverThickness
-                    : 0.0) -
-                (hasSeparateCoverRight &&
+                ? separateCoverThickness
+                : 0.0) -
+            (hasSeparateCoverRight &&
                     (isOnlyFrame || (frame.right - maxFrameRight).abs() < 0.1)
-                    ? separateCoverThickness
-                    : 0.0);
+                ? separateCoverThickness
+                : 0.0);
         final frameHeight =
             (isOnlyFrame ? netHeight : frame.height) +
-                weldAllowance -
-                (hasSeparateCoverTop &&
+            weldAllowance -
+            (hasSeparateCoverTop &&
                     (isOnlyFrame || (frame.top - minFrameTop).abs() < 0.1)
-                    ? separateCoverThickness
-                    : 0.0) -
-                (hasSeparateCoverBottom &&
+                ? separateCoverThickness
+                : 0.0) -
+            (hasSeparateCoverBottom &&
                     (isOnlyFrame || (frame.bottom - maxFrameBottom).abs() < 0.1)
-                    ? separateCoverThickness
-                    : 0.0);
+                ? separateCoverThickness
+                : 0.0);
         _paintProfileDimensionLabel(
           canvas,
           cutLabel(frameWidth, sideFrameCode('top')),
@@ -23013,8 +22981,8 @@ class AppWorkspacePainter extends CustomPainter {
         final isInternal = model.isInternalView;
         final hasLeft = hasIntegratedCover
             ? (isInternal
-            ? !model.removedShutterSides.contains('left')
-            : !model.removedShutterSides.contains('right'))
+                  ? !model.removedShutterSides.contains('left')
+                  : !model.removedShutterSides.contains('right'))
             : (isInternal ? hasSeparateCoverLeft : hasSeparateCoverRight);
         final hasTop = hasIntegratedCover
             ? !model.removedShutterSides.contains('top')
@@ -23068,12 +23036,13 @@ class AppWorkspacePainter extends CustomPainter {
     }
   }
 
-  void _paintProfileDimensionLabel(Canvas canvas,
-      String text,
-      Rect bounds, {
-        bool vertical = false,
-        bool alignStart = false,
-      }) {
+  void _paintProfileDimensionLabel(
+    Canvas canvas,
+    String text,
+    Rect bounds, {
+    bool vertical = false,
+    bool alignStart = false,
+  }) {
     final crossAxis = vertical ? bounds.width : bounds.height;
     final mainAxis = vertical ? bounds.height : bounds.width;
     if (crossAxis < 12 || mainAxis < 35) return;
@@ -23099,8 +23068,7 @@ class AppWorkspacePainter extends CustomPainter {
           ),
         ),
         textDirection: TextDirection.ltr,
-      )
-        ..layout();
+      )..layout();
       if (painter.width <= mainAxis - 8 || fontSize <= 10) break;
       fontSize -= 1.0;
     }
@@ -23143,18 +23111,16 @@ class AppWorkspacePainter extends CustomPainter {
     final bool isMultiFrame = physicalFrames.length > 1;
     final sortedFrames = List<PhysicalFrameInfo>.from(physicalFrames)
       ..sort(
-            (a, b) =>
-        a.rect.left != b.rect.left
+        (a, b) => a.rect.left != b.rect.left
             ? a.rect.left.compareTo(b.rect.left)
             : a.rect.top.compareTo(b.rect.top),
       );
 
     final bool hasVaryingHeights =
         isMultiFrame &&
-            sortedFrames.any(
-                  (f) =>
-              (f.rect.height - sortedFrames.first.rect.height).abs() > 1.0,
-            );
+        sortedFrames.any(
+          (f) => (f.rect.height - sortedFrames.first.rect.height).abs() > 1.0,
+        );
 
     double offsetDistTop = isMultiFrame ? 105.0 : 60.0;
     if (model.hasShutter) {
@@ -23196,10 +23162,10 @@ class AppWorkspacePainter extends CustomPainter {
 
     final bool isSlantedOrArched =
         model.archHeight > 0 ||
-            model.topSlantLeftY != 0 ||
-            model.topSlantRightY != 0 ||
-            model.bottomSlantLeftY != 0 ||
-            model.bottomSlantRightY != 0;
+        model.topSlantLeftY != 0 ||
+        model.topSlantRightY != 0 ||
+        model.bottomSlantLeftY != 0 ||
+        model.bottomSlantRightY != 0;
 
     double widthY;
     if (isSlantedOrArched) {
@@ -23288,8 +23254,7 @@ class AppWorkspacePainter extends CustomPainter {
               ),
             ),
             textDirection: TextDirection.ltr,
-          )
-            ..layout();
+          )..layout();
           angleTextPainter.paint(
             canvas,
             Offset(jX - angleTextPainter.width / 2, layer1Y - 24),
@@ -23389,8 +23354,8 @@ class AppWorkspacePainter extends CustomPainter {
           final fInfo = sortedFrames[i];
           final double dimX =
               pos.dx +
-                  fInfo.rect.left +
-                  math.min(fInfo.rect.width * 0.28, 65.0);
+              fInfo.rect.left +
+              math.min(fInfo.rect.width * 0.28, 65.0);
           final double startY = pos.dy + fInfo.rect.top;
           final double endY = pos.dy + fInfo.rect.bottom;
           _drawDimension(
@@ -23447,9 +23412,9 @@ class AppWorkspacePainter extends CustomPainter {
       } else {
         final bool isSlanted =
             model.topSlantLeftY != 0 ||
-                model.topSlantRightY != 0 ||
-                model.bottomSlantLeftY != 0 ||
-                model.bottomSlantRightY != 0;
+            model.topSlantRightY != 0 ||
+            model.bottomSlantLeftY != 0 ||
+            model.bottomSlantRightY != 0;
 
         double leftH =
             model.height - model.topSlantLeftY - model.bottomSlantLeftY;
@@ -23493,13 +23458,14 @@ class AppWorkspacePainter extends CustomPainter {
     canvas.drawLine(p1, p2, p);
   }
 
-  void _drawDimension(Canvas canvas,
-      String text,
-      Offset p1,
-      Offset p2, {
-        bool isVerticalLine = false,
-        bool isSmall = false,
-      }) {
+  void _drawDimension(
+    Canvas canvas,
+    String text,
+    Offset p1,
+    Offset p2, {
+    bool isVerticalLine = false,
+    bool isSmall = false,
+  }) {
     final double midX = (p1.dx + p2.dx) / 2;
     final double midY = (p1.dy + p2.dy) / 2;
     final Offset center = Offset(midX, midY);
@@ -23521,12 +23487,13 @@ class AppWorkspacePainter extends CustomPainter {
     );
   }
 
-  double _drawText(Canvas canvas,
-      String text,
-      Offset center, {
-        bool isVertical = false,
-        bool isSmall = false,
-      }) {
+  double _drawText(
+    Canvas canvas,
+    String text,
+    Offset center, {
+    bool isVertical = false,
+    bool isSmall = false,
+  }) {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
@@ -23545,8 +23512,7 @@ class AppWorkspacePainter extends CustomPainter {
         ),
       ),
       textDirection: TextDirection.ltr,
-    )
-      ..layout();
+    )..layout();
     canvas.save();
     canvas.translate(center.dx, center.dy);
     if (isVertical) canvas.rotate(-math.pi / 2);
@@ -23555,12 +23521,13 @@ class AppWorkspacePainter extends CustomPainter {
     return tp.width;
   }
 
-  void _drawArrow(Canvas canvas,
-      Offset p1,
-      Offset p2, {
-        bool isVerticalLine = false,
-        double textGap = 100.0,
-      }) {
+  void _drawArrow(
+    Canvas canvas,
+    Offset p1,
+    Offset p2, {
+    bool isVerticalLine = false,
+    double textGap = 100.0,
+  }) {
     final p = Paint()
       ..color = Colors.blueGrey.shade700
       ..strokeWidth = 2.2;
@@ -23602,14 +23569,14 @@ class AppWorkspacePainter extends CustomPainter {
         ..style = PaintingStyle.fill;
       final topArrow = Path()
         ..moveTo(p1.dx, minY)
-        ..lineTo(p1.dx - arrowW, minY + arrowLen)..lineTo(
-            p1.dx + arrowW, minY + arrowLen)
+        ..lineTo(p1.dx - arrowW, minY + arrowLen)
+        ..lineTo(p1.dx + arrowW, minY + arrowLen)
         ..close();
       canvas.drawPath(topArrow, arrowPaint);
       final bottomArrow = Path()
         ..moveTo(p2.dx, maxY)
-        ..lineTo(p2.dx - arrowW, maxY - arrowLen)..lineTo(
-            p2.dx + arrowW, maxY - arrowLen)
+        ..lineTo(p2.dx - arrowW, maxY - arrowLen)
+        ..lineTo(p2.dx + arrowW, maxY - arrowLen)
         ..close();
       canvas.drawPath(bottomArrow, arrowPaint);
     } else {
@@ -23647,14 +23614,14 @@ class AppWorkspacePainter extends CustomPainter {
         ..style = PaintingStyle.fill;
       final leftArrow = Path()
         ..moveTo(minX, p1.dy)
-        ..lineTo(minX + arrowLen, p1.dy - arrowW)..lineTo(
-            minX + arrowLen, p1.dy + arrowW)
+        ..lineTo(minX + arrowLen, p1.dy - arrowW)
+        ..lineTo(minX + arrowLen, p1.dy + arrowW)
         ..close();
       canvas.drawPath(leftArrow, arrowPaint);
       final rightArrow = Path()
         ..moveTo(maxX, p2.dy)
-        ..lineTo(maxX - arrowLen, p2.dy - arrowW)..lineTo(
-            maxX - arrowLen, p2.dy + arrowW)
+        ..lineTo(maxX - arrowLen, p2.dy - arrowW)
+        ..lineTo(maxX - arrowLen, p2.dy + arrowW)
         ..close();
       canvas.drawPath(rightArrow, arrowPaint);
     }
@@ -23715,17 +23682,15 @@ class _ProfileButton extends StatelessWidget {
       onTap: onPressed,
       child: Builder(
         builder: (context) {
-          final isDark = Theme
-              .of(context)
-              .brightness == Brightness.dark;
+          final isDark = Theme.of(context).brightness == Brightness.dark;
           return AnimatedContainer(
             duration: const Duration(milliseconds: 150),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: selected
                   ? (isDark
-                  ? Colors.blue.shade900.withValues(alpha: 0.3)
-                  : Colors.blue.shade50)
+                        ? Colors.blue.shade900.withValues(alpha: 0.3)
+                        : Colors.blue.shade50)
                   : (isDark ? const Color(0xFF2E2E3E) : Colors.white),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
@@ -23746,8 +23711,8 @@ class _ProfileButton extends StatelessWidget {
                     color: isDark
                         ? Colors.white
                         : (selected
-                        ? Colors.blue.shade900
-                        : Colors.grey.shade800),
+                              ? Colors.blue.shade900
+                              : Colors.grey.shade800),
                     fontSize: 12,
                     fontWeight: selected ? FontWeight.bold : FontWeight.normal,
                   ),
@@ -23762,14 +23727,16 @@ class _ProfileButton extends StatelessWidget {
 }
 
 // Helper validation functions for glass/gasket thickness constraints (Ouvrant & Coulissant)
-bool isGlassThicknessValid(double thickVal,
-    GlassSpecification spec,
-    WindowModel model,
-    String systemMode,) {
+bool isGlassThicknessValid(
+  double thickVal,
+  GlassSpecification spec,
+  WindowModel model,
+  String systemMode,
+) {
   final isSliding =
       systemMode == 'sliding' ||
-          model.systemMode == 'sliding' ||
-          model.zones.any((zone) => zone.content == ZoneContent.slidingSash);
+      model.systemMode == 'sliding' ||
+      model.zones.any((zone) => zone.content == ZoneContent.slidingSash);
   final double jointAllowance;
   if (isSliding) {
     final double j = model.selectedVitrageJointThickness(fallback: 2.0);
@@ -23777,12 +23744,12 @@ bool isGlassThicknessValid(double thickVal,
   } else {
     jointAllowance =
         model.selectedVitrageJointThickness(fallback: 2.0) +
-            (spec.structure == GlassStructure.double
-                ? model.selectedBourrageJointThickness(
-              doubleGlass: true,
-              fallback: 2.0,
-            )
-                : 0.0);
+        (spec.structure == GlassStructure.double
+            ? model.selectedBourrageJointThickness(
+                doubleGlass: true,
+                fallback: 2.0,
+              )
+            : 0.0);
   }
   final maxCapacity = model.glazingCapacityForStructure(
     spec.structure,
@@ -23794,16 +23761,18 @@ bool isGlassThicknessValid(double thickVal,
   return true;
 }
 
-bool isDoubleGlassValid(double thickOuter,
-    int intercall,
-    double thickInner,
-    bool jointTwoSides,
-    WindowModel model,
-    String systemMode,) {
+bool isDoubleGlassValid(
+  double thickOuter,
+  int intercall,
+  double thickInner,
+  bool jointTwoSides,
+  WindowModel model,
+  String systemMode,
+) {
   final isSliding =
       systemMode == 'sliding' ||
-          model.systemMode == 'sliding' ||
-          model.zones.any((zone) => zone.content == ZoneContent.slidingSash);
+      model.systemMode == 'sliding' ||
+      model.zones.any((zone) => zone.content == ZoneContent.slidingSash);
   final double jointAllowance;
   if (isSliding) {
     final double j = model.selectedVitrageJointThickness(fallback: 2.0);
@@ -23811,8 +23780,7 @@ bool isDoubleGlassValid(double thickOuter,
   } else {
     jointAllowance =
         model.selectedVitrageJointThickness(fallback: 2.0) +
-            model.selectedBourrageJointThickness(
-                doubleGlass: true, fallback: 2.0);
+        model.selectedBourrageJointThickness(doubleGlass: true, fallback: 2.0);
   }
   final maxCapacity = model.glazingCapacityForStructure(
     GlassStructure.double,
@@ -23982,8 +23950,8 @@ class _PresetThumbnailPainter extends CustomPainter {
     void drawTopOpenTriangle(Rect sashRect) {
       final path = Path()
         ..moveTo(sashRect.left, sashRect.bottom)
-        ..lineTo(sashRect.center.dx, sashRect.top)..lineTo(
-            sashRect.right, sashRect.bottom);
+        ..lineTo(sashRect.center.dx, sashRect.top)
+        ..lineTo(sashRect.right, sashRect.bottom);
       canvas.drawPath(path, openLinePaint);
     }
 
@@ -24144,8 +24112,7 @@ class _PresetThumbnailPainter extends CustomPainter {
         canvas.drawCircle(
           Offset(handleX, handleY),
           1.8,
-          Paint()
-            ..color = handleColor,
+          Paint()..color = handleColor,
         );
         canvas.drawLine(
           Offset(handleX, handleY),
@@ -24157,8 +24124,7 @@ class _PresetThumbnailPainter extends CustomPainter {
         canvas.drawCircle(
           Offset(handleX, handleY + 3.5),
           0.9,
-          Paint()
-            ..color = handleColor,
+          Paint()..color = handleColor,
         );
         drawOpenTriangles(sashRect, hingesLeft: true);
         break;
@@ -24233,14 +24199,12 @@ class _PresetThumbnailPainter extends CustomPainter {
         canvas.drawCircle(
           Offset(leftSash.right - 2.0, midY),
           1.5,
-          Paint()
-            ..color = handleColor,
+          Paint()..color = handleColor,
         );
         canvas.drawCircle(
           Offset(rightSash.left + 2.0, midY),
           1.5,
-          Paint()
-            ..color = handleColor,
+          Paint()..color = handleColor,
         );
         break;
 
@@ -24264,8 +24228,7 @@ class _PresetThumbnailPainter extends CustomPainter {
             width: 5,
             height: 2,
           ),
-          Paint()
-            ..color = handleColor,
+          Paint()..color = handleColor,
         );
         break;
 
@@ -24303,8 +24266,7 @@ class _PresetThumbnailPainter extends CustomPainter {
         canvas.drawCircle(
           Offset(leftSash.right, innerRect.center.dy),
           1.8,
-          Paint()
-            ..color = handleColor,
+          Paint()..color = handleColor,
         );
         break;
 

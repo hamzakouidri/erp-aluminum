@@ -405,6 +405,39 @@ const Map<String, Map<AppLanguage, String>> recentDevelopmentKeys = {
     AppLanguage.french: 'Dimensions du décor',
     AppLanguage.english: 'Decor dimensions',
   },
+  'عرض الديكور': {
+    AppLanguage.arabic: 'عرض الديكور',
+    AppLanguage.french: 'Largeur du décor',
+    AppLanguage.english: 'Decor width',
+  },
+  'طول الديكور': {
+    AppLanguage.arabic: 'طول الديكور',
+    AppLanguage.french: 'Hauteur du décor',
+    AppLanguage.english: 'Decor height',
+  },
+  'عرض البانو الكامل': {
+    AppLanguage.arabic: 'عرض البانو الكامل',
+    AppLanguage.french: 'Largeur totale du panneau',
+    AppLanguage.english: 'Full panel width',
+  },
+  'طول البانو الكامل': {
+    AppLanguage.arabic: 'طول البانو الكامل',
+    AppLanguage.french: 'Hauteur totale du panneau',
+    AppLanguage.english: 'Full panel height',
+  },
+  'أبعاد البانو الكامل': {
+    AppLanguage.arabic: 'أبعاد البانو الكامل',
+    AppLanguage.french: 'Dimensions totales du panneau',
+    AppLanguage.english: 'Full panel dimensions',
+  },
+  'يجب أن يكون عرض وطول البانو الكامل أكبر من أو يساوي أبعاد الديكور.': {
+    AppLanguage.arabic:
+        'يجب أن يكون عرض وطول البانو الكامل أكبر من أو يساوي أبعاد الديكور.',
+    AppLanguage.french:
+        'Les dimensions totales du panneau doivent être supérieures ou égales à celles du décor.',
+    AppLanguage.english:
+        'The full panel dimensions must be greater than or equal to the decor dimensions.',
+  },
   'الرسم': {
     AppLanguage.arabic: 'الرسم',
     AppLanguage.french: 'Dessin',

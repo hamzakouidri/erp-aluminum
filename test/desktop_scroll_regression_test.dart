@@ -4,6 +4,94 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:database_data/widgets/desktop_scroll_behavior.dart';
 
 void main() {
+  testWidgets('global route recovers when the root listener misses the wheel', (
+    tester,
+  ) async {
+    final controller = ScrollController();
+    GestureBinding.instance.pointerRouter.addGlobalRoute(
+      DesktopScrollCoordinator.handleGlobalPointerEvent,
+    );
+    addTearDown(() {
+      GestureBinding.instance.pointerRouter.removeGlobalRoute(
+        DesktopScrollCoordinator.handleGlobalPointerEvent,
+      );
+      controller.dispose();
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DesktopScrollFallback(
+            controller: controller,
+            child: ListView.builder(
+              controller: controller,
+              itemCount: 100,
+              itemBuilder: (_, index) =>
+                  SizedBox(height: 40, child: Text('row $index')),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        position: tester.getCenter(find.byType(ListView)),
+        scrollDelta: const Offset(0, 80),
+      ),
+    );
+    await tester.pump();
+
+    expect(controller.offset, greaterThan(0));
+  });
+
+  testWidgets(
+    'falls back when a descendant claims the wheel signal without scrolling',
+    (tester) async {
+      final controller = ScrollController();
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (_, child) => Listener(
+            onPointerSignal: DesktopScrollCoordinator.handlePointerSignal,
+            child: child,
+          ),
+          home: Scaffold(
+            body: DesktopScrollFallback(
+              controller: controller,
+              child: Listener(
+                onPointerSignal: (event) {
+                  if (event is PointerScrollEvent) {
+                    GestureBinding.instance.pointerSignalResolver.register(
+                      event,
+                      (_) {},
+                    );
+                  }
+                },
+                child: ListView.builder(
+                  controller: controller,
+                  itemCount: 100,
+                  itemBuilder: (_, index) =>
+                      SizedBox(height: 40, child: Text('row $index')),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.sendEventToBinding(
+        PointerScrollEvent(
+          position: tester.getCenter(find.byType(ListView)),
+          scrollDelta: const Offset(0, 80),
+        ),
+      );
+      await tester.pump();
+
+      expect(controller.offset, greaterThan(0));
+      controller.dispose();
+    },
+  );
+
   testWidgets('wheel over translated page chrome handles every tick', (
     tester,
   ) async {

@@ -1290,19 +1290,9 @@ class BomEngineV2 {
       }
 
       // 3. معالجة عمودي الالتقاء الوسطي للضلف (face_to_face / Rencontre):
-      // يقصان بزاوية 45° في الأعلى والأسفل، ويأخذان كامات تجميع الضلفة (2 في الأعلى + 2 في الأسفل = 4 كامات)
+      // تم دمج زواياها المائلة 45° مباشرة في AssemblyDemand للضلف (sash) داخل accessory_assembly.dart
+      // لتجنب الحساب المضاعف، لا ننشئ طلباً مستقلاً عنها هنا.
       if (role == 'face_to_face') {
-        demands.add(
-          AssemblyDemand(
-            target: 'sash',
-            sliding: sliding,
-            topCorners: pieceCount,
-            bottomCorners: pieceCount,
-            topMiterCorners: pieceCount,
-            bottomMiterCorners: pieceCount,
-            sectionId: sectionId,
-          ),
-        );
         continue;
       }
 

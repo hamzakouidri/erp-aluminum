@@ -5,7 +5,7 @@ import 'package:intl/intl.dart' hide TextDirection;
 import '../Commande/order_workspace_screen.dart';
 import '../sql_database.dart';
 import '../settings/app_settings.dart';
-import '../settings/localization.dart';
+import '../settings/document_status_localization.dart';
 import '../widgets/order_profitability_dialog.dart';
 import '../widgets/resizable_columns_table.dart';
 
@@ -270,7 +270,7 @@ class _SalesScreenState extends State<SalesScreen> {
       case 'في حالة انتظار':
         return _tr('قيد الانتظار', 'En Attente', 'Pending', lang);
       default:
-        return Localization.translate(status, lang);
+        return localizeDocumentStatus(status, lang);
     }
   }
 
@@ -357,6 +357,24 @@ class _SalesScreenState extends State<SalesScreen> {
     return DateTime.tryParse(raw);
   }
 
+  double _rowAmount(Map<String, dynamic> row, List<String> keys) {
+    for (final key in keys) {
+      final value = row[key];
+      if (value is num) return value.toDouble();
+      final parsed = double.tryParse(value?.toString() ?? '');
+      if (parsed != null) return parsed;
+    }
+    return 0.0;
+  }
+
+  DateTime? _rowDate(Map<String, dynamic> row, List<String> keys) {
+    for (final key in keys) {
+      final parsed = _parseOrderDate(row[key]);
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+
   bool _isConfirmedOrder(Map<String, dynamic> order) {
     final status = (order['status'] ?? '').toString().trim().toLowerCase();
     return status == 'confirmed' ||
@@ -371,12 +389,12 @@ class _SalesScreenState extends State<SalesScreen> {
     for (final order in _allOrders) {
       final status = (order['status'] ?? '').toString().trim().toLowerCase();
       if (!_activeStatuses.contains(status)) continue;
-      final date = _parseOrderDate(order['created_at']);
+      final date = _rowDate(order, const ['created_at', 'updated_at', 'date']);
       if (date == null) continue;
 
       final month = DateTime(date.year, date.month);
-      final netPayable = (order['net_payable'] as num?)?.toDouble() ?? 0.0;
-      final rawTotal = (order['total'] as num?)?.toDouble() ?? 0.0;
+      final netPayable = _rowAmount(order, const ['net_payable']);
+      final rawTotal = _rowAmount(order, const ['total', 'total_amount']);
       final total = netPayable > 0 ? netPayable : rawTotal;
       if (total <= 0) continue;
 
@@ -386,11 +404,17 @@ class _SalesScreenState extends State<SalesScreen> {
     }
 
     for (final purchase in _workshopPurchases) {
-      final date = _parseOrderDate(purchase['created_at']);
+      final date = _rowDate(
+        purchase,
+        const ['purchase_date', 'created_at', 'updated_at', 'date'],
+      );
       if (date == null) continue;
       final month = DateTime(date.year, date.month);
       final point = grouped[month] ?? _SalesChartPoint(month: month);
-      point.confirmed += (purchase['total'] as num?)?.toDouble() ?? 0.0;
+      point.confirmed += _rowAmount(
+        purchase,
+        const ['total', 'total_amount', 'net_total'],
+      );
       grouped[month] = point;
     }
 
@@ -404,19 +428,28 @@ class _SalesScreenState extends State<SalesScreen> {
     final grouped = <DateTime, _SalesChartPoint>{};
     for (final sale in _materialStoreSales) {
       if ((sale['is_internal'] as num?)?.toInt() == 1) continue;
-      final date = _parseOrderDate(sale['sale_date'] ?? sale['created_at']);
+      final date = _rowDate(sale, const ['sale_date', 'created_at', 'updated_at']);
       if (date == null) continue;
       final month = DateTime(date.year, date.month);
       final point = grouped[month] ?? _SalesChartPoint(month: month);
-      point.total += (sale['net_total'] as num?)?.toDouble() ?? 0.0;
+      point.total += _rowAmount(
+        sale,
+        const ['net_total', 'total', 'total_amount'],
+      );
       grouped[month] = point;
     }
     for (final purchase in _storePurchases) {
-      final date = _parseOrderDate(purchase['created_at']);
+      final date = _rowDate(
+        purchase,
+        const ['purchase_date', 'created_at', 'updated_at', 'date'],
+      );
       if (date == null) continue;
       final month = DateTime(date.year, date.month);
       final point = grouped[month] ?? _SalesChartPoint(month: month);
-      point.confirmed += (purchase['total'] as num?)?.toDouble() ?? 0.0;
+      point.confirmed += _rowAmount(
+        purchase,
+        const ['total', 'total_amount', 'net_total'],
+      );
       grouped[month] = point;
     }
     final points = grouped.values.toList()
@@ -735,11 +768,21 @@ class _SalesScreenState extends State<SalesScreen> {
             runSpacing: 4,
             children: [
               _chartLegend(
-                _tr('المبيعات', 'Ventes', 'Sales', lang),
+                _tr(
+                  workshop ? 'مبيعات الورشة' : 'مبيعات المحل',
+                  workshop ? 'Ventes atelier' : 'Ventes magasin',
+                  workshop ? 'Workshop sales' : 'Store sales',
+                  lang,
+                ),
                 const Color(0xFF2563EB),
               ),
               _chartLegend(
-                _tr('المشتريات', 'Achats', 'Purchases', lang),
+                _tr(
+                  workshop ? 'مشتريات الورشة' : 'مشتريات المحل',
+                  workshop ? 'Achats atelier' : 'Achats magasin',
+                  workshop ? 'Workshop purchases' : 'Store purchases',
+                  lang,
+                ),
                 const Color(0xFFF59E0B),
               ),
             ],
@@ -1827,8 +1870,28 @@ class _SalesChartPainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round;
     if (pts.length > 1) {
       final path = Path()..moveTo(pts.first.dx, pts.first.dy);
-      for (final p in pts.skip(1)) path.lineTo(p.dx, p.dy);
+      for (var i = 1; i < pts.length; i++) {
+        final previous = pts[i - 1];
+        final current = pts[i];
+        final middleX = (previous.dx + current.dx) / 2;
+        path.cubicTo(
+          middleX,
+          previous.dy,
+          middleX,
+          current.dy,
+          current.dx,
+          current.dy,
+        );
+      }
       canvas.drawPath(path, paint);
+    } else {
+      // A single month still needs to read as a line series, not an almost
+      // invisible point.
+      canvas.drawLine(
+        Offset(pts.first.dx - 14, pts.first.dy),
+        Offset(pts.first.dx + 14, pts.first.dy),
+        paint,
+      );
     }
     for (final p in pts) {
       canvas.drawCircle(p, 3.5, Paint()..color = color);

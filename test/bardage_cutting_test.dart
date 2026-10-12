@@ -985,29 +985,160 @@ void main() {
     expect(greyRow.total, 10000);
   });
 
+  test('decor panel keeps 30 mm clearance in both fixed-orientation axes', () {
+    expect(
+      decorPanelFitsSpace(
+        spaceWidth: 830,
+        spaceHeight: 1130,
+        decorWidth: 800,
+        decorHeight: 1100,
+      ),
+      isTrue,
+    );
+    expect(
+      decorPanelFitsSpace(
+        spaceWidth: 829,
+        spaceHeight: 1130,
+        decorWidth: 800,
+        decorHeight: 1100,
+      ),
+      isFalse,
+    );
+    expect(
+      decorPanelFitsSpace(
+        spaceWidth: 900,
+        spaceHeight: 1200,
+        decorWidth: 800,
+        decorHeight: 1100,
+      ),
+      isTrue,
+    );
+    expect(
+      decorPanelFitsSpace(
+        spaceWidth: 1200,
+        spaceHeight: 900,
+        decorWidth: 800,
+        decorHeight: 1100,
+      ),
+      isFalse,
+    );
+  });
+
+  test('full decor panel sheet must cover the target space', () {
+    expect(
+      decorPanelSheetCoversSpace(
+        spaceWidth: 900,
+        spaceHeight: 1200,
+        panelWidth: 900,
+        panelHeight: 1200,
+      ),
+      isTrue,
+    );
+    expect(
+      decorPanelSheetCoversSpace(
+        spaceWidth: 900,
+        spaceHeight: 1200,
+        panelWidth: 899,
+        panelHeight: 1200,
+      ),
+      isFalse,
+    );
+  });
+
   test(
-    'decor panel keeps its fixed orientation when checking available space',
+    'double glazing chooses nearest fitting parclose and 8 mm intercall',
     () {
-      expect(
-        decorPanelFitsSpace(
-          spaceWidth: 900,
-          spaceHeight: 1200,
-          decorWidth: 800,
-          decorHeight: 1100,
-        ),
-        isTrue,
+      final model = WindowModel(db: FakeSqlDatabase());
+      model.activeSeries = AluminumSeries(
+        id: 1,
+        profileId: 1,
+        name: 'Test',
+        type: 'Aluminium',
+        sections: [
+          AluminumSection(
+            id: 22,
+            seriesId: 1,
+            code: 'P22',
+            name: 'Parclose 22',
+            type: 'parclose',
+            maxGlassThickness: 22,
+          ),
+          AluminumSection(
+            id: 18,
+            seriesId: 1,
+            code: 'P18',
+            name: 'Parclose 18',
+            type: 'parclose',
+            maxGlassThickness: 18,
+          ),
+        ],
       );
-      expect(
-        decorPanelFitsSpace(
-          spaceWidth: 1200,
-          spaceHeight: 900,
-          decorWidth: 800,
-          decorHeight: 1100,
+      model.zones = [
+        WindowZone(
+          id: 'z1',
+          boundary: const Rect.fromLTWH(0, 0, 900, 1200),
+          glass: const GlassSpecification(
+            structure: GlassStructure.double,
+            thicknessOuter: 5,
+            thicknessInner: 5,
+            intercallThickness: 12,
+          ),
         ),
-        isFalse,
+      ];
+      model.selection = SelectionInfo.zone('z1');
+
+      expect(model.parcloseCapacityForStructure(GlassStructure.double), 18);
+      expect(
+        model.suggestedIntercallThicknessForDoubleGlass(
+          thicknessOuter: 5,
+          thicknessInner: 5,
+        ),
+        8,
       );
     },
   );
+
+  test('18 mm decor panel resolves the nearest 18 mm parclose', () {
+    final model = WindowModel(db: FakeSqlDatabase());
+    model.activeSeries = AluminumSeries(
+      id: 1,
+      profileId: 1,
+      name: 'Test',
+      type: 'Aluminium',
+      sections: [
+        AluminumSection(
+          id: 5,
+          seriesId: 1,
+          code: 'P5',
+          name: 'Parclose 5',
+          type: 'parclose',
+          maxGlassThickness: 5,
+        ),
+        AluminumSection(
+          id: 18,
+          seriesId: 1,
+          code: 'P18',
+          name: 'Parclose 18',
+          type: 'parclose',
+          maxGlassThickness: 18,
+        ),
+      ],
+    );
+    model.zones = [
+      WindowZone(
+        id: 'z1',
+        boundary: const Rect.fromLTWH(0, 0, 900, 1200),
+        glass: const GlassSpecification(
+          structure: GlassStructure.closed,
+          thicknessOuter: 18,
+          panneauSubtype: 'panneau décor',
+        ),
+      ),
+    ];
+    model.selection = SelectionInfo.zone('z1');
+
+    expect(model.parcloseCapacityForStructure(GlassStructure.closed), 18);
+  });
 
   test('decor panel is billed as one glass-catalogue piece', () {
     final model = WindowModel(db: FakeSqlDatabase(), width: 900, height: 1200);

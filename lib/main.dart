@@ -4,8 +4,11 @@ import 'settings/shortcut_bindings.dart';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart' show GestureBinding;
 import 'package:flutter/services.dart'
     show HardwareKeyboard, KeyDownEvent, LogicalKeyboardKey;
+import 'package:firebase_core/firebase_core.dart' as firebase_core;
+import 'firebase_options.dart';
 import 'package:provider/provider.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:database_data/settings/localization.dart';
@@ -85,9 +88,22 @@ class _AppBootstrapState extends State<AppBootstrap> {
             publishableKey: SupabaseConfig.publishableKey,
           ).timeout(const Duration(seconds: 5));
         } catch (supabaseError) {
-          debugPrint('Supabase initialization offline/timeout warning: $supabaseError');
+          debugPrint(
+            'Supabase initialization offline/timeout warning: $supabaseError',
+          );
           // التطبيق يواصل العمل بدون اتصال بالاعتماد الكامل على قاعدة بيانات SQLite المحلية
         }
+      }
+
+      // تهيئة Firebase بأمان لمنع استثناء: No Firebase App '[DEFAULT]' has been created
+      try {
+        if (firebase_core.Firebase.apps.isEmpty) {
+          await firebase_core.Firebase.initializeApp(
+            options: DefaultFirebaseOptions.currentPlatform,
+          ).timeout(const Duration(seconds: 5));
+        }
+      } catch (firebaseError) {
+        debugPrint('Firebase initialization warning: $firebaseError');
       }
       // Initialize notification service (non-blocking — errors are swallowed).
       unawaited(
@@ -241,7 +257,9 @@ class _AppBootstrapState extends State<AppBootstrap> {
                             });
                           },
                           icon: const Icon(Icons.offline_pin_outlined),
-                          label: const Text('المتابعة في وضع عدم الاتصال (أوفلاين)'),
+                          label: const Text(
+                            'المتابعة في وضع عدم الاتصال (أوفلاين)',
+                          ),
                         ),
                       ],
                     ),
@@ -332,6 +350,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    if (!kIsWeb && Platform.isWindows) {
+      GestureBinding.instance.pointerRouter.addGlobalRoute(
+        DesktopScrollCoordinator.handleGlobalPointerEvent,
+      );
+    }
     WorkerPushNotificationService.instance.setNotificationTapHandler((data) {
       final eventType = data['type']?.toString() ?? '';
       final rawTreasuryId = data['treasury_id'];
@@ -381,6 +404,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    if (!kIsWeb && Platform.isWindows) {
+      GestureBinding.instance.pointerRouter.removeGlobalRoute(
+        DesktopScrollCoordinator.handleGlobalPointerEvent,
+      );
+    }
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -636,12 +664,17 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           ? null
           : DateTime.now().difference(backgroundedAt);
 
+      // A Windows focus change emits inactive -> resumed without ever
+      // entering paused. In that case [backgroundedAt] is null and there is
+      // nothing to resume. Treating null as "sync now" made every click on
+      // the taskbar start a full cloud refresh and temporarily starve pointer
+      // handling until another page rebuild occurred.
       final shouldSync =
-          timeInBackground == null || timeInBackground >= _resumeSyncCooldown;
+          timeInBackground != null && timeInBackground >= _resumeSyncCooldown;
 
       if (!shouldSync) {
         debugPrint(
-          'App resumed after ${timeInBackground.inSeconds}s — '
+          'App resumed after ${timeInBackground?.inSeconds ?? 0}s — '
           'skipping resume sync (cooldown: ${_resumeSyncCooldown.inSeconds}s). '
           'Realtime listeners are still active.',
         );
@@ -649,7 +682,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       }
 
       debugPrint(
-        'App resumed after ${timeInBackground?.inSeconds ?? "?"}s — '
+        'App resumed after ${timeInBackground.inSeconds}s — '
         'triggering resume sync.',
       );
 
@@ -700,129 +733,131 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       navigatorKey: _navigatorKey,
       navigatorObservers: [_dialogObserver],
       scaffoldMessengerKey: _scaffoldMessengerKey,
-        debugShowCheckedModeBanner: false,
-        title: Localization.translate('ورشتي', settings.language),
-        themeMode: settings.themeMode,
-        scrollBehavior: const DesktopScrollBehavior(),
-        shortcuts: <ShortcutActivator, Intent>{
-          ...WidgetsApp.defaultShortcuts,
-          const SingleActivator(LogicalKeyboardKey.enter):
-              const ActivateIntent(),
-          const SingleActivator(LogicalKeyboardKey.numpadEnter):
-              const ActivateIntent(),
-        },
-        theme: AppTheme.lightTheme(
-          settings.fontSizeScale,
-          fontFamily: uiFontFamily,
-        ),
-        darkTheme: AppTheme.darkTheme(
-          settings.fontSizeScale,
-          fontFamily: uiFontFamily,
-        ),
-        builder: (context, child) {
-          final commandShortcuts = ShortcutBindings.instance;
-          Widget content = child!;
-          if (kIsWeb) {
-            content = Center(
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 480),
-                decoration: BoxDecoration(
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: 20,
-                    ),
-                  ],
-                ),
-                child: child,
+      debugShowCheckedModeBanner: false,
+      title: Localization.translate('ورشتي', settings.language),
+      themeMode: settings.themeMode,
+      scrollBehavior: const DesktopScrollBehavior(),
+      shortcuts: <ShortcutActivator, Intent>{
+        ...WidgetsApp.defaultShortcuts,
+        const SingleActivator(LogicalKeyboardKey.enter): const ActivateIntent(),
+        const SingleActivator(LogicalKeyboardKey.numpadEnter):
+            const ActivateIntent(),
+      },
+      theme: AppTheme.lightTheme(
+        settings.fontSizeScale,
+        fontFamily: uiFontFamily,
+      ),
+      darkTheme: AppTheme.darkTheme(
+        settings.fontSizeScale,
+        fontFamily: uiFontFamily,
+      ),
+      builder: (context, child) {
+        final commandShortcuts = ShortcutBindings.instance;
+        Widget content = child!;
+        if (kIsWeb) {
+          content = Center(
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 480),
+              decoration: BoxDecoration(
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 20,
+                  ),
+                ],
               ),
-            );
-          }
-          return Focus(
-            canRequestFocus: false,
-            onKeyEvent: (_, event) {
-              if (kIsWeb || !Platform.isWindows) return KeyEventResult.ignored;
-              if (commandShortcuts.handle(context, event))
-                return KeyEventResult.handled;
-              final keyboard = HardwareKeyboard.instance;
-              final focus = FocusManager.instance.primaryFocus;
-              final focusContext = focus?.context;
-              if (event is KeyDownEvent &&
-                  keyboard.isControlPressed &&
-                  !keyboard.isAltPressed &&
-                  event.logicalKey == LogicalKeyboardKey.tab &&
-                  (focusContext == null ||
-                      ModalRoute.of(focusContext) is! PopupRoute)) {
-                final workspace = context.read<WorkspaceController>();
-                final count = workspace.entries.length;
-                if (count > 1)
-                  workspace.activate(
-                    (workspace.activeIndex +
-                            (keyboard.isShiftPressed ? -1 : 1) +
-                            count) %
-                        count,
-                  );
-                return KeyEventResult.handled;
-              }
-              if (event is KeyDownEvent && _handleDialogEnterKey(event)) {
-                return KeyEventResult.handled;
-              }
-
-              // Keyboard scrolling (Arrow keys, PageUp/Down, Home/End) first
-              final handledScroll = DesktopScrollCoordinator.handleKeyEvent(
-                event,
-              );
-              if (handledScroll) {
-                return KeyEventResult.handled;
-              }
-
-              // Fallback focus traversal for arrow keys only when not consumed by scrolling:
-              if (event is KeyDownEvent &&
-                  focusContext != null &&
-                  !keyboard.isControlPressed &&
-                  !keyboard.isAltPressed &&
-                  !keyboard.isMetaPressed &&
-                  !keyboard.isShiftPressed &&
-                  focusContext.widget is! EditableText &&
-                  focusContext.findAncestorWidgetOfExactType<EditableText>() ==
-                      null) {
-                final direction = <LogicalKeyboardKey, TraversalDirection>{
-                  LogicalKeyboardKey.arrowDown: TraversalDirection.down,
-                  LogicalKeyboardKey.arrowUp: TraversalDirection.up,
-                  LogicalKeyboardKey.arrowLeft: TraversalDirection.left,
-                  LogicalKeyboardKey.arrowRight: TraversalDirection.right,
-                }[event.logicalKey];
-                if (direction != null && focus!.focusInDirection(direction)) {
-                  return KeyEventResult.handled;
-                }
-              }
-
-              return KeyEventResult.ignored;
-            },
-            child: Listener(
-              behavior: HitTestBehavior.translucent,
-              onPointerHover: DesktopScrollCoordinator.rememberPointerPosition,
-              onPointerMove: DesktopScrollCoordinator.rememberPointerPosition,
-              // Every page, dialog and nested list now participates in the
-              // desktop fallback. Flutter still handles the nearest scrollable
-              // first; this only continues to a parent when that child reached
-              // its beginning/end.
-              onPointerSignal: DesktopScrollCoordinator.handlePointerSignal,
-              child: MediaQuery(
-                data: MediaQuery.of(context).copyWith(
-                  textScaler: TextScaler.linear(settings.fontSizeScale),
-                ),
-                child: content,
-              ),
+              child: child,
             ),
           );
-        },
+        }
+        return Focus(
+          canRequestFocus: false,
+          onKeyEvent: (_, event) {
+            if (kIsWeb || !Platform.isWindows) return KeyEventResult.ignored;
+            if (commandShortcuts.handle(context, event))
+              return KeyEventResult.handled;
+            final keyboard = HardwareKeyboard.instance;
+            final focus = FocusManager.instance.primaryFocus;
+            final focusContext = focus?.context;
+            if (event is KeyDownEvent &&
+                keyboard.isControlPressed &&
+                !keyboard.isAltPressed &&
+                event.logicalKey == LogicalKeyboardKey.tab &&
+                (focusContext == null ||
+                    ModalRoute.of(focusContext) is! PopupRoute)) {
+              final workspace = context.read<WorkspaceController>();
+              final count = workspace.entries.length;
+              if (count > 1)
+                workspace.activate(
+                  (workspace.activeIndex +
+                          (keyboard.isShiftPressed ? -1 : 1) +
+                          count) %
+                      count,
+                );
+              return KeyEventResult.handled;
+            }
+            if (event is KeyDownEvent && _handleDialogEnterKey(event)) {
+              return KeyEventResult.handled;
+            }
 
-        home: AuthSessionView(
-          navigatorKey: _navigatorKey,
-          authStateChanges: AppAuthService().authStateChanges,
-          initialUser: AppAuthService().currentUser,
-        ),
-      );
+            // Keyboard scrolling (Arrow keys, PageUp/Down, Home/End) first
+            final handledScroll = DesktopScrollCoordinator.handleKeyEvent(
+              event,
+            );
+            if (handledScroll) {
+              return KeyEventResult.handled;
+            }
+
+            // Fallback focus traversal for arrow keys only when not consumed by scrolling:
+            if (event is KeyDownEvent &&
+                focusContext != null &&
+                !keyboard.isControlPressed &&
+                !keyboard.isAltPressed &&
+                !keyboard.isMetaPressed &&
+                !keyboard.isShiftPressed &&
+                focusContext.widget is! EditableText &&
+                focusContext.findAncestorWidgetOfExactType<EditableText>() ==
+                    null) {
+              final direction = <LogicalKeyboardKey, TraversalDirection>{
+                LogicalKeyboardKey.arrowDown: TraversalDirection.down,
+                LogicalKeyboardKey.arrowUp: TraversalDirection.up,
+                LogicalKeyboardKey.arrowLeft: TraversalDirection.left,
+                LogicalKeyboardKey.arrowRight: TraversalDirection.right,
+              }[event.logicalKey];
+              if (direction != null && focus!.focusInDirection(direction)) {
+                return KeyEventResult.handled;
+              }
+            }
+
+            return KeyEventResult.ignored;
+          },
+          child: Listener(
+            behavior: HitTestBehavior.translucent,
+            onPointerHover: (e) {
+              debugPrint('HOVER ${e.position}');
+              DesktopScrollCoordinator.rememberPointerPosition(e);
+            },
+            onPointerMove: DesktopScrollCoordinator.rememberPointerPosition,
+            onPointerDown: (e) => debugPrint('DOWN ${e.position}'),
+            onPointerSignal: (e) {
+              debugPrint('POINTER ${e.runtimeType}');
+              DesktopScrollCoordinator.handlePointerSignal(e);
+            },
+            child: MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(settings.fontSizeScale)),
+              child: content,
+            ),
+          ),
+        );
+      },
+
+      home: AuthSessionView(
+        navigatorKey: _navigatorKey,
+        authStateChanges: AppAuthService().authStateChanges,
+        initialUser: AppAuthService().currentUser,
+      ),
+    );
   }
 }

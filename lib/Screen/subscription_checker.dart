@@ -1047,41 +1047,9 @@ class _SyncGatewayState extends State<SyncGateway> {
   }
 
   void _startBackgroundWorkshopSync({required bool hasLocalData}) {
-    () async {
-      try {
-        final supabase = SupabaseWorkshopSyncService();
-        // The restore is deliberately silent. Do not call setState from a
-        // realtime callback: SyncGateway remains mounted while it hosts the
-        // dashboard, so that would repaint the whole app on every row change.
-        await supabase.ensureStarted(timeout: const Duration(seconds: 20));
-        await _refreshPermissionsInBackground();
-        await CloudSyncService().init();
-        CloudSyncService().startListeningForUpdates(() {});
-
-        if (!hasLocalData) {
-          // التنزيل الكامل من الصفر يُطلب فقط إذا كانت قاعدة البيانات فارغة تماماً
-          await CloudSyncService()
-              .fullRecoverySync(initialRestore: false)
-              .timeout(const Duration(seconds: 90), onTimeout: () {});
-        } else {
-          // إذا كانت البيانات موجودة، يتم تحديث التغييرات الجديدة فقط بخفة وسرعة
-          await CloudSyncService()
-              .refreshFromCloudIfChanged()
-              .timeout(const Duration(seconds: 30), onTimeout: () {})
-              .catchError((_) {});
-        }
-        await CloudSyncService().loadAndApplyWorkshopSystems().timeout(
-          const Duration(seconds: 30),
-          onTimeout: () {},
-        );
-        await _refreshPermissionsInBackground();
-      } catch (error) {
-        debugPrint(
-          'Background workshop sync skipped '
-          '(local data: $hasLocalData): $error',
-        );
-      }
-    }();
+    // 🧪 [تشخيص مؤقت للسكرول]: تم تعطيل المزامنة السحابية الخلفية مؤقتاً
+    // للتأكد من انسيابية السكرول وعجلة الماوس واختفاء أخطاء قفل قاعدة البيانات.
+    debugPrint('🧪 Temporary diagnosis: background workshop sync bypassed.');
   }
 
   Future<void> _preparePermissionsBeforeEnter() async {

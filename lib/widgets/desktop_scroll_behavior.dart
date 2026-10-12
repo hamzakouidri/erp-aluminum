@@ -1,3 +1,4 @@
+import 'dart:async' show scheduleMicrotask;
 import 'dart:ui' show PointerDeviceKind;
 
 import 'package:flutter/foundation.dart'
@@ -26,6 +27,7 @@ class DesktopScrollCoordinator {
   static final Set<_DesktopScrollableRegistration> _registrations = {};
   static final Map<PointerEvent, Set<_DesktopScrollableRegistration>> _hits =
       {};
+  static final Set<PointerEvent> _signalsSeenByWidgetTree = {};
   static Offset? _lastPointerPosition;
 
   static void _register(_DesktopScrollableRegistration registration) {
@@ -64,8 +66,19 @@ class DesktopScrollCoordinator {
     _lastPointerPosition = event.position;
   }
 
-  static void handlePointerSignal(PointerSignalEvent event) {
+  static void handlePointerSignal(
+    PointerSignalEvent event, {
+    bool resolveDirectly = false,
+  }) {
     if (event is! PointerScrollEvent) return;
+    final eventKey = event.original ?? event;
+    _signalsSeenByWidgetTree.add(eventKey);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _signalsSeenByWidgetTree.remove(eventKey);
+    });
+    debugPrint(
+      'WHEEL called, regs=${_registrations.length}, hits=${_hits.length}',
+    );
     _lastPointerPosition = event.position;
 
     try {
@@ -77,10 +90,17 @@ class DesktopScrollCoordinator {
       final pool = hitTargets.isNotEmpty ? hitTargets : _registrations;
       if (pool.isEmpty) return;
 
+      final isShiftPressed = HardwareKeyboard.instance.isShiftPressed;
       final verticalDelta = event.scrollDelta.dy;
       final horizontalDelta = event.scrollDelta.dx;
-      final useVertical = verticalDelta.abs() >= horizontalDelta.abs();
-      final delta = useVertical ? verticalDelta : horizontalDelta;
+      final bool useHorizontalFromShift =
+          isShiftPressed && verticalDelta.abs() > 0;
+      final bool useVertical =
+          !useHorizontalFromShift &&
+          (verticalDelta.abs() >= horizontalDelta.abs());
+      final delta = useHorizontalFromShift
+          ? verticalDelta
+          : (useVertical ? verticalDelta : horizontalDelta);
       if (delta == 0) return;
 
       final candidates = pool
@@ -90,6 +110,9 @@ class DesktopScrollCoordinator {
                 registration.controller.positions.isNotEmpty,
           )
           .toList();
+      debugPrint(
+        'wheel: pool=${pool.length} candidates====================${candidates.length}',
+      );
       if (candidates.isEmpty) return;
 
       candidates.sort((a, b) {
@@ -102,38 +125,101 @@ class DesktopScrollCoordinator {
       });
 
       final requestedAxis = useVertical ? Axis.vertical : Axis.horizontal;
-      // 1. Prioritize scrollables matching the requested axis (e.g. vertical wheel -> vertical scrollable)
+      for (final c in candidates) {
+        debugPrint(
+          'cand axis=${c.axis} positions=${c.controller.positions.length} '
+          'canMove=${c.canMove(delta)} '
+          'pix=${c.controller.positions.map((p) => "${p.pixels}/${p.maxScrollExtent}").toList()}',
+        );
+      }
+      debugPrint('requested=$requestedAxis delta=$delta');
+      // Prioritize scrollables matching the requested axis (e.g. vertical wheel -> vertical scrollable)
       for (final candidate in candidates) {
         if (candidate.axis != requestedAxis) continue;
         if (candidate.canMove(delta)) {
+          if (resolveDirectly) {
+            _scrollCandidate(candidate, delta);
+            return;
+          }
+          final offsetsBeforeResolution = <ScrollPosition, double>{
+            for (final position in candidate.controller.positions)
+              position: position.pixels,
+          };
+          var coordinatorResolvedSignal = false;
           GestureBinding.instance.pointerSignalResolver.register(event, (_) {
-            if (_registrations.contains(candidate)) {
-              final pos = candidate.activePosition;
-              if (pos != null && pos.hasContentDimensions) {
-                pos.pointerScroll(delta);
-              }
+            coordinatorResolvedSignal = true;
+            _scrollCandidate(candidate, delta);
+          });
+
+          // A descendant Scrollable can win Flutter's pointer-signal resolver
+          // before this root coordinator. Normally that winner moves the same
+          // position. After a Windows focus loss/regain, however, a stale
+          // winner can consume the signal without moving anything. Fall back
+          // only when our callback lost *and* none of this candidate's
+          // positions changed, which avoids applying a wheel tick twice.
+          scheduleMicrotask(() {
+            if (coordinatorResolvedSignal ||
+                !_registrations.contains(candidate)) {
+              return;
+            }
+            final positionMoved = offsetsBeforeResolution.entries.any(
+              (entry) =>
+                  entry.key.hasPixels &&
+                  (entry.key.pixels - entry.value).abs() >= 0.5,
+            );
+            if (!positionMoved && candidate.canMove(delta)) {
+              _scrollCandidate(candidate, delta);
             }
           });
           return;
         }
       }
-      // 2. Fallback: if no matching axis can move and horizontal view is the only scrollable under pointer
-      for (final candidate in candidates) {
-        if (candidate.canMove(delta)) {
-          GestureBinding.instance.pointerSignalResolver.register(event, (_) {
-            if (_registrations.contains(candidate)) {
-              final pos = candidate.activePosition;
-              if (pos != null && pos.hasContentDimensions) {
-                pos.pointerScroll(delta);
-              }
-            }
-          });
-          return;
-        }
-      }
-    } catch (_) {}
+      debugPrint('WHEEL: no candidate accepted the scroll');
+    } catch (e, s) {
+      debugPrint('WHEEL ERROR: $e\n$s');
+    }
   }
 
+  /// Last-resort route for Windows after the app regains focus.
+  ///
+  /// Flutter can occasionally keep a stale pointer hit-test path until the
+  /// user clicks a newly built page. The global pointer router still receives
+  /// the wheel event in that state. Defer until normal dispatch has finished,
+  /// then handle only events that never reached the root widget listener.
+  static void handleGlobalPointerEvent(PointerEvent event) {
+    if (event is! PointerScrollEvent) return;
+    final eventKey = event.original ?? event;
+    scheduleMicrotask(() {
+      if (_signalsSeenByWidgetTree.contains(eventKey)) return;
+      handlePointerSignal(event, resolveDirectly: true);
+    });
+  }
+
+  static void _scrollCandidate(
+    _DesktopScrollableRegistration candidate,
+    double delta,
+  ) {
+    if (!_registrations.contains(candidate)) return;
+    for (final position in candidate.controller.positions) {
+      if (!position.hasContentDimensions ||
+          !position.physics.shouldAcceptUserOffset(position)) {
+        continue;
+      }
+      final canMove = delta < 0
+          ? position.pixels > position.minScrollExtent
+          : position.pixels < position.maxScrollExtent;
+      if (canMove) {
+        position.pointerScroll(delta);
+        return;
+      }
+    }
+    final fallbackPosition = candidate.activePosition;
+    if (fallbackPosition != null && fallbackPosition.hasContentDimensions) {
+      fallbackPosition.pointerScroll(delta);
+    }
+  }
+
+  /// Handles keyboard navigation
   /// Handles keyboard navigation (arrow keys, Page Up/Down, Home/End) without
   /// stealing cursor movement from a text field. The focused scrollable wins;
   /// otherwise the scrollable under the last pointer position is used, with
@@ -213,9 +299,7 @@ class DesktopScrollCoordinator {
           (registration) =>
               registration.axis == resolvedAxis &&
               registration.bounds != null &&
-              registration.controller.positions.isNotEmpty &&
-              (focusedContext == null ||
-                  ModalRoute.of(registration.context)?.isActive == true),
+              registration.controller.positions.isNotEmpty,
         )
         .toList();
     registrations.sort((a, b) {
@@ -330,12 +414,19 @@ class _DesktopScrollableRegistration {
 
   ScrollPosition? get activePosition {
     if (controller.positions.isEmpty) return null;
+    if (controller.positions.length == 1) return controller.positions.first;
+    ScrollPosition? best;
+    double maxExtent = -1;
     for (final pos in controller.positions) {
       if (pos.hasContentDimensions && pos.physics.shouldAcceptUserOffset(pos)) {
-        return pos;
+        final extent = pos.maxScrollExtent;
+        if (extent > maxExtent) {
+          maxExtent = extent;
+          best = pos;
+        }
       }
     }
-    return controller.positions.first;
+    return best ?? controller.positions.first;
   }
 
   Rect? get bounds {
@@ -345,11 +436,18 @@ class _DesktopScrollableRegistration {
     // correct guard: a wheel event over a modal barrier must never scroll the
     // hidden quantities table behind it.
     if (route != null && !route.isCurrent) return null;
+    if (!DesktopTabScope.isActive(context)) return null;
+
     var hidden = false;
     try {
       context.visitAncestorElements((element) {
         if (element.widget is Offstage &&
             (element.widget as Offstage).offstage) {
+          hidden = true;
+          return false;
+        }
+        if (element.widget is Visibility &&
+            !(element.widget as Visibility).visible) {
           hidden = true;
           return false;
         }
@@ -359,7 +457,8 @@ class _DesktopScrollableRegistration {
       final renderObject = context.findRenderObject();
       if (renderObject is! RenderBox ||
           !renderObject.hasSize ||
-          !renderObject.attached) {
+          !renderObject.attached ||
+          renderObject.size.isEmpty) {
         return null;
       }
       final origin = renderObject.localToGlobal(Offset.zero);
@@ -371,14 +470,18 @@ class _DesktopScrollableRegistration {
 
   bool canMove(double delta) {
     if (bounds == null) return false;
-    final offstage = context.findAncestorWidgetOfExactType<Offstage>();
-    if (offstage?.offstage == true) return false;
-    final position = activePosition;
-    if (position == null || !position.hasContentDimensions) return false;
-    if (!position.physics.shouldAcceptUserOffset(position)) return false;
-    return delta < 0
-        ? position.pixels > position.minScrollExtent
-        : position.pixels < position.maxScrollExtent;
+    if (controller.positions.isEmpty) return false;
+    for (final position in controller.positions) {
+      if (!position.hasContentDimensions ||
+          !position.physics.shouldAcceptUserOffset(position)) {
+        continue;
+      }
+      final can = delta < 0
+          ? position.pixels > position.minScrollExtent
+          : position.pixels < position.maxScrollExtent;
+      if (can) return true;
+    }
+    return false;
   }
 }
 
@@ -511,7 +614,8 @@ class DesktopScrollBehavior extends MaterialScrollBehavior {
   ) {
     final isWindowsDesktop =
         !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
-    final controller = details.controller ?? PrimaryScrollController.maybeOf(context);
+    final controller =
+        details.controller ?? PrimaryScrollController.maybeOf(context);
     final axis = axisDirectionToAxis(details.direction);
 
     if (isWindowsDesktop && controller != null && axis == Axis.horizontal) {
@@ -566,8 +670,7 @@ class _HorizontalWheelScrollbarState extends State<_HorizontalWheelScrollbar> {
   }
 
   void _handlePointerSignal(PointerSignalEvent event) {
-    if (event is! PointerScrollEvent ||
-        widget.controller.positions.isEmpty) {
+    if (event is! PointerScrollEvent || widget.controller.positions.isEmpty) {
       return;
     }
     // Recompute against the current layout on every tick. A hover flag can
@@ -646,4 +749,20 @@ class _HorizontalWheelScrollbarState extends State<_HorizontalWheelScrollbar> {
       },
     );
   }
+}
+
+class DesktopTabScope extends InheritedWidget {
+  const DesktopTabScope({
+    super.key,
+    required this.active,
+    required super.child,
+  });
+
+  final bool active;
+
+  static bool isActive(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<DesktopTabScope>()?.active ?? true;
+
+  @override
+  bool updateShouldNotify(DesktopTabScope old) => active != old.active;
 }

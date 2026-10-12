@@ -14,6 +14,7 @@ import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/calculate_component.dart';
 import 'package:database_data/Commande/Systeme/bom_engine_v2.dart';
 import 'package:database_data/Commande/Systeme/show_system_francais.dart';
+import 'package:database_data/Commande/Systeme/material_consumption_screen.dart';
 import 'package:database_data/Commande/window_painter.dart';
 import 'package:database_data/Commande/Systeme/model_serialization.dart';
 import 'package:database_data/Commande/order_date_utils.dart';
@@ -2040,6 +2041,38 @@ class _CommandePageState extends State<CommandePage> {
   /// is unsafe here because changing series can also change mullions, kits,
   /// parcloses, glass and the selected pricing basis at the same time.
   Future<void> _recalculateProductSellingPrice(WindowModel product) async {
+    if (!mounted) return;
+    final previousTotalCost = product.totalCost;
+    final previousManualPrice = product.manualPriceOverride;
+    // Reprice an edited order line through the exact same pipeline used by
+    // the quantity/cost table. This reloads the current series, profile
+    // colour, glass/panel, shutter components, kits and pricing rules before
+    // replacing the old line price.
+    final calculated = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MaterialConsumptionScreen(
+          model: product,
+          autoCalculateAndSave: true,
+        ),
+      ),
+    );
+    if (calculated != true) {
+      // Never leave a modified order line carrying a zero or partially
+      // calculated value. If exact repricing fails, retain its prior price
+      // and report the failure to the bulk operation.
+      product.totalCost = previousTotalCost;
+      product.manualPriceOverride = previousManualPrice;
+      throw StateError(t('تعذر إعادة حساب سعر أحد عناصر الطلبية.'));
+    }
+    final recalculatedUnitPrice = product.totalCost;
+    // This is an automatically calculated order price, not a permanent
+    // manual override. Keeping it automatic allows a later series, colour or
+    // glass change to replace it again.
+    product.manualPriceOverride = null;
+    product.totalCost = recalculatedUnitPrice;
+    return;
+
     final pricingRules = await SqlDatabase().getProfileCalculationRules();
     final excludedProfiles = pricingRules
         .where(
@@ -2316,15 +2349,23 @@ class _CommandePageState extends State<CommandePage> {
     });
     if (prepared != true || !mounted) return;
 
-    final source = selected.first;
-    final candidates = <AluminumSeries>[];
-    for (final system in source.availableSystems) {
-      for (final series in system.series) {
-        if (!candidates.any((item) => item.id == series.id)) {
-          candidates.add(series);
+    final candidatesById = <int, AluminumSeries>{};
+    final systemNameBySeriesId = <int, String>{};
+    for (final product in selected) {
+      for (final system in product.availableSystems) {
+        for (final series in system.series) {
+          candidatesById.putIfAbsent(series.id, () => series);
+          systemNameBySeriesId.putIfAbsent(series.id, () => system.name);
         }
       }
     }
+    final candidates = candidatesById.values.toList()
+      ..sort((a, b) {
+        final family = isSlidingSeriesForDrawing(a)
+            .toString()
+            .compareTo(isSlidingSeriesForDrawing(b).toString());
+        return family != 0 ? family : a.name.compareTo(b.name);
+      });
     if (candidates.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(t('لا توجد سلاسل متاحة لهذه العناصر.'))),
@@ -2340,12 +2381,13 @@ class _CommandePageState extends State<CommandePage> {
           height: 420,
           child: ListView(
             children: candidates.map((series) {
-              final system = source.availableSystems.firstWhere(
-                (item) =>
-                    item.series.any((candidate) => candidate.id == series.id),
-                orElse: () => AluminumProfileSystem(id: 0, name: '', type: ''),
-              );
               final sliding = isSlidingSeriesForDrawing(series);
+              final affectedCount = selected
+                  .where(
+                    (product) =>
+                        _productUsesSeriesFamily(product, sliding: sliding),
+                  )
+                  .length;
               return ListTile(
                 leading: Icon(
                   sliding ? Icons.swap_horiz : Icons.open_in_new,
@@ -2353,7 +2395,9 @@ class _CommandePageState extends State<CommandePage> {
                 ),
                 title: Text(series.name),
                 subtitle: Text(
-                  '${system.name}${sliding ? ' - منزلق' : ' - فتح'}',
+                  '${systemNameBySeriesId[series.id] ?? ''}'
+                  '${sliding ? ' - منزلق' : ' - فتح'}'
+                  ' • ${t('سيطبق على')} $affectedCount ${t('عنصر')}',
                 ),
                 onTap: () => Navigator.pop(ctx, series),
               );
@@ -2375,13 +2419,20 @@ class _CommandePageState extends State<CommandePage> {
 
     final changed = await _runBulkOperation<int>(() async {
       var count = 0;
+      final chosenIsSliding = isSlidingSeriesForDrawing(chosen);
       for (final product in selected) {
+        if (!_productUsesSeriesFamily(
+          product,
+          sliding: chosenIsSliding,
+        )) {
+          continue;
+        }
         final localSeries = product.availableSystems
             .expand((system) => system.series)
-            .where((series) => series.id == chosen.id)
-            .cast<AluminumSeries?>()
-            .firstWhere((series) => series != null, orElse: () => null);
-        if (localSeries == null) continue;
+            .firstWhere(
+              (series) => series.id == chosen.id,
+              orElse: () => chosen,
+            );
         final previousTotalCost = product.totalCost;
         final previousManualPrice = product.manualPriceOverride;
         await product.setOrderSeries(localSeries);
@@ -2407,6 +2458,33 @@ class _CommandePageState extends State<CommandePage> {
         ),
       );
     }
+  }
+
+  bool _productUsesSeriesFamily(
+    WindowModel product, {
+    required bool sliding,
+  }) {
+    final hasSliding = product.zones.any(
+      (zone) => zone.content == ZoneContent.slidingSash,
+    );
+    final hasOpening = product.zones.any(
+      (zone) =>
+          zone.content == ZoneContent.singleSash ||
+          zone.content == ZoneContent.doubleSash,
+    );
+
+    if (sliding) {
+      if (hasSliding || product.systemMode == 'sliding') return true;
+      return !hasOpening &&
+          product.activeSeries != null &&
+          isSlidingSeriesForDrawing(product.activeSeries!);
+    }
+
+    if (hasOpening) return true;
+    if (hasSliding) return false;
+    final openingSeries = product.activeSeries;
+    return openingSeries != null &&
+        !isSlidingSeriesForDrawing(openingSeries);
   }
 
   Future<GlassSpecification?> _showBulkGlassSpecDialog(

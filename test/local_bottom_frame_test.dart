@@ -5,6 +5,52 @@ import 'package:database_data/Commande/Systeme/model_serialization.dart';
 import 'montant_slim_test.dart' show FakeSqlDatabase;
 
 void main() {
+  test('single frame bottom can toggle without selecting the frame', () {
+    final model = WindowModel(db: FakeSqlDatabase(), width: 900, height: 400)
+      ..systemMode = 'opening'
+      ..zones = [
+        WindowZone(
+          id: 'only-frame',
+          boundary: const Rect.fromLTRB(40, 40, 860, 360),
+          content: ZoneContent.singleSash,
+        ),
+      ]
+      ..selection = const SelectionInfo();
+
+    expect(model.getFrameRects(), hasLength(1));
+    expect(model.selectedPhysicalFrameRect, isNull);
+    expect(model.canEditSelectedBottomFrame, isTrue);
+
+    model.toggleBottomFrame(false);
+
+    expect(model.hasBottomFrame, isFalse);
+  });
+
+  test('multiple frames still require an explicit frame selection', () {
+    final model = WindowModel(db: FakeSqlDatabase(), width: 900, height: 400)
+      ..systemMode = 'opening'
+      ..zones = [
+        WindowZone(
+          id: 'left',
+          boundary: const Rect.fromLTWH(50, 50, 200, 300),
+          content: ZoneContent.singleSash,
+        ),
+        WindowZone(
+          id: 'right',
+          boundary: const Rect.fromLTWH(400, 50, 200, 300),
+          content: ZoneContent.singleSash,
+        ),
+      ]
+      ..selection = const SelectionInfo();
+
+    expect(model.getFrameRects(), hasLength(2));
+    expect(model.canEditSelectedBottomFrame, isFalse);
+
+    model.toggleBottomFrame(false);
+
+    expect(model.hasBottomFrame, isTrue);
+  });
+
   test('switching a sash back to fixed restores the lower frame state', () {
     final model = WindowModel(db: FakeSqlDatabase(), width: 900, height: 400)
       ..systemMode = 'opening'
@@ -62,10 +108,16 @@ void main() {
     final model = WindowModel(db: FakeSqlDatabase(), width: 900, height: 400)
       ..systemMode = 'mixed'
       ..zones = [
-        WindowZone(id: 'a', boundary: const Rect.fromLTWH(50, 50, 200, 300),
-          content: ZoneContent.singleSash),
-        WindowZone(id: 'b', boundary: const Rect.fromLTWH(400, 50, 200, 300),
-          content: ZoneContent.slidingSash),
+        WindowZone(
+          id: 'a',
+          boundary: const Rect.fromLTWH(50, 50, 200, 300),
+          content: ZoneContent.singleSash,
+        ),
+        WindowZone(
+          id: 'b',
+          boundary: const Rect.fromLTWH(400, 50, 200, 300),
+          content: ZoneContent.slidingSash,
+        ),
       ]
       ..selection = SelectionInfo.zone('a');
     expect(model.getFrameRects().length, 2);

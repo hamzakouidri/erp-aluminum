@@ -15,6 +15,7 @@ import 'package:flutter/foundation.dart'
 import '../settings/shortcut_bindings.dart';
 import 'package:flutter/services.dart';
 import 'package:database_data/settings/localization.dart';
+import 'package:database_data/settings/document_status_localization.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -248,7 +249,7 @@ class _CommandeState extends State<Commande> {
         sLow == 'réserve') {
       return Localization.translate('تحت التحفظ', lang);
     }
-    return Localization.translate(s, lang);
+    return localizeDocumentStatus(s, lang);
   }
 
   String _t(String key) {

@@ -20,9 +20,15 @@ Future<T?> showDialog<T>({
   bool? requestFocus,
   material.AnimationStyle? animationStyle,
 }) {
+  // Dialog behaviour is intentionally consistent across the application:
+  // clicking the empty area outside a dialog always closes it.  A number of
+  // older call sites passed `false`, which made visually identical dialogs
+  // behave differently depending on the page that opened them.  Keep the
+  // argument in the public signature for source compatibility, but enforce
+  // the app-wide interaction rule here.
   return material.showDialog<T>(
     context: context,
-    barrierDismissible: barrierDismissible,
+    barrierDismissible: true,
     barrierColor: barrierColor,
     barrierLabel: barrierLabel,
     useSafeArea: useSafeArea,

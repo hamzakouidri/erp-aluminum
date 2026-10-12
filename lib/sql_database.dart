@@ -481,9 +481,11 @@ class SqlDatabase {
         options: sqflite_common.OpenDatabaseOptions(
           version: 71,
           onConfigure: (db) async {
-            // This PRAGMA returns a row, including when setting its value.
-            // Android SQLCipher rejects it through execute/executeSql.
-            await db.rawQuery('PRAGMA busy_timeout = 30000');
+            // Enable WAL mode (Write-Ahead Logging) so concurrent reads do not block
+            // writes and background sync transactions do not freeze the UI thread.
+            await db.rawQuery('PRAGMA journal_mode = WAL;');
+            await db.rawQuery('PRAGMA busy_timeout = 30000;');
+            await db.rawQuery('PRAGMA synchronous = NORMAL;');
           },
           onCreate: _onCreate,
           onUpgrade: _onUpgrade,
@@ -498,8 +500,9 @@ class SqlDatabase {
       version: 71,
       password: password,
       onConfigure: (db) async {
-        // Android SQLCipher requires the query API for row-returning PRAGMAs.
-        await db.rawQuery('PRAGMA busy_timeout = 30000');
+        await db.rawQuery('PRAGMA journal_mode = WAL;');
+        await db.rawQuery('PRAGMA busy_timeout = 30000;');
+        await db.rawQuery('PRAGMA synchronous = NORMAL;');
       },
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -522,6 +525,11 @@ class SqlDatabase {
       'ShutterComponents',
       'Locations',
     ];
+    try {
+      await db.execute(
+        "ALTER TABLE Profile ADD COLUMN code TEXT DEFAULT '';",
+      );
+    } catch (_) {}
     try {
       await db.execute(
         "ALTER TABLE Glass ADD COLUMN height REAL NOT NULL DEFAULT 0.0;",
@@ -2271,6 +2279,16 @@ class SqlDatabase {
     try {
       await db.execute(
         "ALTER TABLE Glass ADD COLUMN decor_design_code TEXT NOT NULL DEFAULT '';",
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        'ALTER TABLE Glass ADD COLUMN panel_width REAL DEFAULT NULL;',
+      );
+    } catch (_) {}
+    try {
+      await db.execute(
+        'ALTER TABLE Glass ADD COLUMN panel_height REAL DEFAULT NULL;',
       );
     } catch (_) {}
   }
@@ -5138,11 +5156,20 @@ class SqlDatabase {
       allowedSegments.add('internal_workshop');
     }
     final inList = allowedSegments.map((s) => "'$s'").join(', ');
-    return myDb.query(
+    final rows = await myDb.query(
       'Client',
       where: includeWindowClients ? null : "business_segment IN ($inList)",
       orderBy: 'firstname COLLATE NOCASE, lastname COLLATE NOCASE',
     );
+    // إذا وجد أكثر من سطر للورشة داخلي قبل التنظيف، نظهر واحداً فقط
+    final seenInternal = <String>{};
+    return rows.where((client) {
+      if (client['business_segment'] == 'internal_workshop') {
+        if (seenInternal.isNotEmpty) return false;
+        seenInternal.add('internal');
+      }
+      return true;
+    }).toList();
   }
 
   /// Ensures an internal workshop customer exists for workshop+store activity
@@ -5153,9 +5180,20 @@ class SqlDatabase {
     final existing = await myDb.query(
       'Client',
       where: "business_segment = 'internal_workshop'",
-      limit: 1,
+      orderBy: 'id ASC',
     );
     if (existing.isNotEmpty) {
+      if (existing.length > 1) {
+        final primaryId = existing.first['id'];
+        final duplicateIds = existing.skip(1).map((e) => e['id']).toList();
+        final inClause = duplicateIds.map((id) => "'$id'").join(',');
+        await myDb.rawUpdate(
+          'UPDATE MaterialSales SET client_id = ? WHERE client_id IN ($inClause)',
+          [primaryId],
+        );
+        await myDb.rawDelete('DELETE FROM Client WHERE id IN ($inClause)');
+        CloudSyncService().notifyChangeImmediate();
+      }
       return existing.first;
     }
     final now = DateTime.now().toUtc().toIso8601String();
@@ -9241,6 +9279,14 @@ class SqlDatabase {
       action: 'created',
       author: editor,
     );
+    unawaited(
+      _recordDashboardActivity(
+        activityType: 'order_added',
+        entityId: distributedId,
+        document: orderCode.toString(),
+        userName: editor,
+      ),
+    );
     return res;
   }
 
@@ -9294,6 +9340,14 @@ class SqlDatabase {
         orderId: idCommande,
         action: 'updated',
         author: data['updated_by']?.toString() ?? '',
+      );
+      unawaited(
+        _recordDashboardActivity(
+          activityType: 'order_updated',
+          entityId: idCommande,
+          document: (await _orderCodeForNotification(idCommande)).toString(),
+          userName: data['updated_by']?.toString(),
+        ),
       );
       return res;
     }
@@ -10421,6 +10475,14 @@ class SqlDatabase {
       }),
     );
     CloudSyncService().notifyChange();
+    unawaited(
+      _recordDashboardActivity(
+        activityType: 'delivery_added',
+        entityId: res,
+        relatedOrderId: idCommande,
+        document: res.toString(),
+      ),
+    );
     final workerUid = assignedWorkerUid?.trim() ?? '';
     if (workerUid.isNotEmpty) {
       final quantity =
@@ -10575,6 +10637,18 @@ class SqlDatabase {
     );
   }
 
+  Future<List<Map<String, dynamic>>> readRecentCommandeDeliveries({
+    int limit = 24,
+  }) async {
+    final database = await db;
+    if (database == null) return [];
+    return database.query(
+      'Commandes_deliveries',
+      orderBy: 'id DESC',
+      limit: limit,
+    );
+  }
+
   Future<Map<int, int>> readPendingDeliveryQuantities(int orderId) async {
     final myDb = await db;
     if (myDb == null) return {};
@@ -10702,6 +10776,15 @@ class SqlDatabase {
       }),
     );
     CloudSyncService().notifyChange();
+    unawaited(
+      _recordDashboardActivity(
+        activityType: 'purchase_added',
+        entityId: res,
+        document: invoiceNumber,
+        party: supplierName,
+        userName: author,
+      ),
+    );
     return res;
   }
 
@@ -12483,6 +12566,8 @@ class SqlDatabase {
     String subtype = '',
     double height = 0.0,
     double? visibleWidth,
+    double? panelWidth,
+    double? panelHeight,
     String decorDesignCode = '',
   }) async {
     Database? myDb = await db;
@@ -12497,6 +12582,8 @@ class SqlDatabase {
       'subtype': subtype,
       'height': height,
       if (visibleWidth != null) 'visible_width': visibleWidth,
+      if (panelWidth != null) 'panel_width': panelWidth,
+      if (panelHeight != null) 'panel_height': panelHeight,
       'decor_design_code': decorDesignCode.trim(),
     });
     CloudSyncService().notifyChange();
@@ -12514,6 +12601,8 @@ class SqlDatabase {
     String subtype = '',
     double height = 0.0,
     double? visibleWidth,
+    double? panelWidth,
+    double? panelHeight,
     String? decorDesignCode,
   }) async {
     Database? myDb = await db;
@@ -12530,6 +12619,8 @@ class SqlDatabase {
         'subtype': subtype,
         'height': height,
         if (visibleWidth != null) 'visible_width': visibleWidth,
+        if (panelWidth != null) 'panel_width': panelWidth,
+        if (panelHeight != null) 'panel_height': panelHeight,
         if (decorDesignCode != null)
           'decor_design_code': decorDesignCode.trim(),
       },
@@ -18242,6 +18333,71 @@ class SqlDatabase {
   }
 
   static bool _auditLogsInfrastructureReady = false;
+  static bool _dashboardActivitiesInfrastructureReady = false;
+
+  Future<void> _ensureDashboardActivitiesInfrastructure(
+    DatabaseExecutor executor,
+  ) async {
+    if (_dashboardActivitiesInfrastructureReady) return;
+    await executor.execute('''
+      CREATE TABLE IF NOT EXISTS DashboardActivities (
+        id INTEGER PRIMARY KEY,
+        activity_type TEXT NOT NULL,
+        entity_id INTEGER NOT NULL,
+        related_order_id INTEGER,
+        document TEXT NOT NULL DEFAULT '',
+        party TEXT NOT NULL DEFAULT '',
+        user_name TEXT NOT NULL DEFAULT '',
+        occurred_at TEXT NOT NULL
+      )
+    ''');
+    _dashboardActivitiesInfrastructureReady = true;
+  }
+
+  Future<void> _recordDashboardActivity({
+    required String activityType,
+    required int entityId,
+    String document = '',
+    String party = '',
+    int? relatedOrderId,
+    String? userName,
+  }) async {
+    final database = await db;
+    if (database == null || entityId <= 0) return;
+    await _ensureDashboardActivitiesInfrastructure(database);
+    final now = DateTime.now().toUtc().toIso8601String();
+    await database.transaction((txn) async {
+      await txn.insert('DashboardActivities', {
+        'id': DateTime.now().microsecondsSinceEpoch,
+        'activity_type': activityType,
+        'entity_id': entityId,
+        'related_order_id': relatedOrderId,
+        'document': document,
+        'party': party,
+        'user_name': userName ?? await _currentOrderEditor(),
+        'occurred_at': now,
+      });
+      await txn.rawDelete('''
+        DELETE FROM DashboardActivities
+        WHERE id NOT IN (
+          SELECT id FROM DashboardActivities
+          ORDER BY occurred_at DESC, id DESC
+          LIMIT 12
+        )
+      ''');
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> readDashboardActivities() async {
+    final database = await db;
+    if (database == null) return [];
+    await _ensureDashboardActivitiesInfrastructure(database);
+    return database.query(
+      'DashboardActivities',
+      orderBy: 'occurred_at DESC, id DESC',
+      limit: 12,
+    );
+  }
 
   Future<void> _ensureAuditLogsInfrastructure(DatabaseExecutor executor) async {
     if (_auditLogsInfrastructureReady) return;
@@ -21747,6 +21903,15 @@ class SqlDatabase {
       }),
     );
     CloudSyncService().notifyChange();
+    unawaited(
+      _recordDashboardActivity(
+        activityType: 'sale_added',
+        entityId: id,
+        document: saleCode,
+        party: clientName,
+        userName: author,
+      ),
+    );
     return id;
   }
 
@@ -21793,6 +21958,14 @@ class SqlDatabase {
       whereArgs: [saleId],
     );
     CloudSyncService().notifyChange();
+    unawaited(
+      _recordDashboardActivity(
+        activityType: 'sale_updated',
+        entityId: saleId,
+        party: clientName ?? '',
+        userName: data['updated_by']?.toString(),
+      ),
+    );
   }
 
   /// Delete a MaterialSale and all its items (cascade).

@@ -1236,11 +1236,14 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Future<void> _signInWithGoogle() async {
-    // Registration requirements must be checked before OAuth starts. This
-    // prevents Google from creating an Auth user when the workshop identity
-    // (name for an owner, code for a worker) is missing.
+    final usesDirectWindowsOAuth =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+
+    // Validate workshop identity before opening the Google account chooser.
+    // On mobile the email must come from the chosen Google account itself;
+    // requiring or trusting the manual email field here could authorize a
+    // different address than the one subsequently selected in Google.
     if (!_isLoginMode) {
-      if (!_requireGmailAddress()) return;
       final workshopName = _workshopNameController.text.trim();
       final workshopCode = _workshopCodeController.text.trim();
       final personName = _nameController.text.trim();
@@ -1262,19 +1265,26 @@ class _LoginScreenState extends State<LoginScreen>
         });
         return;
       }
-      try {
-        await SupabaseAccountService().prepareWorkshopSignup(
-          email: _emailController.text,
-          personName: personName,
-          worker: _isWorkerSignup,
-          workshopName: workshopName,
-          workshopCode: workshopCode,
-        );
-      } catch (error) {
-        setState(() {
-          _errorMessage = _getFriendlyErrorMessage(error);
-        });
-        return;
+
+      // The Windows helper starts Supabase OAuth directly, so it cannot read
+      // the selected Google email before Auth. Keep the explicit email permit
+      // only for that platform. Mobile prepares the permit after selection.
+      if (usesDirectWindowsOAuth) {
+        if (!_requireGmailAddress()) return;
+        try {
+          await SupabaseAccountService().prepareWorkshopSignup(
+            email: _emailController.text,
+            personName: personName,
+            worker: _isWorkerSignup,
+            workshopName: workshopName,
+            workshopCode: workshopCode,
+          );
+        } catch (error) {
+          setState(() {
+            _errorMessage = _getFriendlyErrorMessage(error);
+          });
+          return;
+        }
       }
     }
     setState(() {
@@ -1290,7 +1300,7 @@ class _LoginScreenState extends State<LoginScreen>
       AppAuthUser user;
       String? idToken;
       String? accessToken;
-      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+      if (usesDirectWindowsOAuth) {
         user = await const WindowsGoogleSignIn().signInWithSupabase();
         try {
           await windowManager.show();
@@ -1307,12 +1317,25 @@ class _LoginScreenState extends State<LoginScreen>
         ).signIn();
         if (googleUser == null) return;
         final googleAuth = await googleUser.authentication;
-        final idToken = googleAuth.idToken;
-        final accessToken = googleAuth.accessToken;
+        idToken = googleAuth.idToken;
+        accessToken = googleAuth.accessToken;
         if (idToken == null || idToken.trim().isEmpty) {
           throw const AppAuthException(
             'google-token-missing',
             'لم يتم الحصول على رمز Google صالح.',
+          );
+        }
+
+        // Only account creation receives a short-lived permit. A normal login
+        // deliberately skips this call, so Supabase's Before User Created hook
+        // rejects an unknown Google email instead of inserting auth.users.
+        if (!_isLoginMode) {
+          await SupabaseAccountService().prepareWorkshopSignup(
+            email: googleUser.email,
+            personName: _nameController.text.trim(),
+            worker: _isWorkerSignup,
+            workshopName: _workshopNameController.text.trim(),
+            workshopCode: _workshopCodeController.text.trim(),
           );
         }
 

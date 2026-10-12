@@ -349,6 +349,7 @@ bool decorPanelFitsSpace({
   required double spaceHeight,
   required double decorWidth,
   required double decorHeight,
+  double edgeClearance = 30.0,
 }) {
   if (spaceWidth <= 0 ||
       spaceHeight <= 0 ||
@@ -356,9 +357,26 @@ bool decorPanelFitsSpace({
       decorHeight <= 0) {
     return false;
   }
-  // A decor drawing has a fixed orientation. It is not rotated or split to
+  // A decor drawing has a fixed orientation and must remain at least 30 mm
+  // inside the usable opening on both axes. It is not rotated or split to
   // force it into a smaller opening.
-  return decorWidth <= spaceWidth + 0.1 && decorHeight <= spaceHeight + 0.1;
+  return decorWidth + edgeClearance <= spaceWidth + 0.1 &&
+      decorHeight + edgeClearance <= spaceHeight + 0.1;
+}
+
+bool decorPanelSheetCoversSpace({
+  required double spaceWidth,
+  required double spaceHeight,
+  required double panelWidth,
+  required double panelHeight,
+}) {
+  if (spaceWidth <= 0 ||
+      spaceHeight <= 0 ||
+      panelWidth <= 0 ||
+      panelHeight <= 0) {
+    return false;
+  }
+  return panelWidth + 0.1 >= spaceWidth && panelHeight + 0.1 >= spaceHeight;
 }
 
 enum GlassColor { transparent, blue, brown, green, gray, grayAgc, blueAgc }
@@ -2402,6 +2420,11 @@ bool catalogEspagnoletteRuleMatches(
 }
 
 class WindowModel extends ChangeNotifier {
+  /// Repaints the expensive drawing layer only when geometry/material data
+  /// changes. Editor-only state such as selection uses the normal model
+  /// notifier without touching this channel.
+  final ChangeNotifier drawingRepaint = ChangeNotifier();
+
   static bool isShutterBladeComponent(Map<String, dynamic> component) {
     final type = (component['component_type'] ?? '')
         .toString()
@@ -4127,9 +4150,10 @@ class WindowModel extends ChangeNotifier {
       // be reset by notifyListeners or by an unrelated drawing edit.
       return;
     }
-    if (!_multiFrameSideCoverManuallyEnabled) {
-      hasSideCovers = false;
-    }
+    // If the single frame carried an integrated couvre-joint, joining a
+    // second frame must preserve the visible cover as a separate profile.
+    // The integrated frame itself is not valid in a multi-frame assembly.
+    var migrateIntegratedCoverToStandalone = false;
 
     // Joining frames changes their profile construction, not the user's
     // cover switch or individually hidden sides. Never reset these on notify.
@@ -4141,6 +4165,7 @@ class WindowModel extends ChangeNotifier {
           ? slidingFrameOverride ?? getSlidingSectionByType('frame')?.toMap()
           : frameOverride ?? getSectionByType('frame')?.toMap();
       final hasIntegrated = _overrideHasIntegratedSideCover(currentFrame);
+      migrateIntegratedCoverToStandalone |= hasIntegrated && hasSideCovers;
       if (!hasIntegrated &&
           (!hasSideCovers ||
               _overrideAllowsStandaloneSideCover(currentFrame))) {
@@ -4192,8 +4217,9 @@ class WindowModel extends ChangeNotifier {
         selectedFrameCode = plainFrame['code']?.toString();
       }
 
-      if (hasIntegrated && !_multiFrameSideCoverManuallyEnabled) {
-        hasSideCovers = false;
+      if (hasIntegrated) {
+        hasSideCovers = true;
+        _multiFrameSideCoverManuallyEnabled = true;
       }
     }
 
@@ -4215,6 +4241,17 @@ class WindowModel extends ChangeNotifier {
       if (changedFrame || sideCoverOverride == null) {
         sideCoverOverride = selectedSideCover!.toMap();
       }
+      if (migrateIntegratedCoverToStandalone) {
+        hasSideCovers = true;
+        _multiFrameSideCoverManuallyEnabled = true;
+      }
+    } else if (migrateIntegratedCoverToStandalone) {
+      // Never keep drawing an integrated-frame cover in a multi-frame
+      // layout. If the catalogue has no separate cover, keep the plain frame
+      // and leave the cover disabled instead of silently using the invalid
+      // integrated profile.
+      hasSideCovers = false;
+      _multiFrameSideCoverManuallyEnabled = false;
     }
   }
 
@@ -8250,6 +8287,112 @@ class WindowModel extends ChangeNotifier {
     return subtypeFallback;
   }
 
+  double _catalogDimension(Map<String, dynamic> product, String key) {
+    final value = product[key];
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0.0;
+  }
+
+  GlassSpecification _decorSplitFallback(GlassSpecification source) {
+    Map<String, dynamic>? resinProduct;
+    for (final product in allGlassCache) {
+      if ((product['type'] ?? '').toString().trim().toLowerCase() !=
+          'panneau') {
+        continue;
+      }
+      final searchable = '${product['name'] ?? ''} ${product['subtype'] ?? ''}'
+          .trim()
+          .toLowerCase();
+      if (searchable.contains('sample resin') ||
+          searchable.contains('résine') ||
+          searchable.contains('resine') ||
+          searchable.contains('ريزين') ||
+          searchable.contains('ارزين') ||
+          searchable.contains('أرزين')) {
+        resinProduct = product;
+        break;
+      }
+    }
+    if (resinProduct == null) return const GlassSpecification();
+
+    final rawId = resinProduct['id'];
+    final productId = rawId is int ? rawId : int.tryParse('$rawId');
+    final subtype = (resinProduct['subtype'] ?? 'résine').toString();
+    final availableColors = (resinProduct['color'] ?? '')
+        .toString()
+        .split(',')
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .toList();
+    final sourceColor = (source.panneauColor ?? '').trim();
+    final color =
+        sourceColor.isNotEmpty && availableColors.contains(sourceColor)
+        ? sourceColor
+        : (availableColors.isEmpty ? sourceColor : availableColors.first);
+    final thickness = _catalogDimension(resinProduct, 'thickness');
+    return GlassSpecification(
+      structure: GlassStructure.closed,
+      finishOuter: GlassFinish.resine,
+      finishInner: GlassFinish.resine,
+      panneauSubtype: subtype,
+      panneauColor: color,
+      panneauProductId: productId,
+      thicknessOuter: thickness > 0 ? thickness : source.thicknessOuter,
+      thicknessInner: thickness > 0 ? thickness : source.thicknessInner,
+    );
+  }
+
+  void _normalizeDecorAfterSplit(
+    WindowZone source,
+    List<WindowZone> splitZones,
+  ) {
+    if (splitZones.isEmpty ||
+        (!isDecorPanelSubtype(source.glass.panneauSubtype) &&
+            source.glass.finishOuter != GlassFinish.paneauSandwitchDecore &&
+            (source.glass.decorDesignCode ?? '').trim().isEmpty)) {
+      return;
+    }
+    final product = getPanneauProductForSpec(source.glass);
+    if (product == null) {
+      final fallback = _decorSplitFallback(source.glass);
+      for (final zone in splitZones) {
+        zone.glass = fallback.clone();
+      }
+      return;
+    }
+
+    final decorWidth = _catalogDimension(product, 'visible_width');
+    final decorHeight = _catalogDimension(product, 'height');
+    final panelWidth = _catalogDimension(product, 'panel_width');
+    final panelHeight = _catalogDimension(product, 'panel_height');
+    final candidates =
+        splitZones.where((zone) {
+          final width = zone.boundary.width;
+          final height = zone.boundary.height;
+          final containsDecor =
+              decorWidth > 0 &&
+              decorHeight > 0 &&
+              width + 0.01 >= decorWidth &&
+              height + 0.01 >= decorHeight;
+          final fitsPanel =
+              (panelWidth <= 0 || width <= panelWidth + 0.01) &&
+              (panelHeight <= 0 || height <= panelHeight + 0.01);
+          return containsDecor && fitsPanel;
+        }).toList()..sort(
+          (a, b) => (b.boundary.width * b.boundary.height).compareTo(
+            a.boundary.width * a.boundary.height,
+          ),
+        );
+
+    final keeper = candidates.isEmpty ? null : candidates.first;
+    final fallback = _decorSplitFallback(source.glass);
+    for (final zone in splitZones) {
+      zone.glass = identical(zone, keeper)
+          ? source.glass.clone()
+          : fallback.clone();
+    }
+  }
+
   Future<void> loadCatalogData([String systemMode = '']) {
     final next = _catalogLoadChain.then((_) => _loadCatalogData(systemMode));
     _catalogLoadChain = next.catchError((Object error, StackTrace stack) {});
@@ -12195,8 +12338,7 @@ class WindowModel extends ChangeNotifier {
     final series = useSliding ? activeSlidingSeries : activeSeries;
     if (!hasGlazingBeadForContext(sliding: useSliding)) return null;
 
-    if (structure == GlassStructure.simple ||
-        structure == GlassStructure.closed) {
+    if (structure == GlassStructure.simple) {
       final specificSimple =
           componentOverrides['باكيت زجاج مفرد (Parclose Simple)'];
       final cap = capacityOf(specificSimple);
@@ -12233,17 +12375,49 @@ class WindowModel extends ChangeNotifier {
         }
       }
       return null;
+    } else if (structure == GlassStructure.closed) {
+      final activeGlass = selectedZone?.glass;
+      final requiredThickness = activeGlass != null
+          ? activeGlass.totalThickness(allGlassCache)
+          : 5.0;
+      final generic = componentOverrides['باكيت الزجاج (Parclose)'];
+      final genericCapacity = capacityOf(generic);
+      if (genericCapacity != null && genericCapacity >= requiredThickness) {
+        return genericCapacity;
+      }
+      if (series == null) return null;
+      final parcloses =
+          series.sections
+              .where(
+                (section) =>
+                    _isParcloseSection(section) &&
+                    section.maxGlassThickness > 0,
+              )
+              .toList()
+            ..sort(
+              (a, b) => a.maxGlassThickness.compareTo(b.maxGlassThickness),
+            );
+      for (final section in parcloses) {
+        if (section.maxGlassThickness >= requiredThickness) {
+          return section.maxGlassThickness;
+        }
+      }
+      return parcloses.isEmpty ? null : parcloses.last.maxGlassThickness;
     } else if (structure == GlassStructure.double) {
       final specificDouble =
           componentOverrides['باكيت زجاج مزدوج (Parclose Double)'];
       final cap = capacityOf(specificDouble);
       if (cap != null && cap > 16.0) return cap;
 
-      final generic = componentOverrides['باكيت الزجاج (Parclose)'];
-      final genericCap = capacityOf(generic);
-      if (genericCap != null && genericCap > 16.0) return genericCap;
-
       if (series != null) {
+        final activeGlass = selectedZone?.glass;
+        final paneThickness = activeGlass?.structure == GlassStructure.double
+            ? _glassPaneThicknessOrDefault(activeGlass?.thicknessOuter) +
+                  _glassPaneThicknessOrDefault(activeGlass?.thicknessInner)
+            : 10.0;
+        final minimumIntercall = _availableIntercallThicknesses().first;
+        final requiredThickness = paneThickness + minimumIntercall;
+        final generic = componentOverrides['باكيت الزجاج (Parclose)'];
         if (generic is Map) {
           final rawLinkedId = generic['linked_parclose_double_id'];
           final linkedId = rawLinkedId is num
@@ -12251,18 +12425,27 @@ class WindowModel extends ChangeNotifier {
               : int.tryParse(rawLinkedId?.toString() ?? '');
           if (linkedId != null && linkedId > 0) {
             for (final s in series.sections) {
-              if (s.id == linkedId && s.maxGlassThickness > 16.0) {
+              if (s.id == linkedId &&
+                  s.maxGlassThickness >= requiredThickness) {
                 return s.maxGlassThickness;
               }
             }
           }
         }
 
-        for (final s in series.sections) {
-          final isParclose = _isParcloseSection(s);
-          if (isParclose && s.maxGlassThickness > 16.0) {
-            return s.maxGlassThickness;
-          }
+        final parcloses =
+            series.sections
+                .where(
+                  (section) =>
+                      _isParcloseSection(section) &&
+                      section.maxGlassThickness >= requiredThickness,
+                )
+                .toList()
+              ..sort(
+                (a, b) => a.maxGlassThickness.compareTo(b.maxGlassThickness),
+              );
+        if (parcloses.isNotEmpty) {
+          return parcloses.first.maxGlassThickness;
         }
       }
       return null;
@@ -12287,16 +12470,16 @@ class WindowModel extends ChangeNotifier {
     final series = activeFrameSeries;
     var requiredDoubleThickness = 0.0;
     for (final zone in zones) {
-      final isSlidingZone =
-          systemMode == 'sliding' || zone.content == ZoneContent.slidingSash;
       for (final glass in [zone.glass, ...zone.cellGlassSpec.values]) {
         if (glass.structure != GlassStructure.double) continue;
+        // Parclose capacity describes the sealed unit itself. Vitrage and
+        // bourrage joints retain it, but are not part of its thickness.
+        final paneThickness =
+            _glassPaneThicknessOrDefault(glass.thicknessOuter) +
+            _glassPaneThicknessOrDefault(glass.thicknessInner);
         requiredDoubleThickness = math.max(
           requiredDoubleThickness,
-          glassPackThicknessIncludingVitrageJoint(
-            glass,
-            sliding: isSlidingZone,
-          ),
+          paneThickness + _availableIntercallThicknesses().first,
         );
       }
     }
@@ -12409,14 +12592,9 @@ class WindowModel extends ChangeNotifier {
       sliding: selectedUsesSliding,
     );
     if (maximum == null) return null;
-    final effectiveJointThickness =
-        jointThickness ?? selectedVitrageJointThickness(fallback: 2.0);
-    final jointAllowance = selectedUsesSliding
-        ? effectiveJointThickness * (jointTwoSides ? 2 : 1)
-        : effectiveJointThickness +
-              selectedBourrageJointThickness(doubleGlass: true, fallback: 2.0);
-    final remaining =
-        maximum - thicknessOuter - thicknessInner - jointAllowance;
+    // The parclose capacity describes the sealed glass unit itself. Gaskets
+    // hold that unit in the sash but are not part of its glass thickness.
+    final remaining = maximum - thicknessOuter - thicknessInner;
     if (remaining <= 0) return null;
     return _nearestIntercallThickness(remaining);
   }
@@ -12869,7 +13047,12 @@ class WindowModel extends ChangeNotifier {
     );
     if (_history.length > 20) _history.removeAt(0);
     _redoHistory.clear();
-    notifyListeners();
+    // Saving undo history does not change anything that is visible.  Notifying
+    // here made every edit repaint twice: once with the old value immediately
+    // before the mutation, then again with the actual new value.  On complex
+    // drawings that duplicate paint/validation pass was noticeable while
+    // entering dimensions and could make the text field appear unresponsive.
+    // The editing operation itself notifies after its mutation is complete.
   }
 
   void saveSnapshotOutside() {
@@ -13075,7 +13258,20 @@ class WindowModel extends ChangeNotifier {
     _enforceMultiFramePlainFrameRule();
     _disableSlidingMontantReinforcementForPvc();
     validateAndSanitizeAllZonesHandles();
+    drawingRepaint.notifyListeners();
     super.notifyListeners();
+  }
+
+  /// Selection changes are visual/editor state only. They must not rerun the
+  /// structural normalization used after geometry, series, or profile edits.
+  /// That normalization walks the complete frame/zone graph and made a simple
+  /// click on a frame noticeably lag on complex drawings.
+  void _notifySelectionChanged() => super.notifyListeners();
+
+  @override
+  void dispose() {
+    drawingRepaint.dispose();
+    super.dispose();
   }
 
   void refreshUI() => notifyListeners();
@@ -13838,7 +14034,7 @@ class WindowModel extends ChangeNotifier {
     );
     showZoneMenu = false;
     activeSubZone = null;
-    notifyListeners();
+    _notifySelectionChanged();
   }
 
   void selectFrame(String zoneId) {
@@ -13885,7 +14081,7 @@ class WindowModel extends ChangeNotifier {
       selection = SelectionInfo.none;
       showZoneMenu = false;
       activeSubZone = null;
-      notifyListeners();
+      _notifySelectionChanged();
       return;
     }
 
@@ -13900,7 +14096,7 @@ class WindowModel extends ChangeNotifier {
         selection = SelectionInfo(type: SelectionType.frame);
         showZoneMenu = false;
         activeSubZone = null;
-        notifyListeners();
+        _notifySelectionChanged();
       }
       return;
     }
@@ -14012,7 +14208,7 @@ class WindowModel extends ChangeNotifier {
               );
               showZoneMenu = false;
               activeSubZone = null;
-              notifyListeners();
+              _notifySelectionChanged();
               return;
             }
           }
@@ -14043,7 +14239,7 @@ class WindowModel extends ChangeNotifier {
               );
               showZoneMenu = false;
               activeSubZone = null;
-              notifyListeners();
+              _notifySelectionChanged();
               return;
             }
           }
@@ -14167,7 +14363,7 @@ class WindowModel extends ChangeNotifier {
           selection = hit;
           showZoneMenu = false;
           activeSubZone = null;
-          notifyListeners();
+          _notifySelectionChanged();
           return;
         }
         selection = SelectionInfo(type: SelectionType.zone, zoneId: z.id);
@@ -14269,7 +14465,7 @@ class WindowModel extends ChangeNotifier {
             activeSubZone = null;
           }
           selection = SelectionInfo(type: SelectionType.zone, zoneId: z.id);
-          notifyListeners();
+          _notifySelectionChanged();
           return;
         }
 
@@ -14363,21 +14559,21 @@ class WindowModel extends ChangeNotifier {
           showZoneMenu = isLongPress ? false : true;
           activeSubZone = 'all';
         }
-        notifyListeners();
+        _notifySelectionChanged();
         return;
       }
     }
     selection = SelectionInfo.none;
     activeSubZone = null;
     showZoneMenu = false;
-    notifyListeners();
+    _notifySelectionChanged();
   }
 
   void clearSelection() {
     selection = SelectionInfo.none;
     activeSubZone = null;
     showZoneMenu = false;
-    notifyListeners();
+    _notifySelectionChanged();
   }
 
   int? checkMullionDimensionTap(Offset pos) {
@@ -16754,6 +16950,7 @@ class WindowModel extends ChangeNotifier {
     primaryMullionAxis ??= 'h'; // 🟢 يثبت أول تقسيم أفقي إذا كانت النافذة فارغة
     _saveSnapshot();
     final zone = selectedZone!;
+    final previousZoneIds = zones.map((item) => item.id).toSet();
     final index = zones.indexOf(zone);
     final sep = mullionThickness / 2;
     zones.removeAt(index);
@@ -16911,6 +17108,10 @@ class WindowModel extends ChangeNotifier {
         );
       }
     }
+    final splitZones = zones
+        .where((item) => !previousZoneIds.contains(item.id))
+        .toList();
+    _normalizeDecorAfterSplit(zone, splitZones);
     updatePrimaryMullionAxis();
     selection = SelectionInfo.none;
     showZoneMenu = false;
@@ -17051,6 +17252,7 @@ class WindowModel extends ChangeNotifier {
     primaryMullionAxis ??= 'v'; // 🟢 يثبت أول تقسيم رأسي إذا كانت النافذة فارغة
     _saveSnapshot();
     final zone = selectedZone!;
+    final previousZoneIds = zones.map((item) => item.id).toSet();
     final index = zones.indexOf(zone);
     final sep = mullionThickness / 2;
     zones.removeAt(index);
@@ -17208,6 +17410,10 @@ class WindowModel extends ChangeNotifier {
         );
       }
     }
+    final splitZones = zones
+        .where((item) => !previousZoneIds.contains(item.id))
+        .toList();
+    _normalizeDecorAfterSplit(zone, splitZones);
     selection = SelectionInfo.none;
     showZoneMenu = false;
     activeSubZone = null;
@@ -18216,6 +18422,14 @@ class WindowModel extends ChangeNotifier {
         .where((z) => frameRect.contains(z.boundary.center))
         .toList();
     if (frameZones.any((z) => z.hasSashPlintheBottom)) return false;
+    if (frameZones.isNotEmpty &&
+        frameZones.every(
+          (z) =>
+              z.content == ZoneContent.fixedGlass ||
+              z.content == ZoneContent.empty,
+        )) {
+      return true;
+    }
     for (final zone in frameZones) {
       final local = componentOverrides['frame-bottom:${zone.id}'];
       if (local is bool) return local;
@@ -18243,8 +18457,12 @@ class WindowModel extends ChangeNotifier {
   bool get canEditSelectedBottomFrame {
     if (!canDisableBottomFrame) return false;
     final frames = getFrameRects();
-    final selected = selectedPhysicalFrameRect;
-    if (frames.length > 1 && selected == null) return false;
+    final selected =
+        selectedPhysicalFrameRect ??
+        (frames.length == 1 ? frames.single : null);
+    // With one physical frame there is no ambiguity, so Cadre du bas can
+    // toggle it even when the user has not selected the drawing first. A
+    // multi-frame drawing still requires an explicit frame selection.
     if (selected == null || frameUsesSlidingSeries(selected)) return false;
     final frameZones = zones.where((z) => selected.contains(z.boundary.center));
     if (frameZones.isNotEmpty &&
@@ -20252,29 +20470,32 @@ class WindowModel extends ChangeNotifier {
         return;
       }
 
+      // The intercall completes the sealed glass unit up to the parclose
+      // capacity. Vitrage and bourrage gaskets retain that unit and must not
+      // be deducted from the intercall size.
+      bestIntercall = recalculateIntercall
+          ? _nearestIntercallThickness(availableGap)
+          : activeGlass.intercallThickness;
+      if (bestIntercall == null) {
+        componentOverrides.remove('جوان الزجاج (Joint Vitrage)');
+        notifyListeners();
+        return;
+      }
+
       if (useSliding) {
-        // Sliding uses the same glazing gasket on one or two sides.  Start
-        // with the thinnest valid gasket, then fit the closest real spacer.
+        // Sliding uses the same glazing gasket on one or two sides. Keep the
+        // thinnest valid gasket independently of the sealed-unit thickness.
         for (final joint in candidateJoints) {
           final jointThickness = _readPositiveDouble(joint['thickness']);
-          final intercallTarget = availableGap - (jointThickness * jointSides);
-          final intercall = recalculateIntercall
-              ? _nearestIntercallThickness(intercallTarget)
-              : activeGlass.intercallThickness;
-          if (intercall == null) continue;
-          final exactness = (intercall.toDouble() - intercallTarget).abs();
-          final score = exactness * 100 + jointThickness * 0.01;
+          final score = jointThickness;
           if (score < bestScore) {
             bestScore = score;
             bestJoint = joint;
-            bestIntercall = intercall;
           }
         }
       } else {
-        // Opening aluminium always has the fixed Vitrage gasket before the
-        // glass and a Bourrage gasket after it.  Evaluate the spacer and the
-        // Bourrage together; a compressible +1 mm fit is preferred to a
-        // loose -1 mm fit.
+        // Opening aluminium keeps its Vitrage and Bourrage gaskets, but they
+        // are selected independently from the sealed glass-unit thickness.
         final selectedVitrage = selectedVitrageJointOverride();
         bestJoint = linkedJoints.isNotEmpty
             ? linkedJoints.first
@@ -20288,7 +20509,6 @@ class WindowModel extends ChangeNotifier {
                             .first
                       : null));
         if (bestJoint != null) {
-          final vitrageThickness = _readPositiveDouble(bestJoint['thickness']);
           final scopedBourrage = bourrageJoints
               .where(
                 (joint) =>
@@ -20298,33 +20518,18 @@ class WindowModel extends ChangeNotifier {
           final candidates = scopedBourrage.isNotEmpty
               ? scopedBourrage
               : bourrageJoints;
-          for (final bourrage in candidates) {
-            final bourrageThickness = _readPositiveDouble(
-              bourrage['thickness'],
+          final selectedBourrage = selectedBourrageJointOverride(
+            doubleGlass: true,
+          );
+          if (selectedBourrage != null) {
+            bestBourrageJoint = selectedBourrage;
+          } else if (candidates.isNotEmpty) {
+            candidates.sort(
+              (a, b) => _readPositiveDouble(
+                a['thickness'],
+              ).compareTo(_readPositiveDouble(b['thickness'])),
             );
-            if (bourrageThickness <= 0) continue;
-            final intercallChoices = recalculateIntercall
-                ? _availableIntercallThicknesses()
-                : <int>[activeGlass.intercallThickness];
-            for (final intercall in intercallChoices) {
-              final fitted =
-                  vitrageThickness + bourrageThickness + intercall.toDouble();
-              final delta = fitted - availableGap;
-              if (delta > 1.0) continue;
-              // For equal fits prefer the smaller spacer and let the thicker
-              // Bourrage absorb the compression (8 + 4 before 10 + 2).
-              final tieBreak = intercall * 0.001 - bourrageThickness * 0.000001;
-              final score = delta == 0
-                  ? tieBreak
-                  : delta > 0
-                  ? delta.abs() * 10 + tieBreak
-                  : delta.abs() * 10 + 5 + tieBreak;
-              if (score < bestScore) {
-                bestScore = score;
-                bestBourrageJoint = bourrage;
-                bestIntercall = intercall;
-              }
-            }
+            bestBourrageJoint = candidates.first;
           }
         }
       }
@@ -20451,19 +20656,23 @@ class WindowModel extends ChangeNotifier {
 
     for (final key in keysToCheck) {
       final component = componentOverrides[key];
-      if (component == null) continue;
+      // Drawing-state overrides (for example `frame-bottom:<zoneId>`) are
+      // booleans, while catalogue components are maps. Series changes must
+      // ignore non-catalogue state instead of attempting component['id'].
+      if (component is! Map) continue;
+      final componentMap = Map<String, dynamic>.from(component);
 
       // تجاهل المكونات التي تأتي من البيانات المحلية وليست من قاعدة البيانات
-      if (component['id'] == null) continue;
+      if (componentMap['id'] == null) continue;
 
       // تجاهل الأقسام، مكونات الستار، والجوانات. الحقول المتشابهة بين الجداول
       // كانت تجعل القسم يُفحص خطأً داخل Accessories ثم يُحذف.
-      final isSection = component.containsKey('code');
-      final isShutter = component.containsKey('component_type');
-      final isJoint = component.containsKey('gasket_type');
+      final isSection = componentMap.containsKey('code');
+      final isShutter = componentMap.containsKey('component_type');
+      final isJoint = componentMap.containsKey('gasket_type');
       final isAccessory =
-          component.containsKey('material_type') ||
-          component.containsKey('screw_count');
+          componentMap.containsKey('material_type') ||
+          componentMap.containsKey('screw_count');
       final tableToCheck = isAccessory && !isSection && !isShutter && !isJoint
           ? 'Accessories'
           : null;
@@ -20474,7 +20683,7 @@ class WindowModel extends ChangeNotifier {
           final result = await db.query(
             tableToCheck,
             where: 'id = ?',
-            whereArgs: [component['id']],
+            whereArgs: [componentMap['id']],
             limit: 1,
           );
 
@@ -22593,6 +22802,18 @@ class WindowModel extends ChangeNotifier {
       return;
     }
     if (drawingMode == 'add_frame') {
+      final previousFrameRects = getFrameRects();
+      final previousBottomFrameByZone = <String, bool>{};
+      for (final zone in zones) {
+        var state = effectiveHasBottomFrame;
+        for (final frame in previousFrameRects) {
+          if (frame.contains(zone.boundary.center)) {
+            state = hasBottomFrameForRect(frame);
+            break;
+          }
+        }
+        previousBottomFrameByZone[zone.id] = state;
+      }
       Rect drawnRect = Rect.fromPoints(drawingStart!, drawingCurrent!);
       if (drawnRect.width > 50 && drawnRect.height > 50) {
         final windowRect = Rect.fromLTWH(0, 0, width, height);
@@ -22620,7 +22841,7 @@ class WindowModel extends ChangeNotifier {
             drawnRect.left + profileThickness,
             drawnRect.top + profileThickness,
             drawnRect.right - profileThickness,
-            drawnRect.bottom - (hasBottomFrame ? profileThickness : 0.0),
+            drawnRect.bottom - profileThickness,
           );
           if (inner.width > 50 && inner.height > 50) {
             zones.add(
@@ -22632,6 +22853,10 @@ class WindowModel extends ChangeNotifier {
                 selectedDbColor: _selectedDbColor,
               ),
             );
+            for (final zone in zones) {
+              componentOverrides['frame-bottom:${zone.id}'] =
+                  previousBottomFrameByZone[zone.id] ?? true;
+            }
             width = math.max(width, drawnRect.right);
             height = math.max(height, drawnRect.bottom);
             updatePrimaryMullionAxis();
@@ -22650,6 +22875,7 @@ class WindowModel extends ChangeNotifier {
             : 0.0;
         const double pHeight = 0.0;
         double bottomOffset = hasBottomFrame ? profileThickness : 0.0;
+        final double newFrameBottomOffset = profileThickness;
 
         // Use the center of the drawn rect to determine which side of the
         // existing window the user is drawing on. This is robust regardless
@@ -22805,7 +23031,7 @@ class WindowModel extends ChangeNotifier {
                 width - profileThickness,
                 spanBottom -
                     (spanBottom >= height - 1.0
-                        ? bottomOffset + pHeight
+                        ? newFrameBottomOffset + pHeight
                         : tThickness / 2),
               ),
               sashThickness: _calculateSashThickness(false),
@@ -22844,7 +23070,7 @@ class WindowModel extends ChangeNotifier {
                 newW - tThickness / 2,
                 spanBottom -
                     (spanBottom >= height - 1.0
-                        ? bottomOffset + pHeight
+                        ? newFrameBottomOffset + pHeight
                         : tThickness / 2),
               ),
               sashThickness: _calculateSashThickness(false),
@@ -22882,7 +23108,7 @@ class WindowModel extends ChangeNotifier {
                     (spanRight >= width - 1.0
                         ? profileThickness
                         : tThickness / 2),
-                height - bottomOffset - pHeight,
+                height - newFrameBottomOffset - pHeight,
               ),
               sashThickness: _calculateSashThickness(false),
             ),
@@ -22926,6 +23152,15 @@ class WindowModel extends ChangeNotifier {
           );
         }
         zones = newZones;
+        for (final zone in zones) {
+          componentOverrides['frame-bottom:${zone.id}'] =
+              previousBottomFrameByZone[zone.id] ?? true;
+        }
+        // A full-length couvre-joint is anchored to the outer perimeter.
+        // Growing the drawing with another physical frame must grow those
+        // stored segments as well; otherwise the cover stops at the old
+        // 800 mm / old height boundary.
+        _resizeSideCoverSegments(prevW, prevH, width, height);
         updatePrimaryMullionAxis();
         synchronizeShutterAfterFrameResize(prevW, prevH);
       }
@@ -23396,8 +23631,9 @@ class WindowModel extends ChangeNotifier {
         }
       }
       if (intersects) {
+        final splitZones = <WindowZone>[];
         if (horizontal) {
-          newZones.add(
+          splitZones.add(
             _splitClone(
               z,
               Rect.fromLTRB(
@@ -23408,7 +23644,7 @@ class WindowModel extends ChangeNotifier {
               ),
             ),
           );
-          newZones.add(
+          splitZones.add(
             _splitClone(
               z,
               Rect.fromLTRB(
@@ -23420,7 +23656,7 @@ class WindowModel extends ChangeNotifier {
             ),
           );
         } else {
-          newZones.add(
+          splitZones.add(
             _splitClone(
               z,
               Rect.fromLTRB(
@@ -23431,7 +23667,7 @@ class WindowModel extends ChangeNotifier {
               ),
             ),
           );
-          newZones.add(
+          splitZones.add(
             _splitClone(
               z,
               Rect.fromLTRB(
@@ -23443,6 +23679,8 @@ class WindowModel extends ChangeNotifier {
             ),
           );
         }
+        _normalizeDecorAfterSplit(z, splitZones);
+        newZones.addAll(splitZones);
       } else {
         newZones.add(z);
       }

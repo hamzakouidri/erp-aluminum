@@ -994,7 +994,18 @@ class CloudSyncService {
     return newChunkCounts;
   }
 
+  Future<void>? _initFuture;
+
   Future<void> init() async {
+    if (_initFuture != null) {
+      return _initFuture!;
+    }
+    return _initFuture = _doInit().whenComplete(() {
+      _initFuture = null;
+    });
+  }
+
+  Future<void> _doInit() async {
     print("--- CloudSyncService: init() started ---");
     final prefs = await SharedPreferences.getInstance();
     String? storedId = prefs.getString('device_id');

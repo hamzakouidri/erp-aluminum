@@ -28,7 +28,12 @@ import 'package:shared_preferences/shared_preferences.dart'; // تخزين إع�
 // الودجت الرئيسي: StatefulWidget لأن الشاشة تحتوي حالة كثيرة (تحديد الأسعار، توسعة الأقسام...)
 class MaterialConsumptionScreen extends StatefulWidget {
   final WindowModel model; // نموذج النافذة الحالية اللي بنعرض تفاصيلها
-  const MaterialConsumptionScreen({super.key, required this.model});
+  final bool autoCalculateAndSave;
+  const MaterialConsumptionScreen({
+    super.key,
+    required this.model,
+    this.autoCalculateAndSave = false,
+  });
   @override
   State<MaterialConsumptionScreen> createState() =>
       _MaterialConsumptionScreenState();
@@ -59,6 +64,7 @@ class _BomSwapTarget {
 }
 
 class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
+  bool _automaticCompletionStarted = false;
   // Keep the selected cap in memory while it is disabled.  Removing the
   // override is intentional: the cutting engine uses its presence to decide
   // whether the cap thickness must be deducted from every blade cut.
@@ -2255,7 +2261,13 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     // Never publish the preliminary/raw BOM. The table is published only
     // after defaults, catalogue links and the strict visibility check finish.
     var visibleBomItems = const <BomItem>[];
+    var mustRepeatForRestoredSeries = false;
     try {
+      // Glass prices and product identities are part of the price, so they
+      // must finish refreshing before either the visible table or automatic
+      // order repricing builds its BOM. The previous fire-and-forget refresh
+      // could calculate with the glass selected before the user's change.
+      await widget.model.loadGlassProducts();
       await widget.model.updateShutterDefaultsIfNeeded();
       _setFetchProgress(0.20);
       _refreshStrictActiveVariants();
@@ -2346,6 +2358,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         // The initial query legitimately had no/another series while the
         // drawing was reconnecting to its catalogue. Run once more without
         // asking the user to press the blue refresh icon.
+        mustRepeatForRestoredSeries = true;
         unawaited(_fetchDefaults());
       }
       // The SQLite connection and the restored drawing do not always become
@@ -2355,6 +2368,31 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       if (_pricePerLinearMeterFromDb == 0 ||
           (widget.model.hasShutter && _shutterSqmPriceFromDb == 0)) {
         _scheduleInitialPriceRetries();
+      }
+    }
+    if (widget.autoCalculateAndSave &&
+        !mustRepeatForRestoredSeries &&
+        !_automaticCompletionStarted &&
+        mounted) {
+      _automaticCompletionStarted = true;
+      final pricedItems = _visibleBomItems.where((item) {
+        final hasPieces = item.pieces != null && item.pieces!.isNotEmpty;
+        final qty = item.requiredQuantity > 0
+            ? item.requiredQuantity
+            : item.quantity;
+        return hasPieces || qty > 0;
+      }).toList(growable: false);
+      final totals = _calculateTotals(pricedItems);
+      final sellingPrice = totals['total']?['selling'] ?? 0.0;
+      final quantity = math.max(1, widget.model.quantity);
+      final unitPrice = sellingPrice / quantity;
+      if (unitPrice.isFinite && unitPrice > 0) {
+        widget.model.totalCost = unitPrice;
+        widget.model.manualPriceOverride = unitPrice;
+        Navigator.pop(context, true);
+      } else {
+        _automaticCompletionStarted = false;
+        Navigator.pop(context, false);
       }
     }
   }
@@ -2471,10 +2509,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     // settings loader initializes the linear-price field to zero, so if it
     // finishes after the database query it can overwrite the valid price.
     // تحديد الحالة الابتدائية للآلية (محرك/مانيفيل/حزام) والتونيل
-    // The BOM is calculated synchronously, so refresh the glass catalogue as
-    // this page opens. This prevents a recently saved tempering price from
-    // being read from an older in-memory cache.
-    unawaited(_refreshGlassCatalogue());
     final isTunnel = widget.model.isCaissonTunnel;
     final isMotor = widget.model.shutterMechanism == 'محرك';
     final isCrankInit =
@@ -2536,11 +2570,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   }
 
   // دالة تُستدعى عند تغيّر النموذج من خارج هذه الشاشة، فقط تعيد بناء الواجهة
-  Future<void> _refreshGlassCatalogue() async {
-    await widget.model.loadGlassProducts();
-    _rebuildIfReady();
-  }
-
   void _onModelChanged() {
     final priceContext = _priceContextSignature();
     if (priceContext != _lastPriceContextSignature) {
@@ -3098,6 +3127,22 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   @override
   Widget build(BuildContext context) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
+    if (widget.autoCalculateAndSave) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(
+                Localization.translate('جاري تجهيز الكميات والأسعار...', lang),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     final items = _visibleBomItems.where((item) {
       final hasPieces = item.pieces != null && item.pieces!.isNotEmpty;
       final qty = item.requiredQuantity > 0 ? item.requiredQuantity : item.quantity;

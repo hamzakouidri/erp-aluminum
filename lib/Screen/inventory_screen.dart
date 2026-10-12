@@ -866,6 +866,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
     }
 
     return ListView.builder(
+      primary: false,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: _filteredStockData.length,

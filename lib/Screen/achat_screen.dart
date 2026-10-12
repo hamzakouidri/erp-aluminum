@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:database_data/widgets/app_material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:database_data/settings/localization.dart';
+import 'package:database_data/settings/document_status_localization.dart';
 import '../services/cloud_sync_service.dart';
 import '../sql_database.dart';
 import 'achat_details_screen.dart';
@@ -283,6 +284,7 @@ class _AchatScreenState extends State<AchatScreen>
                             : _viewMode == _AchatViewMode.table
                             ? _buildAchatTable(filteredData)
                             : ListView.builder(
+                                primary: false,
                                 shrinkWrap: true,
                                 physics: const NeverScrollableScrollPhysics(),
                                 itemCount: filteredData.length,
@@ -511,7 +513,7 @@ class _AchatScreenState extends State<AchatScreen>
             Text((achat['created_by'] ?? '—').toString()),
             Text(modified ? _formatDate((achat['updated_at'] ?? '').toString()) : '—'),
             Text(modified ? (achat['updated_by'] ?? '—').toString() : '—'),
-            Text((achat['status'] ?? 'Active').toString()),
+            Text(localizeDocumentStatus(achat['status'] ?? 'Active', lang)),
             Text(
               '${NumberFormat('#,##0.00', 'en_US').format((achat['total'] as num?)?.toDouble() ?? 0)} DZD',
               style: const TextStyle(fontWeight: FontWeight.bold),
@@ -908,20 +910,20 @@ class _AchatScreenState extends State<AchatScreen>
 
     // تحديد لون ونصوص الحالة ديناميكياً
     Color statusColor = _orange;
-    String statusLabel = 'نشطة';
+    String statusLabel = localizeDocumentStatus(status, lang);
 
     if (isCancelled) {
       statusColor = _red;
-      statusLabel = 'ملغاة';
+      statusLabel = localizeDocumentStatus('Cancelled', lang);
     } else if (isReturned) {
       statusColor = Colors.purple;
-      statusLabel = 'مردودة كلياً';
+      statusLabel = localizeDocumentStatus('Returned', lang);
     } else if (isPartialReturned) {
       statusColor = Colors.deepOrange;
-      statusLabel = 'مردودة جزئياً';
+      statusLabel = localizeDocumentStatus('Partial Returned', lang);
     } else if (isPaid) {
       statusColor = _green;
-      statusLabel = 'مؤكدة / مدفوعة';
+      statusLabel = localizeDocumentStatus(status, lang);
     }
 
     final currencyFormat = NumberFormat('#,##0.00', 'en_US');
@@ -1480,10 +1482,14 @@ class _AchatScreenState extends State<AchatScreen>
                                   border: const OutlineInputBorder(),
                                 ),
                                 items: locations.map((loc) {
+                                  final rawName = loc['name']?.toString() ?? '';
+                                  final displayName = (rawName == 'المستودع الرئيسي' || rawName.trim().isEmpty)
+                                      ? Localization.translate('المستودع الرئيسي', lang)
+                                      : rawName;
                                   return DropdownMenuItem<int>(
                                     value: loc['id'],
                                     child: Text(
-                                      loc['name'],
+                                      displayName,
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   );

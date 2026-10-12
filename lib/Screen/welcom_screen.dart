@@ -7,9 +7,11 @@ import 'package:database_data/services/auth_service.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'package:intl/intl.dart' hide TextDirection;
 import '../Commande/order_status_order.dart';
 import '../Cliente/client.dart';
 import '../Commande/commande.dart';
+import '../Commande/order_workspace_screen.dart';
 import '../items_produits/products_menu_screen.dart';
 import '../sql_database.dart';
 import 'projects_screen.dart';
@@ -30,6 +32,8 @@ import 'inventory_screen.dart';
 import 'measurements_screen.dart';
 import 'worker_tasks_screen.dart';
 import 'material_sales_screen.dart';
+import 'material_sale_editor_screen.dart';
+import 'achat_details_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'external_operations_hub_screen.dart';
@@ -37,6 +41,7 @@ import 'external_operations_hub_screen.dart';
 import 'worker_archive_screen.dart';
 import 'subscription_overview_card.dart';
 import '../widgets/resizable_columns_table.dart';
+import '../widgets/desktop_scroll_behavior.dart';
 import 'ai_guide_chat_dialog.dart';
 import 'cutting_optimization_screen.dart';
 import 'tempered_glass_work_screen.dart';
@@ -69,6 +74,7 @@ class WelcomScreen extends StatefulWidget {
 
 class _WelcomScreenState extends State<WelcomScreen> {
   final SqlDatabase db = SqlDatabase();
+  final ScrollController _desktopDashboardScrollController = ScrollController();
   final ValueNotifier<Map<String, dynamic>?> _dragNotifier =
       ValueNotifier<Map<String, dynamic>?>(null);
 
@@ -120,7 +126,11 @@ class _WelcomScreenState extends State<WelcomScreen> {
   // database that is kept in sync with Firebase, so the Windows view never
   // needs a separate source of truth.
   List<Map<String, dynamic>> _desktopOrders = [];
+  List<Map<String, dynamic>> _desktopDeliveries = [];
+  List<Map<String, dynamic>> _dashboardActivities = [];
   List<Map<String, dynamic>> _materialSales = [];
+  List<Map<String, dynamic>> _workshopAchats = [];
+  List<Map<String, dynamic>> _storeAchats = [];
   List<Map<String, dynamic>> _desktopClients = [];
   List<Map<String, dynamic>> _desktopProfiles = [];
   List<Map<String, dynamic>> _desktopTreasury = [];
@@ -157,13 +167,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
   }
 
   void _handleAiNavigation(String target) {
-    final settings = Provider.of<AppSettingsProvider>(
-      context,
-      listen: false,
-    );
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
     final lang = settings.language;
-    final storeOnly =
-        settings.workingSection == WorkingSection.materialsStore;
+    final storeOnly = settings.workingSection == WorkingSection.materialsStore;
     switch (target) {
       case 'orders':
         openAdaptiveScreen(
@@ -302,17 +308,15 @@ class _WelcomScreenState extends State<WelcomScreen> {
   // بيانات المخطط البياني
   Map<String, int> _ordersByStatus = {};
   Map<String, int> _ordersByMonth = {};
+  bool _showStoreTrend = false;
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
     _loadStats();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _autoSyncData(showSnackBar: false);
-      }
-    });
+    // Background sync is handled silently by SubscriptionChecker / SupabaseWorkshopSyncService.
+    // Triggering full recovery here immediately upon opening caused UI freeze and database locks.
   }
 
   /// تحديث صورة الشعار فقط عند تغيير فعلي لتجنب إعادة فك التشفير في كل rebuild
@@ -462,6 +466,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
                       const SizedBox(height: 12),
                       Flexible(
                         child: ListView.builder(
+                          primary: false,
                           shrinkWrap: true,
                           itemCount: _lowStockItems.length,
                           itemBuilder: (context, index) {
@@ -591,7 +596,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
         db.getOrderAssignedWorkersMap(),
         db.readAllProfiles(),
         db.readMaterialSales(),
+        db.readWorkshopAchats(),
         db.readStoreAchats(),
+        db.readDashboardActivities(),
       ]);
       final profiles = secondaryData[0] as List<Map<String, dynamic>>;
       final desktopOrders = List<Map<String, dynamic>>.from(
@@ -607,7 +614,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
       );
       final allProfiles = secondaryData[6] as List<Map<String, dynamic>>;
       final matSales = secondaryData[7] as List<Map<String, dynamic>>;
-      final storeAchats = secondaryData[8] as List<Map<String, dynamic>>;
+      final workshopAchats = secondaryData[8] as List<Map<String, dynamic>>;
+      final storeAchats = secondaryData[9] as List<Map<String, dynamic>>;
+      final dashboardActivities =
+          secondaryData[10] as List<Map<String, dynamic>>;
 
       if (mounted && loadToken == _statsLoadToken) {
         setState(() {
@@ -631,7 +641,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
           // profiles, which previously made this card show zero.
           _produitsCount = allProfiles.length.toString();
           _desktopOrders = desktopOrders;
+          _dashboardActivities = dashboardActivities;
           _materialSales = matSales;
+          _workshopAchats = workshopAchats;
+          _storeAchats = storeAchats;
           _desktopClients = clients;
           _desktopProfiles = profiles;
           _desktopTreasury = treasuryRows;
@@ -749,6 +762,33 @@ class _WelcomScreenState extends State<WelcomScreen> {
     }
     for (final sale in _materialSales) {
       final date = DateTime.tryParse((sale['sale_date'] ?? '').toString());
+      if (date == null) continue;
+      final key = '${date.month}/${date.year}';
+      if (result.containsKey(key)) result[key] = result[key]! + 1;
+    }
+    return result;
+  }
+
+  Map<String, int> _purchasesByMonth(List<Map<String, dynamic>> purchases) {
+    final result = <String, int>{};
+    if (_ordersByMonth.isNotEmpty) {
+      for (final key in _ordersByMonth.keys) {
+        result[key] = 0;
+      }
+    } else {
+      final now = DateTime.now();
+      for (var offset = 5; offset >= 0; offset--) {
+        final date = DateTime(now.year, now.month - offset);
+        result['${date.month}/${date.year}'] = 0;
+      }
+    }
+    for (final purchase in purchases) {
+      final rawDate =
+          purchase['created_at'] ??
+          purchase['date_creation'] ??
+          purchase['purchase_date'] ??
+          purchase['date'];
+      final date = DateTime.tryParse((rawDate ?? '').toString());
       if (date == null) continue;
       final key = '${date.month}/${date.year}';
       if (result.containsKey(key)) result[key] = result[key]! + 1;
@@ -944,11 +984,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
       }
     }
 
-    // SubscriptionChecker owns the global Firestore listeners. This page
-    // only listens to local update notifications so navigating away cannot
-    // stop synchronization for the whole app. This must also run when the
-    // active account is Supabase-only and Firebase has no current user.
-    await CloudSyncService().init();
+    // 🧪 [تشخيص مؤقت للسكرول]: معطل مؤقتاً لعزل المزامنة والتأكد من انسيابية السكرول
+    // await CloudSyncService().init();
 
     // The workshop identity is owned by Supabase. Firebase user documents
     // may contain an old Arabic fallback, so load the real display name
@@ -1056,6 +1093,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
     _statsDebounce?.cancel();
     _desktopTreasurySearchController.dispose();
     _desktopGlobalSearchController.dispose();
+    _desktopDashboardScrollController.dispose();
     super.dispose();
   }
 
@@ -1164,7 +1202,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
           label: Text(
             lang == AppLanguage.french
                 ? 'Assistant IA'
-                : (lang == AppLanguage.english ? 'AI Assistant' : 'المساعد الذكي'),
+                : (lang == AppLanguage.english
+                      ? 'AI Assistant'
+                      : 'المساعد الذكي'),
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
           ),
         ),
@@ -1375,6 +1415,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
         ],
       ),
       child: ListView.separated(
+        primary: false,
         shrinkWrap: true,
         padding: const EdgeInsets.symmetric(vertical: 4),
         itemCount: results.length,
@@ -1738,232 +1779,236 @@ class _WelcomScreenState extends State<WelcomScreen> {
 
     return Container(
       color: pageColor,
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(28, 22, 28, 36),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1440),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildDesktopTopBar(
-                  context,
-                  lang,
-                  cardColor,
-                  contentColor,
-                  mutedColor,
-                ),
-                const SizedBox(height: 26),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final narrow = constraints.maxWidth < 660;
-                    final title = Row(
-                      children: [
-                        Container(
-                          width: 50,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF2563EB).withOpacity(0.10),
-                            borderRadius: BorderRadius.circular(14),
-                            image: _cachedLogoProvider == null
-                                ? null
-                                : DecorationImage(
-                                    image: _cachedLogoProvider!,
-                                    fit: BoxFit.cover,
-                                  ),
-                          ),
-                          child: _cachedLogoProvider == null
-                              ? const Icon(
-                                  Icons.carpenter_rounded,
-                                  color: Color(0xFF2563EB),
-                                  size: 25,
-                                )
-                              : null,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _desktopText(
-                                  lang,
-                                  'لوحة القيادة والإحصائيات',
-                                  'Tableau de bord et statistiques',
-                                  'Dashboard and statistics',
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: contentColor,
-                                  fontFamily: 'Cairo',
-                                  fontSize: 21,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              Text(
-                                _desktopText(
-                                  lang,
-                                  'متابعة فورية للورشة والطلبات والمخزون',
-                                  'Suivi de l’atelier, des commandes et du stock',
-                                  'Live workshop, orders, and inventory overview',
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: mutedColor,
-                                  fontFamily: 'Cairo',
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    );
-                    final refresh = FilledButton.icon(
-                      onPressed: _isManualSyncing
-                          ? null
-                          : () => _autoSyncData(showSnackBar: true),
-                      icon: _isManualSyncing
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.sync_rounded, size: 18),
-                      label: Text(
-                        _desktopText(
-                          lang,
-                          'تحديث البيانات',
-                          'Actualiser',
-                          'Refresh data',
-                        ),
-                        style: const TextStyle(
-                          fontFamily: 'Cairo',
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF2563EB),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 13,
-                        ),
-                      ),
-                    );
-                    final sectionSelector = _buildDesktopSectionSelector(
-                      context,
-                      lang,
-                      cardColor,
-                      contentColor,
-                      mutedColor,
-                    );
-                    if (narrow) {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+      child: DesktopScrollFallback(
+        controller: _desktopDashboardScrollController,
+        child: SingleChildScrollView(
+          controller: _desktopDashboardScrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(28, 22, 28, 36),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1440),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildDesktopTopBar(
+                    context,
+                    lang,
+                    cardColor,
+                    contentColor,
+                    mutedColor,
+                  ),
+                  const SizedBox(height: 26),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final narrow = constraints.maxWidth < 660;
+                      final title = Row(
                         children: [
-                          title,
-                          if (sectionSelector != null) ...[
+                          Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2563EB).withOpacity(0.10),
+                              borderRadius: BorderRadius.circular(14),
+                              image: _cachedLogoProvider == null
+                                  ? null
+                                  : DecorationImage(
+                                      image: _cachedLogoProvider!,
+                                      fit: BoxFit.cover,
+                                    ),
+                            ),
+                            child: _cachedLogoProvider == null
+                                ? const Icon(
+                                    Icons.carpenter_rounded,
+                                    color: Color(0xFF2563EB),
+                                    size: 25,
+                                  )
+                                : null,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _desktopText(
+                                    lang,
+                                    'لوحة القيادة والإحصائيات',
+                                    'Tableau de bord et statistiques',
+                                    'Dashboard and statistics',
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: contentColor,
+                                    fontFamily: 'Cairo',
+                                    fontSize: 21,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                Text(
+                                  _desktopText(
+                                    lang,
+                                    'متابعة فورية للورشة والطلبات والمخزون',
+                                    'Suivi de l’atelier, des commandes et du stock',
+                                    'Live workshop, orders, and inventory overview',
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: mutedColor,
+                                    fontFamily: 'Cairo',
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                      final refresh = FilledButton.icon(
+                        onPressed: _isManualSyncing
+                            ? null
+                            : () => _autoSyncData(showSnackBar: true),
+                        icon: _isManualSyncing
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.sync_rounded, size: 18),
+                        label: Text(
+                          _desktopText(
+                            lang,
+                            'تحديث البيانات',
+                            'Actualiser',
+                            'Refresh data',
+                          ),
+                          style: const TextStyle(
+                            fontFamily: 'Cairo',
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF2563EB),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 13,
+                          ),
+                        ),
+                      );
+                      final sectionSelector = _buildDesktopSectionSelector(
+                        context,
+                        lang,
+                        cardColor,
+                        contentColor,
+                        mutedColor,
+                      );
+                      if (narrow) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            title,
+                            if (sectionSelector != null) ...[
+                              const SizedBox(height: 14),
+                              sectionSelector,
+                            ],
                             const SizedBox(height: 14),
+                            refresh,
+                          ],
+                        );
+                      }
+                      return Row(
+                        children: [
+                          Expanded(child: title),
+                          if (sectionSelector != null) ...[
+                            const SizedBox(width: 14),
                             sectionSelector,
                           ],
-                          const SizedBox(height: 14),
+                          const SizedBox(width: 12),
                           refresh,
                         ],
                       );
-                    }
-                    return Row(
-                      children: [
-                        Expanded(child: title),
-                        if (sectionSelector != null) ...[
-                          const SizedBox(width: 14),
-                          sectionSelector,
-                        ],
-                        const SizedBox(width: 12),
-                        refresh,
-                      ],
-                    );
-                  },
-                ),
-                const SizedBox(height: 22),
-                _buildDesktopMetrics(
-                  context,
-                  cardColor,
-                  contentColor,
-                  mutedColor,
-                ),
-                const SizedBox(height: 18),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final sideWidth = 290.0;
-                    final isCompact = constraints.maxWidth < 980;
-                    final orders = _buildDesktopTrendPanel(
-                      context,
-                      cardColor,
-                      contentColor,
-                      mutedColor,
-                    );
-                    final side = Column(
-                      children: [
-                        _buildDesktopWorkloadPanel(
-                          context,
-                          cardColor,
-                          contentColor,
-                          mutedColor,
-                        ),
-                        const SizedBox(height: 16),
-                        _buildDesktopActivityPanel(
-                          context,
-                          cardColor,
-                          contentColor,
-                          mutedColor,
-                        ),
-                      ],
-                    );
-                    if (isCompact) {
-                      return Column(
-                        children: [orders, const SizedBox(height: 16), side],
-                      );
-                    }
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(child: orders),
-                        const SizedBox(width: 16),
-                        SizedBox(width: sideWidth, child: side),
-                      ],
-                    );
-                  },
-                ),
-                const SizedBox(height: 18),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final orders = _buildDesktopOrdersPanel(
-                      context,
-                      cardColor,
-                      contentColor,
-                      mutedColor,
-                    );
-                    // Stock alerts live below the open-orders metric.  Keeping
-                    // a second, wide stock panel here made the dashboard much
-                    // taller and could overflow in smaller desktop windows.
-                    return orders;
-                  },
-                ),
-                if (settings.workingSection !=
-                        WorkingSection.materialsStore &&
-                    settings.canViewSubscription()) ...[
+                    },
+                  ),
+                  const SizedBox(height: 22),
+                  _buildDesktopMetrics(
+                    context,
+                    cardColor,
+                    contentColor,
+                    mutedColor,
+                  ),
                   const SizedBox(height: 18),
-                  const SubscriptionOverviewCard(),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final sideWidth = 290.0;
+                      final isCompact = constraints.maxWidth < 980;
+                      final orders = _buildDesktopTrendPanel(
+                        context,
+                        cardColor,
+                        contentColor,
+                        mutedColor,
+                      );
+                      final side = Column(
+                        children: [
+                          _buildDesktopWorkloadPanel(
+                            context,
+                            cardColor,
+                            contentColor,
+                            mutedColor,
+                          ),
+                          const SizedBox(height: 16),
+                          _buildDesktopActivityPanel(
+                            context,
+                            cardColor,
+                            contentColor,
+                            mutedColor,
+                          ),
+                        ],
+                      );
+                      if (isCompact) {
+                        return Column(
+                          children: [orders, const SizedBox(height: 16), side],
+                        );
+                      }
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: orders),
+                          const SizedBox(width: 16),
+                          SizedBox(width: sideWidth, child: side),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 18),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final orders = _buildRecentDashboardActivitiesPanel(
+                        context,
+                        cardColor,
+                        contentColor,
+                        mutedColor,
+                      );
+                      // Stock alerts live below the open-orders metric.  Keeping
+                      // a second, wide stock panel here made the dashboard much
+                      // taller and could overflow in smaller desktop windows.
+                      return orders;
+                    },
+                  ),
+                  if (settings.workingSection !=
+                          WorkingSection.materialsStore &&
+                      settings.canViewSubscription()) ...[
+                    const SizedBox(height: 18),
+                    const SubscriptionOverviewCard(),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
@@ -2053,9 +2098,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
           mutedColor: mutedColor,
           onTap: _openOrders,
         ),
-      if (allowWorkshop &&
-          settings.hasWorkshop &&
-          settings.canAccessTreasury())
+      if (allowWorkshop && settings.hasWorkshop && settings.canAccessTreasury())
         _DesktopMetricCard(
           icon: Icons.account_balance_wallet_rounded,
           title: _desktopText(
@@ -2090,9 +2133,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
             screen: TreasuryScreen(db: db),
           ),
         ),
-      if (allowWorkshop &&
-          settings.hasWorkshop &&
-          settings.canViewClients())
+      if (allowWorkshop && settings.hasWorkshop && settings.canViewClients())
         _DesktopMetricCard(
           icon: Icons.people_alt_rounded,
           title: _desktopText(
@@ -2200,7 +2241,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
           backgroundColor: cardColor,
           textColor: contentColor,
           mutedColor: mutedColor,
-          onTap: settings.canViewClients() ? _openClients : null,
+          onTap: settings.canViewClients()
+              ? () => _openClients(storeOnly: true)
+              : null,
         ),
       if (allowStore &&
           settings.hasMaterialsStore &&
@@ -2262,34 +2305,48 @@ class _WelcomScreenState extends State<WelcomScreen> {
   ) {
     final settings = Provider.of<AppSettingsProvider>(context);
     final lang = settings.language;
-    final isStore = settings.workingSection == WorkingSection.materialsStore;
-    final entries = (isStore ? _materialSalesByMonth : _ordersByMonth).entries
-        .toList();
-    final values = entries.map((entry) => entry.value.toDouble()).toList();
-    final maxValue = entries.fold<int>(
-      0,
-      (maximum, entry) => math.max(maximum, entry.value),
+    final canSwitch =
+        settings.workingSection == WorkingSection.all &&
+        settings.hasWorkshop &&
+        settings.hasMaterialsStore;
+    final isStore =
+        settings.workingSection == WorkingSection.materialsStore ||
+        (canSwitch && _showStoreTrend);
+    final primaryMap = isStore ? _materialSalesByMonth : _ordersByMonth;
+    final purchaseMap = _purchasesByMonth(
+      isStore ? _storeAchats : _workshopAchats,
     );
+    final entries = primaryMap.entries.toList();
+    final primaryValues = entries
+        .map((entry) => entry.value.toDouble())
+        .toList();
+    final purchaseValues = entries
+        .map((entry) => (purchaseMap[entry.key] ?? 0).toDouble())
+        .toList();
+    final maxValue = <double>[
+      ...primaryValues,
+      ...purchaseValues,
+    ].fold<double>(0, math.max);
 
     return _desktopPanel(
       context: context,
       title: _desktopText(
         lang,
-        isStore ? 'حركة مبيعات المواد' : 'حركة الطلبيات',
-        isStore ? 'Évolution des ventes' : 'Évolution des commandes',
-        isStore ? 'Material sales activity' : 'Order activity',
+        isStore ? 'مبيعات ومشتريات المحل' : 'مبيعات ومشتريات الورشة',
+        isStore ? 'Ventes et achats du magasin' : 'Ventes et achats atelier',
+        isStore ? 'Store sales and purchases' : 'Workshop sales and purchases',
       ),
       subtitle: _desktopText(
         lang,
         isStore
-            ? 'مقارنة مبيعات المواد المسجلة خلال الأشهر الأخيرة'
-            : 'مقارنة الطلبيات المسجلة خلال الأشهر الأخيرة',
+            ? 'منحنيان للمبيعات والمشتريات خلال الأشهر الأخيرة'
+            : 'عمودان للمبيعات والمشتريات في كل شهر',
         isStore
-            ? 'Comparaison des ventes des derniers mois'
-            : 'Comparaison des commandes des derniers mois',
+            ? 'Courbes des ventes et achats des derniers mois'
+            : 'Colonnes des ventes et achats par mois',
         isStore
-            ? 'Comparison of material sales from recent months'
-            : 'Comparison of orders from recent months',
+            ? 'Sales and purchase lines over recent months'
+            : 'Monthly sales and purchase columns',
       ),
       icon: Icons.query_stats_rounded,
       color: const Color(0xFF4D67F0),
@@ -2300,13 +2357,45 @@ class _WelcomScreenState extends State<WelcomScreen> {
         height: 350,
         child: Column(
           children: [
+            if (canSwitch) ...[
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: SegmentedButton<bool>(
+                  segments: [
+                    ButtonSegment<bool>(
+                      value: false,
+                      icon: const Icon(Icons.factory_rounded, size: 16),
+                      label: Text(
+                        _desktopText(lang, 'الورشة', 'Atelier', 'Workshop'),
+                      ),
+                    ),
+                    ButtonSegment<bool>(
+                      value: true,
+                      icon: const Icon(Icons.storefront_rounded, size: 16),
+                      label: Text(
+                        _desktopText(lang, 'المحل', 'Magasin', 'Store'),
+                      ),
+                    ),
+                  ],
+                  selected: {_showStoreTrend},
+                  onSelectionChanged: (selection) {
+                    setState(() => _showStoreTrend = selection.first);
+                  },
+                  showSelectedIcon: false,
+                  style: const ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             Row(
               children: [
                 _desktopTrendLegend(
                   const Color(0xFF7289F4),
                   _desktopText(
                     lang,
-                    isStore ? 'مبيعات المواد' : 'الطلبيات',
+                    isStore ? 'مبيعات المحل' : 'مبيعات الورشة',
                     isStore ? 'Ventes' : 'Commandes',
                     isStore ? 'Sales' : 'Orders',
                   ),
@@ -2314,13 +2403,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
                 ),
                 const SizedBox(width: 16),
                 _desktopTrendLegend(
-                  const Color(0xFF10B981),
-                  _desktopText(
-                    lang,
-                    'اتجاه النشاط',
-                    'Tendance',
-                    'Activity trend',
-                  ),
+                  const Color(0xFFF59E0B),
+                  _desktopText(lang, 'المشتريات', 'Achats', 'Purchases'),
                   mutedColor,
                 ),
               ],
@@ -2351,67 +2435,99 @@ class _WelcomScreenState extends State<WelcomScreen> {
                           ),
                         ),
                       ),
-                      Positioned.fill(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 13,
-                            vertical: 10,
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              for (final entry in entries)
-                                Expanded(
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 7,
-                                    ),
-                                    child: Align(
-                                      alignment: Alignment.bottomCenter,
-                                      child: Container(
-                                        height: maxValue == 0
-                                            ? 3
-                                            : math.max(
-                                                4.0,
-                                                usableHeight *
-                                                    entry.value /
-                                                    maxValue,
+                      if (!isStore)
+                        Positioned.fill(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 13,
+                              vertical: 10,
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                for (
+                                  var index = 0;
+                                  index < entries.length;
+                                  index++
+                                )
+                                  Expanded(
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 7,
+                                      ),
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.end,
+                                        children: [
+                                          for (final item in [
+                                            (
+                                              primaryValues[index],
+                                              const Color(0xFF7289F4),
+                                            ),
+                                            (
+                                              purchaseValues[index],
+                                              const Color(0xFFF59E0B),
+                                            ),
+                                          ])
+                                            Expanded(
+                                              child: Padding(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 2,
+                                                    ),
+                                                child: Container(
+                                                  height: maxValue == 0
+                                                      ? 3
+                                                      : math.max(
+                                                          4.0,
+                                                          usableHeight *
+                                                              item.$1 /
+                                                              maxValue,
+                                                        ),
+                                                  decoration: BoxDecoration(
+                                                    color: item.$2.withValues(
+                                                      alpha: 0.92,
+                                                    ),
+                                                    borderRadius:
+                                                        const BorderRadius.vertical(
+                                                          top: Radius.circular(
+                                                            6,
+                                                          ),
+                                                        ),
+                                                  ),
+                                                ),
                                               ),
-                                        decoration: BoxDecoration(
-                                          color: const Color(
-                                            0xFF7289F4,
-                                          ).withValues(alpha: 0.92),
-                                          borderRadius:
-                                              const BorderRadius.vertical(
-                                                top: Radius.circular(7),
-                                              ),
-                                        ),
+                                            ),
+                                        ],
                                       ),
                                     ),
                                   ),
-                                ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                      Positioned.fill(
-                        child: IgnorePointer(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 18,
-                              vertical: 12,
-                            ),
-                            child: Opacity(
-                              opacity: 0.9,
-                              child: _DesktopSparkline(
-                                values: values,
-                                color: const Color(0xFF10B981),
-                                fill: false,
+                      if (isStore)
+                        for (final line in [
+                          (primaryValues, const Color(0xFF7289F4)),
+                          (purchaseValues, const Color(0xFFF59E0B)),
+                        ])
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 18,
+                                  vertical: 12,
+                                ),
+                                child: _DesktopSparkline(
+                                  values: line.$1,
+                                  color: line.$2,
+                                  fill: false,
+                                  minValue: 0,
+                                  maxValue: maxValue,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ),
                     ],
                   );
                 },
@@ -2514,6 +2630,387 @@ class _WelcomScreenState extends State<WelcomScreen> {
     ];
     if (month == null || month < 1 || month > 12) return key;
     return _desktopText(lang, arabic[month], french[month], english[month]);
+  }
+
+  List<Map<String, dynamic>> _recentDashboardActivities(
+    AppSettingsProvider settings,
+  ) {
+    final activities = <Map<String, dynamic>>[];
+    final showWorkshop =
+        settings.workingSection != WorkingSection.materialsStore;
+    final showStore = settings.workingSection != WorkingSection.workshop;
+
+    void add({
+      required String type,
+      required int id,
+      required String document,
+      required String party,
+      required dynamic date,
+      required dynamic user,
+      required IconData icon,
+      required Color color,
+      int? orderId,
+    }) {
+      final parsed = DateTime.tryParse((date ?? '').toString());
+      if (parsed == null) return;
+      activities.add({
+        'type': type,
+        'id': id,
+        'order_id': orderId,
+        'document': document,
+        'party': party,
+        'date': parsed,
+        'user': (user ?? '').toString().trim(),
+        'icon': icon,
+        'color': color,
+      });
+    }
+
+    if (showWorkshop) {
+      for (final order in _desktopOrders.take(24)) {
+        final document = (order['order_code'] ?? '#${order['id'] ?? ''}')
+            .toString();
+        final party = '${order['firstname'] ?? ''} ${order['lastname'] ?? ''}'
+            .trim();
+        add(
+          type: 'order_added',
+          id: (order['id'] as num?)?.toInt() ?? 0,
+          document: document,
+          party: party,
+          date: order['created_at'],
+          user: order['created_by'] ?? order['creation_platform'],
+          icon: Icons.add_shopping_cart_rounded,
+          color: const Color(0xFF2563EB),
+        );
+        final created = DateTime.tryParse(
+          (order['created_at'] ?? '').toString(),
+        );
+        final updated = DateTime.tryParse(
+          (order['updated_at'] ?? '').toString(),
+        );
+        if (created != null &&
+            updated != null &&
+            updated.difference(created).abs() > const Duration(seconds: 5)) {
+          add(
+            type: 'order_updated',
+            id: (order['id'] as num?)?.toInt() ?? 0,
+            document: document,
+            party: party,
+            date: updated,
+            user: order['updated_by'] ?? order['creation_platform'],
+            icon: Icons.edit_note_rounded,
+            color: const Color(0xFF7C3AED),
+          );
+        }
+      }
+      for (final delivery in _desktopDeliveries.take(24)) {
+        add(
+          type: 'delivery_added',
+          id: (delivery['id'] as num?)?.toInt() ?? 0,
+          document: (delivery['delivery_code'] ?? '#${delivery['id'] ?? ''}')
+              .toString(),
+          party: '',
+          date: delivery['delivery_date'] ?? delivery['created_at'],
+          user: delivery['created_by'] ?? delivery['updated_by'],
+          icon: Icons.local_shipping_rounded,
+          color: const Color(0xFF0891B2),
+          orderId: (delivery['id_commandes'] as num?)?.toInt(),
+        );
+      }
+    }
+    if (showStore) {
+      for (final sale in _materialSales.take(24)) {
+        add(
+          type: 'sale_added',
+          id: (sale['id'] as num?)?.toInt() ?? 0,
+          document: (sale['sale_code'] ?? '#${sale['id'] ?? ''}').toString(),
+          party: (sale['client_name'] ?? '').toString(),
+          date: sale['created_at'] ?? sale['sale_date'],
+          user: sale['created_by'] ?? sale['updated_by'],
+          icon: Icons.point_of_sale_rounded,
+          color: const Color(0xFF16A34A),
+        );
+      }
+    }
+    final purchases = <Map<String, dynamic>>[
+      if (showWorkshop) ..._workshopAchats.take(24),
+      if (showStore) ..._storeAchats.take(24),
+    ];
+    for (final purchase in purchases) {
+      add(
+        type: 'purchase_added',
+        id: (purchase['id'] as num?)?.toInt() ?? 0,
+        document: (purchase['invoice_number'] ?? '#${purchase['id'] ?? ''}')
+            .toString(),
+        party: (purchase['supplier_name'] ?? '').toString(),
+        date: purchase['created_at'],
+        user: purchase['created_by'] ?? purchase['updated_by'],
+        icon: Icons.shopping_bag_rounded,
+        color: const Color(0xFFF59E0B),
+      );
+    }
+    activities.sort(
+      (a, b) => (b['date'] as DateTime).compareTo(a['date'] as DateTime),
+    );
+    return activities.take(12).toList(growable: false);
+  }
+
+  void _openDashboardActivity(Map<String, dynamic> activity) {
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
+    final lang = settings.language;
+    final id = activity['id'] as int? ?? 0;
+    if (id <= 0) return;
+    final type = activity['type']?.toString() ?? '';
+    if (type == 'order_added' || type == 'order_updated') {
+      openAdaptiveScreen(
+        context,
+        title: _desktopText(
+          lang,
+          'تعديل الطلبية',
+          'Modifier commande',
+          'Edit order',
+        ),
+        icon: Icons.edit_note_rounded,
+        screen: OrderWorkspaceScreen(db: db, initialEditCommandeId: id),
+      );
+      return;
+    }
+    if (type == 'delivery_added') {
+      final orderId = activity['order_id'] as int?;
+      if (orderId == null || orderId <= 0) return;
+      openAdaptiveScreen(
+        context,
+        title: _desktopText(
+          lang,
+          'طلبية وصل التسليم',
+          'Commande de livraison',
+          'Delivery order',
+        ),
+        icon: Icons.local_shipping_rounded,
+        screen: OrderWorkspaceScreen(db: db, initialEditCommandeId: orderId),
+      );
+      return;
+    }
+    if (type == 'sale_added' || type == 'sale_updated') {
+      openAdaptiveScreen(
+        context,
+        title: _desktopText(
+          lang,
+          'تعديل وثيقة البيع',
+          'Modifier la vente',
+          'Edit sale',
+        ),
+        icon: Icons.point_of_sale_rounded,
+        screen: MaterialSaleEditorScreen(db: db, saleId: id),
+      );
+      return;
+    }
+    if (type == 'purchase_added' || type == 'purchase_updated') {
+      openAdaptiveScreen(
+        context,
+        title: _desktopText(
+          lang,
+          'تفاصيل الشراء',
+          'Détails de l’achat',
+          'Purchase details',
+        ),
+        icon: Icons.shopping_bag_rounded,
+        screen: AchatDetailsScreen(
+          achatId: id,
+          invoiceNumber: activity['document']?.toString() ?? '',
+          supplierName: activity['party']?.toString() ?? '',
+          db: db,
+        ),
+      );
+    }
+  }
+
+  String _dashboardActivityLabel(String type, AppLanguage lang) {
+    return switch (type) {
+      'order_added' => _desktopText(
+        lang,
+        'إضافة طلبية',
+        'Commande ajoutée',
+        'Order added',
+      ),
+      'order_updated' => _desktopText(
+        lang,
+        'تعديل طلبية',
+        'Commande modifiée',
+        'Order updated',
+      ),
+      'delivery_added' => _desktopText(
+        lang,
+        'إضافة وصل تسليم',
+        'Bon de livraison ajouté',
+        'Delivery note added',
+      ),
+      'sale_added' => _desktopText(
+        lang,
+        'إضافة بيع',
+        'Vente ajoutée',
+        'Sale added',
+      ),
+      'purchase_added' => _desktopText(
+        lang,
+        'إضافة شراء',
+        'Achat ajouté',
+        'Purchase added',
+      ),
+      'purchase_updated' => _desktopText(
+        lang,
+        'تعديل شراء',
+        'Achat modifié',
+        'Purchase updated',
+      ),
+      'sale_updated' => _desktopText(
+        lang,
+        'تعديل بيع',
+        'Vente modifiée',
+        'Sale updated',
+      ),
+      _ => type,
+    };
+  }
+
+  List<Map<String, dynamic>> get _storedDashboardActivities {
+    return _dashboardActivities
+        .map((row) {
+          final type = row['activity_type']?.toString() ?? '';
+          final visual = switch (type) {
+            'order_added' => (
+              Icons.add_shopping_cart_rounded,
+              const Color(0xFF2563EB),
+            ),
+            'order_updated' => (
+              Icons.edit_note_rounded,
+              const Color(0xFF7C3AED),
+            ),
+            'delivery_added' => (
+              Icons.local_shipping_rounded,
+              const Color(0xFF0891B2),
+            ),
+            'sale_added' || 'sale_updated' => (
+              Icons.point_of_sale_rounded,
+              const Color(0xFF16A34A),
+            ),
+            _ => (Icons.shopping_bag_rounded, const Color(0xFFF59E0B)),
+          };
+          return <String, dynamic>{
+            'type': type,
+            'id': (row['entity_id'] as num?)?.toInt() ?? 0,
+            'order_id': (row['related_order_id'] as num?)?.toInt(),
+            'document': row['document'] ?? '',
+            'party': row['party'] ?? '',
+            'user': row['user_name'] ?? '',
+            'date':
+                DateTime.tryParse((row['occurred_at'] ?? '').toString()) ??
+                DateTime.fromMillisecondsSinceEpoch(0),
+            'icon': visual.$1,
+            'color': visual.$2,
+          };
+        })
+        .toList(growable: false);
+  }
+
+  Widget _buildRecentDashboardActivitiesPanel(
+    BuildContext context,
+    Color cardColor,
+    Color contentColor,
+    Color mutedColor,
+  ) {
+    final settings = Provider.of<AppSettingsProvider>(context);
+    final lang = settings.language;
+    final activities = _storedDashboardActivities;
+    return _desktopPanel(
+      context: context,
+      title: _desktopText(
+        lang,
+        'آخر النشاطات',
+        'Activités récentes',
+        'Recent activity',
+      ),
+      subtitle: _desktopText(
+        lang,
+        'آخر 12 عملية في المبيعات والمشتريات والطلبيات والتسليم',
+        'Les 12 dernières opérations de vente, achat, commande et livraison',
+        'Latest 12 sales, purchases, orders, and deliveries',
+      ),
+      icon: Icons.history_rounded,
+      color: const Color(0xFF2563EB),
+      backgroundColor: cardColor,
+      textColor: contentColor,
+      mutedColor: mutedColor,
+      child: SizedBox(
+        height: 390,
+        child: activities.isEmpty
+            ? Center(
+                child: Text(
+                  _desktopText(
+                    lang,
+                    'لا توجد نشاطات حديثة',
+                    'Aucune activité récente',
+                    'No recent activity',
+                  ),
+                  style: TextStyle(color: mutedColor, fontFamily: 'Cairo'),
+                ),
+              )
+            : ListView.separated(
+                primary: false,
+                itemCount: activities.length,
+                separatorBuilder: (_, __) => Divider(
+                  height: 1,
+                  color: mutedColor.withValues(alpha: 0.14),
+                ),
+                itemBuilder: (context, index) {
+                  final activity = activities[index];
+                  final color = activity['color'] as Color;
+                  final party = activity['party'].toString();
+                  final user = activity['user'].toString();
+                  return ListTile(
+                    dense: true,
+                    onTap: () => _openDashboardActivity(activity),
+                    leading: CircleAvatar(
+                      backgroundColor: color.withValues(alpha: 0.12),
+                      child: Icon(activity['icon'] as IconData, color: color),
+                    ),
+                    title: Text(
+                      _dashboardActivityLabel(
+                        activity['type'].toString(),
+                        lang,
+                      ),
+                      style: TextStyle(
+                        color: contentColor,
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    subtitle: Text(
+                      [
+                        activity['document'].toString(),
+                        if (party.isNotEmpty) party,
+                        if (user.isNotEmpty) user,
+                      ].join(' • '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: mutedColor, fontFamily: 'Cairo'),
+                    ),
+                    trailing: Text(
+                      DateFormat(
+                        'dd/MM/yyyy\nHH:mm',
+                      ).format((activity['date'] as DateTime).toLocal()),
+                      textAlign: TextAlign.end,
+                      style: TextStyle(
+                        color: mutedColor,
+                        fontFamily: 'Arial',
+                        fontSize: 11,
+                      ),
+                    ),
+                  );
+                },
+              ),
+      ),
+    );
   }
 
   Widget _buildDesktopOrdersPanel(
@@ -2778,6 +3275,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
                 ),
               )
             : ListView.separated(
+                primary: false,
                 itemCount: recent.length,
                 separatorBuilder: (_, __) => Divider(
                   height: 1,
@@ -2998,10 +3496,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
   }
 
   void _openTreasury() {
-    final settings = Provider.of<AppSettingsProvider>(
-      context,
-      listen: false,
-    );
+    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
     final lang = settings.language;
     openAdaptiveScreen(
       context,
@@ -3014,18 +3509,17 @@ class _WelcomScreenState extends State<WelcomScreen> {
     );
   }
 
-  void _openClients({bool openAddClientOnStart = false}) {
+  void _openClients({bool openAddClientOnStart = false, bool? storeOnly}) {
     final settings = Provider.of<AppSettingsProvider>(context, listen: false);
     openAdaptiveScreen(
       context,
-      title: Localization.translate(
-        'الزبائن',
-        settings.language,
-      ),
+      title: Localization.translate('الزبائن', settings.language),
       icon: Icons.people_alt_rounded,
       screen: Customers(
         openAddClientOnStart: openAddClientOnStart,
-        storeOnly: settings.workingSection == WorkingSection.materialsStore,
+        storeOnly:
+            storeOnly ??
+            (settings.workingSection == WorkingSection.materialsStore),
       ),
     );
   }
@@ -3873,6 +4367,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
                   ),
                 )
               : ListView.separated(
+                  primary: false,
                   itemCount: math.min(10, rows.length),
                   separatorBuilder: (_, __) =>
                       Divider(height: 1, color: mutedColor.withOpacity(0.12)),
@@ -5322,9 +5817,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
         icon: Icons.point_of_sale_rounded,
         label: lang == AppLanguage.arabic
             ? 'صندوق المحل'
-            : (lang == AppLanguage.french
-                  ? 'Caisse Magasin'
-                  : 'Store Cashbox'),
+            : (lang == AppLanguage.french ? 'Caisse Magasin' : 'Store Cashbox'),
         value: '${_formatCurrency(_storeTreasuryBalance)} DA',
         color: const Color(0xFF059669),
         trend: '—',
@@ -5799,7 +6292,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
     final settings = Provider.of<AppSettingsProvider>(context);
     if (!settings.isDualActivity ||
         !settings.canAccessWorkshopScope() ||
-        !settings.canAccessStoreScope()) return null;
+        !settings.canAccessStoreScope())
+      return null;
 
     final current = settings.workingSection;
 
@@ -5895,7 +6389,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
     final settings = Provider.of<AppSettingsProvider>(context);
     if (!settings.isDualActivity ||
         !settings.canAccessWorkshopScope() ||
-        !settings.canAccessStoreScope()) return const SizedBox.shrink();
+        !settings.canAccessStoreScope())
+      return const SizedBox.shrink();
 
     final lang = settings.language;
     final current = settings.workingSection;
@@ -6197,11 +6692,15 @@ class _DesktopSparkline extends StatelessWidget {
     required this.values,
     required this.color,
     this.fill = false,
+    this.minValue,
+    this.maxValue,
   });
 
   final List<double> values;
   final Color color;
   final bool fill;
+  final double? minValue;
+  final double? maxValue;
 
   @override
   Widget build(BuildContext context) {
@@ -6211,6 +6710,8 @@ class _DesktopSparkline extends StatelessWidget {
           values: values,
           color: color,
           fill: fill,
+          minValue: minValue,
+          maxValue: maxValue,
         ),
       ),
     );
@@ -6222,24 +6723,30 @@ class _DesktopSparklinePainter extends CustomPainter {
     required this.values,
     required this.color,
     required this.fill,
+    this.minValue,
+    this.maxValue,
   });
 
   final List<double> values;
   final Color color;
   final bool fill;
+  final double? minValue;
+  final double? maxValue;
 
   @override
   void paint(Canvas canvas, Size size) {
     final source = values.length < 2 ? <double>[0, 0] : values;
-    final maxValue = source.reduce((a, b) => a > b ? a : b);
-    final minValue = source.reduce((a, b) => a < b ? a : b);
-    final range = maxValue == minValue ? 1.0 : maxValue - minValue;
+    final effectiveMax = maxValue ?? source.reduce((a, b) => a > b ? a : b);
+    final effectiveMin = minValue ?? source.reduce((a, b) => a < b ? a : b);
+    final range = effectiveMax == effectiveMin
+        ? 1.0
+        : effectiveMax - effectiveMin;
     final path = Path();
     for (var index = 0; index < source.length; index++) {
       final x = size.width * index / (source.length - 1);
       final y =
           size.height -
-          ((source[index] - minValue) / range * (size.height - 5)) -
+          ((source[index] - effectiveMin) / range * (size.height - 5)) -
           2;
       if (index == 0) {
         path.moveTo(x, y);
@@ -6269,7 +6776,9 @@ class _DesktopSparklinePainter extends CustomPainter {
   bool shouldRepaint(covariant _DesktopSparklinePainter oldDelegate) =>
       oldDelegate.values != values ||
       oldDelegate.color != color ||
-      oldDelegate.fill != fill;
+      oldDelegate.fill != fill ||
+      oldDelegate.minValue != minValue ||
+      oldDelegate.maxValue != maxValue;
 }
 
 class _StatCard extends StatefulWidget {
