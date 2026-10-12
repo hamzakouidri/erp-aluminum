@@ -7544,7 +7544,8 @@ class WindowModel extends ChangeNotifier {
 
   List<Map<String, dynamic>> allGlassCache = [];
 
-  Future<void> loadGlassProducts() async {
+  Future<void> loadGlassProducts({bool forceRefresh = false}) async {
+    if (!forceRefresh && allGlassCache.isNotEmpty) return;
     try {
       final list = await db.readGlass();
       final dbInstance = await db.db;

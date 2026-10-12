@@ -254,16 +254,54 @@ class AppAuthService {
     required String newPassword,
   }) async {
     final cleanEmail = email.trim();
-    final cleanToken = token.trim();
+    var cleanToken = token.trim();
+
+    // Check if the input is a URL or fragment (from email link or browser address bar)
+    String? extractedRefreshToken;
+    if (cleanToken.startsWith('http://') ||
+        cleanToken.startsWith('https://') ||
+        cleanToken.contains('token=') ||
+        cleanToken.contains('refresh_token=')) {
+      try {
+        final uri = Uri.parse(cleanToken);
+        if (uri.queryParameters.containsKey('token')) {
+          cleanToken = uri.queryParameters['token']!;
+        }
+        if (uri.fragment.isNotEmpty) {
+          final fragmentParams = Uri.splitQueryString(uri.fragment);
+          if (fragmentParams.containsKey('refresh_token')) {
+            extractedRefreshToken = fragmentParams['refresh_token'];
+          } else if (fragmentParams.containsKey('token')) {
+            cleanToken = fragmentParams['token']!;
+          }
+        }
+      } catch (_) {
+        final tokenMatch = RegExp(r'[?&#]token=([^&]+)').firstMatch(cleanToken);
+        if (tokenMatch != null) {
+          cleanToken = tokenMatch.group(1)!;
+        }
+        final refreshMatch =
+            RegExp(r'[?&#]refresh_token=([^&]+)').firstMatch(cleanToken);
+        if (refreshMatch != null) {
+          extractedRefreshToken = refreshMatch.group(1);
+        }
+      }
+    }
+
     try {
       if (usesSupabase) {
         try {
-          final res = await _supabaseAuth.verifyOTP(
-            email: cleanEmail,
-            token: cleanToken,
-            type: supabase.OtpType.recovery,
-          );
-          if (res.user != null || _supabaseAuth.currentUser != null) {
+          if (extractedRefreshToken != null &&
+              extractedRefreshToken.isNotEmpty) {
+            await _supabaseAuth.setSession(extractedRefreshToken);
+          } else {
+            await _supabaseAuth.verifyOTP(
+              email: cleanEmail,
+              token: cleanToken,
+              type: supabase.OtpType.recovery,
+            );
+          }
+          if (_supabaseAuth.currentUser != null) {
             await _supabaseAuth.updateUser(
               supabase.UserAttributes(password: newPassword),
             );

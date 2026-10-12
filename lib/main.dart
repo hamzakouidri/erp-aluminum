@@ -717,7 +717,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         'Resume sync will fire after ${_resumeSyncCooldown.inMinutes} minutes.',
       );
     } else if (state == AppLifecycleState.inactive) {
-      // inactive عابر — لا نفعل شيئاً، المستمعون ما زالوا يعملون.
+      // inactive عابر — لا نفعل شيئاً للمزامنة، لكن نقوم بتنظيف مسار الماوس
+      // القديم حتى لا يعلق السكرول عند استعادة تركيز النافذة في ويندوز.
+      if (!kIsWeb && Platform.isWindows) {
+        DesktopScrollCoordinator.resetStaleState();
+      }
       debugPrint('App inactive (transient) — no sync change.');
     }
   }

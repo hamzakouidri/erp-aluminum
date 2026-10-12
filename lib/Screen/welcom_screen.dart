@@ -1,7 +1,6 @@
 import 'package:database_data/widgets/app_material.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb, mapEquals;
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:database_data/services/auth_service.dart';
 import 'dart:async';
@@ -37,11 +36,9 @@ import 'achat_details_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'external_operations_hub_screen.dart';
-
 import 'worker_archive_screen.dart';
 import 'subscription_overview_card.dart';
 import '../widgets/resizable_columns_table.dart';
-import '../widgets/desktop_scroll_behavior.dart';
 import 'ai_guide_chat_dialog.dart';
 import 'cutting_optimization_screen.dart';
 import 'tempered_glass_work_screen.dart';
@@ -1779,236 +1776,232 @@ class _WelcomScreenState extends State<WelcomScreen> {
 
     return Container(
       color: pageColor,
-      child: DesktopScrollFallback(
-        controller: _desktopDashboardScrollController,
-        child: SingleChildScrollView(
-          controller: _desktopDashboardScrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(28, 22, 28, 36),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1440),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildDesktopTopBar(
-                    context,
-                    lang,
-                    cardColor,
-                    contentColor,
-                    mutedColor,
-                  ),
-                  const SizedBox(height: 26),
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final narrow = constraints.maxWidth < 660;
-                      final title = Row(
-                        children: [
-                          Container(
-                            width: 50,
-                            height: 50,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF2563EB).withOpacity(0.10),
-                              borderRadius: BorderRadius.circular(14),
-                              image: _cachedLogoProvider == null
-                                  ? null
-                                  : DecorationImage(
-                                      image: _cachedLogoProvider!,
-                                      fit: BoxFit.cover,
-                                    ),
-                            ),
-                            child: _cachedLogoProvider == null
-                                ? const Icon(
-                                    Icons.carpenter_rounded,
-                                    color: Color(0xFF2563EB),
-                                    size: 25,
-                                  )
-                                : null,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _desktopText(
-                                    lang,
-                                    'لوحة القيادة والإحصائيات',
-                                    'Tableau de bord et statistiques',
-                                    'Dashboard and statistics',
+      child: SingleChildScrollView(
+        primary: true,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(28, 22, 28, 36),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1440),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildDesktopTopBar(
+                  context,
+                  lang,
+                  cardColor,
+                  contentColor,
+                  mutedColor,
+                ),
+                const SizedBox(height: 26),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final narrow = constraints.maxWidth < 660;
+                    final title = Row(
+                      children: [
+                        Container(
+                          width: 50,
+                          height: 50,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2563EB).withOpacity(0.10),
+                            borderRadius: BorderRadius.circular(14),
+                            image: _cachedLogoProvider == null
+                                ? null
+                                : DecorationImage(
+                                    image: _cachedLogoProvider!,
+                                    fit: BoxFit.cover,
                                   ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: contentColor,
-                                    fontFamily: 'Cairo',
-                                    fontSize: 21,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                Text(
-                                  _desktopText(
-                                    lang,
-                                    'متابعة فورية للورشة والطلبات والمخزون',
-                                    'Suivi de l’atelier, des commandes et du stock',
-                                    'Live workshop, orders, and inventory overview',
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: mutedColor,
-                                    fontFamily: 'Cairo',
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ],
-                            ),
                           ),
-                        ],
-                      );
-                      final refresh = FilledButton.icon(
-                        onPressed: _isManualSyncing
-                            ? null
-                            : () => _autoSyncData(showSnackBar: true),
-                        icon: _isManualSyncing
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Icon(Icons.sync_rounded, size: 18),
-                        label: Text(
-                          _desktopText(
-                            lang,
-                            'تحديث البيانات',
-                            'Actualiser',
-                            'Refresh data',
-                          ),
-                          style: const TextStyle(
-                            fontFamily: 'Cairo',
-                            fontWeight: FontWeight.w700,
-                          ),
+                          child: _cachedLogoProvider == null
+                              ? const Icon(
+                                  Icons.carpenter_rounded,
+                                  color: Color(0xFF2563EB),
+                                  size: 25,
+                                )
+                              : null,
                         ),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF2563EB),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 13,
-                          ),
-                        ),
-                      );
-                      final sectionSelector = _buildDesktopSectionSelector(
-                        context,
-                        lang,
-                        cardColor,
-                        contentColor,
-                        mutedColor,
-                      );
-                      if (narrow) {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            title,
-                            if (sectionSelector != null) ...[
-                              const SizedBox(height: 14),
-                              sectionSelector,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _desktopText(
+                                  lang,
+                                  'لوحة القيادة والإحصائيات',
+                                  'Tableau de bord et statistiques',
+                                  'Dashboard and statistics',
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: contentColor,
+                                  fontFamily: 'Cairo',
+                                  fontSize: 21,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              Text(
+                                _desktopText(
+                                  lang,
+                                  'متابعة فورية للورشة والطلبات والمخزون',
+                                  'Suivi de l’atelier, des commandes et du stock',
+                                  'Live workshop, orders, and inventory overview',
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: mutedColor,
+                                  fontFamily: 'Cairo',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                             ],
-                            const SizedBox(height: 14),
-                            refresh,
-                          ],
-                        );
-                      }
-                      return Row(
+                          ),
+                        ),
+                      ],
+                    );
+                    final refresh = FilledButton.icon(
+                      onPressed: _isManualSyncing
+                          ? null
+                          : () => _autoSyncData(showSnackBar: true),
+                      icon: _isManualSyncing
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.sync_rounded, size: 18),
+                      label: Text(
+                        _desktopText(
+                          lang,
+                          'تحديث البيانات',
+                          'Actualiser',
+                          'Refresh data',
+                        ),
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF2563EB),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 13,
+                        ),
+                      ),
+                    );
+                    final sectionSelector = _buildDesktopSectionSelector(
+                      context,
+                      lang,
+                      cardColor,
+                      contentColor,
+                      mutedColor,
+                    );
+                    if (narrow) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(child: title),
+                          title,
                           if (sectionSelector != null) ...[
-                            const SizedBox(width: 14),
+                            const SizedBox(height: 14),
                             sectionSelector,
                           ],
-                          const SizedBox(width: 12),
+                          const SizedBox(height: 14),
                           refresh,
                         ],
                       );
-                    },
-                  ),
-                  const SizedBox(height: 22),
-                  _buildDesktopMetrics(
-                    context,
-                    cardColor,
-                    contentColor,
-                    mutedColor,
-                  ),
-                  const SizedBox(height: 18),
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final sideWidth = 290.0;
-                      final isCompact = constraints.maxWidth < 980;
-                      final orders = _buildDesktopTrendPanel(
-                        context,
-                        cardColor,
-                        contentColor,
-                        mutedColor,
-                      );
-                      final side = Column(
-                        children: [
-                          _buildDesktopWorkloadPanel(
-                            context,
-                            cardColor,
-                            contentColor,
-                            mutedColor,
-                          ),
-                          const SizedBox(height: 16),
-                          _buildDesktopActivityPanel(
-                            context,
-                            cardColor,
-                            contentColor,
-                            mutedColor,
-                          ),
+                    }
+                    return Row(
+                      children: [
+                        Expanded(child: title),
+                        if (sectionSelector != null) ...[
+                          const SizedBox(width: 14),
+                          sectionSelector,
                         ],
+                        const SizedBox(width: 12),
+                        refresh,
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 22),
+                _buildDesktopMetrics(
+                  context,
+                  cardColor,
+                  contentColor,
+                  mutedColor,
+                ),
+                const SizedBox(height: 18),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final sideWidth = 290.0;
+                    final isCompact = constraints.maxWidth < 980;
+                    final orders = _buildDesktopTrendPanel(
+                      context,
+                      cardColor,
+                      contentColor,
+                      mutedColor,
+                    );
+                    final side = Column(
+                      children: [
+                        _buildDesktopWorkloadPanel(
+                          context,
+                          cardColor,
+                          contentColor,
+                          mutedColor,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildDesktopActivityPanel(
+                          context,
+                          cardColor,
+                          contentColor,
+                          mutedColor,
+                        ),
+                      ],
+                    );
+                    if (isCompact) {
+                      return Column(
+                        children: [orders, const SizedBox(height: 16), side],
                       );
-                      if (isCompact) {
-                        return Column(
-                          children: [orders, const SizedBox(height: 16), side],
-                        );
-                      }
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(child: orders),
-                          const SizedBox(width: 16),
-                          SizedBox(width: sideWidth, child: side),
-                        ],
-                      );
-                    },
-                  ),
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: orders),
+                        const SizedBox(width: 16),
+                        SizedBox(width: sideWidth, child: side),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 18),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final orders = _buildRecentDashboardActivitiesPanel(
+                      context,
+                      cardColor,
+                      contentColor,
+                      mutedColor,
+                    );
+                    // Stock alerts live below the open-orders metric.  Keeping
+                    // a second, wide stock panel here made the dashboard much
+                    // taller and could overflow in smaller desktop windows.
+                    return orders;
+                  },
+                ),
+                if (settings.workingSection != WorkingSection.materialsStore &&
+                    settings.canViewSubscription()) ...[
                   const SizedBox(height: 18),
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final orders = _buildRecentDashboardActivitiesPanel(
-                        context,
-                        cardColor,
-                        contentColor,
-                        mutedColor,
-                      );
-                      // Stock alerts live below the open-orders metric.  Keeping
-                      // a second, wide stock panel here made the dashboard much
-                      // taller and could overflow in smaller desktop windows.
-                      return orders;
-                    },
-                  ),
-                  if (settings.workingSection !=
-                          WorkingSection.materialsStore &&
-                      settings.canViewSubscription()) ...[
-                    const SizedBox(height: 18),
-                    const SubscriptionOverviewCard(),
-                  ],
+                  const SubscriptionOverviewCard(),
                 ],
-              ),
+              ],
             ),
           ),
         ),

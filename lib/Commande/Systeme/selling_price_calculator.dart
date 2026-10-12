@@ -1,6 +1,6 @@
-import 'model.dart';
-import 'calculate_component.dart';
-import '../../settings/app_settings.dart';
+import 'package:database_data/Commande/Systeme/model.dart';
+import 'package:database_data/Commande/Systeme/calculate_component.dart';
+import 'package:database_data/settings/app_settings.dart';
 
 /// Shared selling-price calculation for the material table and order edits.
 Map<String, Map<String, double>> calculateSellingTotals({

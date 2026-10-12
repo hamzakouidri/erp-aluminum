@@ -11,7 +11,6 @@ import 'package:database_data/settings/shortcut_bindings.dart';
 import 'package:database_data/services/order_notification_service.dart';
 import 'package:database_data/services/worker_push_notification_service.dart';
 import 'package:database_data/services/app_admin_status_service.dart';
-import 'package:database_data/services/cloud_sync_service.dart';
 
 class WorkshopDataDiagnostics {
   const WorkshopDataDiagnostics({
@@ -1134,6 +1133,7 @@ class SupabaseWorkshopSyncService {
     final data = <String, dynamic>{};
     final tombstones = <Map<String, dynamic>>[];
     Map<String, dynamic>? catalogConfiguration;
+    Map<String, dynamic>? pendingProfilePayload;
     var profileChanged = false;
     var catalogConfigurationChanged = false;
     var start = 0;
@@ -1168,7 +1168,7 @@ class SupabaseWorkshopSyncService {
       final payload = row['payload'];
       if (table == _workshopProfileTable) {
         if (rowId == _workshopProfileRowId && payload is Map) {
-          unawaited(_applyWorkshopProfile(Map<String, dynamic>.from(payload)));
+          pendingProfilePayload = Map<String, dynamic>.from(payload);
           profileChanged = true;
           downloadedRows++;
         }
@@ -1428,6 +1428,11 @@ class SupabaseWorkshopSyncService {
         _isApplyingRemoteData = false;
       }
       _onDataChanged?.call();
+    }
+
+    final profilePayload = pendingProfilePayload;
+    if (profilePayload != null) {
+      await _applyWorkshopProfile(profilePayload);
     }
 
     // A profile-only update has no business-table rows, but it still must
@@ -2012,6 +2017,11 @@ class SupabaseWorkshopSyncService {
 
   Future<void> _applyWorkshopSystems(Map<String, dynamic> systems) async {
     final prefs = await SharedPreferences.getInstance();
+    final systemsJson = jsonEncode(systems);
+    final lastApplied = prefs.getString('last_applied_remote_workshop_systems');
+    if (lastApplied == systemsJson) {
+      return;
+    }
 
     final rawModes = systems['modes'];
     if (rawModes is Map) {
@@ -2033,6 +2043,7 @@ class SupabaseWorkshopSyncService {
     if (rawActiveProfiles is! List &&
         rawActiveCodes is! List &&
         rawActiveNames is! List) {
+      await prefs.setString('last_applied_remote_workshop_systems', systemsJson);
       return;
     }
 
@@ -2072,9 +2083,13 @@ class SupabaseWorkshopSyncService {
       await txn.update('Profile', {'is_active': 0});
       await txn.update('Series', {'is_active': 0});
 
+      final profileCols = await txn.rawQuery('PRAGMA table_info(Profile)');
+      final profileColNames = profileCols.map((c) => c['name'].toString().toLowerCase()).toSet();
+      final hasCodeCol = profileColNames.contains('code');
+
       final allProfiles = await txn.query(
         'Profile',
-        columns: ['id', 'code', 'name'],
+        columns: hasCodeCol ? ['id', 'code', 'name'] : ['id', 'name'],
       );
       final matchedProfileIds = <int>{};
 
@@ -2135,9 +2150,8 @@ class SupabaseWorkshopSyncService {
         );
       }
     });
+    await prefs.setString('last_applied_remote_workshop_systems', systemsJson);
     _onDataChanged?.call();
-    CloudSyncService().notifyChange();
-    CloudSyncService().notifyCatalogChange();
   }
 
   Future<bool> _needsFullBootstrapDownload() async {

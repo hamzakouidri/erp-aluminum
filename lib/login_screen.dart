@@ -1301,7 +1301,24 @@ class _LoginScreenState extends State<LoginScreen>
       String? idToken;
       String? accessToken;
       if (usesDirectWindowsOAuth) {
-        user = await const WindowsGoogleSignIn().signInWithSupabase();
+        try {
+          user = await const WindowsGoogleSignIn().signInWithSupabase();
+        } on WindowsGoogleSignInException {
+          rethrow;
+        } catch (supabaseOAuthError) {
+          debugPrint(
+            'Windows Supabase OAuth failed: $supabaseOAuthError. Attempting direct Google desktop flow...',
+          );
+          try {
+            final tokens = await const WindowsGoogleSignIn().signIn();
+            user = await _auth.signInWithGoogleIdToken(
+              idToken: tokens.idToken,
+              accessToken: tokens.accessToken,
+            );
+          } catch (_) {
+            throw supabaseOAuthError;
+          }
+        }
         try {
           await windowManager.show();
           await windowManager.focus();
@@ -1315,7 +1332,10 @@ class _LoginScreenState extends State<LoginScreen>
         final googleUser = await GoogleSignIn(
           serverClientId: _googleServerClientId,
         ).signIn();
-        if (googleUser == null) return;
+        if (googleUser == null) {
+          if (mounted) setState(() => _isLoading = false);
+          return;
+        }
         final googleAuth = await googleUser.authentication;
         idToken = googleAuth.idToken;
         accessToken = googleAuth.accessToken;
@@ -2465,13 +2485,50 @@ class _LoginScreenState extends State<LoginScreen>
                                   ),
 
                                 if (_isLoading)
-                                  const Center(
+                                  Center(
                                     child: Padding(
-                                      padding: EdgeInsets.symmetric(
+                                      padding: const EdgeInsets.symmetric(
                                         vertical: 8.0,
                                       ),
-                                      child: CircularProgressIndicator(
-                                        color: Colors.blueAccent,
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const CircularProgressIndicator(
+                                            color: Colors.blueAccent,
+                                          ),
+                                          const SizedBox(height: 10),
+                                          TextButton.icon(
+                                            onPressed: () {
+                                              if (!kIsWeb &&
+                                                  defaultTargetPlatform ==
+                                                      TargetPlatform.windows) {
+                                                WindowsGoogleSignIn
+                                                    .cancelActiveSignIn();
+                                              }
+                                              if (mounted) {
+                                                setState(() {
+                                                  _isLoading = false;
+                                                });
+                                              }
+                                            },
+                                            icon: const Icon(
+                                              Icons.close,
+                                              size: 16,
+                                              color: Colors.white70,
+                                            ),
+                                            label: Text(
+                                              Localization.translate(
+                                                'إلغاء',
+                                                lang,
+                                              ),
+                                              style: const TextStyle(
+                                                fontFamily: 'Cairo',
+                                                color: Colors.white70,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   )

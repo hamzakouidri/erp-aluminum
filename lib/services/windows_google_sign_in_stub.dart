@@ -19,9 +19,10 @@ class WindowsGoogleSignInException implements Exception {
   @override
   String toString() => userMessage;
 }
-
 class WindowsGoogleSignIn {
   const WindowsGoogleSignIn();
+
+  static void cancelActiveSignIn() {}
 
   Future<WindowsGoogleAuthTokens> signIn() {
     throw const WindowsGoogleSignInException(

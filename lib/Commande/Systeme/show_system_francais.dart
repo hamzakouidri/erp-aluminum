@@ -1294,6 +1294,7 @@ class _WindowViewState extends State<WindowView> {
   int? _loadedSlidingFrameSeriesId;
   bool _loadingAvailableProfiles = false;
   int _profileLoadGeneration = 0;
+  static final Map<String, _CachedProfiles> _profilesMemoryCache = {};
   bool _slidingSeriesAutoSelectionQueued = false;
   bool _openingSeriesAutoSelectionQueued = false;
 
@@ -1353,6 +1354,24 @@ class _WindowViewState extends State<WindowView> {
             _loadedOpeningFrameSeriesId == openingSeriesId) &&
         (!needsSlidingFrames ||
             _loadedSlidingFrameSeriesId == slidingSeriesId)) {
+      return;
+    }
+    final cacheKey = '$seriesId|$openingSeriesId|$slidingSeriesId|${widget.systemMode}';
+    if (_profilesMemoryCache.containsKey(cacheKey)) {
+      final cached = _profilesMemoryCache[cacheKey]!;
+      setState(() {
+        _frameProfiles = cached.frames;
+        _openingFrameProfiles = cached.openingFrames;
+        _slidingFrameProfiles = cached.slidingFrames;
+        _sashProfiles = cached.sashes;
+        _openingSashProfiles = cached.openingSashes;
+        _slidingSashProfiles = cached.slidingSashes;
+        _slidingLateralProfileIds = cached.lateralIds;
+        _slidingCentralProfileIds = cached.centralIds;
+        _loadedSeriesId = seriesId;
+        _loadedOpeningFrameSeriesId = needsOpeningFrames ? openingSeriesId : null;
+        _loadedSlidingFrameSeriesId = needsSlidingFrames ? slidingSeriesId : null;
+      });
       return;
     }
     if (_loadingAvailableProfiles) return;
@@ -1435,6 +1454,18 @@ class _WindowViewState extends State<WindowView> {
           })
           .whereType<int>()
           .toSet();
+      final latIds = idsFrom(lateralRoleProfiles);
+      final centIds = idsFrom(centralRoleProfiles);
+      _profilesMemoryCache[cacheKey] = _CachedProfiles(
+        frames: frames,
+        openingFrames: openingFrames,
+        slidingFrames: slidingFrames,
+        sashes: sashes,
+        openingSashes: openingSashes,
+        slidingSashes: slidingSashes,
+        lateralIds: latIds,
+        centralIds: centIds,
+      );
       setState(() {
         _frameProfiles = frames;
         _openingFrameProfiles = openingFrames;
@@ -1442,8 +1473,8 @@ class _WindowViewState extends State<WindowView> {
         _sashProfiles = sashes;
         _openingSashProfiles = openingSashes;
         _slidingSashProfiles = slidingSashes;
-        _slidingLateralProfileIds = idsFrom(lateralRoleProfiles);
-        _slidingCentralProfileIds = idsFrom(centralRoleProfiles);
+        _slidingLateralProfileIds = latIds;
+        _slidingCentralProfileIds = centIds;
         _loadedSeriesId = seriesId;
         _loadedOpeningFrameSeriesId = needsOpeningFrames
             ? openingSeriesId
@@ -2306,10 +2337,20 @@ class _WindowViewState extends State<WindowView> {
       _previousSelectionKey = currentSelectionKey;
     }
 
-    // The preview has its own repaint listener.  While drawing a new frame,
-    // rebuilding the drawers and all their controls on every mouse movement
-    // is unnecessary and was the main source of lag on Windows.
-    if (widget.model.drawingStart != null && !selectionChanged) {
+    // The preview has its own repaint listener. While drawing a new frame or
+    // dragging any handle/divider/hinge/division, rebuilding the drawers and
+    // running database scans on every mouse movement was the main source of lag.
+    final isAnyDragActive = widget.model.drawingStart != null ||
+        _isDraggingHandle ||
+        _isDraggingHinge ||
+        _isDraggingDoubleSashDivider ||
+        _isDraggingSashDivision ||
+        _isDraggingDecor ||
+        _isDraggingSlantLeft ||
+        _isDraggingSlantRight ||
+        _isDraggingArch ||
+        _draggedFrameResizeHandle != null;
+    if (isAnyDragActive && !selectionChanged) {
       return;
     }
 
@@ -24406,3 +24447,26 @@ class _PresetThumbnailPainter extends CustomPainter {
         oldDelegate.accentColor != accentColor;
   }
 }
+
+class _CachedProfiles {
+  final List<Map<String, dynamic>> frames;
+  final List<Map<String, dynamic>> openingFrames;
+  final List<Map<String, dynamic>> slidingFrames;
+  final List<Map<String, dynamic>> sashes;
+  final List<Map<String, dynamic>> openingSashes;
+  final List<Map<String, dynamic>> slidingSashes;
+  final Set<int> lateralIds;
+  final Set<int> centralIds;
+
+  const _CachedProfiles({
+    required this.frames,
+    required this.openingFrames,
+    required this.slidingFrames,
+    required this.sashes,
+    required this.openingSashes,
+    required this.slidingSashes,
+    required this.lateralIds,
+    required this.centralIds,
+  });
+}
+

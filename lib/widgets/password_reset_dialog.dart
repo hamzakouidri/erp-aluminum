@@ -143,7 +143,8 @@ class _PasswordResetDialogState extends State<PasswordResetDialog> {
 
     if (otp.isEmpty) {
       setState(() {
-        _errorMessage = _t('يرجى إدخال رمز التحقق المستلم في بريدك.');
+        _errorMessage =
+            _t('يرجى إدخال رمز التحقق أو لصق الرابط المستلم في بريدك.');
       });
       return;
     }
@@ -469,33 +470,49 @@ class _PasswordResetDialogState extends State<PasswordResetDialog> {
                               ),
                       ),
                     ] else ...[
-                      // OTP Code Input
-                      Text(
-                        _t('رمز التحقق (OTP) المرسل في البريد'),
-                        style: const TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white70,
-                        ),
+                      // OTP Code / Link Input
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            _t('رمز التحقق أو الرابط المستلم'),
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white70,
+                            ),
+                          ),
+                          Text(
+                            _t('أرقام أو رابط كامل'),
+                            style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 11,
+                              color: Colors.white.withValues(alpha: 0.4),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 6),
                       TextField(
                         controller: _otpController,
                         keyboardType: TextInputType.text,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontFamily: 'Cairo',
-                          fontSize: 18,
-                          letterSpacing: 4,
+                          fontSize: (_otpController.text.length > 8) ? 14 : 18,
+                          letterSpacing:
+                              (_otpController.text.length > 8) ? 1 : 4,
                           fontWeight: FontWeight.bold,
                           color: Colors.amberAccent,
                         ),
+                        onChanged: (_) => setState(() {}),
                         decoration: InputDecoration(
-                          hintText: '123456',
+                          hintText: _t('123456 أو الصق الرابط / رمز التوكن'),
                           hintStyle: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.2),
-                            letterSpacing: 2,
+                            color: Colors.white.withValues(alpha: 0.25),
+                            letterSpacing: 1,
+                            fontSize: 13,
                             fontFamily: 'Cairo',
                           ),
                           filled: true,
@@ -517,6 +534,46 @@ class _PasswordResetDialogState extends State<PasswordResetDialog> {
                               width: 1.5,
                             ),
                           ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Explanatory hint banner
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.amber.withValues(alpha: 0.2),
+                          ),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(
+                              Icons.info_outline,
+                              color: Colors.amberAccent,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _t(
+                                  'إذا وصلتك رسالة بها رابط فقط دون أرقام، انسخ الرابط كاملاً أو رمز التوكن والصقه في الحقل أعلاه مباشرة! ولتصلك الأرقام دائماً، أضف {{ .Token }} في قالب البريد بـ Supabase.',
+                                ),
+                                style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 11,
+                                  color: Colors.white.withValues(alpha: 0.75),
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(height: 16),

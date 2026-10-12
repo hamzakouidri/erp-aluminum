@@ -99,7 +99,17 @@ class WindowsGoogleSignIn {
   static const _authorizationEndpoint =
       'https://accounts.google.com/o/oauth2/v2/auth';
   static const _tokenEndpoint = 'https://oauth2.googleapis.com/token';
-  static const _callbackTimeout = Duration(minutes: 3);
+  static const _callbackTimeout = Duration(seconds: 45);
+
+  static HttpServer? _activeCallbackServer;
+
+  /// Cancels any in-flight loopback authentication server on Windows.
+  static void cancelActiveSignIn() {
+    try {
+      _activeCallbackServer?.close(force: true);
+      _activeCallbackServer = null;
+    } catch (_) {}
+  }
 
   /// Signs in directly using Supabase OAuth on Windows.
   ///
@@ -114,6 +124,7 @@ class WindowsGoogleSignIn {
         0,
         shared: false,
       );
+      _activeCallbackServer = callbackServer;
 
       final redirectUri =
           'http://127.0.0.1:${callbackServer.port}/google-oauth-callback';
@@ -333,7 +344,7 @@ class WindowsGoogleSignIn {
       rethrow;
     } on TimeoutException {
       throw const WindowsGoogleSignInException(
-        'انتهت مهلة تسجيل الدخول. حاول مرة أخرى.',
+        'انتهت مهلة تسجيل الدخول عبر المتصفح. إذا ظهرت رسالة خطأ في المتصفح، تأكد من إعدادات Supabase أو أعد المحاولة.',
       );
     } on SocketException {
       throw const WindowsGoogleSignInException(
@@ -346,6 +357,9 @@ class WindowsGoogleSignIn {
         'حدث خطأ أثناء تسجيل الدخول عبر Google. حاول مرة أخرى.',
       );
     } finally {
+      if (_activeCallbackServer == callbackServer) {
+        _activeCallbackServer = null;
+      }
       if (callbackServer != null) {
         await callbackServer.close(force: true);
       }
@@ -368,6 +382,7 @@ class WindowsGoogleSignIn {
         0,
         shared: false,
       );
+      _activeCallbackServer = callbackServer;
 
       final state = _randomUrlSafeValue();
       final codeVerifier = _randomUrlSafeValue(length: 64);
@@ -507,6 +522,9 @@ class WindowsGoogleSignIn {
         'حدث خطأ أثناء تسجيل الدخول عبر Google. حاول مرة أخرى.',
       );
     } finally {
+      if (_activeCallbackServer == callbackServer) {
+        _activeCallbackServer = null;
+      }
       if (callbackServer != null) {
         await callbackServer.close(force: true);
       }

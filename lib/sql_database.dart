@@ -2265,31 +2265,26 @@ class SqlDatabase {
     } catch (_) {}
   }
 
+  static bool _decorPanelDesignSchemaReady = false;
+
   Future<void> _ensureDecorPanelDesignSchema(DatabaseExecutor db) async {
-    // Older workshop databases already contain the Glass table but predate
-    // the width field used by bardage and panneau décor.  Without this repair
-    // every insert/update carrying a décor size fails with
-    // "no such column: visible_width" and the product dialog appears not to
-    // save anything.
+    if (_decorPanelDesignSchemaReady) return;
     try {
-      await db.execute(
-        'ALTER TABLE Glass ADD COLUMN visible_width REAL DEFAULT NULL;',
-      );
-    } catch (_) {}
-    try {
-      await db.execute(
-        "ALTER TABLE Glass ADD COLUMN decor_design_code TEXT NOT NULL DEFAULT '';",
-      );
-    } catch (_) {}
-    try {
-      await db.execute(
-        'ALTER TABLE Glass ADD COLUMN panel_width REAL DEFAULT NULL;',
-      );
-    } catch (_) {}
-    try {
-      await db.execute(
-        'ALTER TABLE Glass ADD COLUMN panel_height REAL DEFAULT NULL;',
-      );
+      final cols = await db.rawQuery('PRAGMA table_info(Glass)');
+      final existingCols = cols.map((c) => c['name'].toString().toLowerCase()).toSet();
+      if (!existingCols.contains('visible_width')) {
+        await db.execute('ALTER TABLE Glass ADD COLUMN visible_width REAL DEFAULT NULL;');
+      }
+      if (!existingCols.contains('decor_design_code')) {
+        await db.execute("ALTER TABLE Glass ADD COLUMN decor_design_code TEXT NOT NULL DEFAULT '';");
+      }
+      if (!existingCols.contains('panel_width')) {
+        await db.execute('ALTER TABLE Glass ADD COLUMN panel_width REAL DEFAULT NULL;');
+      }
+      if (!existingCols.contains('panel_height')) {
+        await db.execute('ALTER TABLE Glass ADD COLUMN panel_height REAL DEFAULT NULL;');
+      }
+      _decorPanelDesignSchemaReady = true;
     } catch (_) {}
   }
 
@@ -20277,6 +20272,12 @@ class SqlDatabase {
     final myDb = await db;
     if (myDb == null) return;
     await _ensureProfileCalculationRulesTable(myDb);
+    try {
+      final existing = await myDb.rawQuery(
+        'SELECT 1 FROM ProfileCalculationRules LIMIT 1',
+      );
+      if (existing.isNotEmpty) return;
+    } catch (_) {}
     List<Map<String, dynamic>> sections;
     try {
       sections = await myDb.query(

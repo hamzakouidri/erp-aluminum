@@ -62,6 +62,11 @@ class DesktopScrollCoordinator {
     });
   }
 
+  static void resetStaleState() {
+    _hits.clear();
+    _signalsSeenByWidgetTree.clear();
+  }
+
   static void rememberPointerPosition(PointerEvent event) {
     _lastPointerPosition = event.position;
   }
@@ -141,31 +146,22 @@ class DesktopScrollCoordinator {
             _scrollCandidate(candidate, delta);
             return;
           }
+
           final offsetsBeforeResolution = <ScrollPosition, double>{
             for (final position in candidate.controller.positions)
               position: position.pixels,
           };
           var coordinatorResolvedSignal = false;
+
           GestureBinding.instance.pointerSignalResolver.register(event, (_) {
             coordinatorResolvedSignal = true;
             _scrollCandidate(candidate, delta);
           });
 
-          // A descendant Scrollable can win Flutter's pointer-signal resolver
-          // before this root coordinator. Normally that winner moves the same
-          // position. After a Windows focus loss/regain, however, a stale
-          // winner can consume the signal without moving anything. Fall back
-          // only when our callback lost *and* none of this candidate's
-          // positions changed, which avoids applying a wheel tick twice.
           scheduleMicrotask(() {
-            if (coordinatorResolvedSignal ||
-                !_registrations.contains(candidate)) {
-              return;
-            }
+            if (coordinatorResolvedSignal || !_registrations.contains(candidate)) return;
             final positionMoved = offsetsBeforeResolution.entries.any(
-              (entry) =>
-                  entry.key.hasPixels &&
-                  (entry.key.pixels - entry.value).abs() >= 0.5,
+              (entry) => entry.key.hasPixels && (entry.key.pixels - entry.value).abs() >= 0.5,
             );
             if (!positionMoved && candidate.canMove(delta)) {
               _scrollCandidate(candidate, delta);

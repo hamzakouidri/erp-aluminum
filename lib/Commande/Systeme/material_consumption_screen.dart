@@ -10,7 +10,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:database_data/widgets/app_material.dart';
 import 'package:flutter/gestures.dart'
-    show PointerScrollEvent, PointerSignalEvent;
+    show GestureBinding, PointerScrollEvent, PointerSignalEvent;
 import 'package:database_data/sql_database.dart'; // كائن الوصول لقاعدة بيانات SQLite
 import 'package:database_data/Commande/Systeme/model.dart'; // نموذج بيانات النافذة (WindowModel)
 import 'package:database_data/Commande/Systeme/calculate_component.dart'; // منطق توليد قائمة المكونات (BOM)
@@ -614,10 +614,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     return null;
   }
 
-  void _rebuildIfReady() {
-    if (mounted && !_isFetchingDefaults) setState(() {});
-  }
-
   _BomSwapTarget _resolveBomSwapTarget(BomItem item) {
     final original = item.originalName;
     final lower = original.toLowerCase();
@@ -1214,13 +1210,16 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         !_pageScrollController.hasClients) {
       return;
     }
-    final position = _pageScrollController.position;
-    if (!position.hasContentDimensions) return;
-    final newOffset = (position.pixels + event.scrollDelta.dy)
-        .clamp(position.minScrollExtent, position.maxScrollExtent);
-    if ((newOffset - position.pixels).abs() >= 0.5) {
-      position.jumpTo(newOffset);
-    }
+    GestureBinding.instance.pointerSignalResolver.register(event, (_) {
+      if (!mounted || !_pageScrollController.hasClients) return;
+      final position = _pageScrollController.position;
+      if (!position.hasContentDimensions) return;
+      final newOffset = (position.pixels + event.scrollDelta.dy)
+          .clamp(position.minScrollExtent, position.maxScrollExtent);
+      if ((newOffset - position.pixels).abs() >= 0.5) {
+        position.pointerScroll(event.scrollDelta.dy);
+      }
+    });
   }
 
   bool _isBouchonLameBomItem(BomItem item) =>
@@ -2237,6 +2236,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       )
       .join('||');
 
+  bool _hasRepeatedForRestoredSeries = false;
+
   void _setFetchProgress(double value) {
     if (!mounted || !_isFetchingDefaults) return;
     setState(() => _fetchProgress = value.clamp(0.0, 1.0).toDouble());
@@ -2254,7 +2255,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     if (mounted) {
       setState(() {
         _isFetchingDefaults = true;
-        _fetchProgress = 0.05;
+        _fetchProgress = 0.20;
       });
     }
     _accessoryPriceCache.clear();
@@ -2263,73 +2264,98 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     var visibleBomItems = const <BomItem>[];
     var mustRepeatForRestoredSeries = false;
     try {
-      // Glass prices and product identities are part of the price, so they
-      // must finish refreshing before either the visible table or automatic
-      // order repricing builds its BOM. The previous fire-and-forget refresh
-      // could calculate with the glass selected before the user's change.
-      await widget.model.loadGlassProducts();
-      await widget.model.updateShutterDefaultsIfNeeded();
-      _setFetchProgress(0.20);
+      final sqlDb = SqlDatabase();
+
+      // Run prerequisites sequentially with timeouts to avoid database lock contention.
+      try {
+        await widget.model.loadGlassProducts().timeout(
+          const Duration(seconds: 4),
+        );
+      } catch (e) {
+        debugPrint('loadGlassProducts error/timeout: $e');
+      }
+      _setFetchProgress(0.30);
+
+      try {
+        await widget.model.updateShutterDefaultsIfNeeded().timeout(
+          const Duration(seconds: 4),
+        );
+      } catch (e) {
+        debugPrint('updateShutterDefaultsIfNeeded error/timeout: $e');
+      }
+      _setFetchProgress(0.40);
+
+      try {
+        await _loadPricesFromDb().timeout(
+          const Duration(seconds: 4),
+        );
+      } catch (e) {
+        debugPrint('_loadPricesFromDb error/timeout: $e');
+      }
+      _setFetchProgress(0.50);
+
       _refreshStrictActiveVariants();
       if (!widget.model.hasSimpleGlassForReducer ||
           widget.model.hasDoubleGlassForRules) {
         widget.model.clearReducerOverride();
       }
 
-      final sqlDb = SqlDatabase();
       final dbInstance = await sqlDb.db;
-      _setFetchProgress(0.35);
       if (dbInstance != null) {
-        await _loadStrictKitBundles(dbInstance, sqlDb);
-        final stock = await _loadMainWarehouseStock();
-        if (mounted) setState(() => _mainWarehouseStock = stock);
-      }
-      _setFetchProgress(0.55);
-      var bomItems = _generateRawBomItems();
-      visibleBomItems = _resolvedFallbackBomItems(bomItems);
-      final engine = BomEngineV2(database: sqlDb);
-      await engine.stabilizeSelections(window: widget.model, items: bomItems);
+        try {
+          await _loadStrictKitBundles(dbInstance, sqlDb).timeout(
+            const Duration(seconds: 4),
+          );
+        } catch (e) {
+          debugPrint('_loadStrictKitBundles error/timeout: $e');
+        }
+        _setFetchProgress(0.65);
 
-      _setFetchProgress(0.72);
-      bomItems = _generateRawBomItems();
-      await engine.stabilizeSelections(window: widget.model, items: bomItems);
-      // Do not expose the raw BOM while the database is opening: only rows
-      // validated against the rule pages belong in this table.
+        try {
+          final stock = await _loadMainWarehouseStock().timeout(
+            const Duration(seconds: 4),
+          );
+          if (mounted) setState(() => _mainWarehouseStock = stock);
+        } catch (e) {
+          debugPrint('_loadMainWarehouseStock error/timeout: $e');
+        }
+      }
+      _setFetchProgress(0.75);
+
+      final engine = BomEngineV2(database: sqlDb);
+      var bomItems = _generateRawBomItems();
+      try {
+        await engine
+            .stabilizeSelections(window: widget.model, items: bomItems)
+            .timeout(const Duration(seconds: 4));
+      } catch (e) {
+        debugPrint('stabilizeSelections error/timeout: $e');
+      }
+
       if (dbInstance == null) {
         visibleBomItems = _resolvedFallbackBomItems(bomItems);
       } else {
-        final strictItems = await _generateStrictVisibleBomItems(engine);
-        final resolvedItems = _resolvedFallbackBomItems(bomItems);
-        visibleBomItems = strictItems.isEmpty && resolvedItems.isNotEmpty
-            ? resolvedItems
-            : strictItems;
+        try {
+          final strictItems = await _generateStrictVisibleBomItems(
+            engine,
+          ).timeout(const Duration(seconds: 5));
+          final resolvedItems = _resolvedFallbackBomItems(bomItems);
+          visibleBomItems = strictItems.isEmpty && resolvedItems.isNotEmpty
+              ? resolvedItems
+              : strictItems;
+        } catch (e) {
+          debugPrint('_generateStrictVisibleBomItems error/timeout: $e');
+          visibleBomItems = _resolvedFallbackBomItems(bomItems);
+        }
       }
-      _setFetchProgress(0.88);
-      // The strict BOM is ready at this point. Publish it immediately instead
-      // of keeping the table hidden while secondary price caches finish.
-      // Price loading may continue with the progress strip still visible.
-      visibleBomItems = await _applyPurchasePricesIfEnabled(visibleBomItems);
-      if (mounted) {
-        setState(() => _visibleBomItems = visibleBomItems);
+      try {
+        visibleBomItems = await _applyPurchasePricesIfEnabled(
+          visibleBomItems,
+        ).timeout(const Duration(seconds: 4));
+      } catch (e) {
+        debugPrint('_applyPurchasePricesIfEnabled error/timeout: $e');
       }
-      if (dbInstance != null) {
-        await _loadPricesFromDb();
-        // The first BOM was intentionally published before secondary price
-        // queries completed. Rebuild it once those values arrive so shutter
-        // and linear-metre selling prices appear immediately, without the
-        // user pressing the circular refresh button.
-        bomItems = _generateRawBomItems();
-        await engine.stabilizeSelections(window: widget.model, items: bomItems);
-        final pricedStrictItems = await _generateStrictVisibleBomItems(engine);
-        final pricedResolvedItems = _resolvedFallbackBomItems(bomItems);
-        visibleBomItems =
-            pricedStrictItems.isEmpty && pricedResolvedItems.isNotEmpty
-            ? pricedResolvedItems
-            : pricedStrictItems;
-        visibleBomItems = await _applyPurchasePricesIfEnabled(visibleBomItems);
-        if (mounted) setState(() => _visibleBomItems = visibleBomItems);
-      }
-      _setFetchProgress(0.96);
+      _setFetchProgress(0.95);
     } catch (error, stackTrace) {
       // A later pricing failure must not erase additive rule rows (Clam,
       // assembly screws, kits) already calculated successfully above.
@@ -2354,17 +2380,12 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           widget.model.effectiveSlidingSeries?.id ??
           widget.model.activeSeries?.id;
       if (seriesIdAfterFetch != null &&
-          seriesIdAfterFetch != seriesIdAtFetchStart) {
-        // The initial query legitimately had no/another series while the
-        // drawing was reconnecting to its catalogue. Run once more without
-        // asking the user to press the blue refresh icon.
+          seriesIdAfterFetch != seriesIdAtFetchStart &&
+          !_hasRepeatedForRestoredSeries) {
+        _hasRepeatedForRestoredSeries = true;
         mustRepeatForRestoredSeries = true;
         unawaited(_fetchDefaults());
       }
-      // The SQLite connection and the restored drawing do not always become
-      // ready in the same frame.  A delayed price-only retry prevents the
-      // first visit to this page from being stuck at 0; it never changes the
-      // BOM or a price entered manually by the user.
       if (_pricePerLinearMeterFromDb == 0 ||
           (widget.model.hasShutter && _shutterSqmPriceFromDb == 0)) {
         _scheduleInitialPriceRetries();
@@ -2420,6 +2441,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       _initialPriceRetryTimers.add(
         Timer(delay, () {
           if (!mounted) return;
+          if (_isFetchingDefaults) return;
           unawaited(_loadPricesFromDb());
         }),
       );
@@ -2571,6 +2593,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
 
   // دالة تُستدعى عند تغيّر النموذج من خارج هذه الشاشة، فقط تعيد بناء الواجهة
   void _onModelChanged() {
+    if (_isFetchingDefaults || _isRefreshingVisibleBom) return;
     final priceContext = _priceContextSignature();
     if (priceContext != _lastPriceContextSignature) {
       _lastPriceContextSignature = priceContext;
@@ -2669,13 +2692,15 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     final generation = ++_priceLoadGeneration;
     final dbInstance = await SqlDatabase().db;
     if (dbInstance == null) return;
-    await SqlDatabase().ensureProfileCalculationRulesTable();
-    await SqlDatabase().seedDefaultProfileCalculationRules();
-    final profileRuleRows = await SqlDatabase().getProfileCalculationRules();
     final profileRules = <int, Map<String, dynamic>>{};
-    for (final row in profileRuleRows) {
-      final sectionId = (row['section_id'] as num?)?.toInt();
-      if (sectionId != null) profileRules[sectionId] = row;
+    try {
+      final profileRuleRows = await SqlDatabase().getProfileCalculationRules();
+      for (final row in profileRuleRows) {
+        final sectionId = (row['section_id'] as num?)?.toInt();
+        if (sectionId != null) profileRules[sectionId] = row;
+      }
+    } catch (e) {
+      debugPrint('Error getting profile calculation rules in _loadPricesFromDb: $e');
     }
     final previousLinearMeterPrice = _pricePerLinearMeterFromDb;
     final previousShutterSqmPrice = _shutterSqmPriceFromDb;
