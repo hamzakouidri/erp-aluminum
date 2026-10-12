@@ -463,11 +463,16 @@ class _CommandePageState extends State<CommandePage> {
 
   /// تحديث حفظ الخصائص من نموذج نافذة
   void _saveLastSettings(WindowModel m) {
-    final glassSpec = WindowZone.globalDefaultGlass.toMap();
+    // A panneau is a choice that belongs to one drawing/cell, not a reusable
+    // glazing default.  Carry real glass forward for quick entry, but always
+    // start the next item with ordinary glass after a panneau was used.
+    final previousGlass = WindowZone.globalDefaultGlass;
+    final glassSpec = (previousGlass.structure == GlassStructure.closed
+            ? const GlassSpecification()
+            : previousGlass)
+        .toMap();
     final modelMap = m.toMap();
     const defaultKeys = {
-      'hasBottomFrame',
-      'hasFramePlintheBottom',
       'isInternalView',
       'showInternalHardware',
       'hasShutter',
@@ -486,12 +491,7 @@ class _CommandePageState extends State<CommandePage> {
       'useSystemOB',
       'useDemiOB',
       'useVerrouCentral',
-      'hasSideCovers',
-      'sideCoverUseSecondWidth',
       'hasInternalSlidingSideCover',
-      'useCustomSideCoverLayout',
-      'sideCoverSegments',
-      'hiddenSideCoverSegments',
       'isFrame140',
       'removedShutterSides',
       'frameColor',
@@ -506,7 +506,6 @@ class _CommandePageState extends State<CommandePage> {
       'componentOverrides',
       'frameOverride',
       'sashOverride',
-      'sideCoverOverride',
       'internalSlidingSideCoverOverride',
       'slidingFrameOverride',
       'slidingSashOverride',

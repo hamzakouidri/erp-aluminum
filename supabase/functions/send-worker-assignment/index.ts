@@ -30,9 +30,15 @@ Deno.serve(async (req) => {
 
     const admin = createClient(supabaseUrl, serviceKey);
     const { data: member } = await admin.from("workshop_members")
-      .select("role").eq("workshop_id", workshopId)
+      .select("role,permissions,blocked").eq("workshop_id", workshopId)
       .eq("user_id", user.id).maybeSingle();
-    if (!member || !["owner", "manager", "co_manager", "admin"].includes(member.role)) {
+    const isManager = !!member &&
+      ["owner", "manager", "co_manager", "admin"].includes(member.role);
+    const isOrderEvent = eventType.startsWith("order_");
+    const canPublishOrderEvent = !!member && member.blocked !== true &&
+      (isManager || member.permissions?.view_orders === true);
+    if (!member || member.blocked === true ||
+      (!isManager && !(isOrderEvent && canPublishOrderEvent))) {
       return json({ error: "Forbidden" }, 403);
     }
 

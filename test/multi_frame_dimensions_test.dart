@@ -146,5 +146,82 @@ void main() {
       expect(frames.first.rect.width, closeTo(1400, 2.0));
       expect(frames.first.rect.height, closeTo(1600, 2.0));
     });
+
+    test('a moved wide internal mullion does not become a second frame', () {
+      final model = WindowModel(
+        db: SqlDatabase(),
+        width: 1400,
+        height: 1600,
+        profileThickness: 45,
+      );
+      const split = 600.0;
+      model.zones = [
+        WindowZone(
+          id: 'pane_top_wide',
+          boundary: const Rect.fromLTRB(45, 45, 1355, 550),
+        ),
+        WindowZone(
+          id: 'pane_bottom_wide',
+          boundary: const Rect.fromLTRB(45, 650, 1355, 1555),
+        ),
+      ];
+      model.mullionProfiles['H_600.0'] = MullionProfileType.flat;
+      model.mullionCreationOrder['H_600.0'] = 1;
+      model.mullionSectionOverrides['H_600.0'] = {
+        'visible_width': 50.0,
+        'is_double_frame': 1,
+      };
+
+      expect(model.getPhysicalFrameInfos(), hasLength(1));
+
+      model.selection = const SelectionInfo(
+        type: SelectionType.mullion,
+        isHorizontalMullion: true,
+        mullionPosition: split,
+        mullionStart: 45,
+        mullionEnd: 1355,
+      );
+      model.moveSelectedMullion(40);
+
+      expect(model.getPhysicalFrameInfos(), hasLength(1));
+    });
+
+    test('one undo restores the complete mullion drag', () {
+      final model = WindowModel(
+        db: SqlDatabase(),
+        width: 1200,
+        height: 1000,
+        profileThickness: 50,
+      );
+      model.zones = [
+        WindowZone(
+          id: 'top_drag',
+          boundary: const Rect.fromLTRB(50, 50, 1150, 475),
+        ),
+        WindowZone(
+          id: 'bottom_drag',
+          boundary: const Rect.fromLTRB(50, 525, 1150, 950),
+        ),
+      ];
+      model.mullionCreationOrder['H_500.0'] = 1;
+      model.selection = const SelectionInfo(
+        type: SelectionType.mullion,
+        isHorizontalMullion: true,
+        mullionPosition: 500,
+        mullionStart: 50,
+        mullionEnd: 1150,
+      );
+      final before = model.zones.map((zone) => zone.boundary).toList();
+
+      model.saveSnapshotOutside();
+      model.moveSelectedMullionWithHistory(10, saveHistory: false);
+      model.moveSelectedMullionWithHistory(15, saveHistory: false);
+      model.moveSelectedMullionWithHistory(20, saveHistory: false);
+      expect(model.zones.first.boundary, isNot(before.first));
+
+      model.undo();
+
+      expect(model.zones.map((zone) => zone.boundary).toList(), before);
+    });
   });
 }

@@ -565,9 +565,13 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
           s['glassSpec'] ??
           (drawingDefaults is Map ? drawingDefaults['glassSpec'] : null);
       if (glassSpec is Map) {
-        WindowZone.globalDefaultGlass = glassSpecificationFromMap(
+        final inheritedGlass = glassSpecificationFromMap(
           Map<String, dynamic>.from(glassSpec),
         );
+        WindowZone.globalDefaultGlass =
+            inheritedGlass.structure == GlassStructure.closed
+            ? const GlassSpecification()
+            : inheritedGlass;
       } else {
         WindowZone.globalDefaultGlass = const GlassSpecification();
       }
@@ -578,6 +582,17 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
     if (m.selectedDbColor == null) {
       m.frameColor = FrameColor.white;
     }
+    // Geometry-specific choices must never leak from the previous order item.
+    // A new drawing starts closed at the bottom and with its perimeter cover
+    // enabled; catalogue capability rules may subsequently choose the proper
+    // integrated or standalone cover profile.
+    m.hasBottomFrame = true;
+    m.hasFramePlintheBottom = false;
+    m.showBottomWall = true;
+    m.hasSideCovers = true;
+    m.useCustomSideCoverLayout = false;
+    m.sideCoverSegments = [];
+    m.hiddenSideCoverSegments.clear();
     return m;
   }
 

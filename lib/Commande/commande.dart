@@ -109,10 +109,16 @@ class _CommandeState extends State<Commande> {
         : uid}';
   }
 
+  static const String _localSeenOrdersPreferenceKey =
+      'seen_order_versions_v1_local';
+
   String _orderVersion(Map<String, dynamic> order) {
     final updated = order['updated_at']?.toString().trim() ?? '';
-    if (updated.isNotEmpty) return updated;
-    return order['created_at']?.toString().trim() ?? '';
+    final raw = updated.isNotEmpty
+        ? updated
+        : order['created_at']?.toString().trim() ?? '';
+    final parsed = DateTime.tryParse(raw);
+    return parsed?.toUtc().toIso8601String() ?? raw;
   }
 
   bool _isOrderUnseen(Map<String, dynamic> order) {
@@ -127,14 +133,23 @@ class _CommandeState extends State<Commande> {
   Future<void> _loadSeenOrderVersions() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final stored = prefs.getString(_seenOrdersPreferenceKey);
       final seen = <int, String>{};
-      if (stored != null && stored.isNotEmpty) {
-        final decoded = jsonDecode(stored);
-        if (decoded is Map) {
-          for (final entry in decoded.entries) {
-            final id = int.tryParse(entry.key.toString());
-            if (id != null) seen[id] = entry.value.toString();
+      // Authentication and workshop restoration finish asynchronously. Merge
+      // the device fallback with the account-scoped state so a screen opened
+      // during startup cannot make every order appear unread again.
+      final keys = <String>{
+        _localSeenOrdersPreferenceKey,
+        _seenOrdersPreferenceKey,
+      };
+      for (final key in keys) {
+        final stored = prefs.getString(key);
+        if (stored != null && stored.isNotEmpty) {
+          final decoded = jsonDecode(stored);
+          if (decoded is Map) {
+            for (final entry in decoded.entries) {
+              final id = int.tryParse(entry.key.toString());
+              if (id != null) seen[id] = entry.value.toString();
+            }
           }
         }
       }
@@ -158,10 +173,13 @@ class _CommandeState extends State<Commande> {
     final retained = entries.length <= 2000
         ? entries
         : entries.sublist(entries.length - 2000);
-    await prefs.setString(
-      _seenOrdersPreferenceKey,
-      jsonEncode({for (final entry in retained) '${entry.key}': entry.value}),
-    );
+    final encoded = jsonEncode({
+      for (final entry in retained) '${entry.key}': entry.value,
+    });
+    await Future.wait([
+      prefs.setString(_localSeenOrdersPreferenceKey, encoded),
+      prefs.setString(_seenOrdersPreferenceKey, encoded),
+    ]);
   }
 
   Future<void> _markOrderSeen(Map<String, dynamic> order) async {

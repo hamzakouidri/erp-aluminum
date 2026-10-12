@@ -1204,6 +1204,7 @@ class _WindowViewState extends State<WindowView> {
   _FrameResizeHandle? _draggedFrameResizeHandle;
   String? _draggedFrameZoneId;
   bool _frameResizeHistorySaved = false;
+  bool _propertyDragHistorySaved = false;
   final ScrollController _glassScrollController = ScrollController();
   final ScrollController _leftDrawerScrollController = ScrollController();
   final ScrollController _rightDrawerScrollController = ScrollController();
@@ -1356,7 +1357,8 @@ class _WindowViewState extends State<WindowView> {
             _loadedSlidingFrameSeriesId == slidingSeriesId)) {
       return;
     }
-    final cacheKey = '$seriesId|$openingSeriesId|$slidingSeriesId|${widget.systemMode}';
+    final cacheKey =
+        '$seriesId|$openingSeriesId|$slidingSeriesId|${widget.systemMode}';
     if (_profilesMemoryCache.containsKey(cacheKey)) {
       final cached = _profilesMemoryCache[cacheKey]!;
       setState(() {
@@ -1369,8 +1371,12 @@ class _WindowViewState extends State<WindowView> {
         _slidingLateralProfileIds = cached.lateralIds;
         _slidingCentralProfileIds = cached.centralIds;
         _loadedSeriesId = seriesId;
-        _loadedOpeningFrameSeriesId = needsOpeningFrames ? openingSeriesId : null;
-        _loadedSlidingFrameSeriesId = needsSlidingFrames ? slidingSeriesId : null;
+        _loadedOpeningFrameSeriesId = needsOpeningFrames
+            ? openingSeriesId
+            : null;
+        _loadedSlidingFrameSeriesId = needsSlidingFrames
+            ? slidingSeriesId
+            : null;
       });
       return;
     }
@@ -2340,7 +2346,8 @@ class _WindowViewState extends State<WindowView> {
     // The preview has its own repaint listener. While drawing a new frame or
     // dragging any handle/divider/hinge/division, rebuilding the drawers and
     // running database scans on every mouse movement was the main source of lag.
-    final isAnyDragActive = widget.model.drawingStart != null ||
+    final isAnyDragActive =
+        widget.model.drawingStart != null ||
         _isDraggingHandle ||
         _isDraggingHinge ||
         _isDraggingDoubleSashDivider ||
@@ -3344,7 +3351,10 @@ class _WindowViewState extends State<WindowView> {
     final hasMultipleFrames = frames.length > 1;
 
     int selectedTab = widget.model.isShutterSplit
-        ? (widget.model.shutterSplitMode == 'custom' ? 1 : 0)
+        ? (widget.model.shutterSplitMode == 'custom_divisions' ||
+                  widget.model.shutterSplitMode == 'custom'
+              ? 1
+              : 0)
         : (hasMultipleFrames ? 0 : 1);
 
     int divisionCount = widget.model.shutterSplits.length >= 2
@@ -3352,23 +3362,43 @@ class _WindowViewState extends State<WindowView> {
         : 2;
 
     List<TextEditingController> divisionControllers = [];
+    final Map<int, String> divisionMechanisms = {};
+    final Map<int, String> divisionDriveSides = {};
     void initDivisionControllers(int count) {
       for (final c in divisionControllers) {
         c.dispose();
       }
       divisionControllers = [];
       if (widget.model.isShutterSplit &&
-          widget.model.shutterSplitMode == 'custom' &&
+          (widget.model.shutterSplitMode == 'custom_divisions' ||
+              widget.model.shutterSplitMode == 'custom') &&
           widget.model.shutterSplits.length == count) {
-        for (final s in widget.model.shutterSplits) {
+        for (int i = 0; i < widget.model.shutterSplits.length; i++) {
+          final expectedLabel = 'صندوق ${i + 1}';
+          final matching = widget.model.shutterSplits.where(
+            (split) => split.label == expectedLabel,
+          );
+          final s = matching.isNotEmpty
+              ? matching.first
+              : widget.model.shutterSplits[i];
           divisionControllers.add(
             TextEditingController(text: s.width.toStringAsFixed(1)),
           );
+          divisionMechanisms[i] = s.mechanism ?? widget.model.shutterMechanism;
+          divisionDriveSides[i] = s.driveSide ?? widget.model.shutterDriveSide;
         }
       } else {
         final equalW = (widget.model.width / count).toStringAsFixed(1);
         for (int i = 0; i < count; i++) {
           divisionControllers.add(TextEditingController(text: equalW));
+          divisionMechanisms.putIfAbsent(
+            i,
+            () => widget.model.shutterMechanism,
+          );
+          divisionDriveSides.putIfAbsent(
+            i,
+            () => widget.model.shutterDriveSide,
+          );
         }
       }
     }
@@ -3937,89 +3967,195 @@ class _WindowViewState extends State<WindowView> {
                                     : Colors.grey.shade300,
                               ),
                             ),
-                            child: Row(
+                            child: Column(
                               children: [
-                                CircleAvatar(
-                                  radius: 12,
-                                  backgroundColor: Colors.teal.withOpacity(0.2),
-                                  child: Text(
-                                    '${i + 1}',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.teal,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    label,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: isDark
-                                          ? Colors.white
-                                          : Colors.black87,
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: 120,
-                                  child: TextField(
-                                    controller: divisionControllers[i],
-                                    keyboardType:
-                                        const TextInputType.numberWithOptions(
-                                          decimal: true,
+                                Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 12,
+                                      backgroundColor: Colors.teal.withOpacity(
+                                        0.2,
+                                      ),
+                                      child: Text(
+                                        '${i + 1}',
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.teal,
                                         ),
-                                    onChanged: (val) {
-                                      final entered = double.tryParse(
-                                        val.replaceAll(',', '.').trim(),
-                                      );
-                                      if (entered != null && entered > 0) {
-                                        final remaining =
-                                            widget.model.width - entered;
-                                        final otherIndices = List.generate(
-                                          divisionCount,
-                                          (idx) => idx,
-                                        )..remove(i);
-                                        if (otherIndices.isNotEmpty &&
-                                            remaining > 0) {
-                                          final share =
-                                              (remaining / otherIndices.length)
-                                                  .toStringAsFixed(1);
-                                          for (final otherIdx in otherIndices) {
-                                            divisionControllers[otherIdx].text =
-                                                share;
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        label,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: isDark
+                                              ? Colors.white
+                                              : Colors.black87,
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(
+                                      width: 120,
+                                      child: TextField(
+                                        controller: divisionControllers[i],
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
+                                        onChanged: (val) {
+                                          final entered = double.tryParse(
+                                            val.replaceAll(',', '.').trim(),
+                                          );
+                                          if (entered != null && entered > 0) {
+                                            final remaining =
+                                                widget.model.width - entered;
+                                            final otherIndices = List.generate(
+                                              divisionCount,
+                                              (idx) => idx,
+                                            )..remove(i);
+                                            if (otherIndices.isNotEmpty &&
+                                                remaining > 0) {
+                                              final share =
+                                                  (remaining /
+                                                          otherIndices.length)
+                                                      .toStringAsFixed(1);
+                                              for (final otherIdx
+                                                  in otherIndices) {
+                                                divisionControllers[otherIdx]
+                                                        .text =
+                                                    share;
+                                              }
+                                            }
                                           }
-                                        }
-                                      }
-                                    },
-                                    decoration: InputDecoration(
-                                      labelText: Localization.translate(
-                                        'العرض',
-                                        lang,
-                                      ),
-                                      labelStyle: const TextStyle(fontSize: 10),
-                                      suffixText: 'mm',
-                                      suffixStyle: const TextStyle(
-                                        fontSize: 10,
-                                      ),
-                                      isDense: true,
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 8,
+                                        },
+                                        decoration: InputDecoration(
+                                          labelText: Localization.translate(
+                                            'العرض',
+                                            lang,
                                           ),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(6),
+                                          labelStyle: const TextStyle(
+                                            fontSize: 10,
+                                          ),
+                                          suffixText: 'mm',
+                                          suffixStyle: const TextStyle(
+                                            fontSize: 10,
+                                          ),
+                                          isDense: true,
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 8,
+                                                vertical: 8,
+                                              ),
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              6,
+                                            ),
+                                          ),
+                                        ),
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
                                     ),
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: DropdownButtonFormField<String>(
+                                        value: divisionMechanisms[i],
+                                        isDense: true,
+                                        decoration: InputDecoration(
+                                          labelText: Localization.translate(
+                                            'نوع الستار',
+                                            lang,
+                                          ),
+                                          border: const OutlineInputBorder(),
+                                        ),
+                                        items: [
+                                          DropdownMenuItem(
+                                            value: 'حزام',
+                                            child: Text(
+                                              Localization.translate(
+                                                'حزام',
+                                                lang,
+                                              ),
+                                            ),
+                                          ),
+                                          DropdownMenuItem(
+                                            value: 'منايفال',
+                                            child: Text(
+                                              Localization.translate(
+                                                'مانيفيل',
+                                                lang,
+                                              ),
+                                            ),
+                                          ),
+                                          DropdownMenuItem(
+                                            value: 'محرك',
+                                            child: Text(
+                                              Localization.translate(
+                                                'محرك',
+                                                lang,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                        onChanged: (value) {
+                                          if (value == null) return;
+                                          setDialogState(() {
+                                            divisionMechanisms[i] = value;
+                                          });
+                                        },
+                                      ),
                                     ),
-                                  ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: DropdownButtonFormField<String>(
+                                        value: divisionDriveSides[i],
+                                        isDense: true,
+                                        decoration: InputDecoration(
+                                          labelText: Localization.translate(
+                                            'جهة الستار',
+                                            lang,
+                                          ),
+                                          border: const OutlineInputBorder(),
+                                        ),
+                                        items: [
+                                          DropdownMenuItem(
+                                            value: 'left',
+                                            child: Text(
+                                              Localization.translate(
+                                                'يسار',
+                                                lang,
+                                              ),
+                                            ),
+                                          ),
+                                          DropdownMenuItem(
+                                            value: 'right',
+                                            child: Text(
+                                              Localization.translate(
+                                                'يمين',
+                                                lang,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                        onChanged: (value) {
+                                          if (value == null) return;
+                                          setDialogState(() {
+                                            divisionDriveSides[i] = value;
+                                          });
+                                        },
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -4117,6 +4253,18 @@ class _WindowViewState extends State<WindowView> {
                         widget.model.splitShutterCustomDivisions(
                           widths,
                           startFromRight: true,
+                          mechanisms: List.generate(
+                            divisionCount,
+                            (i) =>
+                                divisionMechanisms[i] ??
+                                widget.model.shutterMechanism,
+                          ),
+                          driveSides: List.generate(
+                            divisionCount,
+                            (i) =>
+                                divisionDriveSides[i] ??
+                                widget.model.shutterDriveSide,
+                          ),
                         );
                       }
                     });
@@ -5503,6 +5651,10 @@ class _WindowViewState extends State<WindowView> {
                                             ZoneContent.doubleSash &&
                                         widget.model.activeSubZone == 'all' &&
                                         widget.model.isDrawingMode) {
+                                      if (!_propertyDragHistorySaved) {
+                                        widget.model.saveSnapshotOutside();
+                                        _propertyDragHistorySaved = true;
+                                      }
                                       final zone = widget.model.selectedZone!;
                                       final bounds = zone.boundary;
                                       final modelPos = _getModelPos(
@@ -5515,18 +5667,15 @@ class _WindowViewState extends State<WindowView> {
                                       widget.model.updateZoneDoubleSashRatio(
                                         zone.id,
                                         newRatio,
+                                        saveHistory: false,
                                       );
                                     }
                                   },
                                   onLongPressEnd: (details) {
-                                    if (widget.model.selectedZone?.content ==
-                                            ZoneContent.doubleSash &&
-                                        widget.model.activeSubZone == 'all') {
-                                      widget.model.saveSnapshotOutside();
-                                    }
                                     _isDraggingHandle = false;
                                     _isDraggingHinge = false;
                                     _suppressHandleDragForLongPress = false;
+                                    _propertyDragHistorySaved = false;
                                   },
                                   onScaleStart: (details) {
                                     if (_isDrawerOpen || _isLeftDrawerOpen) {
@@ -6221,6 +6370,24 @@ class _WindowViewState extends State<WindowView> {
                                                 (newScale / _baseUserScale);
                                       });
                                     } else {
+                                      final isPropertyDrag =
+                                          _isDraggingSlantLeft ||
+                                          _isDraggingSlantRight ||
+                                          _isDraggingArch ||
+                                          _isDraggingDoubleSashDivider ||
+                                          _isDraggingSashDivision ||
+                                          _isDraggingDecor ||
+                                          _isDraggingHinge ||
+                                          _isDraggingHandle ||
+                                          widget.model.selection.type ==
+                                              SelectionType.mullion ||
+                                          widget.model.selection.type ==
+                                              SelectionType.innerDivision;
+                                      if (isPropertyDrag &&
+                                          !_propertyDragHistorySaved) {
+                                        widget.model.saveSnapshotOutside();
+                                        _propertyDragHistorySaved = true;
+                                      }
                                       final modelPos = _getModelPos(
                                         details.localFocalPoint,
                                       );
@@ -6334,18 +6501,22 @@ class _WindowViewState extends State<WindowView> {
                                         );
                                       } else if (widget.model.selection.type ==
                                           SelectionType.mullion) {
-                                        widget.model.moveSelectedMullion(
-                                          (widget
-                                                      .model
-                                                      .selection
-                                                      .isHorizontalMullion!
-                                                  ? details.focalPointDelta.dy
-                                                  : details
-                                                        .focalPointDelta
-                                                        .dx) /
-                                              (_userScale *
-                                                  widget.model.canvasScale),
-                                        );
+                                        widget.model
+                                            .moveSelectedMullionWithHistory(
+                                              (widget
+                                                          .model
+                                                          .selection
+                                                          .isHorizontalMullion!
+                                                      ? details
+                                                            .focalPointDelta
+                                                            .dy
+                                                      : details
+                                                            .focalPointDelta
+                                                            .dx) /
+                                                  (_userScale *
+                                                      widget.model.canvasScale),
+                                              saveHistory: false,
+                                            );
                                       } else if (widget.model.selection.type ==
                                           SelectionType.innerDivision) {
                                         double deltaX =
@@ -6359,6 +6530,7 @@ class _WindowViewState extends State<WindowView> {
                                         widget.model.moveSelectedInnerDivision(
                                           deltaX,
                                           deltaY,
+                                          saveHistory: false,
                                         );
                                       } else if (_isDraggingDecor &&
                                           _draggedDecorZoneId != null &&
@@ -6432,6 +6604,7 @@ class _WindowViewState extends State<WindowView> {
                                         widget.model.updateZoneDoubleSashRatio(
                                           zone.id,
                                           newRatio,
+                                          saveHistory: false,
                                         );
                                       } else if (_isDraggingSashDivision &&
                                           _draggedSashZoneId != null &&
@@ -6482,6 +6655,7 @@ class _WindowViewState extends State<WindowView> {
                                                 isRight,
                                                 _draggedSashIndex,
                                                 newRatio,
+                                                saveHistory: false,
                                               );
                                         } else {
                                           double newRatio =
@@ -6493,6 +6667,7 @@ class _WindowViewState extends State<WindowView> {
                                                 isRight,
                                                 _draggedSashIndex,
                                                 newRatio,
+                                                saveHistory: false,
                                               );
                                         }
                                       } else if (!_suppressHandleDragForLongPress &&
@@ -6533,18 +6708,6 @@ class _WindowViewState extends State<WindowView> {
                                     if (widget.model.drawingStart != null) {
                                       widget.model.endDrawing();
                                     }
-                                    bool wasDraggingProperty =
-                                        _isDraggingSlantLeft ||
-                                        _isDraggingSlantRight ||
-                                        _isDraggingArch ||
-                                        _isDraggingDoubleSashDivider ||
-                                        _isDraggingSashDivision ||
-                                        _isDraggingDecor ||
-                                        _isDraggingHinge ||
-                                        _isDraggingHandle;
-                                    if (wasDraggingProperty) {
-                                      widget.model.saveSnapshotOutside();
-                                    }
                                     _isDraggingHandle = false;
                                     _isDraggingHinge = false;
                                     _suppressHandleDragForLongPress = false;
@@ -6559,6 +6722,7 @@ class _WindowViewState extends State<WindowView> {
                                     _draggedFrameResizeHandle = null;
                                     _draggedFrameZoneId = null;
                                     _frameResizeHistorySaved = false;
+                                    _propertyDragHistorySaved = false;
                                   },
                                   child: Listener(
                                     onPointerSignal:
@@ -19424,10 +19588,6 @@ class _WindowViewState extends State<WindowView> {
                 item['integrated_side_cover'],
             fallback: profileHasIntegratedSideCover(item),
           );
-          final allowsStandaloneCover = readBool(
-            item['design_allows_side_cover'] ?? item['allows_side_cover'],
-            fallback: true,
-          );
           final allowedWithShutter = readBool(
             item['design_allowed_with_shutter'] ?? item['allowed_with_shutter'],
             fallback: true,
@@ -19444,14 +19604,10 @@ class _WindowViewState extends State<WindowView> {
                 widget.model.integratedFrameSideCoverWidth > 0;
             final hasSeparateCover = !hasIntegratedCover;
             if (hasSeparateCover) {
-              if (integratedCover || !allowsStandaloneCover) return false;
-            } else {
-              // An integrated-cover drawing must keep the same construction
-              // family. A plain frame that merely accepts a separate cover
-              // is available from per-side frame personalisation, but is not
-              // a valid global replacement here.
-              if (!integratedCover) return false;
+              if (integratedCover) return false;
             }
+            // Plain frames are always valid here: when the cover is enabled,
+            // selecting one keeps the switch and uses a separate cover.
           }
 
           // 3. 90° Profile angle compatibility:
@@ -22658,7 +22814,9 @@ class WorkspaceSelectionPainter extends CustomPainter {
       }
 
       if (model.canBeArchedOrSlanted &&
-          (key == null || key == 'frame:0' || model.getFrameRects().length <= 1)) {
+          (key == null ||
+              key == 'frame:0' ||
+              model.getFrameRects().length <= 1)) {
         final radius = 10.0 / scale;
         final amber = Paint()
           ..color = Colors.amber.shade800
@@ -22705,12 +22863,22 @@ class WorkspaceSelectionPainter extends CustomPainter {
       final horizontal = selection.isHorizontalMullion ?? false;
       final position = selection.mullionPosition!;
       final start = selection.mullionStart ?? 0.0;
-      final end = selection.mullionEnd ??
-          (horizontal ? model.width : model.height);
+      final end =
+          selection.mullionEnd ?? (horizontal ? model.width : model.height);
       final thickness = math.max(8.0, model.mullionThickness);
       final rect = horizontal
-          ? Rect.fromLTRB(start, position - thickness / 2, end, position + thickness / 2)
-          : Rect.fromLTRB(position - thickness / 2, start, position + thickness / 2, end);
+          ? Rect.fromLTRB(
+              start,
+              position - thickness / 2,
+              end,
+              position + thickness / 2,
+            )
+          : Rect.fromLTRB(
+              position - thickness / 2,
+              start,
+              position + thickness / 2,
+              end,
+            );
       canvas.drawRect(rect, fill);
       canvas.drawRect(rect, outline);
     }
@@ -22759,7 +22927,6 @@ class AppWorkspacePainter extends CustomPainter {
         _paintZoneRegionDimensions(canvas, model);
         _paintDrawingProfileDimensions(canvas, model);
       }
-
     }
 
     if ((model.zones.isEmpty ||
@@ -24469,4 +24636,3 @@ class _CachedProfiles {
     required this.centralIds,
   });
 }
-

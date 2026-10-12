@@ -1867,6 +1867,18 @@ class WindowSnapshot {
   final bool isDrawingMode;
   final bool hasSideCovers;
   final bool multiFrameSideCoverManuallyEnabled;
+  final int profileAngleMode;
+  final Set<int> profileAngleJunctions;
+  final bool profileAngleJunctionsDisabled;
+  final bool viewAs90DegreeCorner;
+  final Map<String, dynamic>? frameOverride;
+  final Map<String, dynamic>? slidingFrameOverride;
+  final Map<String, dynamic>? sideCoverOverride;
+  final AluminumSection? selectedSideCover;
+  final Map<String, dynamic>? preProfileAngleFrameOverride;
+  final Map<String, dynamic>? preProfileAngleSlidingOverride;
+  final bool frameSwitchedForProfileAngle;
+  final String? profileAngleFrameSwitchNotice;
 
   WindowSnapshot(
     this.width,
@@ -1911,6 +1923,18 @@ class WindowSnapshot {
     this.isDrawingMode = false,
     this.hasSideCovers = false,
     this.multiFrameSideCoverManuallyEnabled = false,
+    this.profileAngleMode = 0,
+    this.profileAngleJunctions = const <int>{},
+    this.profileAngleJunctionsDisabled = false,
+    this.viewAs90DegreeCorner = false,
+    this.frameOverride,
+    this.slidingFrameOverride,
+    this.sideCoverOverride,
+    this.selectedSideCover,
+    this.preProfileAngleFrameOverride,
+    this.preProfileAngleSlidingOverride,
+    this.frameSwitchedForProfileAngle = false,
+    this.profileAngleFrameSwitchNotice,
   ]);
 }
 
@@ -3731,7 +3755,17 @@ class WindowModel extends ChangeNotifier {
     if (!_hasLoadedRoleMetadata(series) ||
         configuredIds == null ||
         configuredIds.isEmpty) {
-      return const <AluminumSection>[];
+      // The drawing can be edited before the role metadata query finishes.
+      // In that short window, keep an explicitly typed cover from the same
+      // series available instead of cancelling the user's cover selection.
+      return series.sections
+          .where((section) {
+            final type = section.type.trim().toLowerCase();
+            return type == 'side_cover' ||
+                type == 'couvre_joint' ||
+                type == 'couvre-joint';
+          })
+          .toList(growable: false);
     }
     return series.sections
         .where((section) => configuredIds.contains(section.id))
@@ -4016,11 +4050,8 @@ class WindowModel extends ChangeNotifier {
 
     if (!hasShutter || isCaissonTunnel || _isPvcSeries(series)) return frames;
 
-    final sideCoverCapable = frames
-        .where(_sectionAllowsStandaloneSideCover)
-        .toList();
-    if (sideCoverCapable.isNotEmpty) return sideCoverCapable;
-
+    // Plain frames must never disappear from the replacement picker merely
+    // because a separate side cover is currently enabled.
     return frames
         .where((frame) => !_sectionHasIntegratedSideCover(frame))
         .toList();
@@ -4166,25 +4197,26 @@ class WindowModel extends ChangeNotifier {
           : frameOverride ?? getSectionByType('frame')?.toMap();
       final hasIntegrated = _overrideHasIntegratedSideCover(currentFrame);
       migrateIntegratedCoverToStandalone |= hasIntegrated && hasSideCovers;
-      if (!hasIntegrated &&
-          (!hasSideCovers ||
-              _overrideAllowsStandaloneSideCover(currentFrame))) {
-        continue;
-      }
+      // Integrated-cover frames are never valid in a multi-frame assembly.
+      // A plain frame, however, always accepts the separately selected cover.
+      if (!hasIntegrated) continue;
       final configured = getConfiguredSectionsForRole(
         'frame',
         useSlidingSeries: sliding,
       );
-      final candidateSections = configured.isNotEmpty
-          ? configured
-          : series.sections
-                .where(
-                  (s) =>
-                      s.isFrame ||
-                      s.type.toLowerCase() == 'frame' ||
-                      s.type.toLowerCase().contains('cadre'),
-                )
-                .toList();
+      // Role metadata can contain only the currently selected integrated
+      // frame. Always merge it with the real frame sections from the series,
+      // otherwise the mandatory multi-frame conversion cannot find the plain
+      // counterpart even though it exists in the catalogue.
+      final candidateById = <int, AluminumSection>{
+        for (final section in configured) section.id: section,
+        for (final section in series.sections)
+          if (section.isFrame ||
+              section.type.toLowerCase() == 'frame' ||
+              section.type.toLowerCase().contains('cadre'))
+            section.id: section,
+      };
+      final candidateSections = candidateById.values.toList();
       var plainFrames = candidateSections
           .where(
             (section) =>
@@ -4406,6 +4438,7 @@ class WindowModel extends ChangeNotifier {
     required bool sliding,
     bool manualSelection = false,
   }) {
+    final keepStandaloneSideCover = hasSideCovers;
     var mutable = Map<String, dynamic>.from(frame);
     if (manualSelection) {
       _sideCoverSelectionRevision++;
@@ -4418,37 +4451,27 @@ class WindowModel extends ChangeNotifier {
     // side-cover profile. Multi-frame layouts are handled separately by the
     // perimeter painter and must not change the selected frame either.
 
-    // A frame role may explicitly reject a separate couvre-joint. Apply that
-    // rule in every drawing mode, not only in the shutter/multi-frame paths.
-    // Integrated covers stay enabled because they belong to the frame itself.
-    if (manualSelection &&
-        !_overrideHasIntegratedSideCover(mutable) &&
-        !_overrideAllowsStandaloneSideCover(mutable)) {
-      hasSideCovers = false;
-      useCustomSideCoverLayout = false;
-      sideCoverSegments = [];
-      hiddenSideCoverSegments.clear();
-      selectedSideCover = null;
-      sideCoverOverride = null;
-      componentOverrides.remove('الغطاء الجانبي (Side Cover)');
-    }
-
     // Selecting a frame from the lower drawing toolbar also selects the
-    // cover mode represented by that frame. An integrated-cover frame must
-    // appear with its cover immediately; a plain frame must not keep a cover
-    // left over from the previously selected frame. The cover button remains
-    // available afterwards, so the user can enable a standalone cover again
-    // when the selected plain frame supports it.
+    // cover mode represented by that frame. An integrated-cover frame enables
+    // its own cover. A plain frame remains selectable while the cover switch
+    // is active and then uses a separate side-cover profile.
     if (manualSelection) {
       final frameHasIntegratedCover = _overrideHasIntegratedSideCover(mutable);
-      // Standalone side cover is an optional feature. Do NOT force it on simply
-      // because the frame allows it. Only enable automatically if the frame
-      // has an integrated side cover.
-      hasSideCovers = frameHasIntegratedCover;
+      hasSideCovers = frameHasIntegratedCover || keepStandaloneSideCover;
       _multiFrameSideCoverManuallyEnabled = false;
       useCustomSideCoverLayout = false;
       sideCoverSegments = [];
       hiddenSideCoverSegments.clear();
+      if (!frameHasIntegratedCover && hasSideCovers) {
+        final covers = availableSideCovers;
+        if (covers.isNotEmpty &&
+            !covers.any((cover) => cover.id == selectedSideCover?.id)) {
+          selectedSideCover = covers.first;
+          sideCoverOverride = covers.first.toMap();
+        } else if (selectedSideCover != null && sideCoverOverride == null) {
+          sideCoverOverride = selectedSideCover!.toMap();
+        }
+      }
     }
 
     final frameHasIntegratedCover = _overrideHasIntegratedSideCover(mutable);
@@ -5846,6 +5869,8 @@ class WindowModel extends ChangeNotifier {
   void splitShutterCustomDivisions(
     List<double> widths, {
     bool startFromRight = true,
+    List<String>? mechanisms,
+    List<String>? driveSides,
   }) {
     if (widths.isEmpty) return;
     final totalW = width.toDouble();
@@ -5862,8 +5887,12 @@ class WindowModel extends ChangeNotifier {
             width: w,
             leftOffset: left,
             label: 'صندوق ${i + 1}',
-            mechanism: shutterMechanism,
-            driveSide: shutterDriveSide,
+            mechanism: mechanisms != null && i < mechanisms.length
+                ? mechanisms[i]
+                : shutterMechanism,
+            driveSide: driveSides != null && i < driveSides.length
+                ? driveSides[i]
+                : shutterDriveSide,
           ),
         );
         currentRight = left;
@@ -5879,8 +5908,12 @@ class WindowModel extends ChangeNotifier {
             width: w,
             leftOffset: currentLeft,
             label: 'صندوق ${i + 1}',
-            mechanism: shutterMechanism,
-            driveSide: shutterDriveSide,
+            mechanism: mechanisms != null && i < mechanisms.length
+                ? mechanisms[i]
+                : shutterMechanism,
+            driveSide: driveSides != null && i < driveSides.length
+                ? driveSides[i]
+                : shutterDriveSide,
           ),
         );
         currentLeft += w;
@@ -13044,6 +13077,26 @@ class WindowModel extends ChangeNotifier {
         isDrawingMode,
         hasSideCovers,
         _multiFrameSideCoverManuallyEnabled,
+        profileAngleMode,
+        Set<int>.from(profileAngleJunctions),
+        profileAngleJunctionsDisabled,
+        viewAs90DegreeCorner,
+        frameOverride == null ? null : Map<String, dynamic>.from(frameOverride!),
+        slidingFrameOverride == null
+            ? null
+            : Map<String, dynamic>.from(slidingFrameOverride!),
+        sideCoverOverride == null
+            ? null
+            : Map<String, dynamic>.from(sideCoverOverride!),
+        selectedSideCover,
+        _preProfileAngleFrameOverride == null
+            ? null
+            : Map<String, dynamic>.from(_preProfileAngleFrameOverride!),
+        _preProfileAngleSlidingOverride == null
+            ? null
+            : Map<String, dynamic>.from(_preProfileAngleSlidingOverride!),
+        _frameSwitchedForProfileAngle,
+        _profileAngleFrameSwitchNotice,
       ),
     );
     if (_history.length > 20) _history.removeAt(0);
@@ -13610,6 +13663,26 @@ class WindowModel extends ChangeNotifier {
         isDrawingMode,
         hasSideCovers,
         _multiFrameSideCoverManuallyEnabled,
+        profileAngleMode,
+        Set<int>.from(profileAngleJunctions),
+        profileAngleJunctionsDisabled,
+        viewAs90DegreeCorner,
+        frameOverride == null ? null : Map<String, dynamic>.from(frameOverride!),
+        slidingFrameOverride == null
+            ? null
+            : Map<String, dynamic>.from(slidingFrameOverride!),
+        sideCoverOverride == null
+            ? null
+            : Map<String, dynamic>.from(sideCoverOverride!),
+        selectedSideCover,
+        _preProfileAngleFrameOverride == null
+            ? null
+            : Map<String, dynamic>.from(_preProfileAngleFrameOverride!),
+        _preProfileAngleSlidingOverride == null
+            ? null
+            : Map<String, dynamic>.from(_preProfileAngleSlidingOverride!),
+        _frameSwitchedForProfileAngle,
+        _profileAngleFrameSwitchNotice,
       ),
     );
 
@@ -13667,6 +13740,31 @@ class WindowModel extends ChangeNotifier {
     hasSideCovers = snap.hasSideCovers;
     _multiFrameSideCoverManuallyEnabled =
         snap.multiFrameSideCoverManuallyEnabled;
+    profileAngleMode = snap.profileAngleMode;
+    profileAngleJunctions = Set<int>.from(snap.profileAngleJunctions);
+    profileAngleJunctionsDisabled = snap.profileAngleJunctionsDisabled;
+    viewAs90DegreeCorner = snap.viewAs90DegreeCorner;
+    frameOverride = snap.frameOverride == null
+        ? null
+        : Map<String, dynamic>.from(snap.frameOverride!);
+    slidingFrameOverride = snap.slidingFrameOverride == null
+        ? null
+        : Map<String, dynamic>.from(snap.slidingFrameOverride!);
+    sideCoverOverride = snap.sideCoverOverride == null
+        ? null
+        : Map<String, dynamic>.from(snap.sideCoverOverride!);
+    selectedSideCover = snap.selectedSideCover;
+    _preProfileAngleFrameOverride = snap.preProfileAngleFrameOverride == null
+        ? null
+        : Map<String, dynamic>.from(snap.preProfileAngleFrameOverride!);
+    _preProfileAngleSlidingOverride =
+        snap.preProfileAngleSlidingOverride == null
+        ? null
+        : Map<String, dynamic>.from(snap.preProfileAngleSlidingOverride!);
+    _frameSwitchedForProfileAngle = snap.frameSwitchedForProfileAngle;
+    _profileAngleFrameSwitchNotice = snap.profileAngleFrameSwitchNotice;
+    selectedFrameCode = frameOverride?['code']?.toString();
+    updateProfileThickness();
     enforceBottomSideCoverConstraint();
     if (snap.mullionCreationOrder != null) {
       mullionCreationOrder = Map.from(snap.mullionCreationOrder!);
@@ -13730,6 +13828,26 @@ class WindowModel extends ChangeNotifier {
         isDrawingMode,
         hasSideCovers,
         _multiFrameSideCoverManuallyEnabled,
+        profileAngleMode,
+        Set<int>.from(profileAngleJunctions),
+        profileAngleJunctionsDisabled,
+        viewAs90DegreeCorner,
+        frameOverride == null ? null : Map<String, dynamic>.from(frameOverride!),
+        slidingFrameOverride == null
+            ? null
+            : Map<String, dynamic>.from(slidingFrameOverride!),
+        sideCoverOverride == null
+            ? null
+            : Map<String, dynamic>.from(sideCoverOverride!),
+        selectedSideCover,
+        _preProfileAngleFrameOverride == null
+            ? null
+            : Map<String, dynamic>.from(_preProfileAngleFrameOverride!),
+        _preProfileAngleSlidingOverride == null
+            ? null
+            : Map<String, dynamic>.from(_preProfileAngleSlidingOverride!),
+        _frameSwitchedForProfileAngle,
+        _profileAngleFrameSwitchNotice,
       ),
     );
     if (_history.length > 20) _history.removeAt(0);
@@ -13786,6 +13904,31 @@ class WindowModel extends ChangeNotifier {
     hasSideCovers = snap.hasSideCovers;
     _multiFrameSideCoverManuallyEnabled =
         snap.multiFrameSideCoverManuallyEnabled;
+    profileAngleMode = snap.profileAngleMode;
+    profileAngleJunctions = Set<int>.from(snap.profileAngleJunctions);
+    profileAngleJunctionsDisabled = snap.profileAngleJunctionsDisabled;
+    viewAs90DegreeCorner = snap.viewAs90DegreeCorner;
+    frameOverride = snap.frameOverride == null
+        ? null
+        : Map<String, dynamic>.from(snap.frameOverride!);
+    slidingFrameOverride = snap.slidingFrameOverride == null
+        ? null
+        : Map<String, dynamic>.from(snap.slidingFrameOverride!);
+    sideCoverOverride = snap.sideCoverOverride == null
+        ? null
+        : Map<String, dynamic>.from(snap.sideCoverOverride!);
+    selectedSideCover = snap.selectedSideCover;
+    _preProfileAngleFrameOverride = snap.preProfileAngleFrameOverride == null
+        ? null
+        : Map<String, dynamic>.from(snap.preProfileAngleFrameOverride!);
+    _preProfileAngleSlidingOverride =
+        snap.preProfileAngleSlidingOverride == null
+        ? null
+        : Map<String, dynamic>.from(snap.preProfileAngleSlidingOverride!);
+    _frameSwitchedForProfileAngle = snap.frameSwitchedForProfileAngle;
+    _profileAngleFrameSwitchNotice = snap.profileAngleFrameSwitchNotice;
+    selectedFrameCode = frameOverride?['code']?.toString();
+    updateProfileThickness();
     enforceBottomSideCoverConstraint();
 
     selection = SelectionInfo.none;
@@ -15330,11 +15473,12 @@ class WindowModel extends ChangeNotifier {
     String zoneId,
     bool isRightSash,
     int index,
-    double ratio,
-  ) {
+    double ratio, {
+    bool saveHistory = true,
+  }) {
     final idx = zones.indexWhere((z) => z.id == zoneId);
     if (idx == -1) return;
-    _saveSnapshot();
+    if (saveHistory) _saveSnapshot();
     final zone = zones[idx];
     if (isRightSash) {
       if (zone.rightInnerHPositions.length != zone.rightInnerH) {
@@ -15386,11 +15530,12 @@ class WindowModel extends ChangeNotifier {
     String zoneId,
     bool isRightSash,
     int index,
-    double ratio,
-  ) {
+    double ratio, {
+    bool saveHistory = true,
+  }) {
     final idx = zones.indexWhere((z) => z.id == zoneId);
     if (idx == -1) return;
-    _saveSnapshot();
+    if (saveHistory) _saveSnapshot();
     final zone = zones[idx];
     if (isRightSash) {
       if (zone.rightInnerVPositions.length != zone.rightInnerV) {
@@ -15454,9 +15599,14 @@ class WindowModel extends ChangeNotifier {
     }
   }
 
-  void updateZoneDoubleSashRatio(String zoneId, double ratio) {
+  void updateZoneDoubleSashRatio(
+    String zoneId,
+    double ratio, {
+    bool saveHistory = true,
+  }) {
     final idx = zones.indexWhere((z) => z.id == zoneId);
     if (idx != -1) {
+      if (saveHistory) _saveSnapshot();
       final zone = zones[idx];
       OpenDirection? newDir = zone.openDirection;
       if (ratio > 0.5) {
@@ -19099,7 +19249,8 @@ class WindowModel extends ChangeNotifier {
       return true;
     }).toList();
     final plain = frames.where((row) => !_overrideHasIntegratedSideCover(row));
-    final standalone = plain.where(_overrideAllowsStandaloneSideCover).toList();
+    // A plain frame always remains usable with a separate cover profile.
+    final standalone = plain.toList();
     final integratedFrames = frames.where((row) {
       final width = _readPositiveDouble(row['couvre_joint_width']);
       return _overrideHasIntegratedSideCover(row) && width > 0;
@@ -23762,11 +23913,18 @@ class WindowModel extends ChangeNotifier {
   }
 
   void moveSelectedMullion(double deltaPixels) {
+    moveSelectedMullionWithHistory(deltaPixels);
+  }
+
+  void moveSelectedMullionWithHistory(
+    double deltaPixels, {
+    bool saveHistory = true,
+  }) {
     if (selection.type != SelectionType.mullion ||
         selection.mullionPosition == null) {
       return;
     }
-    _saveSnapshot();
+    if (saveHistory) _saveSnapshot();
     bool isH = selection.isHorizontalMullion!;
     double pos = selection.mullionPosition!;
     final isDouble = isDoubleFrameMullionAt(isH, pos);
@@ -23959,7 +24117,19 @@ class WindowModel extends ChangeNotifier {
     required double targetPos,
   }) {
     const double snapThreshold = 100.0; // 10 سم
-    final sep = mullionThickness / 2;
+    // Use the actual selected divider width.  A flat/double-frame mullion is
+    // wider than the catalogue's ordinary mullion; using the ordinary half
+    // width here shifted the two neighbouring zones apart after every drag
+    // and made frame grouping classify them as two physical frames.
+    final effectiveThickness = isDoubleFrameMullionAt(isHorizontal, targetPos)
+        ? frameProfileWidthAt(isHorizontal, targetPos) * 2.0
+        : math.max(
+            mullionThickness,
+            _sectionVisibleWidth(
+              effectiveMullionSectionAt(isHorizontal, targetPos),
+            ),
+          );
+    final sep = effectiveThickness / 2;
 
     final candidates = <double>{};
     for (var z in zones) {
@@ -24493,13 +24663,18 @@ class WindowModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void moveSelectedInnerDivision(double deltaX, double deltaY) {
+  void moveSelectedInnerDivision(
+    double deltaX,
+    double deltaY, {
+    bool saveHistory = true,
+  }) {
     if (selection.type != SelectionType.innerDivision ||
         selection.zoneId == null ||
         selection.innerDivisionIndex == null) {
       return;
     }
 
+    if (saveHistory) _saveSnapshot();
     final zone = zones.firstWhere((z) => z.id == selection.zoneId);
     final isH = selection.isHorizontalInnerDivision ?? true;
     final isRight = selection.isRightSashInnerDivision ?? false;
@@ -24832,6 +25007,59 @@ class WindowModel extends ChangeNotifier {
     return joints;
   }
 
+  double _intraFrameGapForZones(
+    WindowZone first,
+    WindowZone second, {
+    required bool horizontal,
+  }) {
+    late final double firstEdge;
+    late final double secondEdge;
+    if (horizontal) {
+      final forward = (first.boundary.bottom - second.boundary.top).abs();
+      final reverse = (second.boundary.bottom - first.boundary.top).abs();
+      firstEdge = forward <= reverse
+          ? first.boundary.bottom
+          : first.boundary.top;
+      secondEdge = forward <= reverse
+          ? second.boundary.top
+          : second.boundary.bottom;
+    } else {
+      final forward = (first.boundary.right - second.boundary.left).abs();
+      final reverse = (second.boundary.right - first.boundary.left).abs();
+      firstEdge = forward <= reverse
+          ? first.boundary.right
+          : first.boundary.left;
+      secondEdge = forward <= reverse
+          ? second.boundary.left
+          : second.boundary.right;
+    }
+    final position = (firstEdge + secondEdge) / 2.0;
+    final prefix = horizontal ? 'H_' : 'V_';
+    bool hasRecordedMullion(Iterable<String> keys) {
+      for (final key in keys) {
+        if (!key.startsWith(prefix)) continue;
+        final stored = double.tryParse(key.substring(2));
+        if (stored != null && (stored - position).abs() <= 6.0) return true;
+      }
+      return false;
+    }
+
+    final recorded =
+        hasRecordedMullion(mullionCreationOrder.keys) ||
+        hasRecordedMullion(mullionProfiles.keys) ||
+        hasRecordedMullion(mullionSectionOverrides.keys);
+    if (!recorded) return mullionThickness + 4.0;
+    final width = isDoubleFrameMullionAt(horizontal, position)
+        ? frameProfileWidthAt(horizontal, position) * 2.0
+        : math.max(
+            mullionThickness,
+            _sectionVisibleWidth(
+              effectiveMullionSectionAt(horizontal, position),
+            ),
+          );
+    return width + 4.0;
+  }
+
   List<List<WindowZone>> _frameZoneGroups() {
     final List<List<WindowZone>> groups = [];
     // Threshold for two zones belonging to the same physical frame:
@@ -24839,13 +25067,14 @@ class WindowModel extends ChangeNotifier {
     // Two *separate* frames have a gap ≈ profileThickness × 2 (~90 mm).
     // Using mullionThickness + a small tolerance keeps them distinct even
     // after floating-point rounding during save/reload.
-    final double intraFrameGap = mullionThickness + 4.0;
-
     bool zonesAreAdjacent(WindowZone first, WindowZone second) {
+      final verticalGap = math.min(
+        (first.boundary.right - second.boundary.left).abs(),
+        (second.boundary.right - first.boundary.left).abs(),
+      );
       final verticalTouch =
-          (first.boundary.right - second.boundary.left).abs() <=
-              intraFrameGap ||
-          (second.boundary.right - first.boundary.left).abs() <= intraFrameGap;
+          verticalGap <=
+          _intraFrameGapForZones(first, second, horizontal: false);
       if (verticalTouch) {
         final overlapTop = math.max(first.boundary.top, second.boundary.top);
         final overlapBottom = math.min(
@@ -24855,10 +25084,13 @@ class WindowModel extends ChangeNotifier {
         if (overlapTop < overlapBottom - 5.0) return true;
       }
 
+      final horizontalGap = math.min(
+        (first.boundary.bottom - second.boundary.top).abs(),
+        (second.boundary.bottom - first.boundary.top).abs(),
+      );
       final horizontalTouch =
-          (first.boundary.bottom - second.boundary.top).abs() <=
-              intraFrameGap ||
-          (second.boundary.bottom - first.boundary.top).abs() <= intraFrameGap;
+          horizontalGap <=
+          _intraFrameGapForZones(first, second, horizontal: true);
       if (horizontalTouch) {
         final overlapLeft = math.max(first.boundary.left, second.boundary.left);
         final overlapRight = math.min(
@@ -25157,7 +25389,7 @@ class WindowModel extends ChangeNotifier {
         final previous = merged.last;
         if (previous.side == segment.side &&
             (previous.coordinate - segment.coordinate).abs() <= tolerance &&
-            segment.start <= previous.end + maxJunctionGap) {
+            segment.start <= previous.end + tolerance) {
           merged[merged.length - 1] = FrameEdgeSegment(
             side: previous.side,
             start: previous.start,
