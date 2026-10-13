@@ -66,13 +66,17 @@ begin
     if target_workshop_id is null then
       raise exception 'WORKSHOP_NOT_FOUND';
     end if;
-    if not exists (
-      select 1 from public.workshop_member_invites
+    -- Verify workshop subscription capacity
+    if (
+      select count(*)
+      from public.workshop_members
       where workshop_id = target_workshop_id
-        and lower(trim(email)) = clean_email
-        and blocked = false
-    ) then
-      raise exception 'WORKSHOP_INVITE_REQUIRED';
+    ) >= coalesce((
+      select max_users
+      from public.workshop_subscriptions
+      where workshop_id = target_workshop_id
+    ), 4) then
+      raise exception 'WORKSHOP_USER_LIMIT_REACHED';
     end if;
   else
     raise exception 'INVALID_SIGNUP_KIND';

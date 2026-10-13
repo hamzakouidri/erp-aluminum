@@ -1411,11 +1411,18 @@ class _LoginScreenState extends State<LoginScreen>
           if (repaired != null) account = repaired;
         }
         if (account.blocked) {
-          await _auth.signOut();
-          throw const AppAuthException(
-            'user-disabled',
-            'عذراً، تم إيقاف هذا الحساب من قبل مدير الورشة.',
-          );
+          final isPendingApproval = account.role == 'worker' &&
+              (account.permissions['is_pending'] == true ||
+                  account.permissions['is_approved'] == false ||
+                  (account.permissions['view_clients'] != true &&
+                      account.permissions['view_orders'] != true));
+          if (!isPendingApproval) {
+            await _auth.signOut();
+            throw const AppAuthException(
+              'user-disabled',
+              'عذراً، تم إيقاف هذا الحساب من قبل مدير الورشة.',
+            );
+          }
         }
       } else {
         if (account != null) {
@@ -1591,11 +1598,18 @@ class _LoginScreenState extends State<LoginScreen>
           );
         }
         if (account.blocked) {
-          await _auth.signOut();
-          throw const AppAuthException(
-            'user-disabled',
-            'عذراً، تم إيقاف هذا الحساب من قبل مدير الورشة.',
-          );
+          final isPendingApproval = account.role == 'worker' &&
+              (account.permissions['is_pending'] == true ||
+                  account.permissions['is_approved'] == false ||
+                  (account.permissions['view_clients'] != true &&
+                      account.permissions['view_orders'] != true));
+          if (!isPendingApproval) {
+            await _auth.signOut();
+            throw const AppAuthException(
+              'user-disabled',
+              'عذراً، تم إيقاف هذا الحساب من قبل مدير الورشة.',
+            );
+          }
         }
       } else {
         if (account != null) {

@@ -759,28 +759,12 @@ class SupabaseAccountService {
   Future<List<Map<String, dynamic>>> fetchAdminWorkshops() async {
     final rows = await _client.rpc('list_admin_workshops');
     if (rows is! List) return <Map<String, dynamic>>[];
-    final currentUser = _client.auth.currentUser;
-    final currentAdminId = currentUser?.id.trim() ?? '';
-    final currentAdminEmail = currentUser?.email?.trim().toLowerCase() ?? '';
 
-    // The application administrator is global, not a workshop subscriber.
-    // Keep this client-side guard for older RPC versions until the updated
-    // SQL function is applied in Supabase as well.
+    // Return all workshops so the application administrator can inspect,
+    // manage subscriptions, and configure their own workshop alongside clients.
     return rows
         .whereType<Map>()
         .map((row) => Map<String, dynamic>.from(row))
-        .where((row) {
-          final ownerId = row['owner_uid']?.toString().trim() ?? '';
-          final ownerEmail =
-              row['owner_email']?.toString().trim().toLowerCase() ?? '';
-          if (currentAdminId.isNotEmpty && ownerId == currentAdminId) {
-            return false;
-          }
-          if (currentAdminEmail.isNotEmpty && ownerEmail == currentAdminEmail) {
-            return false;
-          }
-          return true;
-        })
         .toList(growable: false);
   }
 

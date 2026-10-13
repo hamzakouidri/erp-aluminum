@@ -266,6 +266,10 @@ class AppAuthService {
         final uri = Uri.parse(cleanToken);
         if (uri.queryParameters.containsKey('token')) {
           cleanToken = uri.queryParameters['token']!;
+        } else if (uri.queryParameters.containsKey('code')) {
+          cleanToken = uri.queryParameters['code']!;
+        } else if (uri.queryParameters.containsKey('token_hash')) {
+          cleanToken = uri.queryParameters['token_hash']!;
         }
         if (uri.fragment.isNotEmpty) {
           final fragmentParams = Uri.splitQueryString(uri.fragment);
@@ -273,10 +277,15 @@ class AppAuthService {
             extractedRefreshToken = fragmentParams['refresh_token'];
           } else if (fragmentParams.containsKey('token')) {
             cleanToken = fragmentParams['token']!;
+          } else if (fragmentParams.containsKey('code')) {
+            cleanToken = fragmentParams['code']!;
+          } else if (fragmentParams.containsKey('token_hash')) {
+            cleanToken = fragmentParams['token_hash']!;
           }
         }
       } catch (_) {
-        final tokenMatch = RegExp(r'[?&#]token=([^&]+)').firstMatch(cleanToken);
+        final tokenMatch = RegExp(r'[?&#](?:token|code|token_hash)=([^&]+)')
+            .firstMatch(cleanToken);
         if (tokenMatch != null) {
           cleanToken = tokenMatch.group(1)!;
         }

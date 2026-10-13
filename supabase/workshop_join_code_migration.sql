@@ -101,21 +101,25 @@ begin
         workshop_uuid := existing_workshop.id;
       else
         -- The short workshop code is also a valid worker join credential.
-        -- When no email invitation exists, create a safe basic worker
-        -- membership instead of returning an account-without-workshop error.
+        -- When a worker registers with the workshop code, create a membership
+        -- in pending approval state (blocked = true, is_pending = true) until
+        -- the workshop manager clicks "Accept" in the workers management screen.
         insert into public.workshop_members
           (workshop_id, user_id, role, permissions, blocked, updated_at)
         values
           (existing_workshop.id, auth.uid(), 'worker',
            '{
-             "view_clients": true,
-             "view_orders": true,
-             "view_client_details": true,
-             "view_order_details": true,
-             "view_my_tasks": true,
-             "view_my_accreditations": true
+             "is_pending": true,
+             "is_approved": false,
+             "isBlocked": true,
+             "view_clients": false,
+             "view_orders": false,
+             "view_client_details": false,
+             "view_order_details": false,
+             "view_my_tasks": false,
+             "view_my_accreditations": false
            }'::jsonb,
-           false, now())
+           true, now())
         on conflict (workshop_id, user_id) do nothing;
         workshop_uuid := existing_workshop.id;
       end if;

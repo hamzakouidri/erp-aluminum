@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:database_data/widgets/app_material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/supabase_workshop_sync_service.dart';
@@ -28,8 +27,6 @@ class WorkersManagementScreen extends StatefulWidget {
 }
 
 class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
-  static const _fullManagerJobRole = 'نائب مدير (صلاحيات كاملة)';
-
   List<Map<String, dynamic>> _workers = [];
   bool _isLoading = false;
   String _joinCode = 'جاري التحميل...';
@@ -38,18 +35,6 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
     key,
     Provider.of<AppSettingsProvider>(context, listen: false).language,
   );
-
-  String _localizedJobRole(String value, AppLanguage lang) {
-    if (value.trim() == _fullManagerJobRole) {
-      return _tr(
-        'نائب مدير (صلاحيات كاملة)',
-        'Directeur adjoint (droits complets)',
-        'Deputy manager (full permissions)',
-        lang,
-      );
-    }
-    return value;
-  }
 
   /// هل المستخدم الحالي نائب مدير (عامل بصلاحية manage_workers) وليس المدير الأصلي؟
   bool get _isDeputyManager {
@@ -434,9 +419,314 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
     }
   }
 
+  Map<String, dynamic> _parsePermissions(dynamic raw) {
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    if (raw is String && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+    }
+    return <String, dynamic>{};
+  }
+
+  bool _isWorkerPending(Map<String, dynamic> worker) {
+    final perms = _parsePermissions(worker['permissions_json'] ?? worker['permissions']);
+    if (perms['is_pending'] == true) return true;
+    if (perms['isBlocked'] == true &&
+        (perms['view_clients'] != true && perms['view_orders'] != true)) {
+      return true;
+    }
+    return false;
+  }
+
+  Future<void> _approveWorker(Map<String, dynamic> worker) async {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final workerUid = worker['uid']?.toString() ?? '';
+    final workerEmail = (worker['email'] ?? '').toString().trim();
+    final workerName = (worker['name'] ?? '').toString().trim();
+
+    if (workerEmail.isEmpty && workerUid.isEmpty) return;
+
+    final standardPerms = <String, dynamic>{
+      'view_clients': true,
+      'view_orders': true,
+      'view_client_details': true,
+      'view_order_details': true,
+      'view_my_tasks': true,
+      'view_my_accreditations': true,
+      'access_workshop': true,
+      'access_store': true,
+      'isBlocked': false,
+      'is_pending': false,
+      'is_approved': true,
+    };
+
+    final permsJson = jsonEncode(standardPerms);
+
+    try {
+      // 1. Update SQLite
+      if (workerUid.isNotEmpty) {
+        await widget.db.updateEmployeePermissions(workerUid, permsJson);
+      }
+
+      // 2. Update Supabase
+      if (workerEmail.isNotEmpty) {
+        try {
+          await SupabaseWorkshopSyncService().updateMemberPermissionsByEmail(
+            email: workerEmail,
+            role: 'worker',
+            permissions: standardPerms,
+          );
+        } catch (e) {
+          debugPrint('Supabase member approval sync: $e');
+        }
+      }
+
+      // 3. Update Firebase if needed
+      final isFirebaseWorker =
+          !workerUid.startsWith('supabase_') &&
+          !workerUid.startsWith('pending_supabase_') &&
+          workerUid.isNotEmpty;
+      if (isFirebaseWorker) {
+        try {
+          await FirebaseFirestore.instance.collection('users').doc(workerUid).update({
+            'isBlocked': false,
+            'is_pending': false,
+            'role': 'worker',
+            'permissions': standardPerms,
+            'permissions_json': permsJson,
+          });
+        } catch (e) {
+          debugPrint('Firebase worker approval sync: $e');
+        }
+      }
+
+      await _loadWorkers();
+
+      if (mounted) {
+        final successMsg = switch (lang) {
+          AppLanguage.french => 'Ouvrier "$workerName" accepté avec succès !',
+          AppLanguage.english => 'Worker "$workerName" approved successfully!',
+          _ => 'تم قبول طلب انضمام "$workerName" وتفعيل حسابه بنجاح!',
+        };
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    successMsg,
+                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF059669),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('حدث خطأ أثناء قبول الطلب: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildPendingRequestsCard(
+    List<Map<String, dynamic>> pendingWorkers,
+    AppLanguage lang,
+    bool isDark,
+  ) {
+    if (pendingWorkers.isEmpty) return const SizedBox.shrink();
+
+    final title = switch (lang) {
+      AppLanguage.french => 'Nouvelles demandes d\'adhésion (${pendingWorkers.length})',
+      AppLanguage.english => 'New Join Requests (${pendingWorkers.length})',
+      _ => 'طلبات الانضمام الجديدة إلى ورشتك (${pendingWorkers.length})',
+    };
+
+    final hint = switch (lang) {
+      AppLanguage.french =>
+        'Ces ouvriers ont saisi votre code d\'atelier. Appuyez sur "Accepter" pour leur donner accès.',
+      AppLanguage.english =>
+        'These workers entered your workshop code. Tap "Accept" to grant them access.',
+      _ =>
+        'قام هؤلاء العمال بإدخال كود ورشتك. اضغط على "قبول" لفتح حساباتهم وتفعيل صلاحياتهم فوراً.',
+    };
+
+    final acceptLabel = switch (lang) {
+      AppLanguage.french => 'Accepter',
+      AppLanguage.english => 'Accept',
+      _ => 'قبول',
+    };
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFF10B981).withValues(alpha: 0.5),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF10B981).withValues(alpha: 0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.person_add_alt_1_rounded,
+                  color: Color(0xFF059669),
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                      ),
+                    ),
+                    Text(
+                      hint,
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 11,
+                        color: isDark ? Colors.white70 : const Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Divider(height: 1),
+          const SizedBox(height: 8),
+          ...pendingWorkers.map((worker) {
+            final name = (worker['name'] ?? '').toString().trim();
+            final email = (worker['email'] ?? '').toString().trim();
+            final displayName = name.isNotEmpty && name != 'عامل جديد'
+                ? name
+                : email.split('@').first;
+
+            return Container(
+              margin: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                ),
+              ),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.2),
+                    child: const Icon(
+                      Icons.person_outline_rounded,
+                      size: 18,
+                      color: Color(0xFF059669),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          displayName,
+                          style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: isDark ? Colors.white : const Color(0xFF1E293B),
+                          ),
+                        ),
+                        if (email.isNotEmpty)
+                          Text(
+                            email,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isDark ? Colors.white60 : Colors.black54,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: () => _approveWorker(worker),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF059669),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    icon: const Icon(Icons.check_rounded, size: 16),
+                    label: Text(
+                      acceptLabel,
+                      style: const TextStyle(
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDeputy = _isDeputyManager;
+    final appSettings = Provider.of<AppSettingsProvider>(context);
+    final lang = appSettings.language;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final pendingWorkers = _workers.where((w) => _isWorkerPending(w)).toList(growable: false);
+    final activeWorkers = _workers.where((w) => !_isWorkerPending(w)).toList(growable: false);
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -444,7 +734,7 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
             'إدارة شؤون وأجور العمال',
             'Gestion du Personnel & Salaires',
             'Personnel & Payroll Management',
-            Provider.of<AppSettingsProvider>(context).language,
+            lang,
           ),
           style: const TextStyle(
             fontFamily: 'Cairo',
@@ -452,7 +742,7 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
             fontSize: 16,
           ),
         ),
-        backgroundColor: Theme.of(context).brightness == Brightness.dark
+        backgroundColor: isDark
             ? Theme.of(context).appBarTheme.backgroundColor
             : Colors.blue,
         actions: [
@@ -465,6 +755,10 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
       ),
       body: Column(
         children: [
+          // ── بطاقة طلبات الانضمام الجديدة إن وجدت ──
+          if (pendingWorkers.isNotEmpty)
+            _buildPendingRequestsCard(pendingWorkers, lang, isDark),
+
           if (_workers.isEmpty)
             Container(
               padding: EdgeInsets.all(16),
@@ -495,13 +789,35 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
             ),
           Expanded(
             child: _isLoading
-                ? Center(child: CircularProgressIndicator())
+                ? const Center(child: CircularProgressIndicator())
                 : _workers.isEmpty
                 ? Center(child: Text(_t('لا يوجد عمال مسجلين في ورشتك حالياً')))
+                : activeWorkers.isEmpty && pendingWorkers.isNotEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        switch (lang) {
+                          AppLanguage.french =>
+                            'Tous les ouvriers sont actuellement en attente d\'approbation ci-dessus.',
+                          AppLanguage.english =>
+                            'All workers are currently pending approval above.',
+                          _ =>
+                            'جميع العمال الحاليين بانتظار قبولك في بطاقة الطلبات المعلقة أعلاه.',
+                        },
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 14,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ),
+                  )
                 : ListView.builder(
-                    itemCount: _workers.length,
+                    itemCount: activeWorkers.length,
                     itemBuilder: (context, index) {
-                      final worker = _workers[index];
+                      final worker = activeWorkers[index];
                       return WorkerCard(
                         key: ValueKey(worker['uid']?.toString() ?? index),
                         worker: worker,
@@ -2174,7 +2490,7 @@ class _WorkerCardState extends State<WorkerCard> {
             blueDivider,
 
             Container(
-              color: isDark ? Colors.red.withOpacity(0.15) : Colors.red.shade50,
+              color: isDark ? Colors.red.withValues(alpha: 0.15) : Colors.red.shade50,
               child: SwitchListTile(
                 title: Text(
                   _tr(

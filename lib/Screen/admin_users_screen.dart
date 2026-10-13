@@ -10,6 +10,7 @@ import 'package:database_data/services/supabase_account_service.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:database_data/services/supabase_workshop_sync_service.dart';
 import 'storage_dashboard_screen.dart';
+import 'payment_gateway_settings_screen.dart';
 
 class AdminUsersScreen extends StatefulWidget {
   const AdminUsersScreen({super.key});
@@ -1883,10 +1884,23 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
         appBar: AppBar(
           title: Text(_t('إدارة المشتركين والورشات')),
           centerTitle: true,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.payments_outlined),
+              tooltip: _t('إعدادات بوابات الدفع الإلكتروني'),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const PaymentGatewaySettingsScreen(),
+                  ),
+                );
+              },
+            ),
+          ],
         ),
         body: Column(
           children: [
-            _buildPaymentSettingsCard(),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
               child: TextField(

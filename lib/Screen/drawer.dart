@@ -6,6 +6,7 @@ import 'package:database_data/Screen/worker_finances_screen.dart';
 import '../services/cloud_sync_service.dart';
 import '../items_produits/products_menu_screen.dart';
 import 'admin_users_screen.dart';
+import 'payment_gateway_settings_screen.dart';
 import 'projects_screen.dart';
 import 'sales_screen.dart';
 import 'package:database_data/Screen/support_dialog.dart';
@@ -1491,6 +1492,25 @@ class _AppDrawerState extends State<AppDrawer> {
             titleKey: 'admin_users',
           ),
           color: Colors.blue,
+        ),
+      );
+      managementItems.add(
+        _desktopMenuItem(
+          isDesktop: isDesktop,
+          title: _desktopLabel(
+            lang,
+            arabic: 'إعدادات بوابات الدفع',
+            french: 'Passerelles de paiement',
+            english: 'Payment gateways',
+          ),
+          icon: Icons.payments_rounded,
+          onTap: () => _openScreen(
+            'payment_gateways',
+            Icons.payments_rounded,
+            const PaymentGatewaySettingsScreen(),
+            titleKey: 'payment_gateways',
+          ),
+          color: const Color(0xFF1E88E5),
         ),
       );
     }

@@ -842,6 +842,16 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
         }
         final verifiedAccount = account!;
         if (verifiedAccount.blocked) {
+          final isPendingApproval = verifiedAccount.role == 'worker' &&
+              (verifiedAccount.permissions['is_pending'] == true ||
+                  verifiedAccount.permissions['is_approved'] == false ||
+                  (verifiedAccount.permissions['view_clients'] != true &&
+                      verifiedAccount.permissions['view_orders'] != true));
+
+          if (isPendingApproval) {
+            return _pendingApprovalScreen(context, verifiedAccount);
+          }
+
           return _message(
             context,
             icon: Icons.block,
@@ -904,6 +914,267 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
         }
         return const SubscriptionExpiredScreen();
       },
+    );
+  }
+
+  Widget _pendingApprovalScreen(
+    BuildContext context,
+    SupabaseAccountSnapshot account,
+  ) {
+    final lang = context.watch<AppSettingsProvider>().language;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final String title = switch (lang) {
+      AppLanguage.french => 'Demande d\'adhésion en attente',
+      AppLanguage.english => 'Join Request Pending Approval',
+      _ => 'طلب الانضمام قيد المراجعة',
+    };
+
+    final String subtitle = switch (lang) {
+      AppLanguage.french =>
+        'Votre demande pour rejoindre cet atelier a bien été envoyée.\nLe compte sera automatiquement activé dès que le directeur de l\'atelier aura validé votre demande.',
+      AppLanguage.english =>
+        'Your request to join this workshop has been sent successfully.\nYour account will be activated as soon as the workshop manager approves your request.',
+      _ =>
+        'تم إرسال طلب انضمامك إلى الورشة بنجاح.\nسيُفتح لك الحساب وتبدأ العمل فور قيام مدير الورشة بقبول طلبك.',
+    };
+
+    final String workshopLabel = switch (lang) {
+      AppLanguage.french => 'Atelier :',
+      AppLanguage.english => 'Workshop:',
+      _ => 'الورشة:',
+    };
+
+    final String refreshLabel = switch (lang) {
+      AppLanguage.french => 'Vérifier l\'état d\'acceptation',
+      AppLanguage.english => 'Check Approval Status',
+      _ => 'تحديث والتحقق من القبول',
+    };
+
+    final String logoutLabel = switch (lang) {
+      AppLanguage.french => 'Se déconnecter',
+      AppLanguage.english => 'Log Out',
+      _ => 'تسجيل الخروج',
+    };
+
+    final String infoTip = switch (lang) {
+      AppLanguage.french =>
+        'Astuce : Vous pouvez contacter le directeur de l\'atelier pour accélérer l\'acceptation.',
+      AppLanguage.english =>
+        'Tip: You can contact the workshop manager directly to approve your request.',
+      _ =>
+        'تنبيه: يمكنك التواصل مع مدير الورشة ليقوم بالضغط على زر "قبول" في لوحة إدارة العمال لديه.',
+    };
+
+    final workshopDisplay = account.workshopName.trim().isNotEmpty
+        ? account.workshopName.trim()
+        : account.workshopCode.trim();
+
+    return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: Card(
+                elevation: 4,
+                shadowColor: Colors.black.withValues(alpha: 0.08),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24),
+                  side: BorderSide(
+                    color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                  ),
+                ),
+                color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 36),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Elegant animated / glowing icon
+                      Container(
+                        width: 90,
+                        height: 90,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFF2563EB).withValues(alpha: 0.1),
+                          border: Border.all(
+                            color: const Color(0xFF2563EB).withValues(alpha: 0.25),
+                            width: 2,
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.hourglass_top_rounded,
+                          size: 46,
+                          color: Color(0xFF2563EB),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        title,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'Cairo',
+                          color: isDark ? Colors.white : const Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        subtitle,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 14,
+                          height: 1.6,
+                          fontFamily: 'Cairo',
+                          color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                        ),
+                      ),
+                      if (workshopDisplay.isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? const Color(0xFF0F172A)
+                                : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isDark
+                                  ? const Color(0xFF334155)
+                                  : const Color(0xFFE2E8F0),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.storefront_rounded,
+                                size: 18,
+                                color: Color(0xFF2563EB),
+                              ),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  '$workshopLabel $workshopDisplay',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
+                                    fontFamily: 'Cairo',
+                                    color: isDark ? Colors.white : const Color(0xFF1E293B),
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 28),
+                      // Refresh / verify status button
+                      SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _refreshAccountInBackground(),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF2563EB),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          icon: const Icon(Icons.refresh_rounded, size: 20),
+                          label: Text(
+                            refreshLabel,
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      // Logout button
+                      SizedBox(
+                        width: double.infinity,
+                        height: 44,
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            context.read<WorkspaceController>().resetForSignedOut();
+                            await CloudSyncService().clearCachedWorkshopContext();
+                            await AppAuthService().signOut();
+                          },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: isDark ? Colors.red.shade300 : Colors.red.shade600,
+                            side: BorderSide(
+                              color: isDark ? Colors.red.shade800 : Colors.red.shade200,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          icon: const Icon(Icons.logout_rounded, size: 18),
+                          label: Text(
+                            logoutLabel,
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      // Helper hint
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF59E0B).withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: const Color(0xFFF59E0B).withValues(alpha: 0.25),
+                          ),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(
+                              Icons.info_outline_rounded,
+                              size: 16,
+                              color: Color(0xFFD97706),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                infoTip,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  height: 1.5,
+                                  fontFamily: 'Cairo',
+                                  color: Color(0xFFB45309),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
