@@ -993,10 +993,10 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                         margin: const EdgeInsets.only(bottom: 12),
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: Colors.orange.withOpacity(0.12),
+                          color: Colors.orange.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                            color: Colors.orange.withOpacity(0.4),
+                            color: Colors.orange.withValues(alpha: 0.4),
                           ),
                         ),
                         child: const Row(
@@ -1023,7 +1023,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                       ),
                     ],
                     DropdownButtonFormField<String>(
-                      value: selectedWorkerUid,
+                      initialValue: selectedWorkerUid,
                       decoration: InputDecoration(
                         labelText: isManufactured
                             ? 'العامل الصانع (مقفول)'
@@ -1077,10 +1077,10 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                           vertical: 10,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.teal.withOpacity(0.08),
+                          color: Colors.teal.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                            color: Colors.teal.withOpacity(0.4),
+                            color: Colors.teal.withValues(alpha: 0.4),
                           ),
                         ),
                         child: const Row(
@@ -1213,7 +1213,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     DropdownButtonFormField<String>(
-                      value: selectedWorkerUid,
+                      initialValue: selectedWorkerUid,
                       decoration: InputDecoration(
                         labelText: _tr(
                           'اختر العامل',
@@ -1270,10 +1270,10 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                           vertical: 10,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.teal.withOpacity(0.08),
+                          color: Colors.teal.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                            color: Colors.teal.withOpacity(0.4),
+                            color: Colors.teal.withValues(alpha: 0.4),
                           ),
                         ),
                         child: const Row(
@@ -1586,7 +1586,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                                                   : Theme.of(context)
                                                         .colorScheme
                                                         .onSurface
-                                                        .withOpacity(0.7),
+                                                        .withValues(alpha: 0.7),
                                               fontFamily: 'Cairo',
                                             ),
                                           ),
@@ -1600,7 +1600,7 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                                                 color: Theme.of(context)
                                                     .colorScheme
                                                     .onSurface
-                                                    .withOpacity(0.6),
+                                                    .withValues(alpha: 0.6),
                                                 fontFamily: 'Cairo',
                                               ),
                                             ),
@@ -1827,13 +1827,13 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                                                                       isManufactured
                                                                       ? Colors
                                                                             .green
-                                                                            .withOpacity(
-                                                                              0.12,
+                                                                            .withValues(
+                                                                              alpha: 0.12,
                                                                             )
                                                                       : Colors
                                                                             .orange
-                                                                            .withOpacity(
-                                                                              0.12,
+                                                                            .withValues(
+                                                                              alpha: 0.12,
                                                                             ),
                                                                   borderRadius:
                                                                       BorderRadius.circular(
@@ -1918,13 +1918,13 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
                                                                           1
                                                                       ? Colors
                                                                             .blue
-                                                                            .withOpacity(
-                                                                              0.12,
+                                                                            .withValues(
+                                                                              alpha: 0.12,
                                                                             )
                                                                       : Colors
                                                                             .orange
-                                                                            .withOpacity(
-                                                                              0.12,
+                                                                            .withValues(
+                                                                              alpha: 0.12,
                                                                             ),
                                                                   borderRadius:
                                                                       BorderRadius.circular(

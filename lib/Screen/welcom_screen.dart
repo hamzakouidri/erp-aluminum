@@ -35,6 +35,7 @@ import 'material_sale_editor_screen.dart';
 import 'achat_details_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'external_operations_hub_screen.dart';
 import 'worker_archive_screen.dart';
 import 'subscription_overview_card.dart';
@@ -152,7 +153,14 @@ class _WelcomScreenState extends State<WelcomScreen> {
     try {
       final allCmds = await db.readCommande();
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('last_seen_orders_count', allCmds.length);
+      await prefs.setString(
+        _dashboardSeenOrdersPreferenceKey,
+        jsonEncode({
+          for (final order in allCmds)
+            if (_dashboardOrderId(order) > 0)
+              '${_dashboardOrderId(order)}': _dashboardOrderVersion(order),
+        }),
+      );
       if (mounted) {
         setState(() {
           _newOrdersCount = 0;
@@ -160,6 +168,44 @@ class _WelcomScreenState extends State<WelcomScreen> {
       }
     } catch (e) {
       debugPrint("Error marking orders read: $e");
+    }
+  }
+
+  String get _dashboardSeenOrdersPreferenceKey {
+    String? supabaseUid;
+    try {
+      supabaseUid = Supabase.instance.client.auth.currentUser?.id.trim();
+    } catch (_) {}
+    final firebaseUid = AppAuthService().currentUser?.uid.trim();
+    final uid = supabaseUid?.isNotEmpty == true ? supabaseUid : firebaseUid;
+    return 'seen_order_versions_v1_${uid == null || uid.isEmpty ? 'local' : uid}';
+  }
+
+  int _dashboardOrderId(Map<String, dynamic> order) {
+    final raw = order['id'];
+    return raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}') ?? 0;
+  }
+
+  String _dashboardOrderVersion(Map<String, dynamic> order) {
+    final updated = order['updated_at']?.toString().trim() ?? '';
+    final raw = updated.isNotEmpty
+        ? updated
+        : order['created_at']?.toString().trim() ?? '';
+    return DateTime.tryParse(raw)?.toUtc().toIso8601String() ?? raw;
+  }
+
+  Map<int, String> _decodeDashboardSeenVersions(String? raw) {
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return {};
+      return {
+        for (final entry in decoded.entries)
+          if (int.tryParse(entry.key.toString()) != null)
+            int.parse(entry.key.toString()): entry.value.toString(),
+      };
+    } catch (_) {
+      return {};
     }
   }
 
@@ -573,15 +619,42 @@ class _WelcomScreenState extends State<WelcomScreen> {
       final chartData = coreData[1] as Map<String, dynamic>;
       final allCmds = coreData[2] as List<Map<String, dynamic>>;
       final prefs = await SharedPreferences.getInstance();
-      final lastCmdCount = prefs.getInt('last_seen_orders_count');
-      final unreadOrders = lastCmdCount == null
-          ? 0
-          : math.max(0, allCmds.length - lastCmdCount).toInt();
+      var seenVersions = _decodeDashboardSeenVersions(
+        prefs.getString(_dashboardSeenOrdersPreferenceKey),
+      );
+      // One-time migration from the old count-only flag. A count cannot tell
+      // which order changed, so begin from the current versions and track all
+      // subsequent edits precisely instead of repeatedly reviving old rows.
+      if (seenVersions.isEmpty && prefs.containsKey('last_seen_orders_count')) {
+        seenVersions = {
+          for (final order in allCmds)
+            if (_dashboardOrderId(order) > 0)
+              _dashboardOrderId(order): _dashboardOrderVersion(order),
+        };
+        await prefs.setString(
+          _dashboardSeenOrdersPreferenceKey,
+          jsonEncode({
+            for (final entry in seenVersions.entries)
+              '${entry.key}': entry.value,
+          }),
+        );
+      }
+      final unreadOrders = allCmds.where((order) {
+        final id = _dashboardOrderId(order);
+        return id > 0 && seenVersions[id] != _dashboardOrderVersion(order);
+      }).length;
 
       if (!mounted || loadToken != _statsLoadToken) return;
 
-      if (lastCmdCount == null) {
-        await prefs.setInt('last_seen_orders_count', allCmds.length);
+      if (!prefs.containsKey(_dashboardSeenOrdersPreferenceKey)) {
+        await prefs.setString(
+          _dashboardSeenOrdersPreferenceKey,
+          jsonEncode({
+            for (final order in allCmds)
+              if (_dashboardOrderId(order) > 0)
+                '${_dashboardOrderId(order)}': _dashboardOrderVersion(order),
+          }),
+        );
       }
 
       final secondaryData = await Future.wait<dynamic>([
@@ -704,17 +777,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
   }
 
   bool _isOpenOrder(Map<String, dynamic> order) {
-    final status = (order['status'] ?? '').toString().trim().toLowerCase();
-    return !{
-      'done',
-      'completed',
-      'complete',
-      'archived',
-      'finished',
-      'منتهية',
-      'مكتملة',
-      'أرشيف',
-    }.contains(status);
+    return isOpenOrderStatus((order['status'] ?? '').toString());
   }
 
   Map<String, int> get _materialSalesByStatus {
@@ -2089,7 +2152,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
           backgroundColor: cardColor,
           textColor: contentColor,
           mutedColor: mutedColor,
-          onTap: _openOrders,
+          onTap: () => _openOrders(openOrdersOnly: true),
         ),
       if (allowWorkshop && settings.hasWorkshop && settings.canAccessTreasury())
         _DesktopMetricCard(
@@ -5279,7 +5342,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
     );
   }
 
-  void _openOrders({bool openAddOrderOnStart = false}) {
+  void _openOrders({
+    bool openAddOrderOnStart = false,
+    bool openOrdersOnly = false,
+  }) {
     final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
@@ -5289,7 +5355,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
       context,
       title: _desktopText(lang, 'الطلبيات', 'Commandes', 'Orders'),
       icon: Icons.receipt_long_rounded,
-      screen: Commande(openAddOrderOnStart: openAddOrderOnStart),
+      screen: Commande(
+        openAddOrderOnStart: openAddOrderOnStart,
+        openOrdersOnly: openOrdersOnly,
+      ),
     );
   }
 

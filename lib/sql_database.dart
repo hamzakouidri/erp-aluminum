@@ -23,6 +23,16 @@ import 'package:database_data/services/auth_service.dart';
 import 'package:database_data/services/order_notification_service.dart';
 import 'package:database_data/services/worker_push_notification_service.dart';
 
+class DuplicateClientException implements Exception {
+  final String field;
+  final String value;
+
+  const DuplicateClientException(this.field, this.value);
+
+  @override
+  String toString() => 'DuplicateClientException($field: $value)';
+}
+
 class CloudChangeAcknowledgement {
   const CloudChangeAcknowledgement({
     required this.table,
@@ -326,6 +336,7 @@ class SqlDatabase {
     'MaterialSales',
     'MaterialSaleItems',
     'AuditLogs',
+    'BusinessDayClosings',
   ];
 
   // These rows describe how a workshop uses the shared catalogue. The base
@@ -5315,6 +5326,56 @@ class SqlDatabase {
       ''', whereArgs);
   }
 
+  String _normaliseClientName(String value) => value
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[إأآا]'), 'ا')
+      .replaceAll('ة', 'ه')
+      .replaceAll('ى', 'ي')
+      .replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '')
+      .replaceAll(RegExp(r'\s+'), ' ');
+
+  String _normaliseClientPhone(String value) =>
+      value.replaceAll(RegExp(r'\D'), '');
+
+  Future<void> _ensureUniqueClientIdentity(
+    DatabaseExecutor database, {
+    required String firstname,
+    required String lastname,
+    required String phone1,
+    required String phone2,
+    int? excludingId,
+  }) async {
+    final rows = await database.query(
+      'Client',
+      columns: ['id', 'firstname', 'lastname', 'phone1', 'phone2'],
+      where: excludingId == null ? null : 'id != ?',
+      whereArgs: excludingId == null ? null : [excludingId],
+    );
+    final requestedName = _normaliseClientName('$firstname $lastname');
+    final requestedPhones = {
+      _normaliseClientPhone(phone1),
+      _normaliseClientPhone(phone2),
+    }..remove('');
+
+    for (final row in rows) {
+      final existingName = _normaliseClientName(
+        '${row['firstname'] ?? ''} ${row['lastname'] ?? ''}',
+      );
+      if (requestedName.isNotEmpty && existingName == requestedName) {
+        throw DuplicateClientException('name', '$firstname $lastname'.trim());
+      }
+      final existingPhones = {
+        _normaliseClientPhone(row['phone1']?.toString() ?? ''),
+        _normaliseClientPhone(row['phone2']?.toString() ?? ''),
+      }..remove('');
+      final duplicatePhones = requestedPhones.intersection(existingPhones);
+      if (duplicatePhones.isNotEmpty) {
+        throw DuplicateClientException('phone', duplicatePhones.first);
+      }
+    }
+  }
+
   Future<int> insertClient(
     String firstname,
     String lastname,
@@ -5331,6 +5392,13 @@ class SqlDatabase {
     if (myDb == null) throw StateError('قاعدة بيانات الزبائن غير متاحة');
     final clientId = _nextDistributedId();
     await myDb.transaction((txn) async {
+      await _ensureUniqueClientIdentity(
+        txn,
+        firstname: firstname,
+        lastname: lastname,
+        phone1: phone1,
+        phone2: phone2,
+      );
       await _backfillClientCodes(txn);
       final clientCode = await _reserveNextClientCode(txn);
       await txn.insert('Client', {
@@ -5370,24 +5438,35 @@ class SqlDatabase {
     String ai = '',
   ]) async {
     Database? myDb = await db;
-    var res = await myDb!.update(
-      'Client',
-      {
-        'firstname': firstname,
-        'lastname': lastname,
-        'phone1': phone1,
-        'phone2': phone2,
-        'email': email,
-        'address': address,
-        'nif': nif,
-        'nis': nis,
-        'rc': rc,
-        'ai': ai,
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      },
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    if (myDb == null) throw StateError('قاعدة بيانات الزبائن غير متاحة');
+    final res = await myDb.transaction((txn) async {
+      await _ensureUniqueClientIdentity(
+        txn,
+        firstname: firstname,
+        lastname: lastname,
+        phone1: phone1,
+        phone2: phone2,
+        excludingId: id,
+      );
+      return txn.update(
+        'Client',
+        {
+          'firstname': firstname,
+          'lastname': lastname,
+          'phone1': phone1,
+          'phone2': phone2,
+          'email': email,
+          'address': address,
+          'nif': nif,
+          'nis': nis,
+          'rc': rc,
+          'ai': ai,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
     CloudSyncService().notifyChangeImmediate();
     return res;
   }
@@ -6098,6 +6177,27 @@ class SqlDatabase {
   ) async {
     Database? myDb = await db;
     if (myDb == null) return 0;
+
+    final detailRows = await myDb.query(
+      'Commandes_details',
+      columns: ['id_commandes'],
+      where: 'id = ?',
+      whereArgs: [detailId],
+      limit: 1,
+    );
+    final commandeId = detailRows.isEmpty
+        ? null
+        : (detailRows.first['id_commandes'] as num?)?.toInt();
+    if (commandeId != null) {
+      await snapshotCommande(
+        commandeId,
+        actionType: 'UPDATE',
+        afterHeader: {
+          'detail_id': detailId,
+          'confirmed_measurements_changed': true,
+        },
+      );
+    }
 
     var res = await myDb.update(
       'Commandes_details',
@@ -8975,6 +9075,20 @@ class SqlDatabase {
       throw StateError('مجموع الطلبية غير صالح.');
     }
 
+    int? previousClientId;
+    if (idCommande != null) {
+      final previousOrder = await myDb.query(
+        'Commandes',
+        columns: ['client_id'],
+        where: 'id = ? OR CAST(id AS TEXT) = ?',
+        whereArgs: [idCommande, idCommande.toString()],
+        limit: 1,
+      );
+      if (previousOrder.isNotEmpty) {
+        previousClientId = _paymentRecordId(previousOrder.first['client_id']);
+      }
+    }
+
     // File access is intentionally completed before starting the transaction.
     // The SQL transaction then stays short and cannot leave half an order.
     int? detailIdFrom(dynamic rawId) {
@@ -9181,6 +9295,13 @@ class SqlDatabase {
       return orderId;
     });
 
+    // Apply any retained credit to this order without creating another cash
+    // receipt. Also rebuild the old client's ledger if an order was moved.
+    await reconcileClientPayments(clientId);
+    if (previousClientId != null && previousClientId != clientId) {
+      await reconcileClientPayments(previousClientId);
+    }
+
     var uploaded = false;
     try {
       await CloudSyncService().notifyChangeImmediate();
@@ -9194,16 +9315,10 @@ class SqlDatabase {
         isNew: createdNewOrder,
         author: editor,
       );
-      unawaited(
-        WorkerPushNotificationService.instance
-            .sendOrderEvent(
-              action: createdNewOrder ? 'created' : 'updated',
-              orderId: savedId,
-              orderCode: await _orderCodeForNotification(savedId),
-              clientName: await _clientNameForOrderNotification(savedId),
-              author: editor,
-            )
-            .catchError((_) {}),
+      await _sendOrderPushEventSafe(
+        orderId: savedId,
+        action: createdNewOrder ? 'created' : 'updated',
+        author: editor,
       );
     }
     return savedId;
@@ -9266,10 +9381,13 @@ class SqlDatabase {
         entityId: idClient,
         createdAt: orderDate,
       );
+    } else {
+      // Consume credit retained from an earlier overpayment.
+      await reconcileClientPayments(idClient);
     }
     await CloudSyncService().notifyChangeImmediate();
     _notifyOrderEventSafe(orderId: distributedId, isNew: true, author: editor);
-    _sendOrderPushEventSafe(
+    await _sendOrderPushEventSafe(
       orderId: distributedId,
       action: 'created',
       author: editor,
@@ -9319,19 +9437,37 @@ class SqlDatabase {
     if (data.isNotEmpty) {
       data['updated_at'] = DateTime.now().toUtc().toIso8601String();
       data['updated_by'] = await _currentOrderEditor();
+      await snapshotCommande(
+        idCommande,
+        actionType: 'UPDATE',
+        afterHeader: Map<String, dynamic>.from(data),
+      );
       var res = await myDb!.update(
         'Commandes',
         data,
         where: 'id = ?',
         whereArgs: [idCommande],
       );
+      if (netPayable != null || total != null || totalGlobal != null) {
+        final order = await myDb.query(
+          'Commandes',
+          columns: ['client_id'],
+          where: 'id = ?',
+          whereArgs: [idCommande],
+          limit: 1,
+        );
+        final clientId = _paymentRecordId(
+          order.isEmpty ? null : order.first['client_id'],
+        );
+        if (clientId != null) await reconcileClientPayments(clientId);
+      }
       await CloudSyncService().notifyChangeImmediate();
       _notifyOrderEventSafe(
         orderId: idCommande,
         isNew: false,
         author: data['updated_by']?.toString() ?? '',
       );
-      _sendOrderPushEventSafe(
+      await _sendOrderPushEventSafe(
         orderId: idCommande,
         action: 'updated',
         author: data['updated_by']?.toString() ?? '',
@@ -9397,12 +9533,12 @@ class SqlDatabase {
     return name.isEmpty ? 'عميل' : name;
   }
 
-  void _sendOrderPushEventSafe({
+  Future<void> _sendOrderPushEventSafe({
     required int orderId,
     required String action,
     required String author,
   }) {
-    unawaited(() async {
+    return () async {
       try {
         await WorkerPushNotificationService.instance.sendOrderEvent(
           action: action,
@@ -9414,7 +9550,7 @@ class SqlDatabase {
       } catch (error) {
         debugPrint('Order push notification skipped: $error');
       }
-    }());
+    }();
   }
 
   /// Returns true if any item from this commande has been consumed (used in inventory)
@@ -9461,6 +9597,7 @@ class SqlDatabase {
     );
     final nowIso = DateTime.now().toUtc().toIso8601String();
     final deletedBy = await _currentOrderEditor();
+    await snapshotCommande(id, actionType: 'DELETE');
     final res = await myDb.update(
       'Commandes',
       {
@@ -9500,17 +9637,17 @@ class SqlDatabase {
           ),
         );
         _notifyOrderDeletedSafe(notificationRow);
-        unawaited(
-          WorkerPushNotificationService.instance
-              .sendOrderEvent(
-                action: 'deleted',
-                orderId: id,
-                orderCode: orderCodeStr,
-                clientName: clientNameStr,
-                author: deletedBy,
-              )
-              .catchError((_) {}),
-        );
+        try {
+          await WorkerPushNotificationService.instance.sendOrderEvent(
+            action: 'deleted',
+            orderId: id,
+            orderCode: orderCodeStr,
+            clientName: clientNameStr,
+            author: deletedBy,
+          );
+        } catch (error) {
+          debugPrint('Order deletion push notification skipped: $error');
+        }
       } else {
         unawaited(
           logAuditAction(
@@ -9775,6 +9912,7 @@ class SqlDatabase {
 
   Future<int> deleteCommandeDetails(int commandeId) async {
     Database? myDb = await db;
+    await snapshotCommande(commandeId, actionType: 'UPDATE');
     var res = await myDb!.rawDelete(
       'DELETE FROM Commandes_details WHERE id_commandes = ?',
       [commandeId],
@@ -9836,6 +9974,23 @@ class SqlDatabase {
 
   Future<int> updateCommandeDetailImagePath(int idDetail, String path) async {
     Database? myDb = await db;
+    final detailRows = await myDb!.query(
+      'Commandes_details',
+      columns: ['id_commandes'],
+      where: 'id = ?',
+      whereArgs: [idDetail],
+      limit: 1,
+    );
+    final commandeId = detailRows.isEmpty
+        ? null
+        : (detailRows.first['id_commandes'] as num?)?.toInt();
+    if (commandeId != null) {
+      await snapshotCommande(
+        commandeId,
+        actionType: 'UPDATE',
+        afterHeader: {'detail_id': idDetail, 'drawing_image_path': path},
+      );
+    }
     String? base64Str;
     try {
       final file = File(path);
@@ -9864,6 +10019,26 @@ class SqlDatabase {
     int newDeliveredQty,
   ) async {
     Database? myDb = await db;
+    final detailRows = await myDb!.query(
+      'Commandes_details',
+      columns: ['id_commandes'],
+      where: 'id = ?',
+      whereArgs: [idDetail],
+      limit: 1,
+    );
+    final commandeId = detailRows.isEmpty
+        ? null
+        : (detailRows.first['id_commandes'] as num?)?.toInt();
+    if (commandeId != null) {
+      await snapshotCommande(
+        commandeId,
+        actionType: 'UPDATE',
+        afterHeader: {
+          'detail_id': idDetail,
+          'delivered_qty': newDeliveredQty,
+        },
+      );
+    }
     var res = await myDb!.update(
       'Commandes_details',
       {
@@ -9879,6 +10054,11 @@ class SqlDatabase {
 
   Future<int> resetCommandeDeliveredQty(int idCommande) async {
     Database? myDb = await db;
+    await snapshotCommande(
+      idCommande,
+      actionType: 'UPDATE',
+      afterHeader: {'reset_delivered_qty': true},
+    );
     var res = await myDb!.update(
       'Commandes_details',
       {
@@ -10933,6 +11113,23 @@ class SqlDatabase {
     final data = <String, Object?>{'quantity': quantity, 'price': price};
     if (itemCode != null) data['item_code'] = itemCode;
     if (itemName != null) data['item_name'] = itemName;
+    final current = await myDb!.query(
+      'Achat_items',
+      columns: ['achat_id'],
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    final achatId = current.isEmpty
+        ? null
+        : (current.first['achat_id'] as num?)?.toInt();
+    if (achatId != null) {
+      await snapshotAchat(
+        achatId,
+        actionType: 'UPDATE',
+        afterHeader: {'changed_item_id': id, ...data},
+      );
+    }
     var res = await myDb!.update(
       'Achat_items',
       data,
@@ -10954,6 +11151,11 @@ class SqlDatabase {
 
   Future<int> updateAchatStatus(int id, String status) async {
     Database? myDb = await db;
+    await snapshotAchat(
+      id,
+      actionType: 'UPDATE',
+      afterHeader: {'status': status},
+    );
     var res = await myDb!.update(
       'Achats',
       {
@@ -10982,6 +11184,11 @@ class SqlDatabase {
     if (data.isEmpty) return 0;
     data['updated_at'] = DateTime.now().toUtc().toIso8601String();
     data['updated_by'] = await _currentOrderEditor();
+    await snapshotAchat(
+      id,
+      actionType: 'UPDATE',
+      afterHeader: Map<String, dynamic>.from(data),
+    );
     var res = await myDb!.update(
       'Achats',
       data,
@@ -10998,6 +11205,14 @@ class SqlDatabase {
     String supplierName,
   ) async {
     Database? myDb = await db;
+    await snapshotAchat(
+      id,
+      actionType: 'UPDATE',
+      afterHeader: {
+        'invoice_number': invoiceNumber,
+        'supplier_name': supplierName,
+      },
+    );
     var res = await myDb!.update(
       'Achats',
       {
@@ -11015,6 +11230,11 @@ class SqlDatabase {
 
   Future<int> updateAchatDate(int id, String createdAt) async {
     Database? myDb = await db;
+    await snapshotAchat(
+      id,
+      actionType: 'UPDATE',
+      afterHeader: {'created_at': createdAt},
+    );
     final res = await myDb!.update(
       'Achats',
       {
@@ -11041,6 +11261,11 @@ class SqlDatabase {
     if (data.isEmpty) return 0;
     data['updated_at'] = DateTime.now().toUtc().toIso8601String();
     data['updated_by'] = await _currentOrderEditor();
+    await snapshotAchat(
+      id,
+      actionType: 'UPDATE',
+      afterHeader: Map<String, dynamic>.from(data),
+    );
     var res = await myDb!.update(
       'Achats',
       data,
@@ -11253,6 +11478,16 @@ class SqlDatabase {
     try {
       await executor.execute('ALTER TABLE Achats ADD COLUMN deleted_by TEXT;');
     } catch (_) {}
+    try {
+      await executor.execute(
+        'ALTER TABLE Achats ADD COLUMN status_before_delete TEXT;',
+      );
+    } catch (_) {}
+    try {
+      await executor.execute(
+        'ALTER TABLE Achats ADD COLUMN stock_reversed_on_delete INTEGER NOT NULL DEFAULT 0;',
+      );
+    } catch (_) {}
     _achatTrashInfrastructureReady = true;
   }
 
@@ -11260,20 +11495,97 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return 0;
     await _ensureAchatTrashInfrastructure(myDb);
-    final now = DateTime.now().toUtc().toIso8601String();
-    final deletedBy = await _currentOrderEditor();
-    final res = await myDb.update(
+    final achatRows = await myDb.query(
       'Achats',
-      {
-        'is_deleted': 1,
-        'deleted_at': now,
-        'deleted_by': deletedBy,
-        'updated_at': now,
-      },
       where: 'id = ?',
       whereArgs: [id],
+      limit: 1,
     );
+    if (achatRows.isEmpty) return 0;
+    final achat = achatRows.first;
+    final previousStatus = achat['status']?.toString() ?? 'Active';
+    final reversesStock =
+        previousStatus == 'Confirmed' || previousStatus == 'Partial Returned';
+    final now = DateTime.now().toUtc().toIso8601String();
+    final deletedBy = await _currentOrderEditor();
+    await snapshotAchat(id, actionType: 'DELETE');
+    final res = await myDb.transaction<int>((txn) async {
+      if (reversesStock) {
+        final items = await txn.query(
+          'Achat_items',
+          where: 'achat_id = ?',
+          whereArgs: [id],
+        );
+        final locationId = (achat['location_id'] as num?)?.toInt() ?? 1;
+        for (final item in items) {
+          final itemId = (item['item_id'] as num?)?.toInt() ?? 0;
+          final itemType = item['item_type']?.toString() ?? '';
+          final colorId = (item['color_id'] as num?)?.toInt();
+          final qty = (item['quantity'] as num?)?.toDouble() ?? 0;
+          final where = colorId == null
+              ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
+              : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
+          final args = colorId == null
+              ? [itemId, itemType, locationId]
+              : [itemId, itemType, colorId, locationId];
+          final stock = await txn.query(
+            'CurrentStock',
+            where: where,
+            whereArgs: args,
+            limit: 1,
+          );
+          final available = stock.isEmpty
+              ? 0.0
+              : (stock.first['quantity'] as num?)?.toDouble() ?? 0;
+          if (available + 0.000001 < qty) {
+            throw StateError(
+              'لا يمكن حذف فاتورة الشراء لأن جزءاً من مخزون ${item['item_name'] ?? item['item_code'] ?? 'العنصر'} قد تم استهلاكه.',
+            );
+          }
+          await txn.update(
+            'CurrentStock',
+            {'quantity': available - qty, 'updated_at': now},
+            where: where,
+            whereArgs: args,
+          );
+          await txn.insert(
+            'InventoryTransactions',
+            _withDistributedId({
+              'item_id': itemId,
+              'item_type': itemType,
+              'color_id': colorId,
+              'location_id': locationId,
+              'quantity': -qty,
+              'transaction_type': 'Purchase Soft Delete Reversal',
+              'reference_id': id,
+              'created_at': now,
+            }),
+          );
+        }
+      }
+      return txn.update(
+        'Achats',
+        {
+          'is_deleted': 1,
+          'deleted_at': now,
+          'deleted_by': deletedBy,
+          'status_before_delete': previousStatus,
+          'stock_reversed_on_delete': reversesStock ? 1 : 0,
+          'status': 'Cancelled',
+          'updated_at': now,
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
     CloudSyncService().notifyChangeImmediate();
+    await logAuditAction(
+      actionType: 'DELETE',
+      entityType: 'purchase',
+      entityId: id.toString(),
+      entityTitle: 'فاتورة شراء #$id',
+      details: 'تم نقل فاتورة الشراء إلى سلة المحذوفات.',
+    );
     return res;
   }
 
@@ -11281,13 +11593,95 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return 0;
     await _ensureAchatTrashInfrastructure(myDb);
-    final now = DateTime.now().toUtc().toIso8601String();
-    final res = await myDb.update(
+    final rows = await myDb.query(
       'Achats',
-      {'is_deleted': 0, 'deleted_at': null, 'updated_at': now},
-      where: 'id = ?',
+      where: 'id = ? AND is_deleted = 1',
       whereArgs: [id],
+      limit: 1,
     );
+    if (rows.isEmpty) return 0;
+    final achat = rows.first;
+    final restoreStock =
+        (achat['stock_reversed_on_delete'] as num?)?.toInt() == 1;
+    final previousStatus =
+        achat['status_before_delete']?.toString() ?? 'Active';
+    final now = DateTime.now().toUtc().toIso8601String();
+    final res = await myDb.transaction<int>((txn) async {
+      if (restoreStock) {
+        final items = await txn.query(
+          'Achat_items',
+          where: 'achat_id = ?',
+          whereArgs: [id],
+        );
+        final locationId = (achat['location_id'] as num?)?.toInt() ?? 1;
+        for (final item in items) {
+          final itemId = (item['item_id'] as num?)?.toInt() ?? 0;
+          final itemType = item['item_type']?.toString() ?? '';
+          final colorId = (item['color_id'] as num?)?.toInt();
+          final qty = (item['quantity'] as num?)?.toDouble() ?? 0;
+          final where = colorId == null
+              ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
+              : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
+          final args = colorId == null
+              ? [itemId, itemType, locationId]
+              : [itemId, itemType, colorId, locationId];
+          final stock = await txn.query(
+            'CurrentStock',
+            where: where,
+            whereArgs: args,
+            limit: 1,
+          );
+          if (stock.isEmpty) {
+            await txn.insert(
+              'CurrentStock',
+              _withDistributedId({
+                'item_id': itemId,
+                'item_type': itemType,
+                'color_id': colorId,
+                'location_id': locationId,
+                'quantity': qty,
+                'updated_at': now,
+              }),
+            );
+          } else {
+            final current =
+                (stock.first['quantity'] as num?)?.toDouble() ?? 0;
+            await txn.update(
+              'CurrentStock',
+              {'quantity': current + qty, 'updated_at': now},
+              where: where,
+              whereArgs: args,
+            );
+          }
+          await txn.insert(
+            'InventoryTransactions',
+            _withDistributedId({
+              'item_id': itemId,
+              'item_type': itemType,
+              'color_id': colorId,
+              'location_id': locationId,
+              'quantity': qty,
+              'transaction_type': 'Purchase Restore',
+              'reference_id': id,
+              'created_at': now,
+            }),
+          );
+        }
+      }
+      return txn.update(
+        'Achats',
+        {
+          'is_deleted': 0,
+          'deleted_at': null,
+          'deleted_by': null,
+          'status': previousStatus,
+          'stock_reversed_on_delete': 0,
+          'updated_at': now,
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
     if (res > 0) {
       try {
         await myDb.delete(
@@ -11297,6 +11691,13 @@ class SqlDatabase {
         );
       } catch (_) {}
       CloudSyncService().notifyChangeImmediate();
+      await logAuditAction(
+        actionType: 'RESTORE',
+        entityType: 'purchase',
+        entityId: id.toString(),
+        entityTitle: 'فاتورة شراء #$id',
+        details: 'تم استرجاع فاتورة الشراء من سلة المحذوفات.',
+      );
     }
     return res;
   }
@@ -11403,6 +11804,11 @@ class SqlDatabase {
 
   Future<int> updateAchatTotal(int achatId, double total) async {
     Database? myDb = await db;
+    await snapshotAchat(
+      achatId,
+      actionType: 'UPDATE',
+      afterHeader: {'total': total},
+    );
     var res = await myDb!.update(
       'Achats',
       {
@@ -11433,6 +11839,14 @@ class SqlDatabase {
   ) async {
     Database? myDb = await db;
     if (myDb == null) return;
+    await snapshotAchat(
+      achatId,
+      actionType: 'RETURN',
+      afterHeader: {
+        'returned_items': returnedItems,
+        'refunded_amount': refundedAmount,
+      },
+    );
 
     for (var item in returnedItems) {
       final itemId = item['id'] as int;
@@ -11539,18 +11953,41 @@ class SqlDatabase {
     );
     if (items.isNotEmpty) {
       var item = items.first;
-      double qty = (item['quantity'] as num).toDouble();
-      await updateInventory(
-        itemId: item['item_id'] as int,
-        itemType: item['item_type'] as String,
-        colorId: item['color_id'] as int?,
-        locationId: 1,
-        // ╪º┘ä┘à╪│╪¬┘ê╪»╪╣ ╪º┘ä╪▒╪ª┘è╪│┘è ┘â╪º┘ü╪¬╪▒╪º╪╢┘è
-        quantityChange: -qty,
-        // ╪«╪╡┘à ╪º┘ä┘â┘à┘è╪⌐
-        transactionType: 'Purchase Item Deleted',
-        referenceId: item['achat_id'] as int,
+      final purchaseId = (item['achat_id'] as num?)?.toInt();
+      if (purchaseId != null) {
+        await snapshotAchat(
+          purchaseId,
+          actionType: 'UPDATE',
+          afterHeader: {'deleted_item_id': id},
+        );
+      }
+      final achatRows = await myDb.query(
+        'Achats',
+        columns: ['status', 'location_id'],
+        where: 'id = ?',
+        whereArgs: [item['achat_id']],
+        limit: 1,
       );
+      final status = achatRows.isEmpty
+          ? ''
+          : achatRows.first['status']?.toString() ?? '';
+      // Draft/active purchase lines have never entered inventory. Only posted
+      // purchases may reverse stock, and always at their real location.
+      if (status == 'Confirmed' || status == 'Partial Returned') {
+        final qty = (item['quantity'] as num).toDouble();
+        final locationId = achatRows.isEmpty
+            ? 1
+            : (achatRows.first['location_id'] as num?)?.toInt() ?? 1;
+        await updateInventory(
+          itemId: item['item_id'] as int,
+          itemType: item['item_type'] as String,
+          colorId: item['color_id'] as int?,
+          locationId: locationId,
+          quantityChange: -qty,
+          transactionType: 'Purchase Item Deleted',
+          referenceId: item['achat_id'] as int,
+        );
+      }
     }
 
     var res = await myDb.delete(
@@ -13373,10 +13810,16 @@ class SqlDatabase {
       final referencedOrders = orders
           .where((row) => _paymentRecordId(row['id']) == preferredId)
           .toList();
-      // An invoice-specific receipt must not silently settle a different
-      // order. Any excess remains a visible customer credit in Treasury.
+      // Settle the selected order first. Any excess is a real Treasury
+      // receipt and becomes customer credit, so let it flow to the client's
+      // other (including subsequently-created) open orders.
       final candidates = preferredId != null && referencedOrders.isNotEmpty
-          ? referencedOrders
+          ? <Map<String, dynamic>>[
+              ...referencedOrders,
+              ...orders.where(
+                (row) => _paymentRecordId(row['id']) != preferredId,
+              ),
+            ]
           : orders;
       for (final order in candidates) {
         if (amountLeft <= _paymentTolerance) break;
@@ -15293,6 +15736,7 @@ class SqlDatabase {
       'MaterialRemnants',
       'MaterialScrap',
       'AuditLogs',
+      'BusinessDayClosings',
     };
 
     await myDb.transaction((txn) async {
@@ -16289,6 +16733,35 @@ class SqlDatabase {
         'ON MaterialSaleItems(sale_id)',
       );
     } catch (_) {}
+    for (final statement in <String>[
+      'ALTER TABLE MaterialSales ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0;',
+      'ALTER TABLE MaterialSales ADD COLUMN deleted_at TEXT;',
+      'ALTER TABLE MaterialSales ADD COLUMN deleted_by TEXT;',
+      'ALTER TABLE MaterialSales ADD COLUMN status_before_delete TEXT;',
+    ]) {
+      try {
+        await db.execute(statement);
+      } catch (_) {}
+    }
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS BusinessDayClosings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        distributed_id TEXT,
+        business_date TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        expected_cash REAL NOT NULL DEFAULT 0.0,
+        counted_cash REAL NOT NULL DEFAULT 0.0,
+        difference REAL NOT NULL DEFAULT 0.0,
+        sales_total REAL NOT NULL DEFAULT 0.0,
+        income_total REAL NOT NULL DEFAULT 0.0,
+        expense_total REAL NOT NULL DEFAULT 0.0,
+        closed_by TEXT NOT NULL DEFAULT '',
+        notes TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(business_date, scope)
+      )
+    ''');
   }
 
   Future<void> _ensureInventoryAlertSchema(DatabaseExecutor db) async {
@@ -17542,6 +18015,11 @@ class SqlDatabase {
       if (stockRows.isNotEmpty) {
         currentQty = (stockRows.first['quantity'] as num).toDouble();
         double newQty = currentQty + quantityChange;
+        if (newQty < -0.000001) {
+          throw StateError(
+            'الرصيد غير كافٍ. المتوفر $currentQty والمطلوب ${quantityChange.abs()}.',
+          );
+        }
         await txn.update(
           'CurrentStock',
           {
@@ -17552,6 +18030,11 @@ class SqlDatabase {
           whereArgs: whereArgs,
         );
       } else {
+        if (quantityChange < -0.000001) {
+          throw StateError(
+            'لا يوجد رصيد متاح لهذا العنصر في المخزن المحدد.',
+          );
+        }
         await txn.insert(
           'CurrentStock',
           _withDistributedId({
@@ -18417,6 +18900,88 @@ class SqlDatabase {
     _auditLogsInfrastructureReady = true;
   }
 
+  Future<void> snapshotCommande(
+    int commandeId, {
+    required String actionType,
+    Map<String, dynamic>? afterHeader,
+    List<Map<String, dynamic>>? afterItems,
+  }) async {
+    final database = await db;
+    if (database == null) return;
+    final headers = await database.query(
+      'Commandes',
+      where: 'id = ?',
+      whereArgs: [commandeId],
+      limit: 1,
+    );
+    if (headers.isEmpty) return;
+    final items = await database.query(
+      'Commandes_details',
+      where: 'id_commandes = ? OR CAST(id_commandes AS TEXT) = ?',
+      whereArgs: [commandeId, commandeId.toString()],
+      orderBy: 'id ASC',
+    );
+    final header = Map<String, dynamic>.from(headers.first);
+    await logAuditAction(
+      actionType: actionType,
+      entityType: 'order',
+      entityId: commandeId.toString(),
+      entityTitle: 'طلبية #${header['order_code'] ?? header['display_number'] ?? commandeId}',
+      details: jsonEncode({
+        'before': {
+          'header': header,
+          'items': items.map((e) => Map<String, dynamic>.from(e)).toList(),
+        },
+        if (afterHeader != null || afterItems != null)
+          'after': {
+            if (afterHeader != null) 'header': afterHeader,
+            if (afterItems != null) 'items': afterItems,
+          },
+      }),
+    );
+  }
+
+  Future<void> snapshotAchat(
+    int achatId, {
+    required String actionType,
+    Map<String, dynamic>? afterHeader,
+    List<Map<String, dynamic>>? afterItems,
+  }) async {
+    final database = await db;
+    if (database == null) return;
+    final headers = await database.query(
+      'Achats',
+      where: 'id = ?',
+      whereArgs: [achatId],
+      limit: 1,
+    );
+    if (headers.isEmpty) return;
+    final items = await database.query(
+      'Achat_items',
+      where: 'achat_id = ?',
+      whereArgs: [achatId],
+      orderBy: 'id ASC',
+    );
+    final header = Map<String, dynamic>.from(headers.first);
+    await logAuditAction(
+      actionType: actionType,
+      entityType: 'purchase',
+      entityId: achatId.toString(),
+      entityTitle: 'فاتورة شراء ${header['invoice_number'] ?? achatId}',
+      details: jsonEncode({
+        'before': {
+          'header': header,
+          'items': items.map((e) => Map<String, dynamic>.from(e)).toList(),
+        },
+        if (afterHeader != null || afterItems != null)
+          'after': {
+            if (afterHeader != null) 'header': afterHeader,
+            if (afterItems != null) 'items': afterItems,
+          },
+      }),
+    );
+  }
+
   Future<void> logAuditAction({
     required String actionType,
     required String entityType,
@@ -18430,7 +18995,7 @@ class SqlDatabase {
       await _ensureAuditLogsInfrastructure(database);
       final author = await _currentOrderEditor();
       final nowUtc = DateTime.now().toUtc().toIso8601String();
-      final uniqueId = DateTime.now().microsecondsSinceEpoch;
+      final uniqueId = _nextDistributedId();
       await database.insert('AuditLogs', {
         'id': uniqueId,
         'action_type': actionType,
@@ -18442,6 +19007,9 @@ class SqlDatabase {
         'timestamp': nowUtc,
         'updated_at': nowUtc,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
+      // Audit rows are workshop data too. Trigger their own sync instead of
+      // relying on a business mutation that may already have been uploaded.
+      CloudSyncService().notifyChange();
     } catch (e) {
       debugPrint('Error writing audit log: $e');
     }
@@ -21850,10 +22418,84 @@ class SqlDatabase {
     await _ensureRemnantInventorySchema(myDb);
     final year2 = (DateTime.now().year % 100).toString().padLeft(2, '0');
     final rows = await myDb.rawQuery(
-      "SELECT COUNT(*) AS cnt FROM MaterialSales WHERE sale_code LIKE 'VS-$year2-%'",
+      "SELECT sale_code FROM MaterialSales WHERE sale_code LIKE 'VS-$year2-%'",
     );
-    final cnt = (rows.first['cnt'] as num?)?.toInt() ?? 0;
-    return 'VS-$year2-${(cnt + 1).toString().padLeft(3, '0')}';
+    var maxSequence = 0;
+    final pattern = RegExp(r'-(\d+)$');
+    for (final row in rows) {
+      final match = pattern.firstMatch(row['sale_code']?.toString() ?? '');
+      final sequence = int.tryParse(match?.group(1) ?? '') ?? 0;
+      if (sequence > maxSequence) maxSequence = sequence;
+    }
+    return 'VS-$year2-${(maxSequence + 1).toString().padLeft(3, '0')}';
+  }
+
+  Future<String> _uniqueMaterialSaleCode(
+    DatabaseExecutor executor,
+    String preferred,
+  ) async {
+    final clean = preferred.trim().isEmpty ? 'VS-00-001' : preferred.trim();
+    var candidate = clean;
+    final suffixPattern = RegExp(r'^(.*?)-(\d+)$');
+    final match = suffixPattern.firstMatch(clean);
+    final prefix = match?.group(1) ?? clean;
+    var sequence = int.tryParse(match?.group(2) ?? '') ?? 1;
+    while ((await executor.query(
+      'MaterialSales',
+      columns: ['id'],
+      where: 'sale_code = ?',
+      whereArgs: [candidate],
+      limit: 1,
+    )).isNotEmpty) {
+      sequence++;
+      candidate = '$prefix-${sequence.toString().padLeft(3, '0')}';
+    }
+    return candidate;
+  }
+
+  /// Resolves visible-number collisions created by two offline devices. The
+  /// distributed/internal ids remain untouched; only the later document gets
+  /// the next free human-readable sequence.
+  Future<void> reconcileMaterialSaleDisplayCodes() async {
+    final database = await db;
+    if (database == null) return;
+    await _ensureRemnantInventorySchema(database);
+    var changed = false;
+    await database.transaction((txn) async {
+      final rows = await txn.query(
+        'MaterialSales',
+        columns: ['id', 'sale_code', 'created_at'],
+        orderBy: 'created_at ASC, id ASC',
+      );
+      final used = <String>{};
+      final suffixPattern = RegExp(r'^(.*?)-(\d+)$');
+      for (final row in rows) {
+        final id = (row['id'] as num?)?.toInt();
+        final code = row['sale_code']?.toString().trim() ?? '';
+        if (id == null || code.isEmpty) continue;
+        if (used.add(code)) continue;
+        final match = suffixPattern.firstMatch(code);
+        final prefix = match?.group(1) ?? code;
+        var sequence = int.tryParse(match?.group(2) ?? '') ?? 1;
+        String candidate;
+        do {
+          sequence++;
+          candidate = '$prefix-${sequence.toString().padLeft(3, '0')}';
+        } while (used.contains(candidate));
+        await txn.update(
+          'MaterialSales',
+          {
+            'sale_code': candidate,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          },
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+        used.add(candidate);
+        changed = true;
+      }
+    });
+    if (changed) CloudSyncService().notifyChange();
   }
 
   /// Insert a new MaterialSale header row and return its new id.
@@ -21879,10 +22521,12 @@ class SqlDatabase {
     await _ensureRemnantInventorySchema(myDb);
     final now = DateTime.now().toUtc().toIso8601String();
     final author = await _currentOrderEditor();
-    final id = await myDb.insert(
-      'MaterialSales',
-      _withDistributedId({
-        'sale_code': saleCode,
+    final id = await myDb.transaction<int>((txn) async {
+      final visibleCode = await _uniqueMaterialSaleCode(txn, saleCode);
+      return txn.insert(
+        'MaterialSales',
+        _withDistributedId({
+        'sale_code': visibleCode,
         'client_id': clientId,
         'client_name': clientName,
         'client_phone': clientPhone,
@@ -21901,8 +22545,9 @@ class SqlDatabase {
         'updated_at': now,
         'created_by': author,
         'updated_by': author,
-      }),
-    );
+        }),
+      );
+    });
     CloudSyncService().notifyChange();
     unawaited(
       _recordDashboardActivity(
@@ -21969,34 +22614,250 @@ class SqlDatabase {
     );
   }
 
-  /// Delete a MaterialSale and all its items (cascade).
+  /// Soft-deletes a store sale and reverses posted stock. ERP documents are
+  /// never physically erased during normal operation.
   Future<void> deleteMaterialSale(int saleId) async {
     final myDb = await db;
     if (myDb == null) return;
+    await _ensureRemnantInventorySchema(myDb);
     final rows = await myDb.query(
       'MaterialSales',
-      columns: ['source_sale_id'],
       where: 'id = ?',
       whereArgs: [saleId],
     );
-    final sourceId = rows.isEmpty
-        ? null
-        : (rows.first['source_sale_id'] as num?)?.toInt();
-    if (sourceId != null) {
-      await myDb.update(
-        'MaterialSales',
-        {'converted_to_sale_id': null},
-        where: 'id = ? AND converted_to_sale_id = ?',
-        whereArgs: [sourceId, saleId],
-      );
+    if (rows.isEmpty) return;
+    final sale = rows.first;
+    if ((sale['is_deleted'] as num?)?.toInt() == 1) return;
+    await snapshotMaterialSale(saleId, actionType: 'before_delete');
+    final isInternal = (sale['is_internal'] as num?)?.toInt() == 1;
+    if (isInternal && (sale['stock_deducted'] as num?)?.toInt() == 1) {
+      await cancelOrReverseInternalMaterialSaleTransfer(saleId: saleId);
+    } else if ((sale['stock_deducted'] as num?)?.toInt() == 1) {
+      await myDb.transaction((txn) async {
+        final items = await txn.query(
+          'MaterialSaleItems',
+          where: 'sale_id = ?',
+          whereArgs: [saleId],
+        );
+        final locationId = (sale['location_id'] as num?)?.toInt() ?? 1;
+        final now = DateTime.now().toUtc().toIso8601String();
+        for (final item in items) {
+          final itemId = (item['item_id'] as num?)?.toInt() ?? 0;
+          final itemType = item['item_type']?.toString() ?? '';
+          final colorId = (item['color_id'] as num?)?.toInt();
+          final qty = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+          final where = colorId == null
+              ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
+              : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
+          final args = colorId == null
+              ? [itemId, itemType, locationId]
+              : [itemId, itemType, colorId, locationId];
+          final stock = await txn.query(
+            'CurrentStock',
+            where: where,
+            whereArgs: args,
+            limit: 1,
+          );
+          final current = stock.isEmpty
+              ? 0.0
+              : (stock.first['quantity'] as num?)?.toDouble() ?? 0.0;
+          if (stock.isEmpty) {
+            await txn.insert(
+              'CurrentStock',
+              _withDistributedId({
+                'item_id': itemId,
+                'item_type': itemType,
+                'color_id': colorId,
+                'location_id': locationId,
+                'quantity': qty,
+                'updated_at': now,
+              }),
+            );
+          } else {
+            await txn.update(
+              'CurrentStock',
+              {'quantity': current + qty, 'updated_at': now},
+              where: where,
+              whereArgs: args,
+            );
+          }
+          await txn.insert(
+            'InventoryTransactions',
+            _withDistributedId({
+              'item_id': itemId,
+              'item_type': itemType,
+              'color_id': colorId,
+              'location_id': locationId,
+              'quantity': qty,
+              'transaction_type': 'Material Sale Reversal',
+              'reference_id': saleId,
+              'created_at': now,
+            }),
+          );
+        }
+      });
     }
-    await myDb.delete(
-      'MaterialSaleItems',
-      where: 'sale_id = ?',
+    final now = DateTime.now().toUtc().toIso8601String();
+    await myDb.update(
+      'MaterialSales',
+      {
+        'is_deleted': 1,
+        'deleted_at': now,
+        'deleted_by': await _currentOrderEditor(),
+        'status_before_delete': sale['status']?.toString() ?? 'draft',
+        'status': 'cancelled',
+        'stock_deducted': 0,
+        'updated_at': now,
+      },
+      where: 'id = ?',
       whereArgs: [saleId],
     );
-    await myDb.delete('MaterialSales', where: 'id = ?', whereArgs: [saleId]);
+    await logAuditAction(
+      actionType: 'delete',
+      entityType: 'MaterialSale',
+      entityId: saleId.toString(),
+      entityTitle: sale['sale_code']?.toString(),
+      details: 'Soft deleted; stock movement reversed and document retained.',
+    );
     CloudSyncService().notifyChange();
+  }
+
+  Future<List<Map<String, dynamic>>> readTrashMaterialSales() async {
+    final database = await db;
+    if (database == null) return [];
+    await _ensureRemnantInventorySchema(database);
+    return database.query(
+      'MaterialSales',
+      where: 'is_deleted = 1',
+      orderBy: 'deleted_at DESC, id DESC',
+    );
+  }
+
+  Future<void> restoreMaterialSale(int saleId) async {
+    final database = await db;
+    if (database == null) return;
+    await _ensureRemnantInventorySchema(database);
+    final rows = await database.query(
+      'MaterialSales',
+      where: 'id = ? AND is_deleted = 1',
+      whereArgs: [saleId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return;
+    final sale = rows.first;
+    final now = DateTime.now().toUtc().toIso8601String();
+    // Restore as a draft: the manager can verify quantities and explicitly
+    // confirm it again. This avoids silently removing stock a second time.
+    await database.update(
+      'MaterialSales',
+      {
+        'is_deleted': 0,
+        'deleted_at': null,
+        'deleted_by': null,
+        'status': 'draft',
+        'stock_deducted': 0,
+        'updated_at': now,
+      },
+      where: 'id = ?',
+      whereArgs: [saleId],
+    );
+    await logAuditAction(
+      actionType: 'restore',
+      entityType: 'MaterialSale',
+      entityId: saleId.toString(),
+      entityTitle: sale['sale_code']?.toString(),
+      details: 'Restored as draft; requires explicit confirmation.',
+    );
+    CloudSyncService().notifyChangeImmediate();
+  }
+
+  Future<Map<String, double>> calculateBusinessDayReconciliation({
+    required String businessDate,
+    required String scope,
+  }) async {
+    final database = await db;
+    if (database == null) return const {};
+    await _ensureRemnantInventorySchema(database);
+    final cashboxScope = scope == 'store'
+        ? "AND caisse_name = 'صندوق المحل'"
+        : "AND COALESCE(caisse_name, '') <> 'صندوق المحل'";
+    final treasuryRows = await database.rawQuery('''
+      SELECT
+        COALESCE(SUM(CASE
+          WHEN LOWER(transaction_type) IN ('encaissement', 'income', 'receipt')
+            THEN amount ELSE 0 END), 0) AS income_total,
+        COALESCE(SUM(CASE
+          WHEN LOWER(transaction_type) IN ('décaissement', 'decaissement', 'expense', 'payment')
+            THEN amount ELSE 0 END), 0) AS expense_total
+      FROM Treasury
+      WHERE SUBSTR(created_at, 1, 10) = ?
+        $cashboxScope
+    ''', [businessDate]);
+    final income = (treasuryRows.first['income_total'] as num?)?.toDouble() ?? 0;
+    final expense = (treasuryRows.first['expense_total'] as num?)?.toDouble() ?? 0;
+    final salesRows = scope == 'store'
+        ? await database.rawQuery('''
+            SELECT COALESCE(SUM(net_total), 0) AS total
+            FROM MaterialSales
+            WHERE SUBSTR(sale_date, 1, 10) = ?
+              AND COALESCE(is_deleted, 0) = 0
+              AND status NOT IN ('draft', 'cancelled')
+          ''', [businessDate])
+        : await database.rawQuery('''
+            SELECT COALESCE(SUM(COALESCE(net_payable, total, 0)), 0) AS total
+            FROM Commandes
+            WHERE SUBSTR(created_at, 1, 10) = ?
+              AND COALESCE(is_deleted, 0) = 0
+          ''', [businessDate]);
+    return {
+      'income': income,
+      'expense': expense,
+      'expected': income - expense,
+      'sales': (salesRows.first['total'] as num?)?.toDouble() ?? 0,
+    };
+  }
+
+  Future<void> closeBusinessDay({
+    required String businessDate,
+    required String scope,
+    required double countedCash,
+    String notes = '',
+  }) async {
+    final database = await db;
+    if (database == null) return;
+    await _ensureRemnantInventorySchema(database);
+    final totals = await calculateBusinessDayReconciliation(
+      businessDate: businessDate,
+      scope: scope,
+    );
+    final expected = totals['expected'] ?? 0;
+    final now = DateTime.now().toUtc().toIso8601String();
+    final values = {
+      'business_date': businessDate,
+      'scope': scope,
+      'expected_cash': expected,
+      'counted_cash': countedCash,
+      'difference': countedCash - expected,
+      'sales_total': totals['sales'] ?? 0,
+      'income_total': totals['income'] ?? 0,
+      'expense_total': totals['expense'] ?? 0,
+      'closed_by': await _currentOrderEditor(),
+      'notes': notes,
+      'updated_at': now,
+    };
+    await database.insert(
+      'BusinessDayClosings',
+      {..._withDistributedId(values), 'created_at': now},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    await logAuditAction(
+      actionType: 'daily_close',
+      entityType: scope == 'store' ? 'Store' : 'Workshop',
+      entityId: businessDate,
+      entityTitle: businessDate,
+      details: jsonEncode(values),
+    );
+    CloudSyncService().notifyChangeImmediate();
   }
 
   /// Creates the next official sales document while preserving the source.
@@ -22028,27 +22889,28 @@ class SqlDatabase {
           final now = DateTime.now().toUtc().toIso8601String();
           final year2 = (DateTime.now().year % 100).toString().padLeft(2, '0');
           final prefix = targetType == 'bon_livraison' ? 'BL' : 'FV';
-          final countRows = await txn.rawQuery(
-            "SELECT COUNT(*) AS cnt FROM MaterialSales WHERE sale_code LIKE '$prefix-$year2-%'",
+          final targetCode = await _uniqueMaterialSaleCode(
+            txn,
+            '$prefix-$year2-001',
           );
-          final count = (countRows.first['cnt'] as num?)?.toInt() ?? 0;
-          final targetCode =
-              '$prefix-$year2-${(count + 1).toString().padLeft(3, '0')}';
           final target = Map<String, dynamic>.from(source)
             ..remove('id')
             ..remove('distributed_id')
             ..['sale_code'] = targetCode
             ..['doc_type'] = targetType
-            ..['status'] = targetType == 'bon_livraison'
-                ? 'confirmed'
-                : 'delivered'
+            // The next official document is deliberately a draft. Stock is
+            // validated atomically when the user confirms it.
+            ..['status'] = 'draft'
             ..['source_sale_id'] = sourceSaleId
             ..['converted_to_sale_id'] = null
             ..['stock_deducted'] = 0
             ..['linked_achat_id'] = null
             ..['created_at'] = now
             ..['updated_at'] = now;
-          final targetId = await txn.insert('MaterialSales', target);
+          final targetId = await txn.insert(
+            'MaterialSales',
+            _withDistributedId(target),
+          );
           final items = await txn.query(
             'MaterialSaleItems',
             where: 'sale_id = ?',
@@ -22089,7 +22951,9 @@ class SqlDatabase {
   }) async {
     final myDb = await db;
     if (myDb == null) return [];
-    final conditions = <String>[];
+    await _ensureRemnantInventorySchema(myDb);
+    await reconcileMaterialSaleDisplayCodes();
+    final conditions = <String>['COALESCE(sale.is_deleted, 0) = 0'];
     final args = <dynamic>[];
     if (docType != null && docType.isNotEmpty) {
       conditions.add('sale.doc_type = ?');
@@ -22271,6 +23135,50 @@ class SqlDatabase {
     CloudSyncService().notifyChange();
   }
 
+  /// Saves a complete immutable before/after snapshot in the shared audit log.
+  /// The operational tables stay compact while managers can reconstruct every
+  /// version of a store document, including all line items.
+  Future<void> snapshotMaterialSale(
+    int saleId, {
+    required String actionType,
+    Map<String, dynamic>? afterHeader,
+    List<Map<String, dynamic>>? afterItems,
+  }) async {
+    final database = await db;
+    if (database == null) return;
+    await _ensureAuditLogsInfrastructure(database);
+    final headerRows = await database.query(
+      'MaterialSales',
+      where: 'id = ?',
+      whereArgs: [saleId],
+      limit: 1,
+    );
+    if (headerRows.isEmpty) return;
+    final beforeItems = await database.query(
+      'MaterialSaleItems',
+      where: 'sale_id = ?',
+      whereArgs: [saleId],
+      orderBy: 'id ASC',
+    );
+    await logAuditAction(
+      actionType: actionType,
+      entityType: 'MaterialSale',
+      entityId: saleId.toString(),
+      entityTitle: headerRows.first['sale_code']?.toString() ?? '',
+      details: jsonEncode({
+        'before': {
+          'header': Map<String, dynamic>.from(headerRows.first),
+          'items': beforeItems.map(Map<String, dynamic>.from).toList(),
+        },
+        if (afterHeader != null || afterItems != null)
+          'after': {
+            if (afterHeader != null) 'header': afterHeader,
+            if (afterItems != null) 'items': afterItems,
+          },
+      }),
+    );
+  }
+
   /// Deduct stock for all items in a confirmed sale (stock_deducted must be 0).
   Future<void> deductStockForMaterialSale(
     int saleId, {
@@ -22278,45 +23186,99 @@ class SqlDatabase {
   }) async {
     final myDb = await db;
     if (myDb == null) return;
-    final saleRows = await myDb.query(
-      'MaterialSales',
-      where: 'id = ?',
-      whereArgs: [saleId],
-    );
-    if (saleRows.isEmpty) return;
-    final sale = saleRows.first;
-    if ((sale['stock_deducted'] as int? ?? 0) == 1) return; // already done
-    final items = await myDb.query(
-      'MaterialSaleItems',
-      where: 'sale_id = ?',
-      whereArgs: [saleId],
-    );
-    for (final item in items) {
-      final iType = item['item_type'] as String? ?? '';
-      final iId = item['item_id'] as int? ?? 0;
-      final cId = item['color_id'] as int?;
-      final qty = (item['quantity'] as num?)?.toDouble() ?? 0.0;
-      if (iId > 0 && qty > 0) {
-        await updateInventory(
-          itemId: iId,
-          itemType: iType,
-          colorId: cId,
-          locationId: locationId,
-          quantityChange: -qty,
-          transactionType: 'Material Sale',
-          referenceId: saleId,
+    await myDb.transaction((txn) async {
+      final saleRows = await txn.query(
+        'MaterialSales',
+        where: 'id = ?',
+        whereArgs: [saleId],
+      );
+      if (saleRows.isEmpty) throw StateError('وثيقة البيع غير موجودة.');
+      if ((saleRows.first['stock_deducted'] as num?)?.toInt() == 1) return;
+      final items = await txn.query(
+        'MaterialSaleItems',
+        where: 'sale_id = ?',
+        whereArgs: [saleId],
+      );
+      if (items.isEmpty) throw StateError('لا يمكن تأكيد وثيقة بدون عناصر.');
+      final now = DateTime.now().toUtc().toIso8601String();
+
+      // Validate every line first. Nothing is written if even one item is
+      // unavailable, so unavailable lines are never silently omitted.
+      for (final item in items) {
+        final itemType = item['item_type']?.toString() ?? '';
+        final itemId = (item['item_id'] as num?)?.toInt() ?? 0;
+        final colorId = (item['color_id'] as num?)?.toInt();
+        final requiredQty = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+        final where = colorId == null
+            ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
+            : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
+        final args = colorId == null
+            ? [itemId, itemType, locationId]
+            : [itemId, itemType, colorId, locationId];
+        final stock = await txn.query(
+          'CurrentStock',
+          where: where,
+          whereArgs: args,
+          limit: 1,
+        );
+        final available = stock.isEmpty
+            ? 0.0
+            : (stock.first['quantity'] as num?)?.toDouble() ?? 0.0;
+        if (itemId <= 0 || requiredQty <= 0 || available + 0.000001 < requiredQty) {
+          final label = item['item_name']?.toString() ??
+              item['item_code']?.toString() ??
+              'عنصر';
+          throw StateError(
+            'المخزون غير كافٍ لـ $label: المتوفر $available والمطلوب $requiredQty.',
+          );
+        }
+      }
+
+      for (final item in items) {
+        final itemType = item['item_type']?.toString() ?? '';
+        final itemId = (item['item_id'] as num).toInt();
+        final colorId = (item['color_id'] as num?)?.toInt();
+        final qty = (item['quantity'] as num).toDouble();
+        final where = colorId == null
+            ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
+            : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
+        final args = colorId == null
+            ? [itemId, itemType, locationId]
+            : [itemId, itemType, colorId, locationId];
+        final stock = await txn.query(
+          'CurrentStock',
+          where: where,
+          whereArgs: args,
+          limit: 1,
+        );
+        final available = (stock.first['quantity'] as num).toDouble();
+        await txn.update(
+          'CurrentStock',
+          {'quantity': available - qty, 'updated_at': now},
+          where: where,
+          whereArgs: args,
+        );
+        await txn.insert(
+          'InventoryTransactions',
+          _withDistributedId({
+            'item_id': itemId,
+            'item_type': itemType,
+            'color_id': colorId,
+            'location_id': locationId,
+            'quantity': -qty,
+            'transaction_type': 'Material Sale',
+            'reference_id': saleId,
+            'created_at': now,
+          }),
         );
       }
-    }
-    await myDb.update(
-      'MaterialSales',
-      {
-        'stock_deducted': 1,
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      },
-      where: 'id = ?',
-      whereArgs: [saleId],
-    );
+      await txn.update(
+        'MaterialSales',
+        {'stock_deducted': 1, 'updated_at': now},
+        where: 'id = ?',
+        whereArgs: [saleId],
+      );
+    });
     CloudSyncService().notifyChange();
   }
 
@@ -22337,6 +23299,11 @@ class SqlDatabase {
       );
       if (saleRows.isEmpty) throw Exception('Material sale not found');
       final sale = saleRows.first;
+      if ((sale['stock_deducted'] as num?)?.toInt() == 1) {
+        final existingLinked = (sale['linked_achat_id'] as num?)?.toInt();
+        if (existingLinked != null) return existingLinked;
+        throw StateError('تم تنفيذ حركة مخزون هذه الوثيقة مسبقاً.');
+      }
       final storeLocationId = (sale['location_id'] as num?)?.toInt() ?? 1;
       final saleCode = sale['sale_code']?.toString() ?? 'SALE';
       final netTotal = (sale['net_total'] as num?)?.toDouble() ?? 0.0;
@@ -22418,6 +23385,11 @@ class SqlDatabase {
           );
           if (storeStock.isNotEmpty) {
             final curQty = (storeStock.first['quantity'] as num).toDouble();
+            if (curQty + 0.000001 < qty) {
+              throw StateError(
+                'الرصيد غير كافٍ للعنصر $itemCode. المتوفر $curQty والمطلوب $qty.',
+              );
+            }
             await txn.update(
               'CurrentStock',
               {'quantity': curQty - qty, 'updated_at': now},
@@ -22425,16 +23397,8 @@ class SqlDatabase {
               whereArgs: storeStockArgs,
             );
           } else {
-            await txn.insert(
-              'CurrentStock',
-              _withDistributedId({
-                'item_id': itemId,
-                'item_type': itemType,
-                'color_id': colorId,
-                'location_id': storeLocationId,
-                'quantity': -qty,
-                'updated_at': now,
-              }),
+            throw StateError(
+              'لا يوجد رصيد للعنصر $itemCode في مخزن المحل.',
             );
           }
 
@@ -22576,6 +23540,67 @@ class SqlDatabase {
                 'reference_id': saleId,
                 'created_at': now,
               }),
+            );
+
+            final storeWhere = colorId == null
+                ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
+                : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
+            final storeArgs = colorId == null
+                ? [itemId, itemType, storeLocationId]
+                : [itemId, itemType, colorId, storeLocationId];
+            final storeRows = await txn.query(
+              'CurrentStock',
+              where: storeWhere,
+              whereArgs: storeArgs,
+            );
+            final storeQty = storeRows.isEmpty
+                ? 0.0
+                : (storeRows.first['quantity'] as num).toDouble();
+            if (storeRows.isEmpty) {
+              await txn.insert(
+                'CurrentStock',
+                _withDistributedId({
+                  'item_id': itemId,
+                  'item_type': itemType,
+                  'color_id': colorId,
+                  'location_id': storeLocationId,
+                  'quantity': qty,
+                  'updated_at': now,
+                }),
+              );
+            } else {
+              await txn.update(
+                'CurrentStock',
+                {'quantity': storeQty + qty, 'updated_at': now},
+                where: storeWhere,
+                whereArgs: storeArgs,
+              );
+            }
+
+            final workshopWhere = colorId == null
+                ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
+                : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
+            final workshopArgs = colorId == null
+                ? [itemId, itemType, destLocationId]
+                : [itemId, itemType, colorId, destLocationId];
+            final workshopRows = await txn.query(
+              'CurrentStock',
+              where: workshopWhere,
+              whereArgs: workshopArgs,
+            );
+            final workshopQty = workshopRows.isEmpty
+                ? 0.0
+                : (workshopRows.first['quantity'] as num).toDouble();
+            if (workshopQty + 0.000001 < qty) {
+              throw StateError(
+                'لا يمكن إلغاء التحويل لأن الورشة استهلكت جزءاً من الكمية.',
+              );
+            }
+            await txn.update(
+              'CurrentStock',
+              {'quantity': workshopQty - qty, 'updated_at': now},
+              where: workshopWhere,
+              whereArgs: workshopArgs,
             );
 
             // Deduct from workshop warehouse

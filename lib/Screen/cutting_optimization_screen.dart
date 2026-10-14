@@ -16,7 +16,9 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../services/pdf_font_cache.dart';
+import '../services/pdf_branding.dart';
 import '../Commande/order_measurements_confirm_screen.dart';
+import '../Commande/production_measurements.dart';
 import '../widgets/auto_scroll_expansion_tile.dart';
 
 enum OptimizationMode {
@@ -287,15 +289,12 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
     int? quantityOverride,
   }) {
     final pieces = <CuttingPiece>[];
-    final rawJson = detail['partitions_json']?.toString() ?? '';
-    if (rawJson.trim().isEmpty) return pieces;
+    final rawJson = detail['partitions_json'];
+    if (rawJson == null || rawJson.toString().trim().isEmpty) return pieces;
 
     try {
-      final data = jsonDecode(rawJson);
+      final data = rawJson is Map ? rawJson : jsonDecode(rawJson.toString());
       if (data is! Map) return pieces;
-
-      final window = WindowModel(db: widget.db);
-      applyWindowModelFromMap(window, Map<String, dynamic>.from(data));
 
       final rawQty = detail['quantity'] ?? detail['quantite'] ?? 1;
       final orderedQuantity = (rawQty is num
@@ -308,54 +307,85 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
       );
       final detailId = (detail['id'] as num?)?.toInt() ?? 0;
       final windowName = detail['window_type'] ?? detail['type'] ?? 'عنصر $detailId';
+      final measurements = productionMeasurementInstances(
+        detail,
+        quantityLimit: quantity,
+      );
+      var measurementIndex = 0;
+      for (final measurement in measurements) {
+        measurementIndex++;
+        final window = WindowModel(db: widget.db);
+        applyWindowModelFromMap(window, Map<String, dynamic>.from(data));
+        final measuredWidth = (measurement['width'] as num).toDouble();
+        final measuredHeight = (measurement['height'] as num).toDouble();
+        final measuredQty = (measurement['qty'] as num).toInt();
+        final oldWidth = window.width;
+        final oldHeight = window.height;
+        if (window.zones.isNotEmpty && oldWidth > 0 && oldHeight > 0) {
+          window.rescaleZones(
+            oldWidth,
+            oldHeight,
+            measuredWidth,
+            measuredHeight,
+          );
+        } else {
+          window.width = measuredWidth;
+          window.height = measuredHeight;
+        }
+        // Generate one physical unit, then repeat its exact cuts by the
+        // confirmed quantity. This avoids multiplying an already-expanded
+        // pieces list a second time.
+        window.quantity = 1;
+        final bom = ComponentCalculator.generateBom(window, const {});
 
-      final bom = ComponentCalculator.generateBom(window, const {});
+        for (final item in bom) {
+          if (!item.isActive || item.category != 'profile') continue;
+          if (item.pieces == null || item.pieces!.isEmpty) continue;
 
-      for (final item in bom) {
-        if (!item.isActive || item.category != 'profile') continue;
-        if (item.pieces == null || item.pieces!.isEmpty) continue;
+          final profileName = item.name.trim();
+          final profileCode = item.profileCode ?? '';
+          final color = detail['color']?.toString() ?? '';
 
-        final profileName = item.name.trim();
-        final profileCode = item.profileCode ?? '';
-        final color = (detail['color']?.toString().isNotEmpty == true)
-            ? detail['color'].toString()
-            : 'Standard';
+          for (var pieceIndex = 0;
+              pieceIndex < item.pieces!.length;
+              pieceIndex++) {
+            final lenM = item.pieces![pieceIndex];
+            final lenMm = (lenM * 1000.0).roundToDouble();
+            if (lenMm <= 0) continue;
+            final explicitAngles = item.pieceCutAngles != null &&
+                    pieceIndex < item.pieceCutAngles!.length
+                ? RegExp(r'\d+')
+                    .allMatches(item.pieceCutAngles![pieceIndex])
+                    .map((match) => int.tryParse(match.group(0) ?? ''))
+                    .whereType<int>()
+                    .toList()
+                : const <int>[];
+            final angleLeft = explicitAngles.length >= 2
+                ? explicitAngles[0]
+                : 45;
+            final angleRight = explicitAngles.length >= 2
+                ? explicitAngles[1]
+                : 45;
 
-        for (var pieceIndex = 0; pieceIndex < item.pieces!.length; pieceIndex++) {
-          final lenM = item.pieces![pieceIndex];
-          final lenMm = (lenM * 1000.0).roundToDouble();
-          if (lenMm <= 0) continue;
-          final explicitAngles = item.pieceCutAngles != null &&
-                  pieceIndex < item.pieceCutAngles!.length
-              ? RegExp(r'\d+')
-                  .allMatches(item.pieceCutAngles![pieceIndex])
-                  .map((match) => int.tryParse(match.group(0) ?? ''))
-                  .whereType<int>()
-                  .toList()
-              : const <int>[];
-          final angleLeft = explicitAngles.length >= 2
-              ? explicitAngles[0]
-              : 45;
-          final angleRight = explicitAngles.length >= 2
-              ? explicitAngles[1]
-              : 45;
-
-          for (int q = 0; q < quantity; q++) {
-            pieces.add(
-              CuttingPiece(
-                id: '${detailId}_${profileName}_${lenMm}_$q',
-                orderId: orderId,
-                orderName: orderName,
-                detailId: detailId,
-                windowName: '$windowName (#$quantity)',
-                profileName: profileName,
-                profileCode: profileCode,
-                color: color,
-                lengthMm: lenMm,
-                angleLeft: angleLeft,
-                angleRight: angleRight,
-              ),
-            );
+            for (int q = 0; q < measuredQty; q++) {
+              pieces.add(
+                CuttingPiece(
+                  id:
+                      '${detailId}_${measurementIndex}_${profileName}_${lenMm}_${pieceIndex}_$q',
+                  orderId: orderId,
+                  orderName: orderName,
+                  detailId: detailId,
+                  windowName:
+                      '$windowName (${measuredWidth.toStringAsFixed(0)}×${measuredHeight.toStringAsFixed(0)}, #$measuredQty)',
+                  profileName: profileName,
+                  profileCode: profileCode,
+                  color: color,
+                  lengthMm: lenMm,
+                  angleLeft: angleLeft,
+                  angleRight: angleRight,
+                ),
+              );
+            }
           }
         }
       }
@@ -395,6 +425,7 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
           pageFormat: PdfPageFormat.a4.landscape,
           theme: pw.ThemeData.withFont(base: ttf, bold: ttfBold),
           textDirection: lang == AppLanguage.arabic ? pw.TextDirection.rtl : pw.TextDirection.ltr,
+          footer: (_) => pw.Center(child: PdfBranding.footerMark(ttf)),
           build: (ctx) => [
             // Title Header
             pw.Header(

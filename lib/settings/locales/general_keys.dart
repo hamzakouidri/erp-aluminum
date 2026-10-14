@@ -352,6 +352,26 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Choisir un produit',
     AppLanguage.english: 'Choose a product',
   },
+  'البحث في': {
+    AppLanguage.arabic: 'البحث في',
+    AppLanguage.french: 'Rechercher dans',
+    AppLanguage.english: 'Search in',
+  },
+  'اكتب الاسم أو الرمز للبحث...': {
+    AppLanguage.arabic: 'اكتب الاسم أو الرمز للبحث...',
+    AppLanguage.french: 'Saisissez le nom ou le code...',
+    AppLanguage.english: 'Enter a name or code...',
+  },
+  'اضغط على حقل البحث لاختيار منتج': {
+    AppLanguage.arabic: 'اضغط على حقل البحث لاختيار منتج',
+    AppLanguage.french: 'Cliquez dans la recherche pour choisir un produit',
+    AppLanguage.english: 'Click the search field to choose a product',
+  },
+  'تم اختيار المنتج': {
+    AppLanguage.arabic: 'تم اختيار المنتج',
+    AppLanguage.french: 'Produit sélectionné',
+    AppLanguage.english: 'Product selected',
+  },
   'كل العائلات': {
     AppLanguage.arabic: 'كل العائلات',
     AppLanguage.french: 'Toutes les familles',

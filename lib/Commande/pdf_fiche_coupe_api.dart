@@ -14,9 +14,11 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/Commande/order_date_utils.dart';
+import 'package:database_data/Commande/production_measurements.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/services/pdf_font_cache.dart';
+import 'package:database_data/services/pdf_branding.dart';
 import 'package:bidi/bidi.dart' as bidi;
 import 'package:database_data/arabic_reshaper/arabic_reshaper.dart';
 
@@ -140,20 +142,28 @@ class PdfFicheCoupeApi {
 
     // تحميل بيانات كل منتج مع دمج القطع وصور المقاطع
     final articles = <_ArticleData>[];
+    var nextWindowNumber = 1;
     for (final item in activeItems) {
+      final articleQty = _num(
+        item['quantity'],
+        fb: 1,
+      ).round().clamp(1, 999999).toInt();
       articles.add(
         await _loadArticle(
           db,
           item,
           resolvedLanguage,
           imageCache,
+          firstWindowNumber: nextWindowNumber,
           kitBundleData: kitBundles.data,
           kitPerLeafMap: kitBundles.perLeaf,
           kitBundleMetadata: kitBundles.metadata,
           kitBundlePrices: kitBundles.prices,
         ),
       );
+      nextWindowNumber += articleQty;
     }
+    final showWindowNumbers = nextWindowNumber > 2;
 
     // شعار الورشة
     pw.Widget? logoWidget;
@@ -238,6 +248,7 @@ class PdfFicheCoupeApi {
                 font: font,
                 fontBold: fontBold,
                 tr: tr,
+                showWindowNumbers: showWindowNumbers,
               ),
             );
           }
@@ -387,7 +398,7 @@ class PdfFicheCoupeApi {
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text(_shapeText(workshopName), style: style),
-          pw.Text('ERP Aluminum', style: style),
+          PdfBranding.footerMark(font),
           pw.Text(
             _shapeText(tr.page(ctx.pageNumber, ctx.pagesCount)),
             style: style.copyWith(color: _kBlue),
@@ -406,6 +417,7 @@ class PdfFicheCoupeApi {
     required pw.Font font,
     required pw.Font fontBold,
     required _Tr tr,
+    required bool showWindowNumbers,
   }) {
     final widgets = <pw.Widget>[];
 
@@ -562,6 +574,22 @@ class PdfFicheCoupeApi {
       );
     }
 
+    // Confirmed production sizes are the bridge between the drawing and the
+    // cut rows. Keep the same window numbers here and in every profile cut so
+    // the manager and workshop operator can verify them at a glance.
+    if (data.measurements.isNotEmpty) {
+      widgets.add(pw.SizedBox(height: 6));
+      widgets.add(
+        _buildConfirmedMeasurementsTable(
+          data.measurements,
+          font,
+          fontBold,
+          tr,
+          showWindowNumbers: showWindowNumbers,
+        ),
+      );
+    }
+
     final tablesBelow = <pw.Widget>[];
     if (data.profiles.isNotEmpty) {
       tablesBelow.add(
@@ -574,7 +602,15 @@ class PdfFicheCoupeApi {
         ),
       );
       tablesBelow.add(pw.SizedBox(height: 2));
-      tablesBelow.add(_buildProfilesTable(data.profiles, font, fontBold, tr));
+      tablesBelow.add(
+        _buildProfilesTable(
+          data.profiles,
+          font,
+          fontBold,
+          tr,
+          showWindowNumbers: showWindowNumbers,
+        ),
+      );
       tablesBelow.add(pw.SizedBox(height: 6));
     }
     if (data.shutterProfiles.isNotEmpty) {
@@ -589,7 +625,13 @@ class PdfFicheCoupeApi {
       );
       tablesBelow.add(pw.SizedBox(height: 2));
       tablesBelow.add(
-        _buildProfilesTable(data.shutterProfiles, font, fontBold, tr),
+        _buildProfilesTable(
+          data.shutterProfiles,
+          font,
+          fontBold,
+          tr,
+          showWindowNumbers: showWindowNumbers,
+        ),
       );
       if (shutterAccessories.isNotEmpty) {
         tablesBelow.add(pw.SizedBox(height: 3));
@@ -660,15 +702,17 @@ class PdfFicheCoupeApi {
     List<_ProfileCutRow> rows,
     pw.Font font,
     pw.Font fontBold,
-    _Tr tr,
-  ) {
-    const colWidths = <int, pw.TableColumnWidth>{
-      0: pw.FixedColumnWidth(50), // الصورة
-      1: pw.FixedColumnWidth(68), // المرجع
-      2: pw.FlexColumnWidth(2.5), // الوصف
-      3: pw.FixedColumnWidth(34), // الكمية
-      4: pw.FixedColumnWidth(64), // الطول
-      5: pw.FixedColumnWidth(104), // زاوية القطع
+    _Tr tr, {
+    required bool showWindowNumbers,
+  }) {
+    final colWidths = <int, pw.TableColumnWidth>{
+      if (showWindowNumbers) 0: const pw.FixedColumnWidth(27), // رقم النافذة
+      (showWindowNumbers ? 1 : 0): const pw.FixedColumnWidth(46), // الصورة
+      (showWindowNumbers ? 2 : 1): const pw.FixedColumnWidth(62), // المرجع
+      (showWindowNumbers ? 3 : 2): const pw.FlexColumnWidth(2.5), // الوصف
+      (showWindowNumbers ? 4 : 3): const pw.FixedColumnWidth(32), // الكمية
+      (showWindowNumbers ? 5 : 4): const pw.FixedColumnWidth(60), // الطول
+      (showWindowNumbers ? 6 : 5): const pw.FixedColumnWidth(96), // زاوية القطع
     };
 
     final tableRows = <pw.TableRow>[];
@@ -678,6 +722,8 @@ class PdfFicheCoupeApi {
       pw.TableRow(
         decoration: const pw.BoxDecoration(color: _kBlue),
         children: [
+          if (showWindowNumbers)
+            _hdr('N°', fontBold, align: pw.TextAlign.center),
           _hdr(tr.image, fontBold, align: pw.TextAlign.center),
           _hdr(
             tr.reference,
@@ -709,6 +755,23 @@ class PdfFicheCoupeApi {
             color: isAlt ? _kRowAlt : PdfColors.white,
           ),
           children: [
+            if (showWindowNumbers)
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                children: [
+                  for (var c = 0; c < cutCount; c++) ...[
+                    if (c > 0) pw.Container(height: 0.5, color: _kBorder),
+                    pw.Container(
+                      height: 24.5,
+                      alignment: pw.Alignment.center,
+                      child: pw.Text(
+                        row.cuts[c].windowNumber,
+                        style: pw.TextStyle(font: fontBold, fontSize: 7.5),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             // [0] صورة المقطع ضمن صفه في الجدول.
             pw.Container(
               height: totalRowHeight,
@@ -827,6 +890,65 @@ class PdfFicheCoupeApi {
       columnWidths: colWidths,
       border: pw.TableBorder.all(color: _kBorder, width: 0.4),
       children: tableRows,
+    );
+  }
+
+  static pw.Widget _buildConfirmedMeasurementsTable(
+    List<_ConfirmedMeasurement> measurements,
+    pw.Font font,
+    pw.Font fontBold,
+    _Tr tr, {
+    required bool showWindowNumbers,
+  }) {
+    final title = switch (tr.lang) {
+      AppLanguage.french => 'MESURES CONFIRMÉES',
+      AppLanguage.english => 'CONFIRMED MEASUREMENTS',
+      AppLanguage.arabic => 'القياسات المؤكدة',
+    };
+    final widthLabel = switch (tr.lang) {
+      AppLanguage.french => 'Largeur',
+      AppLanguage.english => 'Width',
+      AppLanguage.arabic => 'العرض',
+    };
+    final heightLabel = switch (tr.lang) {
+      AppLanguage.french => 'Hauteur',
+      AppLanguage.english => 'Height',
+      AppLanguage.arabic => 'الارتفاع',
+    };
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+      children: [
+        _blueBar(title, fontBold, color: _kBlueSub, fontSize: 8.5, isRtl: tr.isRtl),
+        pw.SizedBox(height: 2),
+        pw.Table(
+          border: pw.TableBorder.all(color: _kBorder, width: 0.4),
+          columnWidths: {
+            if (showWindowNumbers) 0: const pw.FixedColumnWidth(44),
+            (showWindowNumbers ? 1 : 0): const pw.FlexColumnWidth(),
+            (showWindowNumbers ? 2 : 1): const pw.FlexColumnWidth(),
+          },
+          children: [
+            pw.TableRow(
+              decoration: const pw.BoxDecoration(color: _kRowAlt),
+              children: [
+                if (showWindowNumbers)
+                  _cell('N°', fontBold, align: pw.TextAlign.center, bold: true, boldFont: fontBold),
+                _cell(widthLabel, fontBold, align: pw.TextAlign.center, bold: true, boldFont: fontBold),
+                _cell(heightLabel, fontBold, align: pw.TextAlign.center, bold: true, boldFont: fontBold),
+              ],
+            ),
+            for (final measurement in measurements)
+              pw.TableRow(
+                children: [
+                  if (showWindowNumbers)
+                    _cell(measurement.windowNumber, fontBold, align: pw.TextAlign.center, bold: true, boldFont: fontBold),
+                  _cell('${measurement.widthMm.toStringAsFixed(0)} mm', font, align: pw.TextAlign.center),
+                  _cell('${measurement.heightMm.toStringAsFixed(0)} mm', font, align: pw.TextAlign.center),
+                ],
+              ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -1219,6 +1341,7 @@ class PdfFicheCoupeApi {
     Map<String, dynamic> item,
     AppLanguage lang,
     Map<String, pw.Widget?> imageCache, {
+    required int firstWindowNumber,
     required Map<String, List<Map<String, dynamic>>> kitBundleData,
     required Map<String, bool> kitPerLeafMap,
     required Map<String, Map<String, dynamic>> kitBundleMetadata,
@@ -1255,27 +1378,80 @@ class PdfFicheCoupeApi {
       model.quantity = qty.clamp(1, 999999);
       await model.updateShutterDefaultsIfNeeded();
 
-      List<BomItem> generateBom() => ComponentCalculator.generateBom(
-        model,
-        _activeVariants(model),
-        kitBundleData: kitBundleData,
-        kitPerLeafMap: kitPerLeafMap,
-        kitBundleMetadata: kitBundleMetadata,
-        kitBundlePrices: kitBundlePrices,
+      final active = <BomItem>[];
+      final windowNumbersByItem = <BomItem, String>{};
+      final confirmedMeasurements = <_ConfirmedMeasurement>[];
+      final measurements = productionMeasurementInstances(
+        item,
+        quantityLimit: qty,
       );
+      var measurementWindowNumber = firstWindowNumber;
+      for (final measurement in measurements) {
+        final instanceModel = WindowModel(db: db);
+        applyWindowModelFromMap(instanceModel, decoded);
+        instanceModel.copyCatalogRuntimeFrom(
+          model,
+          preserveCurrentSelections: false,
+        );
+        final measuredWidth = (measurement['width'] as num).toDouble();
+        final measuredHeight = (measurement['height'] as num).toDouble();
+        final measuredQty = (measurement['qty'] as num).toInt();
+        final oldWidth = instanceModel.width;
+        final oldHeight = instanceModel.height;
+        if (instanceModel.zones.isNotEmpty && oldWidth > 0 && oldHeight > 0) {
+          instanceModel.rescaleZones(
+            oldWidth,
+            oldHeight,
+            measuredWidth,
+            measuredHeight,
+          );
+        } else {
+          instanceModel.width = measuredWidth;
+          instanceModel.height = measuredHeight;
+        }
+        instanceModel.quantity = measuredQty;
 
-      var bom = generateBom();
-      final engine = BomEngineV2(database: db);
-      await engine.stabilizeSelections(window: model, items: bom);
-      bom = generateBom();
-      await engine.stabilizeSelections(window: model, items: bom);
-      bom = await engine.filterItemsByAvailableCandidates(
-        window: model,
-        items: generateBom(),
-      );
-      final active = bom
-          .where((r) => r.isActive && r.purchaseQuantity > 0)
-          .toList();
+        List<BomItem> generateBom() => ComponentCalculator.generateBom(
+          instanceModel,
+          _activeVariants(instanceModel),
+          kitBundleData: kitBundleData,
+          kitPerLeafMap: kitPerLeafMap,
+          kitBundleMetadata: kitBundleMetadata,
+          kitBundlePrices: kitBundlePrices,
+        );
+
+        var bom = generateBom();
+        final engine = BomEngineV2(database: db);
+        await engine.stabilizeSelections(window: instanceModel, items: bom);
+        bom = generateBom();
+        await engine.stabilizeSelections(window: instanceModel, items: bom);
+        bom = await engine.filterItemsByAvailableCandidates(
+          window: instanceModel,
+          items: generateBom(),
+        );
+        final windowNumbers = [
+          for (var offset = 0; offset < measuredQty; offset++)
+            '${measurementWindowNumber + offset}',
+        ];
+        final windowNumber = windowNumbers.join(', ');
+        for (final number in windowNumbers) {
+          confirmedMeasurements.add(
+            _ConfirmedMeasurement(
+              windowNumber: number,
+              widthMm: measuredWidth,
+              heightMm: measuredHeight,
+            ),
+          );
+        }
+        final activeMeasurementItems = bom
+            .where((r) => r.isActive && r.purchaseQuantity > 0)
+            .toList(growable: false);
+        active.addAll(activeMeasurementItems);
+        for (final bomItem in activeMeasurementItems) {
+          windowNumbersByItem[bomItem] = windowNumber;
+        }
+        measurementWindowNumber += measuredQty;
+      }
 
       // The quantity table treats a configured shutter Kit as one collapsible
       // commercial row. The cutting sheet uses the same collapsed view: show
@@ -1328,6 +1504,10 @@ class PdfFicheCoupeApi {
           ),
         );
       }
+      final aggregatedFicheItems = _aggregateFicheItems(ficheItems);
+      ficheItems
+        ..clear()
+        ..addAll(aggregatedFicheItems);
 
       final itemImages = <String, pw.Widget?>{};
       for (final bomItem in ficheItems) {
@@ -1440,26 +1620,24 @@ class PdfFicheCoupeApi {
       // فصل عناصر الستار عن قطاعات النوافذ
       final shutterBomItems = ficheItems.where(_isShutterComponent).toList();
 
-      final nonShutterBomItems = ficheItems
-          .where((b) => !shutterBomItems.contains(b))
-          .toList();
-
       // تجميع القطاعات بدون تكرار السطر
       final profileRows = await _buildGroupedProfileRows(
-        nonShutterBomItems
+        active
             .where((b) => b.category.toLowerCase().trim() == 'profile')
             .toList(),
         db,
         imageCache,
         lang,
+        windowNumbersByItem: windowNumbersByItem,
       );
 
       final shutterProfileRows = await _buildGroupedProfileRows(
-        shutterBomItems,
+        active.where(_isShutterComponent).toList(),
         db,
         imageCache,
         lang,
         isShutter: true,
+        windowNumbersByItem: windowNumbersByItem,
       );
 
       return _ArticleData(
@@ -1475,6 +1653,7 @@ class PdfFicheCoupeApi {
         profiles: profileRows,
         shutterProfiles: shutterProfileRows,
         itemImages: itemImages,
+        measurements: confirmedMeasurements,
         drawing: drawing,
       );
     } catch (_) {
@@ -1525,6 +1704,51 @@ class PdfFicheCoupeApi {
         materialType.contains('volet');
   }
 
+  /// Merge identical count-based materials generated by different confirmed
+  /// measurement groups. Profiles keep their real cut lists; glass keeps its
+  /// dimensions. Accessories with the same catalogue identity, colour and
+  /// unit become one row (for example 324 + 64 rollers = 388 rollers).
+  static List<BomItem> _aggregateFicheItems(List<BomItem> items) {
+    final result = <BomItem>[];
+    final indexByKey = <String, int>{};
+    for (final item in items) {
+      final hasCuts = item.pieces != null && item.pieces!.isNotEmpty;
+      final category = item.category.trim().toLowerCase();
+      if (hasCuts || category == 'profile') {
+        result.add(item);
+        continue;
+      }
+      final identity = item.catalogItemId != null && item.catalogItemId! > 0
+          ? 'id:${item.inventoryItemType ?? category}:${item.catalogItemId}'
+          : (item.profileCode ?? '').trim().isNotEmpty
+          ? 'code:${item.profileCode!.trim().toLowerCase()}'
+          : 'name:${item.name.replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase()}';
+      final dimensionKey = category == 'glass' || category == 'panneau'
+          ? '${item.length?.toStringAsFixed(3) ?? ''}x${item.glassHeight?.toStringAsFixed(3) ?? ''}'
+          : '';
+      final key = [
+        category,
+        identity,
+        item.colorId ?? item.colorName?.trim().toLowerCase() ?? '',
+        item.unit.trim().toLowerCase(),
+        dimensionKey,
+        item.kitGroupName ?? '',
+      ].join('|');
+      final existingIndex = indexByKey[key];
+      if (existingIndex == null) {
+        indexByKey[key] = result.length;
+        result.add(item);
+        continue;
+      }
+      final existing = result[existingIndex];
+      result[existingIndex] = existing.copyWith(
+        qty: existing.quantity + item.quantity,
+        pieceCount: (existing.pieceCount ?? 0) + (item.pieceCount ?? 0),
+      );
+    }
+    return result;
+  }
+
   // ──────────────────────────────────────────────────────────────────────────
   // تجميع القطع لكل قطاع في سطر واحد
   // ──────────────────────────────────────────────────────────────────────────
@@ -1534,6 +1758,7 @@ class PdfFicheCoupeApi {
     Map<String, pw.Widget?> imageCache,
     AppLanguage lang, {
     bool isShutter = false,
+    Map<BomItem, String> windowNumbersByItem = const {},
   }) async {
     final langCode = lang == AppLanguage.french
         ? 'fr'
@@ -1548,7 +1773,7 @@ class PdfFicheCoupeApi {
             String description,
             String? imagePath,
             int? catalogItemId,
-            Map<String, ({int qty, int lengthMm, String angles})> cuts,
+            Map<String, ({int qty, int lengthMm, String angles, String windowNumber})> cuts,
           })
         >{};
 
@@ -1600,7 +1825,7 @@ class PdfFicheCoupeApi {
           description: desc,
           imagePath: bom.imagePath,
           catalogItemId: bom.catalogItemId,
-          cuts: <String, ({int qty, int lengthMm, String angles})>{},
+          cuts: <String, ({int qty, int lengthMm, String angles, String windowNumber})>{},
         ),
       );
 
@@ -1615,16 +1840,23 @@ class PdfFicheCoupeApi {
             : _anglesFor(bom);
         final mm = (pM * 1000).round();
         if (mm <= 0) continue;
-        final cutKey = '$mm|$angles';
+        final windowNumber = windowNumbersByItem[bom] ?? '';
+        final cutKey = '$windowNumber|$mm|$angles';
         final cur = existing.cuts[cutKey];
         if (cur != null) {
           existing.cuts[cutKey] = (
             qty: cur.qty + 1,
             lengthMm: mm,
             angles: angles,
+            windowNumber: windowNumber,
           );
         } else {
-          existing.cuts[cutKey] = (qty: 1, lengthMm: mm, angles: angles);
+          existing.cuts[cutKey] = (
+            qty: 1,
+            lengthMm: mm,
+            angles: angles,
+            windowNumber: windowNumber,
+          );
         }
       }
     }
@@ -1649,6 +1881,7 @@ class PdfFicheCoupeApi {
                   qty: c.qty,
                   lengthMm: c.lengthMm,
                   angles: c.angles,
+                  windowNumber: c.windowNumber,
                 ),
               )
               .toList()
@@ -2163,21 +2396,7 @@ class PdfFicheCoupeApi {
       return exactName == primary ? primary : '$primary\n$exactName';
     }
 
-    // The localized BomItem label is intentionally generic for several
-    // families. Keep the calculated size that identifies the actual row.
-    final original = item.originalName.trim();
-    final sizeMatch = RegExp(
-      r'(?<!\d)(\d+(?:[.,]\d+)?)(?:\s*(?:mm|cm))?(?!\d)',
-      caseSensitive: false,
-    ).allMatches(original).map((m) => m.group(1)!).toList();
-    var label = primary;
-    if (sizeMatch.isNotEmpty &&
-        (original.toLowerCase().contains('espagnolette') ||
-            original.contains('إسبانيوليت') ||
-            original.contains('اسبانيولات'))) {
-      final size = sizeMatch.last.replaceAll(',', '.');
-      if (!label.contains(size)) label = '$label $size';
-    }
+    final label = primary;
 
     final category = item.category.toLowerCase().trim();
     if (category == 'glass' || category == 'panneau') {
@@ -2492,6 +2711,17 @@ class PdfFicheCoupeApi {
           ? 'Chicane'
           : (targetLang == AppLanguage.english ? 'Chicane' : 'شيكان');
     }
+    // Gâche names frequently contain "ouvrant" as a qualifier (for example
+    // "Gache double ouvrant"). Classify the accessory before the generic
+    // opening-profile rule below, otherwise its heading becomes "Ouvrant".
+    if (lowerClean.contains('gache') ||
+        lowerClean.contains('gâche') ||
+        clean.contains('قاش') ||
+        clean.contains('كاش')) {
+      return targetLang == AppLanguage.french
+          ? 'Gâche'
+          : (targetLang == AppLanguage.english ? 'Strike plate' : 'قاش');
+    }
     if (lowerClean.contains('dormant') || clean.contains('إطار')) {
       return targetLang == AppLanguage.french
           ? 'Dormant'
@@ -2801,6 +3031,7 @@ class _ArticleData {
   final List<_ProfileCutRow> profiles;
   final List<_ProfileCutRow> shutterProfiles;
   final Map<String, pw.Widget?> itemImages;
+  final List<_ConfirmedMeasurement> measurements;
   final Uint8List? drawing;
 
   const _ArticleData({
@@ -2816,7 +3047,20 @@ class _ArticleData {
     required this.profiles,
     this.shutterProfiles = const [],
     this.itemImages = const {},
+    this.measurements = const [],
     required this.drawing,
+  });
+}
+
+class _ConfirmedMeasurement {
+  final String windowNumber;
+  final double widthMm;
+  final double heightMm;
+
+  const _ConfirmedMeasurement({
+    required this.windowNumber,
+    required this.widthMm,
+    required this.heightMm,
   });
 }
 
@@ -2824,11 +3068,13 @@ class _CutPiece {
   final int qty;
   final int lengthMm;
   final String angles;
+  final String windowNumber;
 
   const _CutPiece({
     required this.qty,
     required this.lengthMm,
     required this.angles,
+    required this.windowNumber,
   });
 }
 

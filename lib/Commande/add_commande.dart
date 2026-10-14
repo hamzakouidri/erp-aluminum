@@ -467,10 +467,11 @@ class _CommandePageState extends State<CommandePage> {
     // glazing default.  Carry real glass forward for quick entry, but always
     // start the next item with ordinary glass after a panneau was used.
     final previousGlass = WindowZone.globalDefaultGlass;
-    final glassSpec = (previousGlass.structure == GlassStructure.closed
-            ? const GlassSpecification()
-            : previousGlass)
-        .toMap();
+    final glassSpec =
+        (previousGlass.structure == GlassStructure.closed
+                ? const GlassSpecification()
+                : previousGlass)
+            .toMap();
     final modelMap = m.toMap();
     const defaultKeys = {
       'isInternalView',
@@ -1240,171 +1241,41 @@ class _CommandePageState extends State<CommandePage> {
     }
 
     // إظهار مؤشر تحميل أثناء الجلب من قاعدة البيانات
+    var loadingVisible = true;
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => const Center(child: CircularProgressIndicator()),
     );
 
-    await Future.delayed(const Duration(milliseconds: 100));
-
-    // 1. تعريف مجمعات المواد (Accumulators) للطلبية بأكملها
-    double totalAluminumMeters = 0.0;
-    double totalGlassSqm = 0.0;
-    int totalHandles = 0;
-    int totalHinges = 0;
-    int totalRoulettes = 0;
-    double totalShutterLamesMeters = 0.0;
-    int totalShutters = 0;
-    Map<int, int> totalEspagnolettes = {};
-
-    // 2. جلب الأسعار من قاعدة البيانات (DB)
-    double priceAlumPerMeter = 0.0;
-    double priceGlassPerSqm = 0.0;
-    double priceHandle = 0.0;
-    double priceHinge = 0.0;
-    double priceRoulette = 0.0;
-    double priceEspagnolette = 0.0;
-    double priceShutterKit = 0.0; // محرك أو حزام مع الملحقات
-    double priceLamesPerMeter = 0.0;
-
-    // 3. تحليل هندسي لكل منتج لحساب استهلاكه من المواد وتكلفته
-    for (var p in addedProducts) {
-      double pWidthM = p.width / 1000;
-      double pHeightM = p.height / 1000;
-
-      double pAlumMeters =
-          (pWidthM * 2) + (pHeightM * 2); // الحلق الخارجي (Dormant)
-      double pGlassSqm = 0.0;
-      int pHandles = 0;
-      int pHinges = 0;
-      int pRoulettes = 0;
-      double pLamesMeters = 0.0;
-
-      int cremoneLengthCm = 0;
-      if (p.hasShutter) {
-        cremoneLengthCm = (pHeightM * 100).round() - 35;
-      } else {
-        cremoneLengthCm = (pHeightM * 100).round() - 20;
-      }
-
-      if (cremoneLengthCm > 180) cremoneLengthCm = 180;
-      if (cremoneLengthCm < 0) cremoneLengthCm = 0;
-
-      int hingesPerSash = 0;
-      if (cremoneLengthCm <= 80) {
-        hingesPerSash = 2;
-      } else if (cremoneLengthCm <= 100) {
-        hingesPerSash = 3;
-      } else {
-        hingesPerSash = 4;
-      }
-
-      int pEspagnolettesCount = 0;
-
-      // حساب المكونات الداخلية (Ouvrants, Vitrage) بناءً على نوع المناطق
-      for (var zone in p.zones) {
-        double zWidthM = zone.boundary.width / 1000;
-        double zHeightM = zone.boundary.height / 1000;
-        double area = zWidthM * zHeightM;
-
-        if (zone.content == ZoneContent.singleSash) {
-          pAlumMeters += (zWidthM * 2) + (zHeightM * 2);
-          pGlassSqm += area;
-          pHandles += 1;
-          pHinges += hingesPerSash;
-          pEspagnolettesCount += 1;
-        } else if (zone.content == ZoneContent.doubleSash) {
-          pAlumMeters += (zWidthM * 4) + (zHeightM * 4);
-          pAlumMeters +=
-              zHeightM +
-              1.0; // Batmo (Height) + Cache Batmo (1 piece = 1 meter equivalent)
-          pGlassSqm += area;
-          pHandles += 1;
-          pHinges += hingesPerSash * 2;
-          pEspagnolettesCount += 1;
-        } else if (zone.content == ZoneContent.slidingSash) {
-          pAlumMeters +=
-              (zWidthM * zone.slidingSashesCount) +
-              (zHeightM * zone.slidingSashesCount);
-          pGlassSqm += area;
-          pRoulettes += zone.slidingSashesCount * 2;
-          pHandles += 2;
-        } else if (zone.content == ZoneContent.fixedGlass) {
-          pGlassSqm += area;
-        }
-      }
-
-      // حساب مواد الستار إن وجد
-      double pShutterCost = 0.0;
-      if (p.hasShutter) {
-        double lameHeight = 0.043; // 43mm
-        int lamesCount = (pHeightM / lameHeight).ceil();
-        pLamesMeters = lamesCount * pWidthM;
-        if (!p.isReplaced) {
-          totalShutters += 1;
-        }
-        pShutterCost =
-            (pLamesMeters * priceLamesPerMeter) +
-            priceShutterKit +
-            (pWidthM * 1200); // 1200 للصندوق
-      }
-
-      // حساب التكلفة الفردية للمنتج (Cost calculation per window)
-      double pCost = 0.0;
-      pCost += pAlumMeters * priceAlumPerMeter;
-      pCost += pGlassSqm * priceGlassPerSqm;
-      pCost +=
-          (pHandles * priceHandle) +
-          (pHinges * priceHinge) +
-          (pRoulettes * priceRoulette) +
-          (pEspagnolettesCount * priceEspagnolette);
-      pCost += pShutterCost;
-
-      // 🟢 تحديث تكلفة المنتج داخل الموديل لكي تظهر في الفاتورة مباشرة
-      p.totalCost = pCost;
-
-      if (p.isReplaced) {
-        continue;
-      }
-
-      // تجميع الإجماليات لإظهار التقرير
-      totalAluminumMeters += pAlumMeters;
-      totalGlassSqm += pGlassSqm;
-      totalHandles += pHandles;
-      totalHinges += pHinges;
-      totalRoulettes += pRoulettes;
-      totalShutterLamesMeters += pLamesMeters;
-      if (pEspagnolettesCount > 0 && cremoneLengthCm > 0) {
-        totalEspagnolettes[cremoneLengthCm] =
-            (totalEspagnolettes[cremoneLengthCm] ?? 0) + pEspagnolettesCount;
-      }
+    void closeLoading() {
+      if (!mounted || !loadingVisible) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      loadingVisible = false;
     }
 
-    // إغلاق مؤشر التحميل
-    if (mounted) Navigator.of(context, rootNavigator: true).pop();
-
-    // تحديث الواجهة (ليظهر السعر الجديد في ملخص الفاتورة السفلي)
-    setState(() {});
-
-    // 4. عرض تقرير المواد (Débit & Devis) في نافذة سفلية
-    if (mounted) {
-      _showReportBottomSheet(
-        totalAluminumMeters: totalAluminumMeters,
-        totalGlassSqm: totalGlassSqm,
-        totalHandles: totalHandles,
-        totalHinges: totalHinges,
-        totalRoulettes: totalRoulettes,
-        totalShutterLamesMeters: totalShutterLamesMeters,
-        totalShutters: totalShutters,
-        totalEspagnolettes: totalEspagnolettes,
-        grandTotal: addedProducts
-            .where((p) => !p.isReplaced)
-            .fold(
-              0.0,
-              (sum, p) =>
-                  sum + ((p.manualPriceOverride ?? p.totalCost) * p.quantity),
-            ),
+    try {
+      // Use the exact material/BOM and pricing pipeline of the Quantity &
+      // Cost screen. The former shortcut used rough geometry and unloaded
+      // prices, which made this button disagree with that screen.
+      await _ensureAutomaticProductPrices(addedProducts);
+      if (!mounted) return;
+      closeLoading();
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(t('تم تحديث الأسعار وفق جدول الكمية والتكلفة.')),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      closeLoading();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${t('تعذر حساب السعر')}: $error'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -1560,7 +1431,9 @@ class _CommandePageState extends State<CommandePage> {
       }
 
       final imagePaths = <String>[];
-      final imageMaxSide = (Platform.isAndroid || Platform.isIOS) ? 420 : 600;
+      // Store a production-quality drawing. The quotation's full-width image
+      // mode must not upscale the old 420/600 px preview.
+      final imageMaxSide = (Platform.isAndroid || Platform.isIOS) ? 1800 : 2400;
       for (var index = 0; index < addedProducts.length; index++) {
         final p = addedProducts[index];
         final previous = index < existingDetails.length
@@ -1582,7 +1455,7 @@ class _CommandePageState extends State<CommandePage> {
             await saveWindowImageToDisk(
               p,
               maxSide: imageMaxSide,
-            ).timeout(const Duration(seconds: 3), onTimeout: () => ''),
+            ).timeout(const Duration(seconds: 10), onTimeout: () => ''),
           );
         } catch (error) {
           debugPrint('Skipping order preview image: $error');
@@ -2144,6 +2017,10 @@ class _CommandePageState extends State<CommandePage> {
       pricePerSqm: prefs.getDouble('app_price_per_sqm') ?? 0,
       linearMeterPrice: await _readSeriesLinearMeterPrice(product),
       shutterSqmPrice: await _readShutterSquareMeterPrice(product),
+      moustiquaireSqmPrice: await widget.db.getShutterSqmPrice(
+        'Moustiquaire_Sqm',
+        0,
+      ),
       profileRules: {
         for (final rule in pricingRules)
           if (rule['section_id'] is num)
@@ -2360,9 +2237,9 @@ class _CommandePageState extends State<CommandePage> {
     }
     final candidates = candidatesById.values.toList()
       ..sort((a, b) {
-        final family = isSlidingSeriesForDrawing(a)
-            .toString()
-            .compareTo(isSlidingSeriesForDrawing(b).toString());
+        final family = isSlidingSeriesForDrawing(
+          a,
+        ).toString().compareTo(isSlidingSeriesForDrawing(b).toString());
         return family != 0 ? family : a.name.compareTo(b.name);
       });
     if (candidates.isEmpty) {
@@ -2420,10 +2297,7 @@ class _CommandePageState extends State<CommandePage> {
       var count = 0;
       final chosenIsSliding = isSlidingSeriesForDrawing(chosen);
       for (final product in selected) {
-        if (!_productUsesSeriesFamily(
-          product,
-          sliding: chosenIsSliding,
-        )) {
+        if (!_productUsesSeriesFamily(product, sliding: chosenIsSliding)) {
           continue;
         }
         final localSeries = product.availableSystems
@@ -2459,10 +2333,7 @@ class _CommandePageState extends State<CommandePage> {
     }
   }
 
-  bool _productUsesSeriesFamily(
-    WindowModel product, {
-    required bool sliding,
-  }) {
+  bool _productUsesSeriesFamily(WindowModel product, {required bool sliding}) {
     final hasSliding = product.zones.any(
       (zone) => zone.content == ZoneContent.slidingSash,
     );
@@ -2482,8 +2353,7 @@ class _CommandePageState extends State<CommandePage> {
     if (hasOpening) return true;
     if (hasSliding) return false;
     final openingSeries = product.activeSeries;
-    return openingSeries != null &&
-        !isSlidingSeriesForDrawing(openingSeries);
+    return openingSeries != null && !isSlidingSeriesForDrawing(openingSeries);
   }
 
   Future<GlassSpecification?> _showBulkGlassSpecDialog(
@@ -3086,6 +2956,93 @@ class _CommandePageState extends State<CommandePage> {
     );
   }
 
+  Future<void> _applyMoustiquaireToShutterWindows() async {
+    if (!_bulkChangesAllowed) {
+      _showBulkChangesBlockedMessage();
+      return;
+    }
+    final targets = addedProducts
+        .where(
+          (product) =>
+              !product.isReplaced &&
+              !product.isCustomProduct &&
+              !product.isGlassWork &&
+              !product.isMoustiquaire &&
+              !product.isShutterOnly &&
+              product.hasShutter,
+        )
+        .toList(growable: false);
+    if (targets.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('لا توجد نوافذ تحتوي على ستار في هذه الطلبية.'),
+        ),
+      );
+      return;
+    }
+
+    final action = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('موستيكير للنوافذ ذات الستار'),
+        content: Text(
+          'تم العثور على ${targets.length} نافذة تحتوي على ستار. '
+          'اختر إضافة الموستيكير إليها كلها أو حذفها منها.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('إلغاء'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            icon: const Icon(Icons.remove_circle_outline),
+            label: const Text('حذف من الكل'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            icon: const Icon(Icons.grid_on_rounded),
+            label: const Text('إضافة إلى الكل'),
+          ),
+        ],
+      ),
+    );
+    if (action == null || !mounted) return;
+
+    final changed = await _runBulkOperation<int>(() async {
+      var count = 0;
+      for (final product in targets) {
+        if (product.hasMoustiquaireAddon == action) continue;
+        final previousValue = product.hasMoustiquaireAddon;
+        final previousTotal = product.totalCost;
+        final previousManual = product.manualPriceOverride;
+        product.hasMoustiquaireAddon = action;
+        try {
+          await _recalculateProductSellingPrice(product);
+          count++;
+        } catch (_) {
+          product.hasMoustiquaireAddon = previousValue;
+          product.totalCost = previousTotal;
+          product.manualPriceOverride = previousManual;
+          rethrow;
+        }
+      }
+      if (mounted) setState(() {});
+      return count;
+    });
+    if (!mounted || changed == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: Colors.green.shade700,
+        content: Text(
+          action
+              ? 'تمت إضافة الموستيكير إلى $changed نافذة وإعادة حساب أسعارها.'
+              : 'تم حذف الموستيكير من $changed نافذة وإعادة حساب أسعارها.',
+        ),
+      ),
+    );
+  }
+
   // ==============================================================================
 
   Widget _buildBulkActionsPanel({required bool isDark}) {
@@ -3135,6 +3092,19 @@ class _CommandePageState extends State<CommandePage> {
               color: Colors.white,
               fontWeight: FontWeight.bold,
             ),
+          ),
+          height: 50,
+        ),
+        const SizedBox(height: 8),
+        ElegantAnimatedButton(
+          gradientColors: const [Color(0xFF15803D), Color(0xFF22C55E)],
+          onPressed: _isApplyingBulkChange
+              ? null
+              : _applyMoustiquaireToShutterWindows,
+          icon: const Icon(Icons.grid_on_rounded, color: Colors.white),
+          label: const Text(
+            'موستيكير لكل النوافذ ذات الستار',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
           height: 50,
         ),
@@ -5427,6 +5397,16 @@ class _ClientDropdownDialogState extends State<ClientDropdownDialog> {
   List<Map<String, dynamic>> clients = [];
   List<Map<String, dynamic>> filtered = [];
 
+  String _translate(String value) => Localization.translate(
+    value,
+    Provider.of<AppSettingsProvider>(context, listen: false).language,
+  );
+
+  // Keep the same short translation helper used by the parent order screen.
+  // This dialog is a separate State class, so it cannot access the parent's
+  // private `t` method directly.
+  String t(String value) => _translate(value);
+
   TextEditingController search = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
 
@@ -5636,8 +5616,26 @@ class _ClientDropdownDialogState extends State<ClientDropdownDialog> {
                 values[4],
                 values[5],
               );
+            } on DuplicateClientException catch (error) {
+              if (!mounted) return;
+              final message = error.field == 'phone'
+                  ? _translate('رقم الهاتف مستعمل من طرف زبون آخر.')
+                  : _translate('يوجد زبون آخر بنفس الاسم.');
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(message), backgroundColor: Colors.red),
+              );
+              return;
             } catch (e) {
               debugPrint("Error inserting client: $e");
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(_translate('تعذرت إضافة الزبون.')),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+              return;
             }
 
             if (!mounted) return;

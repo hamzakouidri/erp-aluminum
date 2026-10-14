@@ -29,13 +29,17 @@ class TreasuryScreen extends StatefulWidget {
     VoidCallback? onSaved,
   }) async {
     final effectiveDb = db ?? SqlDatabase();
-    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
 
     final effectiveClients = clients ?? await effectiveDb.readClient();
     final effectiveSuppliers = suppliers ?? await effectiveDb.readSuppliers();
     final effectiveWorkers = workers ?? await effectiveDb.readEmployees();
 
-    List<String> effectiveCaisseNames = caisseNames != null && caisseNames.isNotEmpty
+    List<String> effectiveCaisseNames =
+        caisseNames != null && caisseNames.isNotEmpty
         ? List<String>.from(caisseNames)
         : [];
     if (effectiveCaisseNames.isEmpty) {
@@ -106,15 +110,15 @@ class TreasuryScreen extends StatefulWidget {
         builder: (context, setStateDialog) {
           final dialogTitle = type == 'Encaissement'
               ? (lang == AppLanguage.french
-                  ? 'Nouvel Encaissement (Caisse)'
-                  : (lang == AppLanguage.english
-                      ? 'New Income (Treasury)'
-                      : 'قبض جديد / Encaissement'))
+                    ? 'Nouvel Encaissement (Caisse)'
+                    : (lang == AppLanguage.english
+                          ? 'New Income (Treasury)'
+                          : 'قبض جديد / Encaissement'))
               : (lang == AppLanguage.french
-                  ? 'Nouveau Décaissement (Caisse)'
-                  : (lang == AppLanguage.english
-                      ? 'New Expense (Treasury)'
-                      : 'دفع جديد / Décaissement'));
+                    ? 'Nouveau Décaissement (Caisse)'
+                    : (lang == AppLanguage.english
+                          ? 'New Expense (Treasury)'
+                          : 'دفع جديد / Décaissement'));
 
           return AlertDialog(
             title: Row(
@@ -294,7 +298,10 @@ class TreasuryScreen extends StatefulWidget {
                           ),
                         ),
                         decoration: InputDecoration(
-                          labelText: Localization.translate('اختر الزبون', lang),
+                          labelText: Localization.translate(
+                            'اختر الزبون',
+                            lang,
+                          ),
                           border: const OutlineInputBorder(),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 12,
@@ -340,7 +347,10 @@ class TreasuryScreen extends StatefulWidget {
                           ),
                         ),
                         decoration: InputDecoration(
-                          labelText: Localization.translate('اختر المورد', lang),
+                          labelText: Localization.translate(
+                            'اختر المورد',
+                            lang,
+                          ),
                           border: const OutlineInputBorder(),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 12,
@@ -386,7 +396,10 @@ class TreasuryScreen extends StatefulWidget {
                           ),
                         ),
                         decoration: InputDecoration(
-                          labelText: Localization.translate('اختر العامل', lang),
+                          labelText: Localization.translate(
+                            'اختر العامل',
+                            lang,
+                          ),
                           border: const OutlineInputBorder(),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 12,
@@ -440,7 +453,8 @@ class TreasuryScreen extends StatefulWidget {
                           child: CircularProgressIndicator(),
                         ),
                       )
-                    else if (entityType != 'General' && selectedEntityId != null) ...[
+                    else if (entityType != 'General' &&
+                        selectedEntityId != null) ...[
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 12,
@@ -599,27 +613,28 @@ class TreasuryScreen extends StatefulWidget {
                           vertical: 12,
                         ),
                       ),
-                      items: [
-                        'نقداً / Espèce',
-                        'شيك / Chèque',
-                        'تحويل بنكي / Virement',
-                        'بريدي موب / BaridiMob',
-                        'أخرى / Autre',
-                      ]
-                          .map(
-                            (method) => DropdownMenuItem<String>(
-                              value: method,
-                              child: Text(
-                                method,
-                                style: const TextStyle(
-                                  fontFamily: 'Cairo',
-                                  fontSize: 13,
+                      items:
+                          [
+                                'نقداً / Espèce',
+                                'شيك / Chèque',
+                                'تحويل بنكي / Virement',
+                                'بريدي موب / BaridiMob',
+                                'أخرى / Autre',
+                              ]
+                              .map(
+                                (method) => DropdownMenuItem<String>(
+                                  value: method,
+                                  child: Text(
+                                    method,
+                                    style: const TextStyle(
+                                      fontFamily: 'Cairo',
+                                      fontSize: 13,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          )
-                          .toList(),
+                              )
+                              .toList(),
                       onChanged: (val) {
                         setStateDialog(() => selectedPaymentMethod = val!);
                       },
@@ -675,11 +690,15 @@ class TreasuryScreen extends StatefulWidget {
                                 Icon(
                                   Icons.calendar_today,
                                   size: 18,
-                                  color: canChangeDate ? Colors.teal : Colors.grey,
+                                  color: canChangeDate
+                                      ? Colors.teal
+                                      : Colors.grey,
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  DateFormat('dd/MM/yyyy  HH:mm').format(selectedDate),
+                                  DateFormat(
+                                    'dd/MM/yyyy  HH:mm',
+                                  ).format(selectedDate),
                                   style: TextStyle(
                                     fontFamily: 'Cairo',
                                     fontSize: 13,
@@ -705,7 +724,10 @@ class TreasuryScreen extends StatefulWidget {
                       controller: descCtrl,
                       maxLines: 2,
                       decoration: InputDecoration(
-                        labelText: Localization.translate('البيان / السبب', lang),
+                        labelText: Localization.translate(
+                          'البيان / السبب',
+                          lang,
+                        ),
                         prefixIcon: const Icon(Icons.notes),
                         border: const OutlineInputBorder(),
                         contentPadding: const EdgeInsets.symmetric(
@@ -748,14 +770,16 @@ class TreasuryScreen extends StatefulWidget {
                     finalDesc =
                         'من الزبون: ${client['firstname']} ${client['lastname']}'
                         '${finalDesc.isNotEmpty ? ' - $finalDesc' : ''}';
-                  } else if (entityType == 'Supplier' && selectedEntityId != null) {
+                  } else if (entityType == 'Supplier' &&
+                      selectedEntityId != null) {
                     final supplier = effectiveSuppliers.firstWhere(
                       (s) => s['id'] == selectedEntityId,
                     );
                     finalDesc =
                         '${type == 'Encaissement' ? 'استرجاع من المورد' : 'للمورد'}: ${supplier['name']}'
                         '${finalDesc.isNotEmpty ? ' - $finalDesc' : ''}';
-                  } else if (entityType == 'Worker' && selectedEntityId != null) {
+                  } else if (entityType == 'Worker' &&
+                      selectedEntityId != null) {
                     final worker = effectiveWorkers.firstWhere(
                       (w) => w['id'] == selectedEntityId,
                     );
@@ -767,8 +791,8 @@ class TreasuryScreen extends StatefulWidget {
                   final calcNewBalance = entityType == 'General'
                       ? 0.0
                       : (type == 'Encaissement'
-                          ? oldBalance - amount
-                          : oldBalance + amount);
+                            ? oldBalance - amount
+                            : oldBalance + amount);
 
                   await effectiveDb.insertTreasury(
                     type,
@@ -792,18 +816,20 @@ class TreasuryScreen extends StatefulWidget {
                         content: Text(
                           type == 'Encaissement'
                               ? (lang == AppLanguage.french
-                                  ? 'Encaissement enregistré avec succès'
-                                  : (lang == AppLanguage.english
-                                      ? 'Income recorded successfully'
-                                      : 'تم تسجيل القبض بنجاح'))
+                                    ? 'Encaissement enregistré avec succès'
+                                    : (lang == AppLanguage.english
+                                          ? 'Income recorded successfully'
+                                          : 'تم تسجيل القبض بنجاح'))
                               : (lang == AppLanguage.french
-                                  ? 'Décaissement enregistré avec succès'
-                                  : (lang == AppLanguage.english
-                                      ? 'Expense recorded successfully'
-                                      : 'تم تسجيل الدفع بنجاح')),
+                                    ? 'Décaissement enregistré avec succès'
+                                    : (lang == AppLanguage.english
+                                          ? 'Expense recorded successfully'
+                                          : 'تم تسجيل الدفع بنجاح')),
                           style: const TextStyle(fontFamily: 'Cairo'),
                         ),
-                        backgroundColor: type == 'Encaissement' ? Colors.green : Colors.orange.shade800,
+                        backgroundColor: type == 'Encaissement'
+                            ? Colors.green
+                            : Colors.orange.shade800,
                         duration: const Duration(seconds: 2),
                       ),
                     );
@@ -818,7 +844,9 @@ class TreasuryScreen extends StatefulWidget {
                   ),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: type == 'Encaissement' ? Colors.green : Colors.teal,
+                  backgroundColor: type == 'Encaissement'
+                      ? Colors.green
+                      : Colors.teal,
                 ),
               ),
             ],
@@ -833,6 +861,7 @@ class TreasuryScreen extends StatefulWidget {
   /// وضع العرض فقط — يخفي أزرار الإضافة والحذف
   final bool readOnly;
   final int? initialTransactionId;
+
   /// When true, workshop cashboxes and their movements are never loaded.
   final bool storeOnly;
 
@@ -845,20 +874,42 @@ class TreasuryScreen extends StatefulWidget {
   });
 
   static const Map<int, int> _unicodeToWin1252 = <int, int>{
-    0x20AC: 0x80, 0x201A: 0x82, 0x0192: 0x83, 0x201E: 0x84,
-    0x2026: 0x85, 0x2020: 0x86, 0x2021: 0x87, 0x02C6: 0x88,
-    0x2030: 0x89, 0x0160: 0x8A, 0x2039: 0x8B, 0x0152: 0x8C,
-    0x017D: 0x8E, 0x2018: 0x91, 0x2019: 0x92, 0x201C: 0x93,
-    0x201D: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97,
-    0x02DC: 0x98, 0x2122: 0x99, 0x0161: 0x9A, 0x203A: 0x9B,
-    0x0153: 0x9C, 0x017E: 0x9E, 0x0178: 0x9F,
+    0x20AC: 0x80,
+    0x201A: 0x82,
+    0x0192: 0x83,
+    0x201E: 0x84,
+    0x2026: 0x85,
+    0x2020: 0x86,
+    0x2021: 0x87,
+    0x02C6: 0x88,
+    0x2030: 0x89,
+    0x0160: 0x8A,
+    0x2039: 0x8B,
+    0x0152: 0x8C,
+    0x017D: 0x8E,
+    0x2018: 0x91,
+    0x2019: 0x92,
+    0x201C: 0x93,
+    0x201D: 0x94,
+    0x2022: 0x95,
+    0x2013: 0x96,
+    0x2014: 0x97,
+    0x02DC: 0x98,
+    0x2122: 0x99,
+    0x0161: 0x9A,
+    0x203A: 0x9B,
+    0x0153: 0x9C,
+    0x017E: 0x9E,
+    0x0178: 0x9F,
   };
 
   bool _isIncomeTransaction(Map<String, dynamic> item) {
-    final entityType = item['entity_type']?.toString().toLowerCase().trim() ?? '';
+    final entityType =
+        item['entity_type']?.toString().toLowerCase().trim() ?? '';
     if (entityType == 'worker') return false;
 
-    final type = item['transaction_type']?.toString().toLowerCase().trim() ?? '';
+    final type =
+        item['transaction_type']?.toString().toLowerCase().trim() ?? '';
     if (type == 'encaissement' || type == 'income') return true;
     if (type.contains('achat') ||
         type.contains('purchase') ||
@@ -888,8 +939,8 @@ class TreasuryScreen extends StatefulWidget {
     if (entityType == 'worker') {
       final isSettlement =
           description.contains('تسوية') ||
-              description.contains('weekly') ||
-              description.contains('hebdomadaire');
+          description.contains('weekly') ||
+          description.contains('hebdomadaire');
       return Localization.translate(
         isSettlement ? 'تسوية أسبوعية للعامل' : 'دفع للعامل',
         lang,
@@ -913,7 +964,10 @@ class TreasuryScreen extends StatefulWidget {
   String _readableText(dynamic value) {
     final text = value?.toString() ?? '';
     if (text.isEmpty ||
-        (!text.contains('Ø') && !text.contains('Ã') && !text.contains('Â') && !text.contains('Ù'))) {
+        (!text.contains('Ø') &&
+            !text.contains('Ã') &&
+            !text.contains('Â') &&
+            !text.contains('Ù'))) {
       return text;
     }
     try {
@@ -934,7 +988,8 @@ class TreasuryScreen extends StatefulWidget {
     }
   }
 
-  DataCell _desktopTableCell(String value, {
+  DataCell _desktopTableCell(
+    String value, {
     required double width,
     required Color color,
     bool bold = false,
@@ -957,34 +1012,35 @@ class TreasuryScreen extends StatefulWidget {
     );
   }
 
-  Widget _buildDesktopTreasuryTable(BuildContext context,
-      AppLanguage lang,
-      NumberFormat formatter,
-      String currency,
-      bool isDark,
-      List<Map<String, dynamic>> transactions,
-      double filteredTotalIncome,
-      double filteredTotalExpense,
-      bool readOnly,
-      bool canEditPayments,
-      bool canDeletePayments,
-      ScrollController horizontalScrollController,
-      ValueChanged<Map<String, dynamic>> onEdit,
-      ValueChanged<Map<String, dynamic>> onDelete,
-      ValueChanged<Map<String, dynamic>> onReceipt, {
-        required int? highlightedTransactionId,
-        required ValueChanged<Map<String, dynamic>> onHighlightedTap,
-        required TableDateRange dateRange,
-        required ValueChanged<TableDateRange> onDateRangeChanged,
-        required NumericFilterState numericFilter,
-        required ValueChanged<NumericFilterState> onNumericFilterChanged,
-        required Map<String, TextEditingController> columnControllers,
-        required Map<String, NumericFilterState> columnNumericFilters,
-        required String Function(Map<String, dynamic>) payerNameForTransaction,
-        required VoidCallback onFiltersUpdated,
-        required VoidCallback onClearAllFilters,
-        required ScrollController verticalScrollController,
-      }) {
+  Widget _buildDesktopTreasuryTable(
+    BuildContext context,
+    AppLanguage lang,
+    NumberFormat formatter,
+    String currency,
+    bool isDark,
+    List<Map<String, dynamic>> transactions,
+    double filteredTotalIncome,
+    double filteredTotalExpense,
+    bool readOnly,
+    bool canEditPayments,
+    bool canDeletePayments,
+    ScrollController horizontalScrollController,
+    ValueChanged<Map<String, dynamic>> onEdit,
+    ValueChanged<Map<String, dynamic>> onDelete,
+    ValueChanged<Map<String, dynamic>> onReceipt, {
+    required int? highlightedTransactionId,
+    required ValueChanged<Map<String, dynamic>> onHighlightedTap,
+    required TableDateRange dateRange,
+    required ValueChanged<TableDateRange> onDateRangeChanged,
+    required NumericFilterState numericFilter,
+    required ValueChanged<NumericFilterState> onNumericFilterChanged,
+    required Map<String, TextEditingController> columnControllers,
+    required Map<String, NumericFilterState> columnNumericFilters,
+    required String Function(Map<String, dynamic>) payerNameForTransaction,
+    required VoidCallback onFiltersUpdated,
+    required VoidCallback onClearAllFilters,
+    required ScrollController verticalScrollController,
+  }) {
     final textColor = isDark ? Colors.white : Colors.black87;
     final mutedColor = isDark ? Colors.white70 : Colors.black54;
     final headerColor = isDark ? Colors.teal.shade900 : Colors.teal.shade50;
@@ -992,12 +1048,9 @@ class TreasuryScreen extends StatefulWidget {
 
     final hasActiveColumnFilters =
         dateRange.isActive ||
-            numericFilter.isActive ||
-            columnNumericFilters.values.any((f) => f.isActive) ||
-            columnControllers.values.any((c) =>
-            c.text
-                .trim()
-                .isNotEmpty);
+        numericFilter.isActive ||
+        columnNumericFilters.values.any((f) => f.isActive) ||
+        columnControllers.values.any((c) => c.text.trim().isNotEmpty);
 
     final columns = [
       ResizableTableColumn(
@@ -1012,6 +1065,7 @@ class TreasuryScreen extends StatefulWidget {
         ),
         filter: CompactTableFilterField(
           key: const ValueKey('compact_filter_date'),
+          height: 34,
           hintText: Localization.translate('تاريخ...', lang),
           controller: columnControllers['date'],
           lang: lang,
@@ -1033,6 +1087,7 @@ class TreasuryScreen extends StatefulWidget {
         ),
         filter: CompactTableFilterField(
           key: const ValueKey('compact_filter_entered_by'),
+          height: 34,
           hintText: Localization.translate('المُدخل...', lang),
           controller: columnControllers['entered_by'],
           lang: lang,
@@ -1054,6 +1109,7 @@ class TreasuryScreen extends StatefulWidget {
         ),
         filter: CompactTableFilterField(
           key: const ValueKey('compact_filter_payer_name'),
+          height: 34,
           hintText: Localization.translate('اسم الدافع...', lang),
           controller: columnControllers['payer_name'],
           lang: lang,
@@ -1075,6 +1131,7 @@ class TreasuryScreen extends StatefulWidget {
         ),
         filter: CompactTableFilterField(
           key: const ValueKey('compact_filter_type'),
+          height: 34,
           hintText: Localization.translate('النوع...', lang),
           controller: columnControllers['type'],
           lang: lang,
@@ -1096,6 +1153,7 @@ class TreasuryScreen extends StatefulWidget {
         ),
         filter: CompactTableFilterField(
           key: const ValueKey('compact_filter_relation'),
+          height: 34,
           hintText: Localization.translate('الارتباط...', lang),
           controller: columnControllers['relation'],
           lang: lang,
@@ -1117,6 +1175,7 @@ class TreasuryScreen extends StatefulWidget {
         ),
         filter: CompactTableFilterField(
           key: const ValueKey('compact_filter_method'),
+          height: 34,
           hintText: Localization.translate('طريقة الدفع...', lang),
           controller: columnControllers['method'],
           lang: lang,
@@ -1138,6 +1197,7 @@ class TreasuryScreen extends StatefulWidget {
         ),
         filter: CompactTableFilterField(
           key: const ValueKey('compact_filter_desc'),
+          height: 34,
           hintText: Localization.translate('البيان...', lang),
           controller: columnControllers['desc'],
           lang: lang,
@@ -1159,12 +1219,13 @@ class TreasuryScreen extends StatefulWidget {
         ),
         filter: CompactTableFilterField(
           key: const ValueKey('compact_filter_income'),
+          height: 34,
           hintText: Localization.translate('الدفع...', lang),
           controller: columnControllers['income'],
           isNumeric: true,
           lang: lang,
           initialNumericState:
-          columnNumericFilters['income'] ?? const NumericFilterState(),
+              columnNumericFilters['income'] ?? const NumericFilterState(),
           onNumericFilterChanged: (f) {
             columnNumericFilters['income'] = f;
             onFiltersUpdated();
@@ -1186,12 +1247,13 @@ class TreasuryScreen extends StatefulWidget {
         ),
         filter: CompactTableFilterField(
           key: const ValueKey('compact_filter_expense'),
+          height: 34,
           hintText: Localization.translate('السحب...', lang),
           controller: columnControllers['expense'],
           isNumeric: true,
           lang: lang,
           initialNumericState:
-          columnNumericFilters['expense'] ?? const NumericFilterState(),
+              columnNumericFilters['expense'] ?? const NumericFilterState(),
           onNumericFilterChanged: (f) {
             columnNumericFilters['expense'] = f;
             onFiltersUpdated();
@@ -1213,6 +1275,7 @@ class TreasuryScreen extends StatefulWidget {
         ),
         filter: CompactTableFilterField(
           key: const ValueKey('compact_filter_caisse'),
+          height: 34,
           hintText: Localization.translate('الصندوق...', lang),
           controller: columnControllers['caisse'],
           lang: lang,
@@ -1244,40 +1307,40 @@ class TreasuryScreen extends StatefulWidget {
         ),
         filter: hasActiveColumnFilters
             ? Center(
-          child: InkWell(
-            onTap: onClearAllFilters,
-            borderRadius: BorderRadius.circular(4),
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 6,
-                vertical: 2,
-              ),
-              decoration: BoxDecoration(
-                color: Colors.red.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.clear_all,
-                    size: 13,
-                    color: Colors.red,
-                  ),
-                  const SizedBox(width: 2),
-                  Text(
-                    Localization.translate('مسح', lang),
-                    style: const TextStyle(
-                      fontSize: 10,
-                      color: Colors.red,
-                      fontWeight: FontWeight.bold,
+                child: InkWell(
+                  onTap: onClearAllFilters,
+                  borderRadius: BorderRadius.circular(4),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.clear_all,
+                          size: 13,
+                          color: Colors.red,
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          Localization.translate('مسح', lang),
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Colors.red,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
-            ),
-          ),
-        )
+                ),
+              )
             : null,
         initialWidth: 105,
         minWidth: 85,
@@ -1347,8 +1410,8 @@ class TreasuryScreen extends StatefulWidget {
           Text(
             type.isEmpty
                 ? (isIncome
-                ? Localization.translate('دفع', lang)
-                : Localization.translate('سحب', lang))
+                      ? Localization.translate('دفع', lang)
+                      : Localization.translate('سحب', lang))
                 : type,
             style: TextStyle(
               fontFamily: 'Cairo',
@@ -1501,13 +1564,9 @@ class TreasuryScreen extends StatefulWidget {
                   ],
                 ),
                 Text(
-                  '${Localization.translate('الدفع', lang)}: ${formatter.format(
-                      filteredTotalIncome)} $currency   •   '
-                      '${Localization.translate('السحب', lang)}: ${formatter
-                      .format(filteredTotalExpense)} $currency   •   '
-                      '${Localization.translate('الرصيد', lang)}: ${formatter
-                      .format(
-                      filteredTotalIncome - filteredTotalExpense)} $currency',
+                  '${Localization.translate('الدفع', lang)}: ${formatter.format(filteredTotalIncome)} $currency   •   '
+                  '${Localization.translate('السحب', lang)}: ${formatter.format(filteredTotalExpense)} $currency   •   '
+                  '${Localization.translate('الرصيد', lang)}: ${formatter.format(filteredTotalIncome - filteredTotalExpense)} $currency',
                   style: TextStyle(
                     fontFamily: 'Cairo',
                     fontSize: 12.5,
@@ -1558,15 +1617,23 @@ class TreasuryScreen extends StatefulWidget {
           // ── Resizable Desktop Table with zero vertical overflow ──
           Expanded(
             child: Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: borderColor),
-              ),
+              decoration: BoxDecoration(border: Border.all(color: borderColor)),
               child: ResizableColumnsTable(
                 persistenceKey: 'treasury',
                 revealRowId: highlightedTransactionId?.toString(),
+                headerMinHeight: 48,
+                filterRowMinHeight: 42,
+                rowMinHeight: 50,
+                cellPadding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 7,
+                ),
                 emptyPlaceholder: Center(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24.0,
+                      vertical: 32.0,
+                    ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -1590,39 +1657,18 @@ class TreasuryScreen extends StatefulWidget {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          Localization.translate(
-                            'يمكنك مسح وتعديل كلمات البحث في الأعمدة أعلاه أو الضغط على الزر للعودة',
-                            lang,
-                          ),
+                          switch (lang) {
+                            AppLanguage.french =>
+                              'Modifiez directement les critères dans les champs visibles ci-dessus.',
+                            AppLanguage.english =>
+                              'Edit the criteria directly in the visible fields above.',
+                            _ =>
+                              'يمكنك تعديل كلمات البحث مباشرة في الحقول الظاهرة أعلاه',
+                          },
                           style: TextStyle(
                             fontFamily: 'Cairo',
                             fontSize: 12,
                             color: mutedColor.withValues(alpha: 0.8),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton.icon(
-                          onPressed: onClearAllFilters,
-                          icon: const Icon(Icons.restore_rounded, size: 20),
-                          label: Text(
-                            Localization.translate('أعود إلى القائمة', lang),
-                            style: const TextStyle(
-                              fontFamily: 'Cairo',
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF2563EB),
-                            foregroundColor: Colors.white,
-                            elevation: 2,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 12,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
                           ),
                         ),
                       ],
@@ -1630,12 +1676,28 @@ class TreasuryScreen extends StatefulWidget {
                   ),
                 ),
                 footerCells: {
-                  'income': Text(transactions.where(_isIncomeTransaction).fold<double>(0,
-                    (sum, row) => sum + ((row['amount'] as num?)?.toDouble() ?? 0)).toStringAsFixed(2),
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
-                  'expense': Text(transactions.where((row) => !_isIncomeTransaction(row)).fold<double>(0,
-                    (sum, row) => sum + ((row['amount'] as num?)?.toDouble() ?? 0)).toStringAsFixed(2),
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                  'income': Text(
+                    transactions
+                        .where(_isIncomeTransaction)
+                        .fold<double>(
+                          0,
+                          (sum, row) =>
+                              sum + ((row['amount'] as num?)?.toDouble() ?? 0),
+                        )
+                        .toStringAsFixed(2),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  'expense': Text(
+                    transactions
+                        .where((row) => !_isIncomeTransaction(row))
+                        .fold<double>(
+                          0,
+                          (sum, row) =>
+                              sum + ((row['amount'] as num?)?.toDouble() ?? 0),
+                        )
+                        .toStringAsFixed(2),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 },
                 columns: columns,
                 rows: rows,
@@ -1647,9 +1709,6 @@ class TreasuryScreen extends StatefulWidget {
                 rowColor: isDark ? const Color(0xFF171721) : Colors.white,
                 horizontalController: horizontalScrollController,
                 verticalController: verticalScrollController,
-                headerMinHeight: 40,
-                filterRowMinHeight: 34,
-                rowMinHeight: 46,
               ),
             ),
           ),
@@ -1758,10 +1817,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   /// in the corresponding local table.
   String _transactionPayerName(Map<String, dynamic> item) {
     final storedName = item['payer_name'] ?? item['entity_name'];
-    if (storedName != null && storedName
-        .toString()
-        .trim()
-        .isNotEmpty) {
+    if (storedName != null && storedName.toString().trim().isNotEmpty) {
       return widget._readableText(storedName).trim();
     }
 
@@ -1810,15 +1866,14 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
       final rawData = await widget.db.readTreasury();
       final data = rawData
           .map(
-            (row) =>
-        <String, dynamic>{
-          ...row,
-          'caisse_name': widget._readableText(row['caisse_name']),
-          'payment_method': widget._readableText(row['payment_method']),
-          'description': widget._readableText(row['description']),
-          'recorded_by': widget._readableText(row['recorded_by']),
-        },
-      )
+            (row) => <String, dynamic>{
+              ...row,
+              'caisse_name': widget._readableText(row['caisse_name']),
+              'payment_method': widget._readableText(row['payment_method']),
+              'description': widget._readableText(row['description']),
+              'recorded_by': widget._readableText(row['recorded_by']),
+            },
+          )
           .where(
             (row) =>
                 !widget.storeOnly || _isStoreCaisseName(row['caisse_name']),
@@ -1903,13 +1958,13 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
 
         final isGeneral =
             entityType == 'General' ||
-                desc.contains('dépens') ||
-                desc.contains('مصاريف') ||
-                desc.contains('مازوت') ||
-                desc.contains('سيارة') ||
-                desc.contains('تصليح') ||
-                desc.contains('répar') ||
-                desc.contains('carburant');
+            desc.contains('dépens') ||
+            desc.contains('مصاريف') ||
+            desc.contains('مازوت') ||
+            desc.contains('سيارة') ||
+            desc.contains('تصليح') ||
+            desc.contains('répar') ||
+            desc.contains('carburant');
 
         return isGeneral;
       }).toList();
@@ -1961,80 +2016,74 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
           filtered = filtered
               .where(
                 (t) => widget._transactionDate(t).toLowerCase().contains(val),
-          )
+              )
               .toList();
           break;
         case 'entered_by':
           filtered = filtered
               .where(
-                (t) =>
-                (t['recorded_by'] ?? '')
+                (t) => (t['recorded_by'] ?? '')
                     .toString()
                     .toLowerCase()
                     .contains(val),
-          )
+              )
               .toList();
           break;
         case 'payer_name':
           filtered = filtered
               .where(
                 (t) => _transactionPayerName(t).toLowerCase().contains(val),
-          )
+              )
               .toList();
           break;
         case 'type':
           filtered = filtered
               .where(
-                (t) =>
-                (t['transaction_type'] ?? '')
+                (t) => (t['transaction_type'] ?? '')
                     .toString()
                     .toLowerCase()
                     .contains(val),
-          )
+              )
               .toList();
           break;
         case 'relation':
           filtered = filtered
               .where(
-                (t) =>
-                widget
+                (t) => widget
                     ._transactionRelation(t, AppLanguage.arabic)
                     .toLowerCase()
                     .contains(val),
-          )
+              )
               .toList();
           break;
         case 'method':
           filtered = filtered
               .where(
-                (t) =>
-                (t['payment_method'] ?? '')
+                (t) => (t['payment_method'] ?? '')
                     .toString()
                     .toLowerCase()
                     .contains(val),
-          )
+              )
               .toList();
           break;
         case 'desc':
           filtered = filtered
               .where(
-                (t) =>
-                (t['description'] ?? '')
+                (t) => (t['description'] ?? '')
                     .toString()
                     .toLowerCase()
                     .contains(val),
-          )
+              )
               .toList();
           break;
         case 'caisse':
           filtered = filtered
               .where(
-                (t) =>
-                (t['caisse_name'] ?? '')
+                (t) => (t['caisse_name'] ?? '')
                     .toString()
                     .toLowerCase()
                     .contains(val),
-          )
+              )
               .toList();
           break;
       }
@@ -2134,48 +2183,45 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   }
 
   Future<void> _deleteTransaction(Map<String, dynamic> item) async {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) =>
-          AlertDialog(
-            title: Text(
-              Localization.translate('تأكيد الحذف', lang),
+      builder: (context) => AlertDialog(
+        title: Text(
+          Localization.translate('تأكيد الحذف', lang),
+          style: const TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Text(
+          Localization.translate('هل أنت متأكد من حذف هذه المعاملة؟', lang),
+          style: const TextStyle(fontFamily: 'Cairo'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              Localization.translate('إلغاء', lang),
+              style: const TextStyle(fontFamily: 'Cairo'),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(
+              Localization.translate('حذف', lang),
               style: const TextStyle(
                 fontFamily: 'Cairo',
+                color: Colors.red,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            content: Text(
-              Localization.translate('هل أنت متأكد من حذف هذه المعاملة؟', lang),
-              style: const TextStyle(fontFamily: 'Cairo'),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: Text(
-                  Localization.translate('إلغاء', lang),
-                  style: const TextStyle(fontFamily: 'Cairo'),
-                ),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: Text(
-                  Localization.translate('حذف', lang),
-                  style: const TextStyle(
-                    fontFamily: 'Cairo',
-                    color: Colors.red,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
           ),
+        ],
+      ),
     );
 
     if (confirm == true) {
@@ -2196,12 +2242,10 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   }
 
   void _showEditTransactionDialog(Map<String, dynamic> item) {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     final id = item['id'] as int;
     final amountCtrl = TextEditingController(
       text: item['amount']?.toString() ?? '',
@@ -2221,160 +2265,147 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
 
     showDialog(
       context: context,
-      builder: (context) =>
-          StatefulBuilder(
-            builder: (context, setStateDialog) =>
-                AlertDialog(
-                  title: Text(
-                    Localization.translate('تعديل المعاملة', lang),
-                    style: const TextStyle(
-                      fontFamily: 'Cairo',
-                      fontWeight: FontWeight.bold,
-                    ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) => AlertDialog(
+          title: Text(
+            Localization.translate('تعديل المعاملة', lang),
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: amountCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
                   ),
-                  content: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        TextField(
-                          controller: amountCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: InputDecoration(
-                            labelText: Localization.translate(
-                                'المبلغ (د.ج)', lang),
-                            prefixIcon: const Icon(Icons.attach_money),
-                            border: const OutlineInputBorder(),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Builder(
-                          builder: (ctx) {
-                            final canChangeDate = Provider.of<
-                                AppSettingsProvider>(
-                              context,
-                              listen: false,
-                            ).canChangePaymentDates();
-                            return InkWell(
-                              onTap: canChangeDate
-                                  ? () async {
-                                final date = await showDatePicker(
+                  decoration: InputDecoration(
+                    labelText: Localization.translate('المبلغ (د.ج)', lang),
+                    prefixIcon: const Icon(Icons.attach_money),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Builder(
+                  builder: (ctx) {
+                    final canChangeDate = Provider.of<AppSettingsProvider>(
+                      context,
+                      listen: false,
+                    ).canChangePaymentDates();
+                    return InkWell(
+                      onTap: canChangeDate
+                          ? () async {
+                              final date = await showDatePicker(
+                                context: context,
+                                initialDate: selectedDate,
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime(2030),
+                              );
+                              if (date != null && context.mounted) {
+                                final time = await showTimePicker(
                                   context: context,
-                                  initialDate: selectedDate,
-                                  firstDate: DateTime(2020),
-                                  lastDate: DateTime(2030),
+                                  initialTime: TimeOfDay.fromDateTime(
+                                    selectedDate,
+                                  ),
                                 );
-                                if (date != null && context.mounted) {
-                                  final time = await showTimePicker(
-                                    context: context,
-                                    initialTime: TimeOfDay.fromDateTime(
-                                      selectedDate,
-                                    ),
-                                  );
-                                  if (time != null) {
-                                    setStateDialog(() {
-                                      selectedDate = DateTime(
-                                        date.year,
-                                        date.month,
-                                        date.day,
-                                        time.hour,
-                                        time.minute,
-                                      );
-                                    });
-                                  }
+                                if (time != null) {
+                                  setStateDialog(() {
+                                    selectedDate = DateTime(
+                                      date.year,
+                                      date.month,
+                                      date.day,
+                                      time.hour,
+                                      time.minute,
+                                    );
+                                  });
                                 }
                               }
-                                  : null,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 12,
-                                ),
-                                decoration: BoxDecoration(
-                                  border: Border.all(
-                                      color: Colors.grey.shade400),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.calendar_today,
-                                      size: 18,
-                                      color: canChangeDate
-                                          ? Colors.teal
-                                          : Colors.grey,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      DateFormat(
-                                        'dd/MM/yyyy  HH:mm',
-                                      ).format(selectedDate),
-                                      style: TextStyle(
-                                        fontFamily: 'Cairo',
-                                        color: canChangeDate ? null : Colors
-                                            .grey,
-                                      ),
-                                    ),
-                                    if (!canChangeDate) ...[
-                                      const Spacer(),
-                                      const Icon(
-                                        Icons.lock,
-                                        size: 16,
-                                        color: Colors.grey,
-                                      ),
-                                    ],
-                                  ],
-                                ),
+                            }
+                          : null,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey.shade400),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.calendar_today,
+                              size: 18,
+                              color: canChangeDate ? Colors.teal : Colors.grey,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              DateFormat(
+                                'dd/MM/yyyy  HH:mm',
+                              ).format(selectedDate),
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                color: canChangeDate ? null : Colors.grey,
                               ),
-                            );
-                          },
+                            ),
+                            if (!canChangeDate) ...[
+                              const Spacer(),
+                              const Icon(
+                                Icons.lock,
+                                size: 16,
+                                color: Colors.grey,
+                              ),
+                            ],
+                          ],
                         ),
-                        const SizedBox(height: 10),
-                        DropdownButtonFormField<String>(
-                          isExpanded: true,
-                          value: _caisseNames.contains(selectedCaisse)
-                              ? selectedCaisse
-                              : (_caisseNames.isNotEmpty
-                              ? _caisseNames.first
-                              : null),
-                          decoration: InputDecoration(
-                            labelText: Localization.translate(
-                                'اختر الصندوق', lang),
-                            border: const OutlineInputBorder(),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  value: _caisseNames.contains(selectedCaisse)
+                      ? selectedCaisse
+                      : (_caisseNames.isNotEmpty ? _caisseNames.first : null),
+                  decoration: InputDecoration(
+                    labelText: Localization.translate('اختر الصندوق', lang),
+                    border: const OutlineInputBorder(),
+                  ),
+                  items: _caisseNames
+                      .map(
+                        (name) => DropdownMenuItem<String>(
+                          value: name,
+                          child: Text(
+                            Localization.translate(name, lang),
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 13,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          items: _caisseNames
-                              .map(
-                                (name) =>
-                                DropdownMenuItem<String>(
-                                  value: name,
-                                  child: Text(
-                                    Localization.translate(name, lang),
-                                    style: const TextStyle(
-                                      fontFamily: 'Cairo',
-                                      fontSize: 13,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                          )
-                              .toList(),
-                          onChanged: (val) {
-                            setStateDialog(() => selectedCaisse = val!);
-                          },
                         ),
-                        const SizedBox(height: 10),
-                        DropdownButtonFormField<String>(
-                          isExpanded: true,
-                          value: selectedPaymentMethod,
-                          decoration: InputDecoration(
-                            labelText: Localization.translate(
-                                'طريقة الدفع', lang),
-                            border: const OutlineInputBorder(),
-                          ),
-                          items:
-                          [
+                      )
+                      .toList(),
+                  onChanged: (val) {
+                    setStateDialog(() => selectedCaisse = val!);
+                  },
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  value: selectedPaymentMethod,
+                  decoration: InputDecoration(
+                    labelText: Localization.translate('طريقة الدفع', lang),
+                    border: const OutlineInputBorder(),
+                  ),
+                  items:
+                      [
                             'نقداً / Espèce',
                             'شيك / Chèque',
                             'شيك مصدق / Chèque de banque',
@@ -2383,104 +2414,98 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                             'CCP / حساب جاري',
                             'بريدي موب / BaridiMob',
                           ]
-                              .map(
-                                (method) =>
-                                DropdownMenuItem<String>(
-                                  value: method,
-                                  child: Text(
-                                    method,
-                                    style: const TextStyle(
-                                      fontFamily: 'Cairo',
-                                      fontSize: 13,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                          .map(
+                            (method) => DropdownMenuItem<String>(
+                              value: method,
+                              child: Text(
+                                method,
+                                style: const TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 13,
                                 ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
                           )
-                              .toList(),
-                          onChanged: (val) {
-                            setStateDialog(() => selectedPaymentMethod = val!);
-                          },
-                        ),
-                        const SizedBox(height: 10),
-                        TextField(
-                          controller: descCtrl,
-                          maxLines: 2,
-                          decoration: InputDecoration(
-                            labelText: Localization.translate(
-                                'البيان / السبب', lang),
-                            prefixIcon: const Icon(Icons.notes),
-                            border: const OutlineInputBorder(),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: Text(
-                        Localization.translate('إلغاء', lang),
-                        style: const TextStyle(fontFamily: 'Cairo'),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () async {
-                        final double? newAmt = double.tryParse(amountCtrl.text);
-                        if (newAmt == null || newAmt <= 0) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                Localization.translate(
-                                    'يرجى إدخال مبلغ صحيح', lang),
-                              ),
-                            ),
-                          );
-                          return;
-                        }
-
-                        Navigator.pop(context);
-                        await widget.db.updateTreasury(
-                          id,
-                          newAmount: newAmt,
-                          newDescription: descCtrl.text,
-                          newCaisse: selectedCaisse,
-                          newPaymentMethod: selectedPaymentMethod,
-                          newCreatedAt: selectedDate.toIso8601String(),
-                        );
-                        _loadData();
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                Localization.translate(
-                                    'تم تعديل المعاملة بنجاح', lang),
-                              ),
-                            ),
-                          );
-                        }
-                      },
-                      child: Text(
-                        Localization.translate('حفظ', lang),
-                        style: const TextStyle(
-                          fontFamily: 'Cairo',
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
+                          .toList(),
+                  onChanged: (val) {
+                    setStateDialog(() => selectedPaymentMethod = val!);
+                  },
                 ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: descCtrl,
+                  maxLines: 2,
+                  decoration: InputDecoration(
+                    labelText: Localization.translate('البيان / السبب', lang),
+                    prefixIcon: const Icon(Icons.notes),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                Localization.translate('إلغاء', lang),
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
+            ),
+            TextButton(
+              onPressed: () async {
+                final double? newAmt = double.tryParse(amountCtrl.text);
+                if (newAmt == null || newAmt <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        Localization.translate('يرجى إدخال مبلغ صحيح', lang),
+                      ),
+                    ),
+                  );
+                  return;
+                }
+
+                Navigator.pop(context);
+                await widget.db.updateTreasury(
+                  id,
+                  newAmount: newAmt,
+                  newDescription: descCtrl.text,
+                  newCaisse: selectedCaisse,
+                  newPaymentMethod: selectedPaymentMethod,
+                  newCreatedAt: selectedDate.toIso8601String(),
+                );
+                _loadData();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        Localization.translate('تم تعديل المعاملة بنجاح', lang),
+                      ),
+                    ),
+                  );
+                }
+              },
+              child: Text(
+                Localization.translate('حفظ', lang),
+                style: const TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
   void _showReceiptOptions(BuildContext context, Map<String, dynamic> item) {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -2549,8 +2574,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                 ListTile(
                   leading: const Icon(Icons.edit, color: Colors.blueGrey),
                   title: Text(
-                    '${Localization.translate(
-                        'تعديل المعاملة', lang)} / Modifier',
+                    '${Localization.translate('تعديل المعاملة', lang)} / Modifier',
                     style: const TextStyle(
                       fontFamily: 'Cairo',
                       fontWeight: FontWeight.bold,
@@ -2569,8 +2593,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                 ListTile(
                   leading: const Icon(Icons.delete, color: Colors.red),
                   title: Text(
-                    '${Localization.translate(
-                        'حذف المعاملة', lang)} / Supprimer',
+                    '${Localization.translate('حذف المعاملة', lang)} / Supprimer',
                     style: const TextStyle(
                       fontFamily: 'Cairo',
                       fontWeight: FontWeight.bold,
@@ -2590,12 +2613,10 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
 
   void _showManageCaissesDialog() {
     final nameCtrl = TextEditingController();
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     final settings = Provider.of<AppSettingsProvider>(context, listen: false);
     final canManageCaisses = settings.canManageCaisses();
     final canAddCaisse = settings.canAddCaisses();
@@ -2674,9 +2695,8 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                           final list = widget.storeOnly
                               ? snapshot.data!
                                     .where(
-                                      (caisse) => _isStoreCaisseName(
-                                        caisse['name'],
-                                      ),
+                                      (caisse) =>
+                                          _isStoreCaisseName(caisse['name']),
                                     )
                                     .toList(growable: false)
                               : snapshot.data!;
@@ -2705,61 +2725,56 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                                           ),
                                           onPressed: () async {
                                             final editCtrl =
-                                            TextEditingController(
-                                              text: name,
-                                            );
-                                            final newName = await showDialog<
-                                                String>(
+                                                TextEditingController(
+                                                  text: name,
+                                                );
+                                            final newName = await showDialog<String>(
                                               context: context,
-                                              builder: (ctx) =>
-                                                  AlertDialog(
-                                                    title: Text(
-                                                      Localization.translate(
-                                                        'تعديل اسم الصندوق',
-                                                        lang,
-                                                      ),
-                                                    ),
-                                                    content: TextField(
-                                                      controller: editCtrl,
-                                                      decoration: InputDecoration(
-                                                        labelText:
+                                              builder: (ctx) => AlertDialog(
+                                                title: Text(
+                                                  Localization.translate(
+                                                    'تعديل اسم الصندوق',
+                                                    lang,
+                                                  ),
+                                                ),
+                                                content: TextField(
+                                                  controller: editCtrl,
+                                                  decoration: InputDecoration(
+                                                    labelText:
                                                         Localization.translate(
                                                           'الاسم الجديد',
                                                           lang,
                                                         ),
-                                                        border:
+                                                    border:
                                                         const OutlineInputBorder(),
+                                                  ),
+                                                ),
+                                                actions: [
+                                                  TextButton(
+                                                    onPressed: () =>
+                                                        Navigator.pop(ctx),
+                                                    child: Text(
+                                                      Localization.translate(
+                                                        'إلغاء',
+                                                        lang,
                                                       ),
                                                     ),
-                                                    actions: [
-                                                      TextButton(
-                                                        onPressed: () =>
-                                                            Navigator.pop(ctx),
-                                                        child: Text(
-                                                          Localization
-                                                              .translate(
-                                                            'إلغاء',
-                                                            lang,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      TextButton(
-                                                        onPressed: () =>
-                                                            Navigator.pop(
-                                                              ctx,
-                                                              editCtrl.text
-                                                                  .trim(),
-                                                            ),
-                                                        child: Text(
-                                                          Localization
-                                                              .translate(
-                                                            'حفظ',
-                                                            lang,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ],
                                                   ),
+                                                  TextButton(
+                                                    onPressed: () =>
+                                                        Navigator.pop(
+                                                          ctx,
+                                                          editCtrl.text.trim(),
+                                                        ),
+                                                    child: Text(
+                                                      Localization.translate(
+                                                        'حفظ',
+                                                        lang,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                             );
                                             if (newName != null &&
                                                 newName.isNotEmpty &&
@@ -2783,61 +2798,50 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                                             color: Colors.red,
                                           ),
                                           onPressed: () async {
-                                            final confirm = await showDialog<
-                                                bool>(
+                                            final confirm = await showDialog<bool>(
                                               context: context,
-                                              builder: (ctx) =>
-                                                  AlertDialog(
-                                                    title: Text(
+                                              builder: (ctx) => AlertDialog(
+                                                title: Text(
+                                                  Localization.translate(
+                                                    'تأكيد الحذف',
+                                                    lang,
+                                                  ),
+                                                ),
+                                                content: Text(
+                                                  '${Localization.translate('هل أنت متأكد من حذف الصندوق', lang)} "${Localization.translate(name, lang)}"؟ ${Localization.translate('سيتم نقل معاملاته تلقائياً للصندوق الآخر.', lang)}',
+                                                ),
+                                                actions: [
+                                                  TextButton(
+                                                    onPressed: () =>
+                                                        Navigator.pop(
+                                                          ctx,
+                                                          false,
+                                                        ),
+                                                    child: Text(
                                                       Localization.translate(
-                                                        'تأكيد الحذف',
+                                                        'إلغاء',
                                                         lang,
                                                       ),
                                                     ),
-                                                    content: Text(
-                                                      '${Localization.translate(
-                                                          'هل أنت متأكد من حذف الصندوق',
-                                                          lang)} "${Localization
-                                                          .translate(name,
-                                                          lang)}"؟ ${Localization
-                                                          .translate(
-                                                          'سيتم نقل معاملاته تلقائياً للصندوق الآخر.',
-                                                          lang)}',
-                                                    ),
-                                                    actions: [
-                                                      TextButton(
-                                                        onPressed: () =>
-                                                            Navigator.pop(
-                                                              ctx,
-                                                              false,
-                                                            ),
-                                                        child: Text(
-                                                          Localization
-                                                              .translate(
-                                                            'إلغاء',
-                                                            lang,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      TextButton(
-                                                        onPressed: () =>
-                                                            Navigator.pop(
-                                                              ctx,
-                                                              true,
-                                                            ),
-                                                        child: Text(
-                                                          Localization
-                                                              .translate(
-                                                            'حذف',
-                                                            lang,
-                                                          ),
-                                                          style: const TextStyle(
-                                                            color: Colors.red,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ],
                                                   ),
+                                                  TextButton(
+                                                    onPressed: () =>
+                                                        Navigator.pop(
+                                                          ctx,
+                                                          true,
+                                                        ),
+                                                    child: Text(
+                                                      Localization.translate(
+                                                        'حذف',
+                                                        lang,
+                                                      ),
+                                                      style: const TextStyle(
+                                                        color: Colors.red,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                             );
                                             if (confirm == true) {
                                               await widget.db.deleteCaisse(
@@ -2889,6 +2893,95 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
     );
   }
 
+  Future<void> _showDailyClosingDialog() async {
+    final settings = context.read<AppSettingsProvider>();
+    final lang = settings.language;
+    if (!settings.canCloseBusinessDay()) return;
+    final date = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final scope = widget.storeOnly ? 'store' : 'workshop';
+    final totals = await widget.db.calculateBusinessDayReconciliation(
+      businessDate: date,
+      scope: scope,
+    );
+    if (!mounted) return;
+    final countedController = TextEditingController(
+      text: (totals['expected'] ?? 0).toStringAsFixed(2),
+    );
+    final notesController = TextEditingController();
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(Localization.translate('التسوية اليومية', lang)),
+        content: SizedBox(
+          width: 440,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${Localization.translate('التاريخ', lang)}: $date'),
+              const SizedBox(height: 10),
+              Text('${Localization.translate('إجمالي المبيعات', lang)}: '
+                  '${(totals['sales'] ?? 0).toStringAsFixed(2)} DZD'),
+              Text('${Localization.translate('المقبوضات', lang)}: '
+                  '${(totals['income'] ?? 0).toStringAsFixed(2)} DZD'),
+              Text('${Localization.translate('المصروفات', lang)}: '
+                  '${(totals['expense'] ?? 0).toStringAsFixed(2)} DZD'),
+              Text(
+                '${Localization.translate('الرصيد المتوقع', lang)}: '
+                '${(totals['expected'] ?? 0).toStringAsFixed(2)} DZD',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: countedController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: Localization.translate('النقد المحسوب فعلياً', lang),
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: notesController,
+                decoration: InputDecoration(
+                  labelText: Localization.translate('ملاحظات', lang),
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(Localization.translate('cancel', lang)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.lock_clock_rounded),
+            label: Text(Localization.translate('إغلاق اليوم', lang)),
+          ),
+        ],
+      ),
+    );
+    if (accepted != true) return;
+    final counted = double.tryParse(countedController.text.replaceAll(',', '.'));
+    if (counted == null) return;
+    await widget.db.closeBusinessDay(
+      businessDate: date,
+      scope: scope,
+      countedCash: counted,
+      notes: notesController.text.trim(),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(Localization.translate('تم حفظ التسوية اليومية في السجل', lang)),
+        backgroundColor: Colors.teal,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final settingsProvider = Provider.of<AppSettingsProvider>(context);
@@ -2899,9 +2992,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
         ? _desktopTreasuryScrollController
         : _mobileTreasuryScrollController;
 
-    final bool isDark = Theme
-        .of(context)
-        .brightness == Brightness.dark;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
@@ -2913,12 +3004,82 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
           ),
         ),
         backgroundColor: isDark
-            ? Theme
-            .of(context)
-            .appBarTheme
-            .backgroundColor
+            ? Theme.of(context).appBarTheme.backgroundColor
             : Colors.teal,
         actions: [
+          if (!widget.readOnly && settingsProvider.canCloseBusinessDay())
+            IconButton(
+              icon: const Icon(Icons.lock_clock_rounded),
+              tooltip: Localization.translate('التسوية اليومية', lang),
+              onPressed: _showDailyClosingDialog,
+            ),
+          PopupMenuButton<String>(
+            initialValue: _selectedCaisse,
+            tooltip: Localization.translate('اختيار الصندوق', lang),
+            onSelected: (value) {
+              setState(() => _selectedCaisse = value);
+              _loadData();
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem<String>(
+                value: 'الكل',
+                child: Text(
+                  Localization.translate('الكل (جميع الصناديق)', lang),
+                  style: const TextStyle(fontFamily: 'Cairo'),
+                ),
+              ),
+              ..._caisseNames.map(
+                (name) => PopupMenuItem<String>(
+                  value: name,
+                  child: Text(
+                    Localization.translate(name, lang),
+                    style: const TextStyle(fontFamily: 'Cairo'),
+                  ),
+                ),
+              ),
+            ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.account_balance_wallet_outlined, size: 19),
+                  const SizedBox(width: 4),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 125),
+                    child: Text(
+                      Localization.translate(
+                        _selectedCaisse == 'الكل'
+                            ? 'كل الصناديق'
+                            : _selectedCaisse,
+                        lang,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const Icon(Icons.arrow_drop_down, size: 18),
+                ],
+              ),
+            ),
+          ),
+          if (!widget.readOnly)
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline_rounded),
+              tooltip: Localization.translate('معاملة جديدة', lang),
+              onPressed: _showAddTransactionDialog,
+            ),
+          if (settingsProvider.canManageCaisses() ||
+              settingsProvider.canAddCaisses())
+            IconButton(
+              icon: const Icon(Icons.settings_outlined),
+              tooltip: Localization.translate('إدارة الصناديق', lang),
+              onPressed: _showManageCaissesDialog,
+            ),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: Localization.translate('تحديث', lang),
@@ -2959,875 +3120,718 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : DesktopScrollFallback(
-        controller: treasuryVerticalController,
-        child: LayoutBuilder(
-          builder: (context, viewport) =>
-              Column(
-                children: [
-                  // 1. شريط الصندوق المثبت في الأعلى
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? Colors.grey.shade900
-                          : Colors.teal.shade50,
-                      border: Border(
-                        bottom: BorderSide(
-                          color: isDark
-                              ? Colors.grey.shade800
-                              : Colors.teal.shade100,
-                          width: 1,
-                        ),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              value: _selectedCaisse,
-                              isExpanded: true,
-                              style: TextStyle(
-                                fontFamily: 'Cairo',
-                                color: isDark
-                                    ? Colors.tealAccent
-                                    : Colors.teal,
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              items: [
-                                DropdownMenuItem<String>(
-                                  value: 'الكل',
-                                  child: Text(
-                                    Localization.translate(
-                                      'الكل (جميع الصناديق)',
-                                      lang,
-                                    ),
-                                    style: const TextStyle(
-                                      fontFamily: 'Cairo',
-                                    ),
-                                  ),
-                                ),
-                                ..._caisseNames.map(
-                                      (name) =>
-                                      DropdownMenuItem<String>(
-                                        value: name,
-                                        child: Text(
-                                          Localization.translate(name, lang),
-                                          style: const TextStyle(
-                                            fontFamily: 'Cairo',
-                                          ),
-                                        ),
-                                      ),
-                                ),
-                              ],
-                              onChanged: (val) {
-                                setState(() {
-                                  _selectedCaisse = val!;
-                                  _loadData();
-                                });
-                              },
-                            ),
-                          ),
-                        ),
-                        if (!widget.readOnly) ...[
-                          const SizedBox(width: 6),
-                          Tooltip(
-                            message: Localization.translate(
-                              'معاملة جديدة',
-                              lang,
-                            ),
-                            child: InkWell(
-                              onTap: _showAddTransactionDialog,
-                              borderRadius: BorderRadius.circular(6),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: isDark
-                                      ? Colors.tealAccent.shade700
-                                      : Colors.teal.shade700,
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.add,
-                                      size: 16,
-                                      color: isDark
-                                          ? Colors.black
-                                          : Colors.white,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      Localization.translate(
-                                        'معاملة جديدة',
-                                        lang,
-                                      ),
-                                      style: TextStyle(
-                                        color: isDark
-                                            ? Colors.black
-                                            : Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontFamily: 'Cairo',
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                        const SizedBox(width: 4),
-                        if (settingsProvider.canManageCaisses() ||
-                            settingsProvider.canAddCaisses())
-                          IconButton(
-                            icon: Icon(
-                              Icons.settings,
-                              size: 20,
-                              color: isDark ? Colors.tealAccent : Colors.teal,
-                            ),
-                            tooltip: Localization.translate(
-                              'إدارة الصناديق',
-                              lang,
-                            ),
-                            onPressed: _showManageCaissesDialog,
-                          ),
-                      ],
-                    ),
-                  ),
-
-                  // 🟢 حقل البحث التفاعلي (يظهر ويختفي بناءً على الأيقونة في الأب بار)
-                  if (_showSearch)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12.0,
-                        vertical: 8.0,
-                      ),
-                      child: TextField(
-                        decoration: InputDecoration(
-                          labelText: Localization.translate(
-                            'بحث بالاسم أو البيان',
-                            lang,
-                          ),
-                          prefixIcon: const Icon(Icons.search),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                        ),
-                        onChanged: (val) {
-                          setState(() {
-                            _searchQuery = val;
-                            _applyFilter();
-                          });
-                        },
-                      ),
-                    ),
-
-                  // 🟢 خيارات الفلترة المتقدمة (تظهر وتختفي بناءً على الأيقونة في الأب بار)
-                  if (_showFilters)
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Padding(
+              controller: treasuryVerticalController,
+              child: LayoutBuilder(
+                builder: (context, viewport) => Column(
+                  children: [
+                    // 🟢 حقل البحث التفاعلي (يظهر ويختفي بناءً على الأيقونة في الأب بار)
+                    if (_showSearch)
+                      Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 12.0,
-                          vertical: 4.0,
+                          vertical: 8.0,
                         ),
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 175,
-                              child: DropdownButtonFormField<String>(
-                                isExpanded: true,
-                                value: _selectedTypeFilter,
-                                decoration: InputDecoration(
-                                  labelText: Localization.translate(
-                                    'نوع المعاملة',
-                                    lang,
-                                  ),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
-                                  ),
-                                ),
-                                items: [
-                                  DropdownMenuItem(
-                                    value: 'all',
-                                    child: Text(
-                                      Localization.translate('الكل', lang),
-                                      style: const TextStyle(
-                                        fontFamily: 'Cairo',
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'income',
-                                    child: Text(
-                                      Localization.translate('مقبوضات', lang),
-                                      style: const TextStyle(
-                                        fontFamily: 'Cairo',
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'expense',
-                                    child: Text(
-                                      Localization.translate('مدفوعات', lang),
-                                      style: const TextStyle(
-                                        fontFamily: 'Cairo',
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                                onChanged: (val) {
-                                  setState(() {
-                                    _selectedTypeFilter = val!;
-                                    _applyFilter();
-                                  });
-                                },
-                              ),
+                        child: TextField(
+                          decoration: InputDecoration(
+                            labelText: Localization.translate(
+                              'بحث بالاسم أو البيان',
+                              lang,
                             ),
-                            const SizedBox(width: 10),
-                            SizedBox(
-                              width: 175,
-                              child: DropdownButtonFormField<String>(
-                                isExpanded: true,
-                                value: _selectedCategoryFilter,
-                                decoration: InputDecoration(
-                                  labelText: Localization.translate(
-                                    'التصنيف',
-                                    lang,
-                                  ),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
-                                  ),
-                                ),
-                                items: [
-                                  DropdownMenuItem(
-                                    value: 'all',
-                                    child: Text(
-                                      Localization.translate('كلها', lang),
-                                      style: const TextStyle(
-                                        fontFamily: 'Cairo',
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'general_expenses',
-                                    child: Text(
-                                      Localization.translate(
-                                        'تكاليف إضافية / مصاريف عامة',
-                                        lang,
-                                      ),
-                                      style: const TextStyle(
-                                        fontFamily: 'Cairo',
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                                onChanged: (val) {
-                                  setState(() {
-                                    _selectedCategoryFilter = val!;
-                                    _applyFilter();
-                                  });
-                                },
-                              ),
+                            prefixIcon: const Icon(Icons.search),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                          ],
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                          ),
+                          onChanged: (val) {
+                            setState(() {
+                              _searchQuery = val;
+                              _applyFilter();
+                            });
+                          },
                         ),
                       ),
-                    ),
 
-                  // 🟢 كرت المجموع المصفى التلقائي (يظهر فقط عند التصفية أو البحث النشط)
-                  if (_selectedTypeFilter != 'all' ||
-                      _selectedCategoryFilter != 'all' ||
-                      _searchQuery.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12.0,
-                        vertical: 4.0,
-                      ),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? Colors.teal.withValues(alpha: 0.15)
-                              : Colors.teal.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isDark
-                                ? Colors.teal.shade800
-                                : Colors.teal.shade100,
+                    // 🟢 خيارات الفلترة المتقدمة (تظهر وتختفي بناءً على الأيقونة في الأب بار)
+                    if (_showFilters)
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12.0,
+                            vertical: 4.0,
                           ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              Localization.translate('إجمالي المصفى:', lang),
-                              style: TextStyle(
-                                fontFamily: 'Cairo',
-                                fontWeight: FontWeight.bold,
-                                color: isDark
-                                    ? Colors.tealAccent
-                                    : Colors.teal.shade900,
-                              ),
-                            ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                if (_filteredTotalIncome > 0)
-                                  Text(
-                                    '${Localization.translate(
-                                        'المقبوضات:', lang)} +${formatter
-                                        .format(
-                                        _filteredTotalIncome)} $currency',
-                                    style: const TextStyle(
-                                      fontFamily: 'Cairo',
-                                      fontSize: 13,
-                                      color: Colors.green,
-                                      fontWeight: FontWeight.bold,
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 175,
+                                child: DropdownButtonFormField<String>(
+                                  isExpanded: true,
+                                  value: _selectedTypeFilter,
+                                  decoration: InputDecoration(
+                                    labelText: Localization.translate(
+                                      'نوع المعاملة',
+                                      lang,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
                                     ),
                                   ),
-                                if (_filteredTotalExpense > 0)
-                                  Text(
-                                    '${Localization.translate(
-                                        'المدفوعات:', lang)} -${formatter
-                                        .format(
-                                        _filteredTotalExpense)} $currency',
-                                    style: const TextStyle(
-                                      fontFamily: 'Cairo',
-                                      fontSize: 13,
-                                      color: Colors.red,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                Text(
-                                  '${Localization.translate(
-                                      'الصافي:', lang)} ${formatter.format(
-                                      _filteredTotalIncome -
-                                          _filteredTotalExpense)} $currency',
-                                  style: TextStyle(
-                                    fontFamily: 'Cairo',
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
-                                    color:
-                                    (_filteredTotalIncome -
-                                        _filteredTotalExpense) >=
-                                        0
-                                        ? Colors.green
-                                        : Colors.red,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                  // 2. القائمة الرئيسية القابلة للتمرير بالكامل
-                  Expanded(
-                    child: viewport.maxWidth >= 900
-                        ? widget._buildDesktopTreasuryTable(
-                      context,
-                      lang,
-                      formatter,
-                      currency,
-                      isDark,
-                      _filteredTransactions,
-                      _filteredTotalIncome,
-                      _filteredTotalExpense,
-                      widget.readOnly,
-                      settingsProvider.canEditPayments(),
-                      settingsProvider.canDeletePayments(),
-                      _desktopTableScrollController,
-                      _showEditTransactionDialog,
-                      _deleteTransaction,
-                          (item) => _showReceiptOptions(context, item),
-                      highlightedTransactionId: _highlightedTransactionId,
-                      onHighlightedTap: (_) {
-                        setState(() => _highlightedTransactionId = null);
-                      },
-                      dateRange: _dateRange,
-                      onDateRangeChanged: (range) {
-                        setState(() {
-                          _dateRange = range;
-                          _applyFilter();
-                        });
-                      },
-                      numericFilter: _numericFilter,
-                      onNumericFilterChanged: (filter) {
-                        setState(() {
-                          _numericFilter = filter;
-                          _applyFilter();
-                        });
-                      },
-                      columnControllers: _treasuryColumnControllers,
-                      columnNumericFilters: _treasuryNumericFilters,
-                      payerNameForTransaction: _transactionPayerName,
-                      onFiltersUpdated: () =>
-                          setState(() => _applyFilter()),
-                      onClearAllFilters: () {
-                        setState(() {
-                          for (final c
-                          in _treasuryColumnControllers.values) {
-                            c.clear();
-                          }
-                          _treasuryNumericFilters.clear();
-                          _dateRange = const TableDateRange();
-                          _numericFilter = const NumericFilterState();
-                          _applyFilter();
-                        });
-                      },
-                      verticalScrollController:
-                      _desktopTreasuryScrollController,
-                    )
-                        : ListView.builder(
-                      controller: _mobileTreasuryScrollController,
-                      primary: false,
-                      itemCount: _filteredTransactions.length + 1,
-                      // +1 for big balance card
-                      itemBuilder: (context, index) {
-                        if (index == 0) {
-                          return Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: isDark
-                                    ? [
-                                  Colors.teal.shade900,
-                                  Colors.grey.shade900,
-                                ]
-                                    : [Colors.teal, Colors.green],
-                              ),
-                            ),
-                            child: Column(
-                              children: [
-                                Text(
-                                  Localization.translate(
-                                    'رصيد الصندوق',
-                                    lang,
-                                  ),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontFamily: 'Cairo',
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  '${formatter.format(
-                                      _totalBalance)} $currency',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.bold,
-                                    fontFamily: 'Cairo',
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }
-
-                        final item = _filteredTransactions[index - 1];
-                        final tType =
-                            item['transaction_type']?.toString() ?? '';
-                        final isIncome =
-                            tType == 'Encaissement' ||
-                                tType == 'income' ||
-                                (!tType.contains('Achat') &&
-                                    !tType.contains('Purchase') &&
-                                    !tType.contains('Décaissement') &&
-                                    !tType.contains('expense'));
-
-                        String dateStr = item['created_at'] ?? '';
-                        if (dateStr.length > 16) {
-                          dateStr = dateStr
-                              .substring(0, 16)
-                              .replaceFirst('T', ' ');
-                        }
-
-                        final oldBal = (item['old_balance'] as num?)
-                            ?.toDouble();
-                        final newBal = (item['new_balance'] as num?)
-                            ?.toDouble();
-                        final phone = item['phone']?.toString() ?? '';
-                        final payerName = _transactionPayerName(item);
-
-                        return Card(
-                          margin: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          elevation: 2,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Column(
-                              crossAxisAlignment:
-                              CrossAxisAlignment.start,
-                              children: [
-                                // Row 1: Icon and Title
-                                Row(
-                                  children: [
-                                    CircleAvatar(
-                                      radius: 16,
-                                      backgroundColor: isIncome
-                                          ? Colors.green.withValues(
-                                        alpha: 0.15,
-                                      )
-                                          : Colors.red.withValues(
-                                        alpha: 0.15,
-                                      ),
-                                      child: Icon(
-                                        isIncome
-                                            ? Icons.arrow_downward
-                                            : Icons.arrow_upward,
-                                        color: isIncome
-                                            ? Colors.green
-                                            : Colors.red,
-                                        size: 16,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: _highlightText(
-                                        _buildTransactionTitle(
-                                          item,
-                                          lang,
-                                        ),
-                                        _searchQuery,
-                                        TextStyle(
-                                          fontWeight: FontWeight.bold,
+                                  items: [
+                                    DropdownMenuItem(
+                                      value: 'all',
+                                      child: Text(
+                                        Localization.translate('الكل', lang),
+                                        style: const TextStyle(
                                           fontFamily: 'Cairo',
                                           fontSize: 13,
-                                          color: isDark
-                                              ? Colors.white
-                                              : Colors.black87,
                                         ),
                                       ),
                                     ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-
-                                // Row 2: Paid Amount in its own row
-                                Row(
-                                  mainAxisAlignment:
-                                  MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      '${Localization.translate(
-                                          'المبلغ:', lang)} / Montant:',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: isDark
-                                            ? Colors.white60
-                                            : Colors.grey,
-                                        fontFamily: 'Cairo',
-                                      ),
-                                    ),
-                                    Text(
-                                      '${isIncome ? "+" : "-"}${formatter
-                                          .format((item['amount'] as num?)
-                                          ?.toDouble() ?? 0)} $currency',
-                                      style: TextStyle(
-                                        color: isIncome
-                                            ? Colors.green
-                                            : Colors.red,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 15,
-                                        fontFamily: 'Cairo',
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 6),
-
-                                if (payerName.isNotEmpty) ...[
-                                  Row(
-                                    children: [
-                                      Text(
-                                        '${Localization.translate(
-                                            'اسم الدافع', lang)}: ',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: isDark
-                                              ? Colors.white60
-                                              : Colors.grey,
+                                    DropdownMenuItem(
+                                      value: 'income',
+                                      child: Text(
+                                        Localization.translate('مقبوضات', lang),
+                                        style: const TextStyle(
                                           fontFamily: 'Cairo',
+                                          fontSize: 13,
                                         ),
-                                      ),
-                                      Expanded(
-                                        child: _highlightText(
-                                          payerName,
-                                          _searchQuery,
-                                          TextStyle(
-                                            fontSize: 11,
-                                            color: isDark
-                                                ? Colors.white70
-                                                : Colors.black87,
-                                            fontFamily: 'Cairo',
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                ],
-
-                                if (phone.isNotEmpty) ...[
-                                  Row(
-                                    children: [
-                                      const Text(
-                                        '📞 ',
-                                        style: TextStyle(fontSize: 11),
-                                      ),
-                                      Expanded(
-                                        child: _highlightText(
-                                          phone,
-                                          _searchQuery,
-                                          const TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.blueGrey,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                ],
-
-                                if (oldBal != null &&
-                                    newBal != null &&
-                                    item['entity_type'] !=
-                                        'General') ...[
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 2,
-                                    ),
-                                    child: Text(
-                                      '${Localization.translate(
-                                          "الرصيد", lang)}: ${formatter.format(
-                                          oldBal.abs())} → ${formatter.format(
-                                          newBal.abs())} $currency',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: isDark
-                                            ? Colors.white60
-                                            : Colors.grey.shade600,
-                                        fontFamily: 'Cairo',
                                       ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                ],
-
-                                // Row 3: Metadata
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 4,
-                                  crossAxisAlignment:
-                                  WrapCrossAlignment.center,
-                                  children: [
-                                    Text(
-                                      '${Localization.translate('بواسطة',
-                                          lang)}: ${item['recorded_by'] ??
-                                          ''} | $dateStr',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: isDark
-                                            ? Colors.white60
-                                            : Colors.black54,
-                                        fontFamily: 'Cairo',
+                                    DropdownMenuItem(
+                                      value: 'expense',
+                                      child: Text(
+                                        Localization.translate('مدفوعات', lang),
+                                        style: const TextStyle(
+                                          fontFamily: 'Cairo',
+                                          fontSize: 13,
+                                        ),
                                       ),
                                     ),
                                   ],
+                                  onChanged: (val) {
+                                    setState(() {
+                                      _selectedTypeFilter = val!;
+                                      _applyFilter();
+                                    });
+                                  },
                                 ),
-                                const SizedBox(height: 6),
-
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 4,
-                                  children: [
-                                    Container(
-                                      padding:
-                                      const EdgeInsets.symmetric(
-                                        horizontal: 6,
-                                        vertical: 2,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.teal.withValues(
-                                          alpha: 0.08,
+                              ),
+                              const SizedBox(width: 10),
+                              SizedBox(
+                                width: 175,
+                                child: DropdownButtonFormField<String>(
+                                  isExpanded: true,
+                                  value: _selectedCategoryFilter,
+                                  decoration: InputDecoration(
+                                    labelText: Localization.translate(
+                                      'التصنيف',
+                                      lang,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                  ),
+                                  items: [
+                                    DropdownMenuItem(
+                                      value: 'all',
+                                      child: Text(
+                                        Localization.translate('كلها', lang),
+                                        style: const TextStyle(
+                                          fontFamily: 'Cairo',
+                                          fontSize: 13,
                                         ),
-                                        borderRadius:
-                                        BorderRadius.circular(4),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          const Icon(
-                                            Icons.inbox,
-                                            size: 10,
-                                            color: Colors.teal,
-                                          ),
-                                          const SizedBox(width: 3),
-                                          Text(
-                                            t(
-                                              item['caisse_name']
-                                                  ?.toString() ??
-                                                  'الصندوق الرئيسي',
-                                            ),
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              color: isDark
-                                                  ? Colors.tealAccent
-                                                  : Colors.teal,
-                                              fontWeight:
-                                              FontWeight.bold,
-                                              fontFamily: 'Cairo',
-                                            ),
-                                          ),
-                                        ],
                                       ),
                                     ),
-                                    Container(
-                                      padding:
-                                      const EdgeInsets.symmetric(
-                                        horizontal: 6,
-                                        vertical: 2,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.blue.withValues(
-                                          alpha: 0.08,
-                                        ),
-                                        borderRadius:
-                                        BorderRadius.circular(4),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          const Icon(
-                                            Icons.payment,
-                                            size: 10,
-                                            color: Colors.blue,
-                                          ),
-                                          const SizedBox(width: 3),
-                                          Text(
-                                            t(
-                                              item['payment_method']
-                                                  ?.toString() ??
-                                                  'نقداً / Espèce',
-                                            ),
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              color: isDark
-                                                  ? Colors.blueAccent
-                                                  : Colors.blue,
-                                              fontFamily: 'Cairo',
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const Divider(height: 16),
-
-                                // Row 4: Action Print options button in its own row
-                                Row(
-                                  mainAxisAlignment:
-                                  MainAxisAlignment.end,
-                                  children: [
-                                    TextButton.icon(
-                                      style: TextButton.styleFrom(
-                                        foregroundColor: isDark
-                                            ? Colors.tealAccent
-                                            : Colors.teal,
-                                        padding:
-                                        const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 4,
-                                        ),
-                                        minimumSize: Size.zero,
-                                        tapTargetSize:
-                                        MaterialTapTargetSize
-                                            .shrinkWrap,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                          BorderRadius.circular(6),
-                                          side: BorderSide(
-                                            color: isDark
-                                                ? Colors.tealAccent
-                                                : Colors.teal,
-                                          ),
-                                        ),
-                                      ),
-                                      icon: const Icon(
-                                        Icons.print,
-                                        size: 14,
-                                      ),
-                                      label: Text(
+                                    DropdownMenuItem(
+                                      value: 'general_expenses',
+                                      child: Text(
                                         Localization.translate(
-                                          'خيارات الوصل',
+                                          'تكاليف إضافية / مصاريف عامة',
                                           lang,
                                         ),
                                         style: const TextStyle(
                                           fontFamily: 'Cairo',
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
                                         ),
                                       ),
-                                      onPressed: () =>
-                                          _showReceiptOptions(
-                                            context,
-                                            item,
-                                          ),
                                     ),
                                   ],
+                                  onChanged: (val) {
+                                    setState(() {
+                                      _selectedCategoryFilter = val!;
+                                      _applyFilter();
+                                    });
+                                  },
                                 ),
-                              ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                    // 🟢 كرت المجموع المصفى التلقائي (يظهر فقط عند التصفية أو البحث النشط)
+                    if (_selectedTypeFilter != 'all' ||
+                        _selectedCategoryFilter != 'all' ||
+                        _searchQuery.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12.0,
+                          vertical: 4.0,
+                        ),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? Colors.teal.withValues(alpha: 0.15)
+                                : Colors.teal.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isDark
+                                  ? Colors.teal.shade800
+                                  : Colors.teal.shade100,
                             ),
                           ),
-                        );
-                      },
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                Localization.translate('إجمالي المصفى:', lang),
+                                style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark
+                                      ? Colors.tealAccent
+                                      : Colors.teal.shade900,
+                                ),
+                              ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  if (_filteredTotalIncome > 0)
+                                    Text(
+                                      '${Localization.translate('المقبوضات:', lang)} +${formatter.format(_filteredTotalIncome)} $currency',
+                                      style: const TextStyle(
+                                        fontFamily: 'Cairo',
+                                        fontSize: 13,
+                                        color: Colors.green,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  if (_filteredTotalExpense > 0)
+                                    Text(
+                                      '${Localization.translate('المدفوعات:', lang)} -${formatter.format(_filteredTotalExpense)} $currency',
+                                      style: const TextStyle(
+                                        fontFamily: 'Cairo',
+                                        fontSize: 13,
+                                        color: Colors.red,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  Text(
+                                    '${Localization.translate('الصافي:', lang)} ${formatter.format(_filteredTotalIncome - _filteredTotalExpense)} $currency',
+                                    style: TextStyle(
+                                      fontFamily: 'Cairo',
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color:
+                                          (_filteredTotalIncome -
+                                                  _filteredTotalExpense) >=
+                                              0
+                                          ? Colors.green
+                                          : Colors.red,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                    // 2. القائمة الرئيسية القابلة للتمرير بالكامل
+                    Expanded(
+                      child: viewport.maxWidth >= 900
+                          ? widget._buildDesktopTreasuryTable(
+                              context,
+                              lang,
+                              formatter,
+                              currency,
+                              isDark,
+                              _filteredTransactions,
+                              _filteredTotalIncome,
+                              _filteredTotalExpense,
+                              widget.readOnly,
+                              settingsProvider.canEditPayments(),
+                              settingsProvider.canDeletePayments(),
+                              _desktopTableScrollController,
+                              _showEditTransactionDialog,
+                              _deleteTransaction,
+                              (item) => _showReceiptOptions(context, item),
+                              highlightedTransactionId:
+                                  _highlightedTransactionId,
+                              onHighlightedTap: (_) {
+                                setState(
+                                  () => _highlightedTransactionId = null,
+                                );
+                              },
+                              dateRange: _dateRange,
+                              onDateRangeChanged: (range) {
+                                setState(() {
+                                  _dateRange = range;
+                                  _applyFilter();
+                                });
+                              },
+                              numericFilter: _numericFilter,
+                              onNumericFilterChanged: (filter) {
+                                setState(() {
+                                  _numericFilter = filter;
+                                  _applyFilter();
+                                });
+                              },
+                              columnControllers: _treasuryColumnControllers,
+                              columnNumericFilters: _treasuryNumericFilters,
+                              payerNameForTransaction: _transactionPayerName,
+                              onFiltersUpdated: () =>
+                                  setState(() => _applyFilter()),
+                              onClearAllFilters: () {
+                                setState(() {
+                                  for (final c
+                                      in _treasuryColumnControllers.values) {
+                                    c.clear();
+                                  }
+                                  _treasuryNumericFilters.clear();
+                                  _dateRange = const TableDateRange();
+                                  _numericFilter = const NumericFilterState();
+                                  _applyFilter();
+                                });
+                              },
+                              verticalScrollController:
+                                  _desktopTreasuryScrollController,
+                            )
+                          : ListView.builder(
+                              controller: _mobileTreasuryScrollController,
+                              primary: false,
+                              itemCount: _filteredTransactions.length + 1,
+                              // +1 for big balance card
+                              itemBuilder: (context, index) {
+                                if (index == 0) {
+                                  return Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(20),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: isDark
+                                            ? [
+                                                Colors.teal.shade900,
+                                                Colors.grey.shade900,
+                                              ]
+                                            : [Colors.teal, Colors.green],
+                                      ),
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Text(
+                                          Localization.translate(
+                                            'رصيد الصندوق',
+                                            lang,
+                                          ),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 16,
+                                            fontFamily: 'Cairo',
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          '${formatter.format(_totalBalance)} $currency',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 32,
+                                            fontWeight: FontWeight.bold,
+                                            fontFamily: 'Cairo',
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }
+
+                                final item = _filteredTransactions[index - 1];
+                                final tType =
+                                    item['transaction_type']?.toString() ?? '';
+                                final isIncome =
+                                    tType == 'Encaissement' ||
+                                    tType == 'income' ||
+                                    (!tType.contains('Achat') &&
+                                        !tType.contains('Purchase') &&
+                                        !tType.contains('Décaissement') &&
+                                        !tType.contains('expense'));
+
+                                String dateStr = item['created_at'] ?? '';
+                                if (dateStr.length > 16) {
+                                  dateStr = dateStr
+                                      .substring(0, 16)
+                                      .replaceFirst('T', ' ');
+                                }
+
+                                final oldBal = (item['old_balance'] as num?)
+                                    ?.toDouble();
+                                final newBal = (item['new_balance'] as num?)
+                                    ?.toDouble();
+                                final phone = item['phone']?.toString() ?? '';
+                                final payerName = _transactionPayerName(item);
+
+                                return Card(
+                                  margin: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  elevation: 2,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        // Row 1: Icon and Title
+                                        Row(
+                                          children: [
+                                            CircleAvatar(
+                                              radius: 16,
+                                              backgroundColor: isIncome
+                                                  ? Colors.green.withValues(
+                                                      alpha: 0.15,
+                                                    )
+                                                  : Colors.red.withValues(
+                                                      alpha: 0.15,
+                                                    ),
+                                              child: Icon(
+                                                isIncome
+                                                    ? Icons.arrow_downward
+                                                    : Icons.arrow_upward,
+                                                color: isIncome
+                                                    ? Colors.green
+                                                    : Colors.red,
+                                                size: 16,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: _highlightText(
+                                                _buildTransactionTitle(
+                                                  item,
+                                                  lang,
+                                                ),
+                                                _searchQuery,
+                                                TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontFamily: 'Cairo',
+                                                  fontSize: 13,
+                                                  color: isDark
+                                                      ? Colors.white
+                                                      : Colors.black87,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+
+                                        // Row 2: Paid Amount in its own row
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              '${Localization.translate('المبلغ:', lang)} / Montant:',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: isDark
+                                                    ? Colors.white60
+                                                    : Colors.grey,
+                                                fontFamily: 'Cairo',
+                                              ),
+                                            ),
+                                            Text(
+                                              '${isIncome ? "+" : "-"}${formatter.format((item['amount'] as num?)?.toDouble() ?? 0)} $currency',
+                                              style: TextStyle(
+                                                color: isIncome
+                                                    ? Colors.green
+                                                    : Colors.red,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 15,
+                                                fontFamily: 'Cairo',
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 6),
+
+                                        if (payerName.isNotEmpty) ...[
+                                          Row(
+                                            children: [
+                                              Text(
+                                                '${Localization.translate('اسم الدافع', lang)}: ',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: isDark
+                                                      ? Colors.white60
+                                                      : Colors.grey,
+                                                  fontFamily: 'Cairo',
+                                                ),
+                                              ),
+                                              Expanded(
+                                                child: _highlightText(
+                                                  payerName,
+                                                  _searchQuery,
+                                                  TextStyle(
+                                                    fontSize: 11,
+                                                    color: isDark
+                                                        ? Colors.white70
+                                                        : Colors.black87,
+                                                    fontFamily: 'Cairo',
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 4),
+                                        ],
+
+                                        if (phone.isNotEmpty) ...[
+                                          Row(
+                                            children: [
+                                              const Text(
+                                                '📞 ',
+                                                style: TextStyle(fontSize: 11),
+                                              ),
+                                              Expanded(
+                                                child: _highlightText(
+                                                  phone,
+                                                  _searchQuery,
+                                                  const TextStyle(
+                                                    fontSize: 11,
+                                                    color: Colors.blueGrey,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 4),
+                                        ],
+
+                                        if (oldBal != null &&
+                                            newBal != null &&
+                                            item['entity_type'] !=
+                                                'General') ...[
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 2,
+                                            ),
+                                            child: Text(
+                                              '${Localization.translate("الرصيد", lang)}: ${formatter.format(oldBal.abs())} → ${formatter.format(newBal.abs())} $currency',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: isDark
+                                                    ? Colors.white60
+                                                    : Colors.grey.shade600,
+                                                fontFamily: 'Cairo',
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                        ],
+
+                                        // Row 3: Metadata
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 4,
+                                          crossAxisAlignment:
+                                              WrapCrossAlignment.center,
+                                          children: [
+                                            Text(
+                                              '${Localization.translate('بواسطة', lang)}: ${item['recorded_by'] ?? ''} | $dateStr',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: isDark
+                                                    ? Colors.white60
+                                                    : Colors.black54,
+                                                fontFamily: 'Cairo',
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 6),
+
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 4,
+                                          children: [
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 6,
+                                                    vertical: 2,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.teal.withValues(
+                                                  alpha: 0.08,
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(4),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  const Icon(
+                                                    Icons.inbox,
+                                                    size: 10,
+                                                    color: Colors.teal,
+                                                  ),
+                                                  const SizedBox(width: 3),
+                                                  Text(
+                                                    t(
+                                                      item['caisse_name']
+                                                              ?.toString() ??
+                                                          'الصندوق الرئيسي',
+                                                    ),
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      color: isDark
+                                                          ? Colors.tealAccent
+                                                          : Colors.teal,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      fontFamily: 'Cairo',
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 6,
+                                                    vertical: 2,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.blue.withValues(
+                                                  alpha: 0.08,
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(4),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  const Icon(
+                                                    Icons.payment,
+                                                    size: 10,
+                                                    color: Colors.blue,
+                                                  ),
+                                                  const SizedBox(width: 3),
+                                                  Text(
+                                                    t(
+                                                      item['payment_method']
+                                                              ?.toString() ??
+                                                          'نقداً / Espèce',
+                                                    ),
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      color: isDark
+                                                          ? Colors.blueAccent
+                                                          : Colors.blue,
+                                                      fontFamily: 'Cairo',
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const Divider(height: 16),
+
+                                        // Row 4: Action Print options button in its own row
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.end,
+                                          children: [
+                                            TextButton.icon(
+                                              style: TextButton.styleFrom(
+                                                foregroundColor: isDark
+                                                    ? Colors.tealAccent
+                                                    : Colors.teal,
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 12,
+                                                      vertical: 4,
+                                                    ),
+                                                minimumSize: Size.zero,
+                                                tapTargetSize:
+                                                    MaterialTapTargetSize
+                                                        .shrinkWrap,
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(6),
+                                                  side: BorderSide(
+                                                    color: isDark
+                                                        ? Colors.tealAccent
+                                                        : Colors.teal,
+                                                  ),
+                                                ),
+                                              ),
+                                              icon: const Icon(
+                                                Icons.print,
+                                                size: 14,
+                                              ),
+                                              label: Text(
+                                                Localization.translate(
+                                                  'خيارات الوصل',
+                                                  lang,
+                                                ),
+                                                style: const TextStyle(
+                                                  fontFamily: 'Cairo',
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                              onPressed: () =>
+                                                  _showReceiptOptions(
+                                                    context,
+                                                    item,
+                                                  ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-        ),
-      ),
+            ),
     );
   }
 
@@ -3835,24 +3839,19 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
     final desc = item['description']?.toString() ?? '';
     if (desc.startsWith('دفعة لطلبية رقم ')) {
       final orderId = desc.replaceFirst('دفعة لطلبية رقم ', '');
-      return '${Localization.translate('دفعة لطلبية', lang)} ${Localization
-          .translate('رقم', lang)} $orderId';
+      return '${Localization.translate('دفعة لطلبية', lang)} ${Localization.translate('رقم', lang)} $orderId';
     }
     if (desc.startsWith('من الزبون: ')) {
-      return '${Localization.translate('من الزبون', lang)}: ${desc.replaceFirst(
-          'من الزبون: ', '')}';
+      return '${Localization.translate('من الزبون', lang)}: ${desc.replaceFirst('من الزبون: ', '')}';
     }
     if (desc.startsWith('للمورد: ')) {
-      return '${Localization.translate('للمورد', lang)}: ${desc.replaceFirst(
-          'للمورد: ', '')}';
+      return '${Localization.translate('للمورد', lang)}: ${desc.replaceFirst('للمورد: ', '')}';
     }
     if (desc.startsWith('استرجاع من المورد: ')) {
-      return '${Localization.translate('استرجاع من المورد', lang)}: ${desc
-          .replaceFirst('استرجاع من المورد: ', '')}';
+      return '${Localization.translate('استرجاع من المورد', lang)}: ${desc.replaceFirst('استرجاع من المورد: ', '')}';
     }
     if (desc.startsWith('إلى العامل: ')) {
-      return '${Localization.translate('إلى العامل', lang)}: ${desc
-          .replaceFirst('إلى العامل: ', '')}';
+      return '${Localization.translate('إلى العامل', lang)}: ${desc.replaceFirst('إلى العامل: ', '')}';
     }
     if (desc.startsWith('دفع للمورد الفاتورة')) {
       return desc.replaceFirst(
@@ -3872,9 +3871,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
         final parts = content.split(' - الفاتورة: ');
         final supplier = parts[0];
         final inv = parts[1];
-        return '${Localization.translate(
-            'دفع للمورد:', lang)} $supplier - ${Localization.translate(
-            'رقم الفاتورة', lang)}: $inv';
+        return '${Localization.translate('دفع للمورد:', lang)} $supplier - ${Localization.translate('رقم الفاتورة', lang)}: $inv';
       }
       return '${Localization.translate('دفع للمورد:', lang)} $content';
     }
@@ -3894,12 +3891,10 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   }
 
   String t(String key) {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     return Localization.translate(key, lang);
   }
 }

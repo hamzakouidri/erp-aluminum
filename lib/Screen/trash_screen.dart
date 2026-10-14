@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:database_data/widgets/app_material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -25,6 +26,7 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
   bool _isLoading = true;
   List<Map<String, dynamic>> _trashOrders = [];
   List<Map<String, dynamic>> _trashAchats = [];
+  List<Map<String, dynamic>> _trashMaterialSales = [];
   List<Map<String, dynamic>> _auditLogs = [];
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -36,9 +38,9 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
     super.initState();
     _db = widget.db ?? SqlDatabase();
     _tabController = TabController(
-      length: 3,
+      length: 4,
       vsync: this,
-      initialIndex: widget.initialIndex.clamp(0, 2),
+      initialIndex: widget.initialIndex.clamp(0, 3),
     );
     _tabController.addListener(() {
       if (mounted) setState(() {});
@@ -66,17 +68,23 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
   }
 
   Future<void> _loadTrashData({bool isUserInitiated = true}) async {
-    if (isUserInitiated && (_trashOrders.isEmpty && _trashAchats.isEmpty && _auditLogs.isEmpty)) {
+    if (isUserInitiated &&
+        (_trashOrders.isEmpty &&
+            _trashAchats.isEmpty &&
+            _trashMaterialSales.isEmpty &&
+            _auditLogs.isEmpty)) {
       setState(() => _isLoading = true);
     }
     try {
       final orders = await _db.readTrashCommandesWithClients();
       final achats = await _db.readTrashAchats();
-      final logs = await _db.readAuditLogs(limit: 100);
+      final materialSales = await _db.readTrashMaterialSales();
+      final logs = await _db.readAuditLogs(limit: 1000);
       if (mounted) {
         setState(() {
           _trashOrders = orders;
           _trashAchats = achats;
+          _trashMaterialSales = materialSales;
           _auditLogs = logs;
           _isLoading = false;
         });
@@ -100,7 +108,71 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
     }).toList();
   }
 
+  List<Map<String, dynamic>> get _filteredMaterialSales {
+    if (_searchQuery.trim().isEmpty) return _trashMaterialSales;
+    final q = _searchQuery.trim().toLowerCase();
+    return _trashMaterialSales.where((sale) {
+      return (sale['sale_code'] ?? '').toString().toLowerCase().contains(q) ||
+          (sale['client_name'] ?? '').toString().toLowerCase().contains(q) ||
+          (sale['client_phone'] ?? '').toString().toLowerCase().contains(q) ||
+          (sale['doc_type'] ?? '').toString().toLowerCase().contains(q);
+    }).toList();
+  }
+
+  Future<void> _restoreMaterialSale(
+    int saleId,
+    AppLanguage lang,
+    AppSettingsProvider settings,
+  ) async {
+    if (!settings.canRestoreDeletedDocuments()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(Localization.translate('ليس لديك صلاحية استعادة الوثائق المحذوفة', lang)),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(Localization.translate('استعادة وثيقة المبيعات', lang)),
+        content: Text(Localization.translate(
+          'ستُستعاد الوثيقة كمسودة للمراجعة، ولن يُخصم المخزون إلا عند تأكيدها من جديد.',
+          lang,
+        )),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(Localization.translate('cancel', lang)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.restore_from_trash_rounded),
+            label: Text(Localization.translate('استعادة', lang)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _db.restoreMaterialSale(saleId);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(Localization.translate('تمت استعادة الوثيقة كمسودة', lang)),
+        backgroundColor: Colors.teal,
+      ),
+    );
+    await _loadTrashData();
+  }
+
   Future<void> _restoreAchat(int achatId, AppLanguage lang) async {
+    if (!context.read<AppSettingsProvider>().canRestoreDeletedDocuments()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(Localization.translate('ليس لديك صلاحية الاسترجاع', lang))),
+      );
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -229,7 +301,38 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
     }
   }
 
+  void _showAuditDetails(String details, AppLanguage lang) {
+    String display = details;
+    try {
+      display = const JsonEncoder.withIndent('  ').convert(jsonDecode(details));
+    } catch (_) {}
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(Localization.translate('تفاصيل ما قبل وبعد التعديل', lang)),
+        content: SizedBox(
+          width: 760,
+          child: SingleChildScrollView(
+            child: SelectableText(display),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(Localization.translate('إغلاق', lang)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _restoreOrder(int orderId, AppLanguage lang) async {
+    if (!context.read<AppSettingsProvider>().canRestoreDeletedDocuments()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(Localization.translate('ليس لديك صلاحية الاسترجاع', lang))),
+      );
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -454,13 +557,13 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
   }
 
   @override
-  @override
   Widget build(BuildContext context) {
     final settings = Provider.of<AppSettingsProvider>(context);
     final lang = settings.language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final filteredOrders = _filteredOrders;
     final filteredAchats = _filteredAchats;
+    final filteredMaterialSales = _filteredMaterialSales;
 
     return Scaffold(
       appBar: AppBar(
@@ -482,6 +585,10 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
             Tab(
               icon: const Icon(Icons.receipt_long_outlined, size: 18),
               text: '${Localization.translate('achats', lang)} (${_trashAchats.length})',
+            ),
+            Tab(
+              icon: const Icon(Icons.point_of_sale_rounded, size: 18),
+              text: '${Localization.translate('مبيعات المحل', lang)} (${_trashMaterialSales.length})',
             ),
             Tab(
               icon: const Icon(Icons.history_edu_rounded, size: 18),
@@ -542,12 +649,70 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
               children: [
                 _buildOrdersTab(context, filteredOrders, lang, isDark),
                 _buildAchatsTab(context, filteredAchats, lang, isDark),
+                _buildMaterialSalesTab(
+                  context,
+                  filteredMaterialSales,
+                  lang,
+                  isDark,
+                  settings,
+                ),
                 _buildAuditLogsTab(context, lang, isDark),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildMaterialSalesTab(
+    BuildContext context,
+    List<Map<String, dynamic>> filtered,
+    AppLanguage lang,
+    bool isDark,
+    AppSettingsProvider settings,
+  ) {
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (filtered.isEmpty) {
+      return Center(
+        child: Text(
+          Localization.translate('لا توجد وثائق مبيعات محذوفة', lang),
+          style: const TextStyle(fontSize: 16, color: Colors.grey),
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: filtered.length,
+      itemBuilder: (context, index) {
+        final sale = filtered[index];
+        final id = (sale['id'] as num?)?.toInt() ?? 0;
+        final total = (sale['net_total'] as num?)?.toDouble() ?? 0;
+        return Card(
+          child: ListTile(
+            leading: const CircleAvatar(
+              child: Icon(Icons.point_of_sale_rounded),
+            ),
+            title: Text(
+              '${sale['sale_code'] ?? '#$id'} — ${sale['client_name'] ?? ''}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            subtitle: Text(
+              '${NumberFormat('#,##0.00').format(total)} DZD\n'
+              '${Localization.translate('حُذفت في', lang)}: ${_formatDate(sale['deleted_at'])}'
+              '${(sale['deleted_by'] ?? '').toString().isEmpty ? '' : ' — ${sale['deleted_by']}'}',
+            ),
+            isThreeLine: true,
+            trailing: settings.canRestoreDeletedDocuments()
+                ? IconButton(
+                    tooltip: Localization.translate('استعادة', lang),
+                    icon: const Icon(Icons.restore_from_trash_rounded, color: Colors.teal),
+                    onPressed: () => _restoreMaterialSale(id, lang, settings),
+                  )
+                : null,
+          ),
+        );
+      },
     );
   }
 
@@ -1076,6 +1241,14 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
   }
 
   Widget _buildAuditLogsTab(BuildContext context, AppLanguage lang, bool isDark) {
+    if (!context.read<AppSettingsProvider>().canViewDocumentHistory()) {
+      return Center(
+        child: Text(
+          Localization.translate('ليس لديك صلاحية مشاهدة سجل التعديلات', lang),
+          style: const TextStyle(fontSize: 16, color: Colors.grey),
+        ),
+      );
+    }
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -1137,23 +1310,21 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
         IconData actionIcon;
         String actionLabel;
 
-        switch (actionType) {
-          case 'DELETE':
+        if (actionType.contains('DELETE')) {
             badgeColor = Colors.redAccent;
             actionIcon = Icons.delete_outline_rounded;
             actionLabel = lang == AppLanguage.arabic ? 'حذف' : 'Suppression';
-            break;
-          case 'RESTORE':
+        } else if (actionType.contains('RESTORE')) {
             badgeColor = Colors.teal;
             actionIcon = Icons.restore_from_trash_rounded;
             actionLabel = lang == AppLanguage.arabic ? 'استرجاع' : 'Restauration';
-            break;
-          case 'UPDATE':
+        } else if (actionType.contains('UPDATE') ||
+            actionType.contains('CONFIRM') ||
+            actionType.contains('RETURN')) {
             badgeColor = Colors.amber.shade800;
             actionIcon = Icons.edit_note_rounded;
             actionLabel = lang == AppLanguage.arabic ? 'تعديل' : 'Modification';
-            break;
-          default:
+        } else {
             badgeColor = Colors.blue;
             actionIcon = Icons.info_outline_rounded;
             actionLabel = actionType;
@@ -1242,6 +1413,8 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
                         const SizedBox(height: 4),
                         Text(
                           details,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 12,
                             color: isDark ? Colors.grey[400] : Colors.grey[700],
@@ -1252,6 +1425,12 @@ class _TrashScreenState extends State<TrashScreen> with SingleTickerProviderStat
                     ],
                   ),
                 ),
+                if (details.isNotEmpty)
+                  IconButton(
+                    tooltip: Localization.translate('عرض تفاصيل التعديل', lang),
+                    icon: const Icon(Icons.compare_arrows_rounded),
+                    onPressed: () => _showAuditDetails(details, lang),
+                  ),
               ],
             ),
           ),

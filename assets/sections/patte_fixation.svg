@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400" width="100%" height="100%">
+  <defs>
+    <!-- Galvanized Sheet Metal Pattern & Gradient -->
+    <linearGradient id="galvaMetal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#b0b8bf"/>
+      <stop offset="30%" stop-color="#d4dbe0"/>
+      <stop offset="70%" stop-color="#c1c9cf"/>
+      <stop offset="100%" stop-color="#9aa2a9"/>
+    </linearGradient>
+
+    <linearGradient id="metalWing" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#8c949c"/>
+      <stop offset="50%" stop-color="#b0b8c0"/>
+      <stop offset="100%" stop-color="#7a8289"/>
+    </linearGradient>
+
+    <radialGradient id="holeDark" cx="45%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#3c4146"/>
+      <stop offset="100%" stop-color="#151719"/>
+    </radialGradient>
+
+    <filter id="patteShadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="4" dy="6" stdDeviation="5" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#patteShadow)">
+    <!-- Base Plate (Plaque centrale d'appui) -->
+    <rect x="75" y="40" width="150" height="320" rx="12" fill="url(#galvaMetal)" stroke="#52585f" stroke-width="2.5"/>
+
+    <!-- Central Anchor Hole (Trou central de fixation) -->
+    <circle cx="150" cy="200" r="16" fill="url(#holeDark)" stroke="#40464c" stroke-width="2"/>
+    <circle cx="150" cy="200" r="18" fill="none" stroke="#e8eef2" stroke-width="1.5" opacity="0.6"/>
+
+    <!-- Upper Folded Wing (Ailette supérieure pliée à 90°) -->
+    <path d="M 60 70 
+             L 240 70 
+             L 225 130 
+             L 75 130 
+             Z" 
+          fill="url(#metalWing)" 
+          stroke="#474d53" 
+          stroke-width="2.5" 
+          stroke-linejoin="round"/>
+    
+    <!-- Top Wing Screw Holes -->
+    <ellipse cx="110" cy="100" rx="10" ry="7" fill="url(#holeDark)" stroke="#303539" stroke-width="1.5"/>
+    <ellipse cx="190" cy="100" rx="10" ry="7" fill="url(#holeDark)" stroke="#303539" stroke-width="1.5"/>
+    <ellipse cx="150" cy="55" rx="8" ry="6" fill="url(#holeDark)" stroke="#303539" stroke-width="1.5"/>
+
+    <!-- Lower Folded Wing (Ailette inférieure pliée à 90°) -->
+    <path d="M 60 330 
+             L 240 330 
+             L 225 270 
+             L 75 270 
+             Z" 
+          fill="url(#metalWing)" 
+          stroke="#474d53" 
+          stroke-width="2.5" 
+          stroke-linejoin="round"/>
+
+    <!-- Bottom Wing Screw Holes -->
+    <ellipse cx="110" cy="300" rx="10" ry="7" fill="url(#holeDark)" stroke="#303539" stroke-width="1.5"/>
+    <ellipse cx="190" cy="300" rx="10" ry="7" fill="url(#holeDark)" stroke="#303539" stroke-width="1.5"/>
+    <ellipse cx="150" cy="345" rx="8" ry="6" fill="url(#holeDark)" stroke="#303539" stroke-width="1.5"/>
+
+    <!-- Stiffener ribs & fold lines -->
+    <line x1="75" y1="130" x2="225" y2="130" stroke="#ffffff" stroke-width="2" opacity="0.7"/>
+    <line x1="75" y1="270" x2="225" y2="270" stroke="#ffffff" stroke-width="2" opacity="0.7"/>
+    <line x1="75" y1="70" x2="75" y2="330" stroke="#ffffff" stroke-width="1.5" opacity="0.5"/>
+  </g>
+</svg>

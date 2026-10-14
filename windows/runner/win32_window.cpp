@@ -226,6 +226,18 @@ Win32Window::MessageHandler(HWND hwnd,
       }
       break;
 
+    case WM_SETFOCUS:
+      // DefWindowProc(WM_ACTIVATE) above gives keyboard focus back to this
+      // top-level window, undoing the SetFocus(child_content_) call. Windows
+      // delivers WM_MOUSEWHEEL to the focus window, so the Flutter view
+      // stopped receiving the wheel after returning from the taskbar until
+      // a Flutter widget requested focus. Always forward focus to the view.
+      if (child_content_ != nullptr) {
+        SetFocus(child_content_);
+        return 0;
+      }
+      break;
+
     case WM_DWMCOLORIZATIONCOLORCHANGED:
       UpdateTheme(hwnd);
       return 0;

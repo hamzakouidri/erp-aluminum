@@ -149,7 +149,10 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     setState(() {}); // يُحدِّث حساب السعر فوراً
 
-    _debounce = Timer(const Duration(milliseconds: 600), () {
+    // Keep typing fluid, while refreshing the dependent description and
+    // preview shortly after the user pauses. Totals themselves are rebuilt
+    // immediately by the setState above.
+    _debounce = Timer(const Duration(milliseconds: 220), () {
       if (!mounted) return;
       final p = widget.products[index];
       final double newW = double.tryParse(_widthControllers[index]!.text) ?? 0;
@@ -2217,7 +2220,7 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
                                           ),
                                         ),
                                         Text(
-                                          '${((double.tryParse(_priceControllers[itemIndex]!.text) ?? 0.0) * (int.tryParse(_quantityControllers[itemIndex]!.text) ?? 1)).toStringAsFixed(2)} ${t('دج')}',
+                                          '${((double.tryParse(_priceControllers[itemIndex]!.text) ?? 0.0) * (int.tryParse(_quantityControllers[itemIndex]!.text) ?? 0)).toStringAsFixed(2)} ${t('دج')}',
                                           style: TextStyle(
                                             color: isDark
                                                 ? Colors.lightBlueAccent

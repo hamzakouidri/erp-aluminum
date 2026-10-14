@@ -341,7 +341,7 @@ bool isBardagePanelSubtype(String? value) {
       normalized.contains('بارداش') ||
       normalized.contains('برداج') ||
       normalized.contains('برداش') ||
-      RegExp(r'ب(?:ا)?ر(?:ا)?د(?:ا)?[جش]').hasMatch(normalized);
+      RegExp(r'با?را?دا?[جش]').hasMatch(normalized);
 }
 
 bool decorPanelFitsSpace({
@@ -5758,6 +5758,10 @@ class WindowModel extends ChangeNotifier {
   Map<String, dynamic>? caissonPayload;
   bool isMoustiquaire = false;
   Map<String, dynamic>? moustiquairePayload;
+
+  /// Optional mosquito screen sold with this window. It is intentionally not
+  /// painted on the technical drawing; it only participates in pricing.
+  bool hasMoustiquaireAddon = false;
   bool isGlassWork = false;
   Map<String, dynamic>? glassWorkPayload;
   bool showBottomWall = true;
@@ -6279,12 +6283,33 @@ class WindowModel extends ChangeNotifier {
     return 30;
   }
 
-  /// Height governed by espagnolette catalogue ranges. The shutter box is
-  /// drawn first and occupies part of the opening; only the remaining height
-  /// selects the matching min/max rule. Without a shutter, use the full
-  /// drawing height.
-  double get effectiveEspagnoletteHeightMm =>
-      math.max(0.0, height.toDouble() - (hasShutter ? shutterBoxHeight : 0.0));
+  /// Actual height available to an opening sash in the drawing.
+  ///
+  /// A fixed-light partition above or below the sash must reduce this value;
+  /// using the outer-frame height would select an espagnolette that is too
+  /// long. During early catalogue loading (before zones exist), fall back to
+  /// the frame opening below the shutter box.
+  double get openingSashHeightMm {
+    final openingHeights = zones
+        .where(
+          (zone) =>
+              zone.content == ZoneContent.singleSash ||
+              zone.content == ZoneContent.doubleSash,
+        )
+        .map((zone) => zone.boundary.height)
+        .where((zoneHeight) => zoneHeight > 0)
+        .toList(growable: false);
+    if (openingHeights.isNotEmpty) return openingHeights.reduce(math.max);
+    return math.max(
+      0.0,
+      height.toDouble() - (hasShutter ? shutterBoxHeight : 0.0),
+    );
+  }
+
+  /// Height passed unchanged to the catalogue min/max rules. The configured
+  /// rule ranges decide which espagnolette fits this sash; no hidden
+  /// deduction is applied here.
+  double get effectiveEspagnoletteHeightMm => openingSashHeightMm;
 
   int get gachePerEspagnolette {
     int len = cremoneLengthCm;
@@ -6560,9 +6585,7 @@ class WindowModel extends ChangeNotifier {
   double get standaloneSideCoverWidth {
     double readTextDimension(Object? value) {
       final text = value?.toString().replaceAll(',', '.') ?? '';
-      if (text.trim().isEmpty) {
-        return 0.0;
-      }
+      if (text.trim().isEmpty) return 0.0;
       final matches = RegExp(r'\d+(?:\.\d+)?')
           .allMatches(text)
           .map((match) => double.tryParse(match.group(0)!))
@@ -13081,7 +13104,9 @@ class WindowModel extends ChangeNotifier {
         Set<int>.from(profileAngleJunctions),
         profileAngleJunctionsDisabled,
         viewAs90DegreeCorner,
-        frameOverride == null ? null : Map<String, dynamic>.from(frameOverride!),
+        frameOverride == null
+            ? null
+            : Map<String, dynamic>.from(frameOverride!),
         slidingFrameOverride == null
             ? null
             : Map<String, dynamic>.from(slidingFrameOverride!),
@@ -13667,7 +13692,9 @@ class WindowModel extends ChangeNotifier {
         Set<int>.from(profileAngleJunctions),
         profileAngleJunctionsDisabled,
         viewAs90DegreeCorner,
-        frameOverride == null ? null : Map<String, dynamic>.from(frameOverride!),
+        frameOverride == null
+            ? null
+            : Map<String, dynamic>.from(frameOverride!),
         slidingFrameOverride == null
             ? null
             : Map<String, dynamic>.from(slidingFrameOverride!),
@@ -13832,7 +13859,9 @@ class WindowModel extends ChangeNotifier {
         Set<int>.from(profileAngleJunctions),
         profileAngleJunctionsDisabled,
         viewAs90DegreeCorner,
-        frameOverride == null ? null : Map<String, dynamic>.from(frameOverride!),
+        frameOverride == null
+            ? null
+            : Map<String, dynamic>.from(frameOverride!),
         slidingFrameOverride == null
             ? null
             : Map<String, dynamic>.from(slidingFrameOverride!),
@@ -21033,9 +21062,12 @@ class WindowModel extends ChangeNotifier {
           return readPrice(accessory['price_dzd'] ?? accessory['price']);
         }
 
-        final selectedColorId =
-            selectedAccessoryColor?['id'] ?? selectedDbColor?['id'];
-        if (selectedColorId == null) return 0.0;
+        final selectedColorId = selectedAccessoryColor?['id'];
+        // No accessory colour means a genuinely colourless accessory. Its
+        // base price remains authoritative; profile colour is unrelated.
+        if (selectedColorId == null) {
+          return readPrice(accessory['price_dzd'] ?? accessory['price']);
+        }
         for (final colorPrice in colorPrices) {
           if (colorPrice['color_id']?.toString() ==
               selectedColorId.toString()) {

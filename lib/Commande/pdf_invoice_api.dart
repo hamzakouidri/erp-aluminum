@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:math' as math;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -12,6 +13,7 @@ import '../settings/app_settings.dart';
 import '../arabic_reshaper/arabic_reshaper.dart';
 import 'package:printing/printing.dart';
 import 'devis_builder.dart';
+import '../services/pdf_branding.dart';
 
 class PdfInvoiceApi {
   static AppLanguage _currentLang = AppLanguage.arabic;
@@ -992,8 +994,11 @@ class PdfInvoiceApi {
       final double aspect = (item.width > 0 && item.height > 0)
           ? item.width / item.height
           : 4 / 3;
-      final double imgH = 190.0;
-      final double imgW = (imgH * aspect).clamp(0.0, _tableW);
+      // Full-width mode is the technical-view mode: use as much of the page
+      // as possible while preserving the drawing aspect ratio.
+      const double maxImgH = 300.0;
+      final double imgW = math.min(_tableW, maxImgH * aspect);
+      final double imgH = math.min(maxImgH, imgW / math.max(aspect, 0.01));
       return pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
@@ -1576,7 +1581,9 @@ class PdfInvoiceApi {
         data.documentTitleKey == 'BON_ROUTE' ||
         (data.documentTitleKey?.toLowerCase().contains('livraison') ?? false) ||
         (data.documentTitleKey?.toLowerCase().contains('bl') ?? false);
-    if (!isOfficial) return pw.SizedBox();
+    if (!isOfficial) {
+      return pw.Center(child: PdfBranding.footerMark(_cachedFont!));
+    }
 
     final parts = <String>[];
     if (isOfficial) {
@@ -1605,6 +1612,7 @@ class PdfInvoiceApi {
         ),
       );
     }
+    children.add(PdfBranding.footerMark(_cachedFont!));
 
     return pw.Container(
       alignment: pw.Alignment.center,

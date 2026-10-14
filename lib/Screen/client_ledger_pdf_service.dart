@@ -15,6 +15,7 @@ import 'package:database_data/arabic_reshaper/arabic_reshaper.dart';
 import '../settings/localization.dart';
 import '../settings/app_settings.dart';
 import '../services/pdf_font_cache.dart';
+import '../services/pdf_branding.dart';
 
 class ClientLedgerPdfService {
   static String _safeFilePart(Object? value, {String fallback = 'client'}) {
@@ -96,6 +97,7 @@ class ClientLedgerPdfService {
         pageFormat: PdfPageFormat.a4,
         textDirection: pw.TextDirection.ltr, // _ar() visual order requires LTR run direction
         margin: const pw.EdgeInsets.all(30),
+        footer: (_) => pw.Center(child: PdfBranding.footerMark(fontRegular)),
         build: (context) {
           return [
             // Header Section

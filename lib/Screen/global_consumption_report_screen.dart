@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../services/pdf_font_cache.dart';
+import '../services/pdf_branding.dart';
 
 class GlobalConsumptionReportScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -137,6 +138,7 @@ class _GlobalConsumptionReportScreenState
         margin: const pw.EdgeInsets.all(32),
         textDirection: pw.TextDirection.rtl,
         theme: pw.ThemeData.withFont(base: ttf),
+        footer: (_) => pw.Center(child: PdfBranding.footerMark(ttf)),
         build: (pw.Context context) {
           return [
             pw.Header(

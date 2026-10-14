@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:database_data/services/pdf_branding.dart';
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/pdf_font_cache.dart';
@@ -532,10 +533,7 @@ class MaterialSalePdfService {
     return pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [
-        pw.Text(
-          'ERP Aluminium',
-          style: pw.TextStyle(font: regular, fontSize: 7, color: _grey),
-        ),
+        PdfBranding.footerMark(regular, color: _grey, fontSize: 7),
         pw.Text(
           'Page ${context.pageNumber} / ${context.pagesCount}',
           style: pw.TextStyle(font: regular, fontSize: 7, color: _grey),

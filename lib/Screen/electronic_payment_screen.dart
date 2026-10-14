@@ -35,6 +35,11 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
 
   Map<String, dynamic> _gatewayConfig = {};
 
+  AppLanguage get _currentLang =>
+      Provider.of<AppSettingsProvider>(context, listen: false).language;
+
+  String _t(String key) => Localization.translate(key, _currentLang);
+
   @override
   void initState() {
     super.initState();
@@ -88,16 +93,16 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
             _showAwaitingPaymentDialog();
           }
         } else {
-          _showError('تعذر فتح صفحة الدفع البنكية.');
+          _showError(_t('تعذر فتح صفحة الدفع البنكية.'));
         }
       } else {
         _showError(
-          'تعذر إنشاء جلسة الدفع الإلكتروني، يرجى المحاولة لاحقاً أو التحقق من الإعدادات.',
+          _t('تعذر إنشاء جلسة الدفع الإلكتروني، يرجى المحاولة لاحقاً أو التحقق من الإعدادات.'),
         );
       }
     } catch (e) {
       debugPrint('Payment error: $e');
-      _showError('حدث خطأ أثناء الاتصال ببوابة الدفع: $e');
+      _showError('${_t('حدث خطأ أثناء الاتصال ببوابة الدفع:')} $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -210,22 +215,20 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
           _showSuccessDialog();
         }
       } else {
+        final currentStatus = status ?? _t('قيد المعالجة');
         _showError(
-          'لم يتم تأكيد الدفع بعد (الحالة الحالية: ${status ?? "قيد المعالجة"}). يرجى إتمام العملية وإعادة المحاولة.',
+          '${_t('لم يتم تأكيد الدفع بعد (الحالة الحالية: ')}$currentStatus${_t('). يرجى إتمام العملية وإعادة المحاولة.')}',
         );
       }
     } catch (e) {
-      _showError('حدث خطأ أثناء فحص حالة المعاملة: $e');
+      _showError('${_t('حدث خطأ أثناء فحص حالة المعاملة:')} $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
   void _showSuccessDialog() {
-    final lang = Provider.of<AppSettingsProvider>(
-      context,
-      listen: false,
-    ).language;
+    final lang = _currentLang;
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -297,7 +300,7 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
   Future<void> _submitBaridiMobReceipt() async {
     final tx = _baridiMobTxController.text.trim();
     if (tx.isEmpty) {
-      _showError('يرجى إدخال رقم المعاملة من تطبيق بريدي موب.');
+      _showError(_t('يرجى إدخال رقم المعاملة من تطبيق بريدي موب.'));
       return;
     }
 
@@ -313,10 +316,7 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
       );
 
       if (success && mounted) {
-        final lang = Provider.of<AppSettingsProvider>(
-          context,
-          listen: false,
-        ).language;
+        final lang = _currentLang;
         showDialog(
           context: context,
           builder: (ctx) => Directionality(
@@ -358,7 +358,7 @@ class _ElectronicPaymentScreenState extends State<ElectronicPaymentScreen> {
         );
       }
     } catch (e) {
-      _showError('حدث خطأ أثناء إرسال الإشعار: $e');
+      _showError('${_t('حدث خطأ أثناء إرسال الإشعار:')} $e');
     } finally {
       if (mounted) setState(() => _isSubmittingBaridiMob = false);
     }

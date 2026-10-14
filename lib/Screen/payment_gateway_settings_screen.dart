@@ -104,15 +104,20 @@ class _PaymentGatewaySettingsScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_t('إعدادات بوابات الدفع الإلكتروني')),
-        centerTitle: true,
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
+    final lang = Provider.of<AppSettingsProvider>(context).language;
+    return Directionality(
+      textDirection: lang == AppLanguage.arabic
+          ? TextDirection.rtl
+          : TextDirection.ltr,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(_t('إعدادات بوابات الدفع الإلكتروني')),
+          centerTitle: true,
+        ),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 700),
@@ -214,13 +219,15 @@ class _PaymentGatewaySettingsScreenState
                                       size: 22,
                                     ),
                                     const SizedBox(width: 8),
-                                    Text(
-                                      _t(
-                                        'بوابة الدفع Chargily Pay V2 (الذهبية / CIB / Visa / RedotPay)',
-                                      ),
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14.5,
+                                    Expanded(
+                                      child: Text(
+                                        _t(
+                                          'بوابة الدفع Chargily Pay V2 (الذهبية / CIB / Visa / RedotPay)',
+                                        ),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -344,6 +351,7 @@ class _PaymentGatewaySettingsScreenState
                 ),
               ),
             ),
+      ),
     );
   }
 }

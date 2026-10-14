@@ -86,6 +86,20 @@ int orderStatusWeight(String status) {
   return 45;
 }
 
+/// An order remains open until it reaches a terminal lifecycle state.
+bool isOpenOrderStatus(String status) {
+  final value = status.trim().toLowerCase();
+  if (value == 'completed' ||
+      value == 'complete' ||
+      value == 'archived' ||
+      value == 'finished' ||
+      value == 'أرشيف') {
+    return false;
+  }
+  final weight = orderStatusWeight(status);
+  return weight != 100 && weight != 999;
+}
+
 String orderStatusGroupKey(String status) {
   final weight = orderStatusWeight(status);
   return switch (weight) {

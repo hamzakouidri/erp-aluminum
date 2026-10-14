@@ -50,4 +50,24 @@ void main() {
     expect(totals['total']!['selling'], 1000);
     model.dispose();
   });
+
+  test('moustiquaire add-on is priced by window area and quantity', () {
+    final model = WindowModel(db: SqlDatabase(), width: 1200, height: 1500)
+      ..quantity = 2
+      ..hasMoustiquaireAddon = true;
+    final totals = calculateSellingTotals(
+      model: model,
+      items: const [],
+      costMethod: CostMethod.linearMeter,
+      profitMargin: 0,
+      pricePerSqm: 0,
+      linearMeterPrice: 0,
+      shutterSqmPrice: 0,
+      moustiquaireSqmPrice: 2500,
+    );
+
+    expect(totals['moustiquaire']!['selling'], 9000);
+    expect(totals['total']!['selling'], 9000);
+    model.dispose();
+  });
 }

@@ -293,7 +293,7 @@ class SupabaseAccountService {
     if (code.isEmpty || cleanEmail.isEmpty) {
       throw Exception('كود الورشة وبريد العامل مطلوبان.');
     }
-    await _client.rpc(
+    final saved = await _client.rpc(
       'update_workshop_member_permissions',
       params: {
         'target_code': code,
@@ -303,6 +303,10 @@ class SupabaseAccountService {
         'member_blocked': blocked,
       },
     );
+    if (saved != true) {
+      throw StateError('لم يؤكد Supabase حفظ صلاحيات العامل.');
+    }
+    invalidateCurrentAccountCache();
   }
 
   Future<SupabaseAccountSnapshot?> loadCurrentAccount({

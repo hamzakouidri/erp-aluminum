@@ -22,7 +22,6 @@ class _AiScannerScreenState extends State<AiScannerScreen>
     with SingleTickerProviderStateMixin {
   File? _imageFile;
   bool _isScanning = false;
-  String? _apiKey;
 
   // فحص حالة الخطوة الحالية
   int _currentStep =
@@ -31,6 +30,7 @@ class _AiScannerScreenState extends State<AiScannerScreen>
   ExtractedInvoice? _extractedInvoice;
   List<Map<String, dynamic>> _catalogSections = [];
   List<Map<String, dynamic>> _catalogSeries = [];
+  List<Map<String, dynamic>> _catalogColors = [];
 
   // خريطة مطابقة السلعة بقاعدة البيانات: {مؤشر السلعة: معرف القسم المطابق أو "new" أو "ignore"}
   final Map<int, dynamic> _itemMappings = {};
@@ -87,13 +87,12 @@ class _AiScannerScreenState extends State<AiScannerScreen>
       final dbClient = await widget.db.db;
       final sections = await dbClient!.query('Sections');
       final series = await dbClient.query('Series');
+      final colors = await dbClient.query('Colors');
 
       setState(() {
         _catalogSections = sections;
         _catalogSeries = series;
-        // هنا يمكن حفظ واسترجاع الـ API Key من قاعدة البيانات أو الشيرد بريفرنسز
-        // للسهولة، سنسمح للمستخدم بإدخاله في الشاشة أو استخدام المحاكي المدمج مباشرة
-        _apiKey = 'AQ.Ab8RN6K0VzsqO944GLUZOKqevI4ncAbuewu7Cx8pEUg3O-xVaA';
+        _catalogColors = colors;
       });
     } catch (_) {}
   }
@@ -150,6 +149,14 @@ class _AiScannerScreenState extends State<AiScannerScreen>
       final invoice = await AiInvoiceService.analyzeInvoice(
         bytes,
         apiKey: apiKey,
+        mimeType: _mimeTypeForPath(_imageFile!.path),
+        catalogHints: _catalogSections.map((section) {
+          return {
+            'code': (section['code'] ?? '').toString(),
+            'name': (section['name'] ?? '').toString(),
+            'color': '',
+          };
+        }).toList(),
       );
 
       setState(() {
@@ -177,33 +184,119 @@ class _AiScannerScreenState extends State<AiScannerScreen>
     }
   }
 
+  String _mimeTypeForPath(String path) {
+    switch (p.extension(path).toLowerCase()) {
+      case '.png':
+        return 'image/png';
+      case '.webp':
+        return 'image/webp';
+      case '.heic':
+        return 'image/heic';
+      case '.heif':
+        return 'image/heif';
+      default:
+        return 'image/jpeg';
+    }
+  }
+
   // مطابقة السلع المستخرجة تلقائياً مع الكتالوج المتوفر بقاعدة البيانات
   void _performAutomaticMatching() {
     if (_extractedInvoice == null) return;
 
     for (int i = 0; i < _extractedInvoice!.items.length; i++) {
       final item = _extractedInvoice!.items[i];
-      final code = item.itemCode.trim().toUpperCase();
-
-      // البحث عن تطابق الكود في المقاطع المحلية
-      int matchedSectionId = -1;
-      for (var sec in _catalogSections) {
-        final secCode = (sec['code'] ?? '').toString().trim().toUpperCase();
-        if (secCode == code && code.isNotEmpty) {
-          matchedSectionId = sec['id'] as int;
-          break;
+      Map<String, dynamic>? best;
+      var bestScore = 0.0;
+      for (final section in _catalogSections) {
+        final score = _catalogMatchScore(item, section);
+        if (score > bestScore) {
+          bestScore = score;
+          best = section;
         }
       }
 
-      if (matchedSectionId != -1) {
-        // تطابق تلقائي
-        _itemMappings[i] = matchedSectionId;
+      // High precision matches are accepted automatically. We deliberately
+      // keep weaker guesses visible for human review instead of losing lines.
+      if (best != null && bestScore >= 0.72) {
+        _itemMappings[i] = best['id'] as int;
       } else {
-        // يحتاج إلى مراجعة يدوية (تسأله الشاشة عنه)
         _itemMappings[i] = null;
       }
     }
     setState(() {});
+  }
+
+  String _normaliseMatchText(String value) {
+    return value
+        .toLowerCase()
+        .replaceAll(RegExp(r'[أإآ]'), 'ا')
+        .replaceAll('ة', 'ه')
+        .replaceAll(RegExp(r'[^a-z0-9\u0600-\u06ff]+'), ' ')
+        .trim();
+  }
+
+  String _compactCode(String value) => _normaliseMatchText(value)
+      .replaceAll(RegExp(r'\s+'), '')
+      .replaceAll('o', '0');
+
+  Set<String> _tokens(String value) => _normaliseMatchText(value)
+      .split(' ')
+      .where((token) => token.length > 1)
+      .toSet();
+
+  double _catalogMatchScore(
+    ExtractedInvoiceItem item,
+    Map<String, dynamic> section,
+  ) {
+    final itemCode = _compactCode(item.itemCode);
+    final sectionCode = _compactCode((section['code'] ?? '').toString());
+    if (itemCode.isNotEmpty && sectionCode.isNotEmpty) {
+      if (itemCode == sectionCode) return 1.0;
+      if (itemCode.contains(sectionCode) || sectionCode.contains(itemCode)) {
+        return 0.88;
+      }
+    }
+
+    final sourceTokens = _tokens(
+      '${item.itemName} ${item.rawDescription} ${item.itemCode}',
+    );
+    final targetTokens = _tokens(
+      '${section['name'] ?? ''} ${section['code'] ?? ''} ${section['type'] ?? ''}',
+    );
+    if (sourceTokens.isEmpty || targetTokens.isEmpty) return 0.0;
+    final intersection = sourceTokens.intersection(targetTokens).length;
+    final union = sourceTokens.union(targetTokens).length;
+    final jaccard = intersection / union;
+    final overlap = intersection /
+        (sourceTokens.length < targetTokens.length
+            ? sourceTokens.length
+            : targetTokens.length);
+    // Supplier descriptions usually contain extra words (colour, bar length,
+    // packaging). The overlap coefficient still recognises the catalogue name
+    // when all its meaningful tokens occur inside that longer description.
+    var score = jaccard > overlap * 0.82 ? jaccard : overlap * 0.82;
+    if (itemCode.isNotEmpty && sectionCode.isNotEmpty &&
+        (itemCode.startsWith(sectionCode) || sectionCode.startsWith(itemCode))) {
+      score += 0.35;
+    }
+    return score.clamp(0.0, 1.0).toDouble();
+  }
+
+  int? _colorIdFor(String rawColor) {
+    final normalized = _normaliseMatchText(rawColor);
+    if (normalized.isEmpty || normalized.contains('غير مذكور')) return null;
+    final aliases = normalized.contains('fbm') ||
+            normalized.contains('bois') ||
+            normalized.contains('خشب')
+        ? <String>{'fbm', 'bois', 'خشبي', 'خشب'}
+        : _tokens(normalized);
+    for (final color in _catalogColors) {
+      final colorText = _normaliseMatchText(
+        '${color['name'] ?? ''} ${color['code'] ?? ''}',
+      );
+      if (aliases.any(colorText.contains)) return color['id'] as int?;
+    }
+    return null;
   }
 
   @override
@@ -812,6 +905,32 @@ class _AiScannerScreenState extends State<AiScannerScreen>
                         color: _textDim,
                       ),
                     ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'اللون: ${item.color.isEmpty ? 'غير مذكور' : item.color}'
+                      '${item.unit.isEmpty ? '' : ' | الوحدة: ${item.unit}'}'
+                      '${item.confidence <= 0 ? '' : ' | دقة القراءة: ${(item.confidence * 100).round()}%'}',
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 11,
+                        color: item.confidence > 0 && item.confidence < 0.65
+                            ? _orange
+                            : _textDim,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (item.rawDescription.isNotEmpty &&
+                        item.rawDescription != item.itemName)
+                      Text(
+                        'النص المقروء: ${item.rawDescription}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 10,
+                          color: _textDim,
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -1038,6 +1157,13 @@ class _AiScannerScreenState extends State<AiScannerScreen>
 
   // نافذة اختيار مقطع موجود مسبقاً لربط السلعة به
   void _showLinkToExistingDialog(ExtractedInvoiceItem item, int itemIndex) {
+    final rankedSections = List<Map<String, dynamic>>.from(_catalogSections)
+      ..sort(
+        (a, b) => _catalogMatchScore(
+          item,
+          b,
+        ).compareTo(_catalogMatchScore(item, a)),
+      );
     showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -1060,7 +1186,7 @@ class _AiScannerScreenState extends State<AiScannerScreen>
           content: SizedBox(
             width: double.maxFinite,
             height: 300,
-            child: _catalogSections.isEmpty
+            child: rankedSections.isEmpty
                 ? Center(
                     child: Text(
                       Localization.translate(
@@ -1071,9 +1197,9 @@ class _AiScannerScreenState extends State<AiScannerScreen>
                     ),
                   )
                 : ListView.builder(
-                    itemCount: _catalogSections.length,
+                    itemCount: rankedSections.length,
                     itemBuilder: (context, index) {
-                      final sec = _catalogSections[index];
+                      final sec = rankedSections[index];
                       return ListTile(
                         title: Text(
                           '${sec['code']} - ${sec['name']}',
@@ -1517,6 +1643,7 @@ class _AiScannerScreenState extends State<AiScannerScreen>
             itemType: 'Sections',
             // AI Scanner specifically handles aluminum sections for now
             itemId: mapping as int,
+            colorId: _colorIdFor(item.color),
             quantity: item.quantity,
             price: item.price,
           );

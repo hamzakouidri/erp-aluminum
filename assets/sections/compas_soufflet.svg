@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="100%" height="100%">
+  <defs>
+    <!-- Steel Guide Rail Gradient -->
+    <linearGradient id="steelBar" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#E6EAED"/>
+      <stop offset="30%" stop-color="#C5CCD2"/>
+      <stop offset="70%" stop-color="#939CA4"/>
+      <stop offset="100%" stop-color="#6E7780"/>
+    </linearGradient>
+    <linearGradient id="brassPivot" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFE082"/>
+      <stop offset="50%" stop-color="#FFB300"/>
+      <stop offset="100%" stop-color="#E65100"/>
+    </linearGradient>
+    <!-- Vivid Red Composite Handle Gradient -->
+    <linearGradient id="redHandle" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF5252"/>
+      <stop offset="40%" stop-color="#E53935"/>
+      <stop offset="85%" stop-color="#C62828"/>
+      <stop offset="100%" stop-color="#8E0000"/>
+    </linearGradient>
+    <filter id="compasShadow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="3" dy="4" stdDeviation="3.5" flood-opacity="0.32"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#compasShadow)">
+    <!-- Base Mounting Bracket (Frame side) -->
+    <path d="M 20 40 
+             L 50 40 
+             L 50 85 
+             L 38 85 
+             L 38 65 
+             L 20 65 Z" 
+          fill="url(#steelBar)" 
+          stroke="#4F5860" 
+          stroke-width="1.8"/>
+    <!-- Bracket Mounting Holes -->
+    <circle cx="28" cy="52" r="4" fill="#373E44" stroke="#8C959D" stroke-width="1"/>
+    <circle cx="42" cy="52" r="3.5" fill="#373E44" stroke="#8C959D" stroke-width="1"/>
+
+    <!-- Main Slotted Guide Arm / Notched Rail (SR. 110 DLL) -->
+    <!-- Positioned diagonally or horizontally -->
+    <path d="M 45 68 
+             L 165 142 
+             L 160 152 
+             L 142 140 
+             L 138 143 
+             L 134 135 
+             L 130 138 
+             L 126 130 
+             L 122 133 
+             L 118 125 
+             L 114 128 
+             L 110 120 
+             L 38 78 Z" 
+          fill="url(#steelBar)" 
+          stroke="#424A51" 
+          stroke-width="2" 
+          stroke-linejoin="round"/>
+
+    <!-- Center Slide Channel Slot -->
+    <path d="M 58 78 L 125 120" stroke="#2B3035" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M 58 78 L 125 120" stroke="#E6EAED" stroke-width="1" stroke-linecap="round" opacity="0.6"/>
+
+    <!-- Stamped Model Markings Text impression -->
+    <text x="80" y="93" fill="#434B52" font-size="6" font-family="Arial, sans-serif" font-weight="bold" transform="rotate(32 80 93)" opacity="0.7">SR. 110 DLL</text>
+
+    <!-- Secondary Articulated Link Bar -->
+    <path d="M 42 74 
+             L 130 52 
+             L 133 62 
+             L 46 84 Z" 
+          fill="url(#steelBar)" 
+          stroke="#3C444A" 
+          stroke-width="1.8" 
+          stroke-linejoin="round"/>
+
+    <!-- Brass / Rivet Pivot Joints -->
+    <circle cx="45" cy="74" r="5.5" fill="url(#brassPivot)" stroke="#4A3400" stroke-width="1.2"/>
+    <circle cx="45" cy="74" r="2.2" fill="#5D4037"/>
+
+    <circle cx="131" cy="57" r="5" fill="url(#brassPivot)" stroke="#4A3400" stroke-width="1.2"/>
+    <circle cx="131" cy="57" r="2" fill="#5D4037"/>
+
+    <!-- Prominent Red Operating Handle / Levier Rouge -->
+    <!-- The distinctive red nylon latch/lever with grip contour -->
+    <path d="M 125 110 
+             Q 138 98 152 104 
+             L 178 122 
+             Q 186 128 184 136 
+             L 180 144 
+             Q 176 150 166 145 
+             L 142 130 
+             Q 130 124 125 110 Z" 
+          fill="url(#redHandle)" 
+          stroke="#7A0B0B" 
+          stroke-width="2" 
+          stroke-linejoin="round"/>
+
+    <!-- Red Handle Ergonomic Ribs & Highlight -->
+    <path d="M 148 107 Q 165 119 174 130" stroke="#FF8A80" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.8"/>
+    <path d="M 158 132 L 165 137" stroke="#9E1414" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 164 127 L 171 132" stroke="#9E1414" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 170 122 L 177 127" stroke="#9E1414" stroke-width="2" stroke-linecap="round"/>
+
+    <!-- Handle Pivot Pin -->
+    <circle cx="137" cy="116" r="4.5" fill="#37474F" stroke="#263238" stroke-width="1.2"/>
+    <circle cx="137" cy="116" r="2" fill="#ECEFF1"/>
+
+    <!-- Sash End Mounting Flange -->
+    <path d="M 155 146 L 172 157 L 164 168 L 147 157 Z" fill="url(#steelBar)" stroke="#3E454B" stroke-width="1.5"/>
+    <circle cx="160" cy="158" r="3" fill="#2C3136"/>
+  </g>
+</svg>

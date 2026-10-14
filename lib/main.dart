@@ -8,6 +8,7 @@ import 'package:flutter/gestures.dart' show GestureBinding;
 import 'package:flutter/services.dart'
     show HardwareKeyboard, KeyDownEvent, LogicalKeyboardKey;
 import 'package:firebase_core/firebase_core.dart' as firebase_core;
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
 import 'package:provider/provider.dart';
 import 'package:database_data/settings/app_settings.dart';
@@ -35,6 +36,11 @@ import 'package:window_manager/window_manager.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Register before runApp so Android/iOS can enter the background isolate
+  // when the application process is suspended or was launched by a push.
+  if (kIsWeb || Platform.isAndroid || Platform.isIOS || Platform.isMacOS) {
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  }
 
   // 🛡️ حماية شاملة لمنع الانهيار والإغلاق المفاجئ للتطبيق (Crash Prevention)
   FlutterError.onError = (FlutterErrorDetails details) {
@@ -837,16 +843,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           },
           child: Listener(
             behavior: HitTestBehavior.translucent,
-            onPointerHover: (e) {
-              debugPrint('HOVER ${e.position}');
-              DesktopScrollCoordinator.rememberPointerPosition(e);
-            },
+            onPointerHover: DesktopScrollCoordinator.rememberPointerPosition,
             onPointerMove: DesktopScrollCoordinator.rememberPointerPosition,
-            onPointerDown: (e) => debugPrint('DOWN ${e.position}'),
-            onPointerSignal: (e) {
-              debugPrint('POINTER ${e.runtimeType}');
-              DesktopScrollCoordinator.handlePointerSignal(e);
-            },
+            onPointerSignal: DesktopScrollCoordinator.handlePointerSignal,
             child: MediaQuery(
               data: MediaQuery.of(
                 context,

@@ -93,6 +93,10 @@ Deno.serve(async (req) => {
     const data = Object.fromEntries(
       Object.entries(input.data ?? {}).map(([key, value]) => [key, String(value ?? "")]),
     );
+    // The authenticated caller is the authoritative actor. Never trust a
+    // client-supplied id for recipient filtering, but always forward it so a
+    // foreground client can also reject its own event defensively.
+    data.sender_user_id = user.id;
     const results = await Promise.all((tokenRows ?? []).map(async ({ token }) => {
       const response = await fetch(endpoint, {
         method: "POST",

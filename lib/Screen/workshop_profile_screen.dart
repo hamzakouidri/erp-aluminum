@@ -305,6 +305,15 @@ class _WorkshopProfileScreenState extends State<WorkshopProfileScreen> {
         !_pageScrollController.hasClients) {
       return;
     }
+    // Only claim the wheel when the page can still move; at an edge the
+    // event must stay available to other scrollables.
+    final current = _pageScrollController.position;
+    if (!current.hasContentDimensions) return;
+    final target = (current.pixels + event.scrollDelta.dy).clamp(
+      current.minScrollExtent,
+      current.maxScrollExtent,
+    );
+    if ((target - current.pixels).abs() < 0.5) return;
     GestureBinding.instance.pointerSignalResolver.register(event, (_) {
       if (!mounted || !_pageScrollController.hasClients) return;
       final position = _pageScrollController.position;

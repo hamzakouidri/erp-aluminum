@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/gestures.dart';
 import 'package:database_data/widgets/app_material.dart';
+import 'package:database_data/widgets/desktop_scroll_behavior.dart';
 import 'package:provider/provider.dart';
 
 String _orderWorkspaceText(BuildContext context, String key) {
@@ -450,7 +451,7 @@ class _OrderWorkspaceScreenState extends State<OrderWorkspaceScreen> {
                   onPointerSignal: _handleTabPointerSignal,
                   child: SizedBox(
                     height: 52,
-                    child: Scrollbar(
+                    child: ExplicitScrollbar(
                       controller: _tabsScrollController,
                       interactive: true,
                       thumbVisibility:

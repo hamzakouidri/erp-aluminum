@@ -90,4 +90,51 @@ void main() {
     expect(actions, ['0 A', '1 F', 'edit 1']);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('desktop rows show hover shadow and a fallback context menu',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final actions = <String>[];
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: ResizableColumnsTable(
+          columns: const [
+            ResizableTableColumn(
+              id: 'item',
+              label: Text('Items'),
+              initialWidth: 300,
+            ),
+          ],
+          rows: [
+            ResizableTableRow(
+              reorderId: '42',
+              cells: const [Text('Window 42')],
+              onTap: () => actions.add('open'),
+              onDoubleTap: () => actions.add('edit'),
+            ),
+          ],
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(tester.getCenter(find.text('Window 42')));
+    await tester.pump(const Duration(milliseconds: 150));
+    final surface = tester.widget<AnimatedContainer>(
+      find.byKey(const ValueKey('table_row_surface_42')),
+    );
+    final decoration = surface.decoration! as BoxDecoration;
+    expect(decoration.boxShadow, isNotEmpty);
+
+    await tester.tap(find.text('Window 42'), buttons: kSecondaryMouseButton);
+    await tester.pumpAndSettle();
+    expect(find.text('فتح'), findsOneWidget);
+    expect(find.text('تعديل'), findsOneWidget);
+    await tester.tap(find.text('تعديل'));
+    await tester.pumpAndSettle();
+    expect(actions, ['edit']);
+    expect(tester.takeException(), isNull);
+  });
 }

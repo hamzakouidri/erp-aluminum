@@ -13,6 +13,7 @@ import '../services/material_sale_pdf_service.dart';
 import 'inventory_screen.dart';
 import 'app_workspace_shell.dart';
 import '../widgets/resizable_columns_table.dart';
+import '../widgets/numeric_filter_search_field.dart';
 
 enum _SalesSection {
   dashboard,
@@ -50,8 +51,23 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
   String _searchQuery = '';
   bool _showSearch = false;
   final TextEditingController _searchCtrl = TextEditingController();
-  _SalesViewMode _viewMode = _SalesViewMode.cards;
+  _SalesViewMode _viewMode = _SalesViewMode.table;
   int? _selectedSaleId;
+  final Map<String, TextEditingController> _tableFilters = {
+    for (final key in <String>[
+      'code',
+      'client',
+      'created_at',
+      'created_by',
+      'updated_at',
+      'updated_by',
+      'type',
+      'status',
+      'amount',
+      'link',
+    ])
+      key: TextEditingController(),
+  };
 
   List<Map<String, dynamic>> _sales = [];
   bool _loading = true;
@@ -87,6 +103,9 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
     _syncSub?.cancel();
     _syncRefreshDebounce?.cancel();
     _searchCtrl.dispose();
+    for (final controller in _tableFilters.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -184,6 +203,13 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
 
   // ─── Actions ─────────────────────────────────────────────────────────────
   Future<void> _createNew() async {
+    final settings = context.read<AppSettingsProvider>();
+    if (!settings.canCreateStoreSales()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_t('ليست لديك صلاحية إنشاء وثائق المحل'))),
+      );
+      return;
+    }
     final docType = _initialDocTypeForSection();
     final uniqueId = DateTime.now().microsecondsSinceEpoch;
     openAdaptiveScreen(
@@ -249,6 +275,12 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
   }
 
   Future<void> _confirmDelete(Map<String, dynamic> sale) async {
+    if (!context.read<AppSettingsProvider>().canDeleteStoreSales()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_t('ليست لديك صلاحية حذف وثائق المحل'))),
+      );
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -869,11 +901,58 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
     return codes.isEmpty ? '—' : codes.join(' ↔ ');
   }
 
+  bool get _hasTableFilters =>
+      _tableFilters.values.any((controller) => controller.text.trim().isNotEmpty);
+
+  void _clearTableFilters() {
+    for (final controller in _tableFilters.values) {
+      controller.clear();
+    }
+    setState(() {});
+  }
+
+  List<Map<String, dynamic>> _applyTableFilters(
+    List<Map<String, dynamic>> sales,
+  ) {
+    String value(String key) => _tableFilters[key]!.text.trim().toLowerCase();
+    bool contains(String source, String key) {
+      final query = value(key);
+      return query.isEmpty || source.toLowerCase().contains(query);
+    }
+
+    return sales.where((sale) {
+      return contains((sale['sale_code'] ?? '').toString(), 'code') &&
+          contains((sale['client_name'] ?? '').toString(), 'client') &&
+          contains(_fmtDate(sale['created_at']?.toString()), 'created_at') &&
+          contains((sale['created_by'] ?? '').toString(), 'created_by') &&
+          contains(_fmtDate(sale['updated_at']?.toString()), 'updated_at') &&
+          contains((sale['updated_by'] ?? '').toString(), 'updated_by') &&
+          contains(_docTypeLabel(sale['doc_type'] as String?), 'type') &&
+          contains(_statusLabel(sale['status'] as String?), 'status') &&
+          contains(_fmtAmount(sale['net_total']), 'amount') &&
+          contains(_linkedDocumentLabel(sale), 'link');
+    }).toList();
+  }
+
+  Widget _salesFilter(String key, String hint) {
+    final lang = context.read<AppSettingsProvider>().language;
+    return CompactTableFilterField(
+      hintText: _t(hint),
+      controller: _tableFilters[key],
+      lang: lang,
+      onTextChanged: (_) => setState(() {}),
+    );
+  }
+
   Widget _buildSalesTable(List<Map<String, dynamic>> sales) {
-    if (sales.isEmpty) return _buildSalesList(sales);
+    final filteredSales = _applyTableFilters(sales);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = Theme.of(context).cardColor;
+    final borderColor = isDark
+        ? ResizableColumnsTable.darkBorderColor
+        : ResizableColumnsTable.lightBorderColor;
     final headerStyle = TextStyle(
-      color: isDark ? Colors.white : const Color(0xFF18233B),
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
       fontWeight: FontWeight.bold,
       fontSize: 12,
       fontFamily: 'Cairo',
@@ -884,74 +963,122 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
       if (created == null || updated == null) return false;
       return updated.difference(created).abs() > const Duration(seconds: 5);
     }
-    return ResizableColumnsTable(
+    final table = ResizableColumnsTable(
       persistenceKey: 'material_sales_documents_v2',
-      headerColor: isDark ? Colors.grey.shade900 : Colors.blueGrey.shade800,
-      borderColor: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
-      rowColor: isDark ? const Color(0xFF171721) : Colors.white,
+      headerColor: isDark
+          ? ResizableColumnsTable.darkHeaderColor
+          : ResizableColumnsTable.lightHeaderColor,
+      filterRowColor: isDark
+          ? ResizableColumnsTable.darkFilterColor
+          : ResizableColumnsTable.lightFilterColor,
+      borderColor: borderColor,
+      rowColor: isDark
+          ? ResizableColumnsTable.darkRowColor
+          : ResizableColumnsTable.lightRowColor,
       headerMinHeight: 52,
+      filterRowMinHeight: 52,
       rowMinHeight: 64,
       maxBodyHeight: MediaQuery.sizeOf(context).height - 330,
+      emptyPlaceholder: Center(
+        child: Text(
+          _t('لا توجد نتيجة مطابقة'),
+          style: TextStyle(
+            fontFamily: 'Cairo',
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+      footerCells: {
+        'amount': Text(
+          _fmtAmount(
+            filteredSales.fold<double>(
+              0,
+              (sum, row) =>
+                  sum + ((row['net_total'] as num?)?.toDouble() ?? 0),
+            ),
+          ),
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+      },
       columns: [
         ResizableTableColumn(
           id: 'code',
           label: Text(_t('رقم الوثيقة'), style: headerStyle),
+          filter: _salesFilter('code', 'رقم...'),
           initialWidth: 150,
         ),
         ResizableTableColumn(
           id: 'client',
           label: Text(_t('العميل'), style: headerStyle),
+          filter: _salesFilter('client', 'العميل...'),
           initialWidth: 240,
         ),
         ResizableTableColumn(
           id: 'created_at',
           label: Text(_t('تاريخ الإنشاء'), style: headerStyle),
+          filter: _salesFilter('created_at', 'تاريخ...'),
           initialWidth: 180,
         ),
         ResizableTableColumn(
           id: 'created_by',
           label: Text(_t('أدخل من طرف'), style: headerStyle),
+          filter: _salesFilter('created_by', 'اسم...'),
           initialWidth: 170,
         ),
         ResizableTableColumn(
           id: 'updated_at',
           label: Text(_t('تاريخ التعديل'), style: headerStyle),
+          filter: _salesFilter('updated_at', 'تاريخ...'),
           initialWidth: 180,
         ),
         ResizableTableColumn(
           id: 'updated_by',
           label: Text(_t('عُدل من طرف'), style: headerStyle),
+          filter: _salesFilter('updated_by', 'اسم...'),
           initialWidth: 170,
         ),
         ResizableTableColumn(
           id: 'type',
           label: Text(_t('نوع الوثيقة'), style: headerStyle),
+          filter: _salesFilter('type', 'النوع...'),
           initialWidth: 170,
         ),
         ResizableTableColumn(
           id: 'status',
           label: Text(_t('الحالة'), style: headerStyle),
+          filter: _salesFilter('status', 'الحالة...'),
           initialWidth: 130,
         ),
         ResizableTableColumn(
           id: 'amount',
           label: Text(_t('المبلغ'), style: headerStyle),
+          filter: _salesFilter('amount', 'المبلغ...'),
           initialWidth: 160,
         ),
         ResizableTableColumn(
           id: 'link',
           label: Text(_t('الربط'), style: headerStyle),
+          filter: _salesFilter('link', 'الربط...'),
           initialWidth: 210,
           alignment: Alignment.center,
         ),
         ResizableTableColumn(
           id: 'actions',
           label: Text(_t('إجراء'), style: headerStyle),
+          filter: _hasTableFilters
+              ? IconButton(
+                  tooltip: _t('مسح البحث'),
+                  onPressed: _clearTableFilters,
+                  icon: const Icon(Icons.clear_all_rounded, color: _red),
+                )
+              : null,
           initialWidth: 170,
           alignment: Alignment.center,
         ),
       ],
-      rows: sales.map((sale) {
+      rows: filteredSales.map((sale) {
         final id = (sale['id'] as num).toInt();
         final linkLabel = _linkedDocumentLabel(sale);
         final modified = wasModified(sale);
@@ -1025,6 +1152,31 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
           ],
         );
       }).toList(),
+    );
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border.all(color: borderColor),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: table,
+        ),
+      ),
     );
   }
 

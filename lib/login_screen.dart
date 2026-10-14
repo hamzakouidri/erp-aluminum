@@ -93,6 +93,165 @@ class _LoginScreenState extends State<LoginScreen>
     return value;
   }
 
+  String? _emailFromGoogleIdToken(String idToken) {
+    try {
+      final parts = idToken.split('.');
+      if (parts.length < 2) return null;
+      final payload = jsonDecode(
+        utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+      );
+      if (payload is! Map) return null;
+      final email = payload['email']?.toString().trim().toLowerCase() ?? '';
+      if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
+        return null;
+      }
+      return email;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _nameFromGoogleIdToken(String idToken) {
+    try {
+      final parts = idToken.split('.');
+      if (parts.length < 2) return '';
+      final payload = jsonDecode(
+        utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+      );
+      if (payload is! Map) return '';
+      return (payload['name'] ?? payload['given_name'] ?? '').toString().trim();
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Future<bool> _collectGoogleSignupDetails({String suggestedName = ''}) async {
+    final nameController = TextEditingController(
+      text: _nameController.text.trim().isNotEmpty
+          ? _nameController.text.trim()
+          : suggestedName.trim(),
+    );
+    final workshopNameController = TextEditingController(
+      text: _workshopNameController.text.trim(),
+    );
+    final workshopCodeController = TextEditingController(
+      text: _workshopCodeController.text.trim(),
+    );
+    var worker = _isWorkerSignup;
+    var validationMessage = '';
+
+    final accepted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('أكمل بيانات الحساب'),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 430),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment<bool>(
+                        value: false,
+                        icon: Icon(Icons.storefront_outlined),
+                        label: Text('مدير ورشة'),
+                      ),
+                      ButtonSegment<bool>(
+                        value: true,
+                        icon: Icon(Icons.engineering_outlined),
+                        label: Text('عامل'),
+                      ),
+                    ],
+                    selected: {worker},
+                    onSelectionChanged: (selection) => setDialogState(() {
+                      worker = selection.first;
+                      validationMessage = '';
+                    }),
+                  ),
+                  const SizedBox(height: 18),
+                  TextField(
+                    controller: nameController,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(
+                      labelText: 'الاسم الكامل',
+                      prefixIcon: Icon(Icons.person_outline_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: worker
+                        ? workshopCodeController
+                        : workshopNameController,
+                    textCapitalization: worker
+                        ? TextCapitalization.characters
+                        : TextCapitalization.words,
+                    decoration: InputDecoration(
+                      labelText: worker ? 'كود الورشة' : 'اسم الورشة',
+                      prefixIcon: Icon(
+                        worker
+                            ? Icons.key_outlined
+                            : Icons.storefront_outlined,
+                      ),
+                    ),
+                  ),
+                  if (validationMessage.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      validationMessage,
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final name = nameController.text.trim();
+                final workshopValue = worker
+                    ? workshopCodeController.text.trim()
+                    : workshopNameController.text.trim();
+                if (name.isEmpty || workshopValue.isEmpty) {
+                  setDialogState(() {
+                    validationMessage = name.isEmpty
+                        ? 'أدخل الاسم الكامل.'
+                        : worker
+                        ? 'أدخل كود الورشة.'
+                        : 'أدخل اسم الورشة.';
+                  });
+                  return;
+                }
+                _nameController.text = name;
+                _workshopNameController.text = workshopNameController.text
+                    .trim();
+                _workshopCodeController.text = workshopCodeController.text
+                    .trim()
+                    .toUpperCase();
+                _isWorkerSignup = worker;
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('متابعة'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    nameController.dispose();
+    workshopNameController.dispose();
+    workshopCodeController.dispose();
+    if (mounted) setState(() {});
+    return accepted == true;
+  }
+
   bool _requireGmailAddress() {
     final normalized = _normalizeGmailAddress(_emailController.text);
     if (normalized == null) {
@@ -121,22 +280,10 @@ class _LoginScreenState extends State<LoginScreen>
       );
     });
 
+    // Repaint only the decorative layer. Rebuilding the complete login form
+    // on every animation tick made text entry and scrolling janky on phones.
     _animationController =
         AnimationController(vsync: this, duration: const Duration(seconds: 15))
-          ..addListener(() {
-            if (mounted) {
-              setState(() {
-                for (var p in _particles) {
-                  p.y -= p.speed;
-                  p.x += sin(p.angle) * 0.0005;
-                  if (p.y < -0.05) {
-                    p.y = 1.05;
-                    p.x = Random().nextDouble();
-                  }
-                }
-              });
-            }
-          })
           ..repeat();
   }
 
@@ -1239,54 +1386,8 @@ class _LoginScreenState extends State<LoginScreen>
     final usesDirectWindowsOAuth =
         !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
-    // Validate workshop identity before opening the Google account chooser.
-    // On mobile the email must come from the chosen Google account itself;
-    // requiring or trusting the manual email field here could authorize a
-    // different address than the one subsequently selected in Google.
-    if (!_isLoginMode) {
-      final workshopName = _workshopNameController.text.trim();
-      final workshopCode = _workshopCodeController.text.trim();
-      final personName = _nameController.text.trim();
-      if (personName.isEmpty) {
-        setState(() {
-          _errorMessage = 'أدخل الاسم الكامل قبل التسجيل بواسطة Google.';
-        });
-        return;
-      }
-      if (!_isWorkerSignup && workshopName.isEmpty) {
-        setState(() {
-          _errorMessage = 'أدخل اسم الورشة قبل التسجيل بواسطة Google.';
-        });
-        return;
-      }
-      if (_isWorkerSignup && workshopCode.isEmpty) {
-        setState(() {
-          _errorMessage = 'أدخل كود الورشة قبل التسجيل بواسطة Google.';
-        });
-        return;
-      }
-
-      // The Windows helper starts Supabase OAuth directly, so it cannot read
-      // the selected Google email before Auth. Keep the explicit email permit
-      // only for that platform. Mobile prepares the permit after selection.
-      if (usesDirectWindowsOAuth) {
-        if (!_requireGmailAddress()) return;
-        try {
-          await SupabaseAccountService().prepareWorkshopSignup(
-            email: _emailController.text,
-            personName: personName,
-            worker: _isWorkerSignup,
-            workshopName: workshopName,
-            workshopCode: workshopCode,
-          );
-        } catch (error) {
-          setState(() {
-            _errorMessage = _getFriendlyErrorMessage(error);
-          });
-          return;
-        }
-      }
-    }
+    // Google verifies the email first. New users then choose manager/worker
+    // and complete their workshop identity before Supabase creates auth.users.
     setState(() {
       _isLoading = true;
       _errorMessage = '';
@@ -1301,22 +1402,55 @@ class _LoginScreenState extends State<LoginScreen>
       String? idToken;
       String? accessToken;
       if (usesDirectWindowsOAuth) {
-        try {
-          user = await const WindowsGoogleSignIn().signInWithSupabase();
-        } on WindowsGoogleSignInException {
-          rethrow;
-        } catch (supabaseOAuthError) {
-          debugPrint(
-            'Windows Supabase OAuth failed: $supabaseOAuthError. Attempting direct Google desktop flow...',
-          );
-          try {
-            final tokens = await const WindowsGoogleSignIn().signIn();
-            user = await _auth.signInWithGoogleIdToken(
-              idToken: tokens.idToken,
-              accessToken: tokens.accessToken,
+        if (!_isLoginMode) {
+          // For registration we must know the selected Google email before
+          // Supabase creates auth.users, so the admission hook can validate
+          // the workshop form without asking the user to type an email.
+          final tokens = await const WindowsGoogleSignIn().signIn();
+          idToken = tokens.idToken;
+          accessToken = tokens.accessToken;
+          final googleEmail = _emailFromGoogleIdToken(idToken);
+          if (googleEmail == null) {
+            throw const AppAuthException(
+              'google-email-missing',
+              'لم يُرجع حساب Google بريداً إلكترونياً صالحاً.',
             );
-          } catch (_) {
-            throw supabaseOAuthError;
+          }
+          final completed = await _collectGoogleSignupDetails(
+            suggestedName: _nameFromGoogleIdToken(idToken),
+          );
+          if (!completed) return;
+          await SupabaseAccountService().prepareWorkshopSignup(
+            email: googleEmail,
+            personName: _nameController.text.trim(),
+            worker: _isWorkerSignup,
+            workshopName: _workshopNameController.text.trim(),
+            workshopCode: _workshopCodeController.text.trim(),
+          );
+          user = await _auth.signInWithGoogleIdToken(
+            idToken: idToken,
+            accessToken: accessToken,
+          );
+        } else {
+          try {
+            user = await const WindowsGoogleSignIn().signInWithSupabase();
+          } on WindowsGoogleSignInException {
+            rethrow;
+          } catch (supabaseOAuthError) {
+            debugPrint(
+              'Windows Supabase OAuth failed: $supabaseOAuthError. Attempting direct Google desktop flow...',
+            );
+            try {
+              final tokens = await const WindowsGoogleSignIn().signIn();
+              idToken = tokens.idToken;
+              accessToken = tokens.accessToken;
+              user = await _auth.signInWithGoogleIdToken(
+                idToken: idToken,
+                accessToken: accessToken,
+              );
+            } catch (_) {
+              throw supabaseOAuthError;
+            }
           }
         }
         try {
@@ -1350,6 +1484,10 @@ class _LoginScreenState extends State<LoginScreen>
         // deliberately skips this call, so Supabase's Before User Created hook
         // rejects an unknown Google email instead of inserting auth.users.
         if (!_isLoginMode) {
+          final completed = await _collectGoogleSignupDetails(
+            suggestedName: googleUser.displayName ?? '',
+          );
+          if (!completed) return;
           await SupabaseAccountService().prepareWorkshopSignup(
             email: googleUser.email,
             personName: _nameController.text.trim(),
@@ -1412,6 +1550,7 @@ class _LoginScreenState extends State<LoginScreen>
         }
         if (account.blocked) {
           final isPendingApproval = account.role == 'worker' &&
+              account.permissions['is_rejected'] != true &&
               (account.permissions['is_pending'] == true ||
                   account.permissions['is_approved'] == false ||
                   (account.permissions['view_clients'] != true &&
@@ -1599,6 +1738,7 @@ class _LoginScreenState extends State<LoginScreen>
         }
         if (account.blocked) {
           final isPendingApproval = account.role == 'worker' &&
+              account.permissions['is_rejected'] != true &&
               (account.permissions['is_pending'] == true ||
                   account.permissions['is_approved'] == false ||
                   (account.permissions['view_clients'] != true &&
@@ -1933,7 +2073,11 @@ class _LoginScreenState extends State<LoginScreen>
           children: [
             // Floating Particles background
             Positioned.fill(
-              child: CustomPaint(painter: ParticlePainter(_particles)),
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: ParticlePainter(_particles, _animationController),
+                ),
+              ),
             ),
 
             // Login Form
@@ -2714,16 +2858,21 @@ class Particle {
 
 class ParticlePainter extends CustomPainter {
   final List<Particle> particles;
+  final Animation<double> animation;
 
-  ParticlePainter(this.particles);
+  ParticlePainter(this.particles, this.animation) : super(repaint: animation);
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..style = PaintingStyle.fill;
     for (var p in particles) {
-      paint.color = Colors.white.withOpacity(p.opacity);
+      final travel = animation.value * 900 * p.speed;
+      final animatedY = (p.y - travel) % 1.1;
+      final animatedX =
+          (p.x + sin(p.angle + animation.value * 2 * pi) * 0.018) % 1.0;
+      paint.color = Colors.white.withValues(alpha: p.opacity);
       canvas.drawCircle(
-        Offset(p.x * size.width, p.y * size.height),
+        Offset(animatedX * size.width, animatedY * size.height),
         p.size,
         paint,
       );
@@ -2731,5 +2880,6 @@ class ParticlePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  bool shouldRepaint(covariant ParticlePainter oldDelegate) =>
+      oldDelegate.particles != particles || oldDelegate.animation != animation;
 }

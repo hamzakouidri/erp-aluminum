@@ -190,6 +190,23 @@ class BomItem {
     // the suffix after [name] had already been cleaned.
     final original = _withoutAccessoryQualityLabel(originalName);
 
+    // The BOM role is the stable heading. The selected catalogue row already
+    // carries its exact size/name on the second line, so repeating a computed
+    // size in the heading produces misleading pairs such as
+    // "Espagnolette 160 / Esp 180".
+    if (original.contains('إسبانيوليت') ||
+        original.contains('اسبانيولات') ||
+        original.contains('Espagnolette')) {
+      final sliding = original.contains('منزلق');
+      if (lang == 'fr') {
+        return sliding ? 'Espagnolette Coulissante' : 'Espagnolette';
+      }
+      if (lang == 'en') {
+        return sliding ? 'Sliding Espagnolette' : 'Espagnolette';
+      }
+      return sliding ? 'إسبانيوليت منزلق' : 'إسبانيوليت';
+    }
+
     // 1. Screws
     if (original.contains('براغي الصندوق')) {
       if (lang == 'fr') return 'Vis de caisson';
@@ -2914,11 +2931,15 @@ class ComponentCalculator {
     String colorName = window.selectedDbColor != null
         ? window.selectedDbColor!['name']
         : window.frameColor.toString().split('.').last;
-    // Accessories follow the profile colour automatically, unless the user
-    // chose a separate accessory colour in the drawing properties.
-    final String accessoryColorName = window.selectedAccessoryColor != null
-        ? (window.selectedAccessoryColor!['name'] ?? colorName).toString()
-        : colorName;
+    // An accessory colour is independent from the profile colour.  A missing
+    // accessory colour means that the catalogue item is colourless; never
+    // make it look coloured by inheriting the selected profile colour.
+    final rawAccessoryColorName =
+        window.selectedAccessoryColor?['name']?.toString().trim();
+    final String? accessoryColorName =
+        rawAccessoryColorName == null || rawAccessoryColorName.isEmpty
+        ? null
+        : rawAccessoryColorName;
     final String shutterColorName = window.effectiveShutterColor != null
         ? (window.effectiveShutterColor!['name'] ?? colorName).toString()
         : colorName;

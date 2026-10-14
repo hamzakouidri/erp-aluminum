@@ -11,6 +11,7 @@ import '../sql_database.dart';
 import '../items_produits/glass_systems_rules_screen.dart';
 import '../services/glass_fabrication_pdf_service.dart';
 import '../Commande/glass_handle_designs.dart';
+import '../widgets/desktop_scroll_behavior.dart';
 
 enum GlassWorkType {
   showerCabin,
@@ -8962,7 +8963,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
             width: compact
                 ? (MediaQuery.sizeOf(context).width * 0.58).clamp(170.0, 300.0)
                 : (MediaQuery.sizeOf(context).width * 0.72).clamp(420.0, 760.0),
-            child: Scrollbar(
+            child: ExplicitScrollbar(
               controller: _appBarActionsScrollController,
               thumbVisibility: compact,
               scrollbarOrientation: ScrollbarOrientation.bottom,

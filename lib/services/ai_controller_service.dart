@@ -44,7 +44,7 @@ class AiControllerService {
 
   static const List<String> candidateModels = [
     'gemini-3.8-flash',
-    'gemini-2.5-pro',
+    'gemini-3.6-flash',
   ];
 
   static String getSystemInstruction(AppLanguage language) {
@@ -77,6 +77,11 @@ CORE CAPABILITIES & ACTIONS:
    - 'info': Clear interactive guidance and feature explanations.
    - 'engineering_warning': Alert on unsafe dimensions (e.g. height > 2600mm with single 4mm glass).
 
+QUALITY RULES:
+- For normal questions, use action_type "info" and give a complete, useful answer; do not reduce the answer to a one-line command acknowledgement.
+- Never claim that you inspected live application data unless the selected action actually reads it.
+- Ask a concise clarification question when a requested operation is ambiguous or missing required information.
+
 Return strict JSON:
 ```json
 {
@@ -93,11 +98,40 @@ Return strict JSON:
   static String get systemInstruction =>
       getSystemInstruction(AppLanguage.arabic);
 
+  /// Keeps enough recent context for a coherent conversation without sending
+  /// an ever-growing transcript. Gemini histories should begin with a user
+  /// turn and consecutive bubbles from the same role are merged.
+  static List<Map<String, dynamic>> _normalizedHistory(
+    List<Map<String, String>> history,
+  ) {
+    final normalized = <Map<String, dynamic>>[];
+    for (final turn in history.reversed.take(16).toList().reversed) {
+      final text = turn['content']?.trim() ?? '';
+      if (text.isEmpty) continue;
+      final role = turn['role'] == 'user' ? 'user' : 'model';
+      if (normalized.isEmpty && role != 'user') continue;
+      if (normalized.isNotEmpty && normalized.last['role'] == role) {
+        final parts = normalized.last['parts'] as List<dynamic>;
+        final previous = parts.first['text']?.toString() ?? '';
+        parts.first['text'] = '$previous\n$text';
+      } else {
+        normalized.add({
+          'role': role,
+          'parts': [
+            {'text': text},
+          ],
+        });
+      }
+    }
+    return normalized;
+  }
+
   /// Sends a request with automatic fallback across available Gemini models
   Future<http.Response> _postWithFallback(
     Map<String, dynamic> requestBody,
   ) async {
     http.Response? lastResponse;
+    Object? lastError;
     for (final model in candidateModels) {
       try {
         final url = Uri.parse(
@@ -122,11 +156,18 @@ Return strict JSON:
           'Gemini model $model returned ${response.statusCode}: ${response.body}',
         );
       } catch (e) {
+        lastError = e;
         debugPrint('Gemini model $model failed: $e');
       }
     }
     return lastResponse ??
-        http.Response('{"error": "All Gemini models failed"}', 500);
+        http.Response(
+          jsonEncode({
+            'error': 'network_failure',
+            'details': lastError?.runtimeType.toString(),
+          }),
+          599,
+        );
   }
 
   /// Sends text query to Gemini and parses structured action and speech readout
@@ -151,17 +192,7 @@ Return strict JSON:
     }
 
     try {
-      final contents = <Map<String, dynamic>>[];
-
-      // Conversation history
-      for (final turn in chatHistory) {
-        contents.add({
-          'role': turn['role'] == 'user' ? 'user' : 'model',
-          'parts': [
-            {'text': turn['content'] ?? ''},
-          ],
-        });
-      }
+      final contents = _normalizedHistory(chatHistory);
 
       // Mandatory language mirroring directive
       final languageDirective = switch (language) {
@@ -201,9 +232,12 @@ Return strict JSON:
         final isKeyError =
             response.body.contains('API_KEY_INVALID') ||
             response.body.contains('API key not valid') ||
-            response.statusCode == 400 ||
+            response.statusCode == 401 ||
             response.statusCode == 403;
         final isQuota = response.statusCode == 429;
+        final isNetworkFailure = response.statusCode == 599;
+        final isProviderFailure = response.statusCode >= 500 &&
+            response.statusCode != 599;
 
         final errMsg = isKeyError
             ? switch (language) {
@@ -223,13 +257,31 @@ Return strict JSON:
                 _ =>
                   'تم تجاوز حد الطلبات المؤقت. يرجى الانتظار دقيقة والمحاولة مجدداً.',
               }
+            : isNetworkFailure
+            ? switch (language) {
+                AppLanguage.french =>
+                  'Impossible de joindre le service IA. Vérifiez la connexion puis réessayez.',
+                AppLanguage.english =>
+                  'Could not reach the AI service. Check the connection and retry.',
+                _ =>
+                  'تعذر الوصول إلى خدمة الذكاء الاصطناعي. تحقق من الاتصال ثم أعد المحاولة.',
+              }
+            : isProviderFailure
+            ? switch (language) {
+                AppLanguage.french =>
+                  'Le service IA rencontre un problème temporaire. Réessayez dans quelques instants.',
+                AppLanguage.english =>
+                  'The AI service is temporarily unavailable. Please retry shortly.',
+                _ =>
+                  'خدمة الذكاء الاصطناعي تواجه خللاً مؤقتاً. أعد المحاولة بعد قليل.',
+              }
             : switch (language) {
                 AppLanguage.french =>
-                  'Erreur de connexion à l\'IA. Veuillez vérifier Internet et la clé API.',
+                  'La requête IA a été refusée (${response.statusCode}). Vérifiez la configuration du modèle.',
                 AppLanguage.english =>
-                  'AI connection error. Please check Internet and API key.',
+                  'The AI request was rejected (${response.statusCode}). Check the model configuration.',
                 _ =>
-                  'حدث خطأ في الاتصال بالذكاء الاصطناعي. يرجى التحقق من الاتصال بالإنترنت ومفتاح API.',
+                  'رفضت خدمة الذكاء الاصطناعي الطلب (${response.statusCode}). تحقق من إعدادات الموديل.',
               };
 
         return AiAction(
@@ -335,7 +387,9 @@ Return strict JSON:
           ],
         },
         'contents': [
+          ..._normalizedHistory(chatHistory),
           {
+            'role': 'user',
             'parts': [
               {'text': directive},
               {
@@ -427,19 +481,13 @@ Return strict JSON:
       final directive = switch (language) {
         AppLanguage.french =>
           'RÈGLE ABSOLUE: Vous devez répondre EXCLUSIVEMENT EN FRANÇAIS dans "speech_response".\n'
-              'Analysez cette photo de croquis ou plan technique pour menuiserie aluminium ou verre.\n'
-              'Extrayez les dimensions (largeur et hauteur en mm), le système d\'ouverture et le type de verre.\n'
-              'Retournez un objet JSON strict :',
+              '${_sketchExtractionInstruction('fr')}',
         AppLanguage.english =>
           'ABSOLUTE DIRECTIVE: You must reply EXCLUSIVELY IN ENGLISH in "speech_response".\n'
-              'Analyze this sketch/blueprint photo for aluminum & glass joinery.\n'
-              'Extract dimensions (width and height in mm), system type and glass.\n'
-              'Return strict JSON:',
+              '${_sketchExtractionInstruction('en')}',
         _ =>
           'قاعدة أساسية: يجب عليك الرد باللغة العربية الفصحى حصراً في "speech_response".\n'
-              'حلل صورة المخطط اليدوي لنافذة أو باب ألمنيوم وزجاج.\n'
-              'استخرج الأبعاد (العرض والارتفاع بالملم) ونظام الفتح ونوع الزجاج.\n'
-              'أرجع كائن JSON حصراً:',
+              '${_sketchExtractionInstruction('ar')}',
       };
 
       final response = await _postWithFallback({
@@ -453,7 +501,10 @@ Return strict JSON:
             'parts': [
               {'text': directive},
               {
-                'inlineData': {'mimeType': 'image/jpeg', 'data': base64Image},
+                'inlineData': {
+                  'mimeType': _imageMimeType(imageFile.path),
+                  'data': base64Image,
+                },
               },
             ],
           },
@@ -496,6 +547,45 @@ Return strict JSON:
       );
     }
   }
+
+  static String _imageMimeType(String filePath) {
+    return switch (p.extension(filePath).toLowerCase()) {
+      '.png' => 'image/png',
+      '.webp' => 'image/webp',
+      '.heic' => 'image/heic',
+      '.heif' => 'image/heif',
+      _ => 'image/jpeg',
+    };
+  }
+
+  static String _sketchExtractionInstruction(String language) => '''
+Read the complete handwritten measurement sheet and the drawn window/door diagram. Recognize Arabic, French, Latin letters and Algerian workshop abbreviations.
+Inspect dimension arrows, outer width/height, internal divisions, quantities, series/system name, glass, colour, shutter, fixed zones, opening/sliding leaves and opening directions.
+Never invent a value. If a field is unreadable, keep it empty and list it in uncertain_fields. Convert centimetres to millimetres; preserve values already written in millimetres.
+Return JSON only with this exact shape:
+{
+  "action_type": "create_order",
+  "detected_language": "$language",
+  "speech_response": "A concise summary plus every uncertain field that needs confirmation",
+  "parameters": {
+    "client_name": "",
+    "width": 0,
+    "height": 0,
+    "quantity": 1,
+    "system": "",
+    "glass": "",
+    "color": "",
+    "window_type": "",
+    "shutter": false,
+    "opening_directions": [],
+    "partitions": [],
+    "handwritten_notes": "",
+    "confidence": 0.0,
+    "uncertain_fields": []
+  }
+}
+The drawing geometry and written dimensions have priority over visual proportions. If several windows exist, describe all of them in handwritten_notes and use the first complete one in the main fields so the user can review before saving.
+''';
 
   AiAction _parseJsonResponse(
     String rawText, {

@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import '../services/pdf_font_cache.dart';
+import '../services/pdf_branding.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../sql_database.dart';
@@ -577,6 +579,7 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
 
   Future<void> _generateInvoicePdf() async {
     final pdf = pw.Document();
+    final pdfFonts = await PdfFontCache.load();
 
     final List<pw.Widget> content = [
       pw.Text(
@@ -645,7 +648,16 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
     );
 
     pdf.addPage(
-      pw.MultiPage(pageFormat: PdfPageFormat.a4, build: (context) => content),
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        theme: pw.ThemeData.withFont(
+          base: pdfFonts.regular,
+          bold: pdfFonts.bold,
+        ),
+        footer: (_) =>
+            pw.Center(child: PdfBranding.footerMark(pdfFonts.regular)),
+        build: (context) => content,
+      ),
     );
 
     final directory = await getApplicationDocumentsDirectory();
@@ -859,7 +871,7 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                   );
                 }
 
-                if (_status == 'Confirmed' || _status == 'Partial Return') {
+                if (_status == 'Confirmed' || _status == 'Partial Returned') {
                   final achat = await _db.readAchatById(widget.achatId);
                   int locationId = achat?['location_id'] as int? ?? 1;
                   try {
@@ -1169,7 +1181,7 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                       refunded,
                     );
 
-                    if (_status == 'Confirmed' || _status == 'Partial Return') {
+                    if (_status == 'Confirmed' || _status == 'Partial Returned') {
                       final achat = await _db.readAchatById(widget.achatId);
                       int locationId = achat?['location_id'] as int? ?? 1;
                       for (var rItem in itemsToReturn) {

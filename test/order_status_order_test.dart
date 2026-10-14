@@ -79,4 +79,14 @@ void main() {
       lessThan(canonicalOrderStatuses.indexOf('Installation')),
     );
   });
+
+  test('open-order rule excludes every terminal status spelling', () {
+    expect(isOpenOrderStatus('Nouveau'), isTrue);
+    expect(isOpenOrderStatus('In Progress'), isTrue);
+    expect(isOpenOrderStatus('Done'), isFalse);
+    expect(isOpenOrderStatus('Cancelled'), isFalse);
+    expect(isOpenOrderStatus('Completed'), isFalse);
+    expect(isOpenOrderStatus('Archived'), isFalse);
+    expect(isOpenOrderStatus('أرشيف'), isFalse);
+  });
 }

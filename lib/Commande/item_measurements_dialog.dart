@@ -264,9 +264,11 @@ class ItemMeasurementsDialog extends StatelessWidget {
 
     final content = SizedBox(
       width: embedded ? double.infinity : 1000,
-      child: embedded
-          ? body
-          : SingleChildScrollView(child: body),
+      // The embedded variant can become taller than the available panel on
+      // phones once manufacturing/glass progress is shown for each size.
+      // Keep it scrollable just like the dialog variant instead of letting
+      // the Column overflow and hide the final statuses.
+      child: SingleChildScrollView(child: body),
     );
     if (embedded) return content;
     return Directionality(

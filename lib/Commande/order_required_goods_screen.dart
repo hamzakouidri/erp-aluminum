@@ -4,6 +4,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../services/pdf_font_cache.dart';
+import '../services/pdf_branding.dart';
 import 'package:database_data/widgets/app_material.dart';
 import 'package:provider/provider.dart';
 import 'package:database_data/settings/app_settings.dart';
@@ -15,6 +16,7 @@ import 'package:database_data/Commande/Systeme/bom_engine_v2.dart';
 import 'package:database_data/Commande/Systeme/cutting_settings.dart';
 import 'package:database_data/Commande/window_painter.dart';
 import 'package:database_data/Commande/capture_image.dart';
+import 'package:database_data/Commande/production_measurements.dart';
 import 'package:database_data/widgets/section_image.dart';
 import 'package:database_data/widgets/resizable_columns_table.dart';
 import 'package:database_data/services/remnant_ticket_service.dart';
@@ -1216,6 +1218,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         margin: const pw.EdgeInsets.all(24),
         textDirection: textDir,
         theme: pw.ThemeData.withFont(base: fonts.regular, bold: fonts.bold),
+        footer: (_) => pw.Center(child: PdfBranding.footerMark(fonts.regular)),
         build: (ctx) {
           final content = <pw.Widget>[];
 
@@ -2087,17 +2090,15 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             continue;
           }
 
-          // The persisted order-line quantity takes precedence over a legacy
-          // single-instance draft (which commonly stores qty=1).
           final orderedQuantity = _safePositiveInt(
             item['quantity'],
             fallback: model.quantity > 0 ? model.quantity : 1,
           );
-          final instances = normalizeRequiredGoodsInstances(
-            saved: parseRequiredGoodsInstances(item['instances_json']),
-            orderedQuantity: orderedQuantity,
-            defaultWidth: model.width,
-            defaultHeight: model.height,
+          // Required goods are production data: confirmed measurements take
+          // precedence over the compact commercial order dimensions.
+          final instances = productionMeasurementInstances(
+            item,
+            quantityLimit: orderedQuantity,
           );
 
           final List<BomItem> bomItems = [];

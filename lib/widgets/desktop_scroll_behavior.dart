@@ -2,7 +2,7 @@ import 'dart:async' show scheduleMicrotask;
 import 'dart:ui' show PointerDeviceKind;
 
 import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, kIsWeb;
+    show TargetPlatform, defaultTargetPlatform, kDebugMode, kIsWeb;
 import 'package:flutter/gestures.dart'
     show GestureBinding, PointerEvent, PointerScrollEvent, PointerSignalEvent;
 import 'package:flutter/material.dart';
@@ -81,9 +81,6 @@ class DesktopScrollCoordinator {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _signalsSeenByWidgetTree.remove(eventKey);
     });
-    debugPrint(
-      'WHEEL called, regs=${_registrations.length}, hits=${_hits.length}',
-    );
     _lastPointerPosition = event.position;
 
     try {
@@ -115,9 +112,6 @@ class DesktopScrollCoordinator {
                 registration.controller.positions.isNotEmpty,
           )
           .toList();
-      debugPrint(
-        'wheel: pool=${pool.length} candidates====================${candidates.length}',
-      );
       if (candidates.isEmpty) return;
 
       candidates.sort((a, b) {
@@ -130,14 +124,6 @@ class DesktopScrollCoordinator {
       });
 
       final requestedAxis = useVertical ? Axis.vertical : Axis.horizontal;
-      for (final c in candidates) {
-        debugPrint(
-          'cand axis=${c.axis} positions=${c.controller.positions.length} '
-          'canMove=${c.canMove(delta)} '
-          'pix=${c.controller.positions.map((p) => "${p.pixels}/${p.maxScrollExtent}").toList()}',
-        );
-      }
-      debugPrint('requested=$requestedAxis delta=$delta');
       // Prioritize scrollables matching the requested axis (e.g. vertical wheel -> vertical scrollable)
       for (final candidate in candidates) {
         if (candidate.axis != requestedAxis) continue;
@@ -170,9 +156,8 @@ class DesktopScrollCoordinator {
           return;
         }
       }
-      debugPrint('WHEEL: no candidate accepted the scroll');
     } catch (e, s) {
-      debugPrint('WHEEL ERROR: $e\n$s');
+      if (kDebugMode) debugPrint('DesktopScrollCoordinator error: $e\n$s');
     }
   }
 
@@ -196,7 +181,7 @@ class DesktopScrollCoordinator {
     double delta,
   ) {
     if (!_registrations.contains(candidate)) return;
-    for (final position in candidate.controller.positions) {
+    for (final position in candidate.visiblePositions) {
       if (!position.hasContentDimensions ||
           !position.physics.shouldAcceptUserOffset(position)) {
         continue;
@@ -409,11 +394,12 @@ class _DesktopScrollableRegistration {
   final BuildContext context;
 
   ScrollPosition? get activePosition {
-    if (controller.positions.isEmpty) return null;
-    if (controller.positions.length == 1) return controller.positions.first;
+    final positions = visiblePositions.toList();
+    if (positions.isEmpty) return null;
+    if (positions.length == 1) return positions.first;
     ScrollPosition? best;
     double maxExtent = -1;
-    for (final pos in controller.positions) {
+    for (final pos in positions) {
       if (pos.hasContentDimensions && pos.physics.shouldAcceptUserOffset(pos)) {
         final extent = pos.maxScrollExtent;
         if (extent > maxExtent) {
@@ -422,34 +408,51 @@ class _DesktopScrollableRegistration {
         }
       }
     }
-    return best ?? controller.positions.first;
+    return best ?? positions.first;
   }
 
-  Rect? get bounds {
-    if (!context.mounted) return null;
-    final route = ModalRoute.of(context);
-    // isActive remains true for a page covered by a dialog. isCurrent is the
-    // correct guard: a wheel event over a modal barrier must never scroll the
-    // hidden quantities table behind it.
-    if (route != null && !route.isCurrent) return null;
-    if (!DesktopTabScope.isActive(context)) return null;
-
-    var hidden = false;
+  /// Whether [context] belongs to the page the user is looking at.
+  ///
+  /// isActive remains true for a page covered by a dialog or by another page
+  /// pushed in the same workspace tab. isCurrent is the correct guard: a wheel
+  /// event must never scroll a hidden page behind the visible one.
+  static bool _isContextVisible(BuildContext context) {
+    if (!context.mounted) return false;
     try {
+      final route = ModalRoute.of(context);
+      if (route != null && !route.isCurrent) return false;
+      if (!DesktopTabScope.isActive(context)) return false;
+
+      var hidden = false;
       context.visitAncestorElements((element) {
-        if (element.widget is Offstage &&
-            (element.widget as Offstage).offstage) {
-          hidden = true;
-          return false;
-        }
-        if (element.widget is Visibility &&
-            !(element.widget as Visibility).visible) {
+        final widget = element.widget;
+        if ((widget is Offstage && widget.offstage) ||
+            (widget is Visibility && !widget.visible)) {
           hidden = true;
           return false;
         }
         return true;
       });
-      if (hidden) return null;
+      return !hidden;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// A shared controller (such as a workspace tab's PrimaryScrollController)
+  /// can stay attached to a page that is now covered by another route.
+  static bool _isPositionVisible(ScrollPosition position) {
+    final scrollContext = position.context.notificationContext;
+    return scrollContext != null && _isContextVisible(scrollContext);
+  }
+
+  Iterable<ScrollPosition> get visiblePositions =>
+      controller.positions.where(_isPositionVisible);
+
+  Rect? get bounds {
+    if (!_isContextVisible(context)) return null;
+
+    try {
       final renderObject = context.findRenderObject();
       if (renderObject is! RenderBox ||
           !renderObject.hasSize ||
@@ -466,8 +469,7 @@ class _DesktopScrollableRegistration {
 
   bool canMove(double delta) {
     if (bounds == null) return false;
-    if (controller.positions.isEmpty) return false;
-    for (final position in controller.positions) {
+    for (final position in visiblePositions) {
       if (!position.hasContentDimensions ||
           !position.physics.shouldAcceptUserOffset(position)) {
         continue;
@@ -602,6 +604,38 @@ class DesktopScrollBehavior extends MaterialScrollBehavior {
     PointerDeviceKind.unknown,
   };
 
+  /// Registers every scrollable with [DesktopScrollCoordinator].
+  ///
+  /// This is done here rather than in [buildScrollbar] because a
+  /// `ScrollConfiguration.of(context).copyWith(scrollbars: false)` subtree
+  /// skips buildScrollbar entirely, while buildOverscrollIndicator is still
+  /// delegated to this behavior. Screens that hide scrollbars, or that draw
+  /// their own explicit Scrollbar, therefore keep the wheel-edge fallback and
+  /// keyboard scrolling.
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    final indicator = super.buildOverscrollIndicator(context, child, details);
+    final isWindowsDesktop =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+    final controller = details.controller;
+    if (!isWindowsDesktop || controller == null) return indicator;
+    // A text field's internal scrollable belongs to the field's own cursor
+    // and wheel handling; registering it would let the coordinator steal
+    // arrow keys and wheel fallback for it.
+    if (context.findAncestorWidgetOfExactType<EditableText>() != null) {
+      return indicator;
+    }
+    return _RegisteredDesktopScrollable(
+      controller: controller,
+      axis: axisDirectionToAxis(details.direction),
+      child: indicator,
+    );
+  }
+
   @override
   Widget buildScrollbar(
     BuildContext context,
@@ -610,24 +644,11 @@ class DesktopScrollBehavior extends MaterialScrollBehavior {
   ) {
     final isWindowsDesktop =
         !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
-    final controller =
-        details.controller ?? PrimaryScrollController.maybeOf(context);
+    final controller = details.controller;
     final axis = axisDirectionToAxis(details.direction);
 
     if (isWindowsDesktop && controller != null && axis == Axis.horizontal) {
-      return _RegisteredDesktopScrollable(
-        controller: controller,
-        axis: axis,
-        child: _HorizontalWheelScrollbar(controller: controller, child: child),
-      );
-    }
-
-    if (isWindowsDesktop && controller != null && axis == Axis.vertical) {
-      return _RegisteredDesktopScrollable(
-        controller: controller,
-        axis: axis,
-        child: super.buildScrollbar(context, child, details),
-      );
+      return _HorizontalWheelScrollbar(controller: controller, child: child);
     }
 
     return super.buildScrollbar(context, child, details);
@@ -655,7 +676,12 @@ class _HorizontalWheelScrollbar extends StatefulWidget {
 }
 
 class _HorizontalWheelScrollbarState extends State<_HorizontalWheelScrollbar> {
-  static const double _hitBandHeight = 18;
+  static const double _hitBandHeight = 12;
+
+  /// Short horizontal rows (chip bars, toolbars) are mostly scrollbar band,
+  /// so redirecting the vertical wheel there would block page scrolling.
+  /// Shift+wheel still scrolls them horizontally.
+  static const double _minHeightForWheelBand = 64;
   bool _pointerOverScrollbar = false;
 
   void _updatePointerPosition(Offset localPosition, double height) {
@@ -681,6 +707,7 @@ class _HorizontalWheelScrollbarState extends State<_HorizontalWheelScrollbar> {
         return true;
       }());
       if (needsLayout) return;
+      if (box.size.height < _minHeightForWheelBand) return;
       final local = box.globalToLocal(event.position);
       if (local.dx < 0 ||
           local.dx > box.size.width ||
@@ -743,6 +770,43 @@ class _HorizontalWheelScrollbarState extends State<_HorizontalWheelScrollbar> {
           ),
         );
       },
+    );
+  }
+}
+
+/// A [Scrollbar] for a scroll view that wants its own scrollbar settings.
+///
+/// [DesktopScrollBehavior] already adds a scrollbar to every desktop
+/// scrollable, so wrapping one in a plain [Scrollbar] paints two thumbs. This
+/// disables the automatic scrollbar for [child]; the scroll view stays
+/// registered with [DesktopScrollCoordinator].
+class ExplicitScrollbar extends StatelessWidget {
+  const ExplicitScrollbar({
+    super.key,
+    required this.controller,
+    required this.child,
+    this.thumbVisibility,
+    this.interactive,
+    this.scrollbarOrientation,
+  });
+
+  final ScrollController controller;
+  final Widget child;
+  final bool? thumbVisibility;
+  final bool? interactive;
+  final ScrollbarOrientation? scrollbarOrientation;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scrollbar(
+      controller: controller,
+      thumbVisibility: thumbVisibility,
+      interactive: interactive,
+      scrollbarOrientation: scrollbarOrientation,
+      child: ScrollConfiguration(
+        behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+        child: child,
+      ),
     );
   }
 }

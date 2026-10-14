@@ -349,19 +349,30 @@ void main() {
     );
   });
 
-  test(
-    'espagnolette effective height subtracts only the actual shutter box',
-    () {
-      final window = makeWindow(RuleDatabase());
-      expect(window.effectiveEspagnoletteHeightMm, window.height);
+  test('espagnolette rules receive the actual sash height', () {
+    final window = makeWindow(RuleDatabase());
 
-      window.hasShutter = true;
-      expect(
-        window.effectiveEspagnoletteHeightMm,
-        window.height - window.shutterBoxHeight,
-      );
-    },
-  );
+    // The outer frame is 1200 mm high, while the sash zone is only 1100 mm.
+    expect(window.openingSashHeightMm, 1100);
+    expect(window.effectiveEspagnoletteHeightMm, 1100);
+
+    // Adding a top fixed light makes the sash shorter. The espagnolette must
+    // follow that sash, not the outer frame or the full window height.
+    window.zones = [
+      WindowZone(
+        id: 'top-fixed',
+        content: ZoneContent.fixedGlass,
+        boundary: const Rect.fromLTWH(50, 50, 900, 300),
+      ),
+      WindowZone(
+        id: 'lower-sash',
+        content: ZoneContent.doubleSash,
+        boundary: const Rect.fromLTWH(50, 350, 900, 800),
+      ),
+    ];
+    expect(window.openingSashHeightMm, 800);
+    expect(window.effectiveEspagnoletteHeightMm, 800);
+  });
 
   test('renfort screws use endpoints and maximum 400 mm spacing', () {
     final window = makeWindow(RuleDatabase());

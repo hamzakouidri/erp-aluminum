@@ -126,8 +126,8 @@ class NumericFilterState {
 
   String getLabel(AppLanguage lang) {
     final symbol = getDisplaySymbol();
-    String label(String key) => Localization.translate(key, lang)
-        .replaceAll('{symbol}', symbol);
+    String label(String key) =>
+        Localization.translate(key, lang).replaceAll('{symbol}', symbol);
 
     switch (operator) {
       case NumericFilterOperator.none:
@@ -483,6 +483,7 @@ class CompactTableFilterField extends StatefulWidget {
   final String? optionsTooltip;
   final AppLanguage lang;
   final NumericFilterState initialNumericState;
+  final double height;
 
   const CompactTableFilterField({
     super.key,
@@ -495,6 +496,7 @@ class CompactTableFilterField extends StatefulWidget {
     this.optionsTooltip,
     this.lang = AppLanguage.arabic,
     this.initialNumericState = const NumericFilterState(),
+    this.height = 34,
   });
 
   @override
@@ -513,8 +515,9 @@ class _CompactTableFilterFieldState extends State<CompactTableFilterField> {
     super.initState();
     _currentOperator = widget.initialNumericState.operator;
     if (widget.controller == null) {
-      _internalController =
-          TextEditingController(text: widget.initialNumericState.rawQuery);
+      _internalController = TextEditingController(
+        text: widget.initialNumericState.rawQuery,
+      );
     } else if (widget.controller!.text.isEmpty &&
         widget.initialNumericState.rawQuery.isNotEmpty) {
       widget.controller!.text = widget.initialNumericState.rawQuery;
@@ -529,8 +532,9 @@ class _CompactTableFilterFieldState extends State<CompactTableFilterField> {
         _internalController?.dispose();
         _internalController = null;
       } else if (oldWidget.controller != null && widget.controller == null) {
-        _internalController =
-            TextEditingController(text: widget.initialNumericState.rawQuery);
+        _internalController = TextEditingController(
+          text: widget.initialNumericState.rawQuery,
+        );
       }
     }
     if (widget.initialNumericState != oldWidget.initialNumericState) {
@@ -599,6 +603,8 @@ class _CompactTableFilterFieldState extends State<CompactTableFilterField> {
     final isActive =
         (widget.isNumeric && _currentOperator != NumericFilterOperator.none) ||
         raw.isNotEmpty;
+    final textFontSize = widget.height >= 34 ? 13.5 : 11.0;
+    final hintFontSize = widget.height >= 34 ? 12.5 : 10.0;
 
     final symbol = widget.isNumeric
         ? NumericFilterState(
@@ -608,7 +614,7 @@ class _CompactTableFilterFieldState extends State<CompactTableFilterField> {
         : '';
 
     return Container(
-      height: 28,
+      height: widget.height,
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E293B) : Colors.white,
         borderRadius: BorderRadius.circular(6),
@@ -659,7 +665,8 @@ class _CompactTableFilterFieldState extends State<CompactTableFilterField> {
                               ),
                             ),
                           ),
-                          if (_effectiveController.text.trim() == option.value ||
+                          if (_effectiveController.text.trim() ==
+                                  option.value ||
                               _effectiveController.text.trim() == option.label)
                             const Icon(
                               Icons.check_circle_rounded,
@@ -793,24 +800,28 @@ class _CompactTableFilterFieldState extends State<CompactTableFilterField> {
           Expanded(
             child: TextField(
               controller: _effectiveController,
+              expands: true,
+              minLines: null,
+              maxLines: null,
+              textAlignVertical: TextAlignVertical.center,
               onChanged: (_) => _notify(),
               style: TextStyle(
-                fontSize: 11,
+                fontSize: textFontSize,
                 fontFamily: 'Cairo',
+                fontWeight: widget.height >= 34
+                    ? FontWeight.w600
+                    : FontWeight.normal,
                 color: isDark ? Colors.white : const Color(0xFF0F172A),
               ),
               decoration: InputDecoration(
                 hintText: widget.hintText,
                 hintStyle: TextStyle(
-                  fontSize: 10,
+                  fontSize: hintFontSize,
                   fontFamily: 'Cairo',
                   color: isDark ? Colors.grey.shade500 : Colors.grey.shade400,
                 ),
                 isDense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 4,
-                  vertical: 4,
-                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 6),
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,

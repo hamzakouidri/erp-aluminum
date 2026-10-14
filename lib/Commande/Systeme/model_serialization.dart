@@ -586,6 +586,7 @@ extension WindowModelSerialization on WindowModel {
       'caissonPayload': caissonPayload,
       'isMoustiquaire': isMoustiquaire,
       'moustiquairePayload': moustiquairePayload,
+      'hasMoustiquaireAddon': hasMoustiquaireAddon,
       'isGlassWork': isGlassWork,
       'glassWorkPayload': glassWorkPayload,
       'caissonTunnelHeight': caissonTunnelHeight,
@@ -741,6 +742,9 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
     };
   }
   model.isMoustiquaire = map['isMoustiquaire'] ?? false;
+  model.hasMoustiquaireAddon =
+      map['hasMoustiquaireAddon'] == true ||
+      map['hasMoustiquaireAddon']?.toString().toLowerCase() == 'true';
   if (map['moustiquairePayload'] is Map) {
     model.moustiquairePayload = Map<String, dynamic>.from(
       map['moustiquairePayload'] as Map,

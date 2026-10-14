@@ -432,6 +432,7 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
 
   bool _isWorkerPending(Map<String, dynamic> worker) {
     final perms = _parsePermissions(worker['permissions_json'] ?? worker['permissions']);
+    if (perms['is_rejected'] == true) return false;
     if (perms['is_pending'] == true) return true;
     if (perms['isBlocked'] == true &&
         (perms['view_clients'] != true && perms['view_orders'] != true)) {
@@ -540,6 +541,69 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
     }
   }
 
+  Future<void> _rejectWorker(Map<String, dynamic> worker) async {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    final workerEmail = (worker['email'] ?? '').toString().trim();
+    final workerName = (worker['name'] ?? '').toString().trim();
+    if (workerEmail.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(switch (lang) {
+              AppLanguage.french => 'Refuser la demande',
+              AppLanguage.english => 'Reject request',
+              _ => 'رفض طلب الانضمام',
+            }),
+            content: Text(switch (lang) {
+              AppLanguage.french => 'Voulez-vous vraiment refuser la demande de $workerEmail ?',
+              AppLanguage.english => 'Do you really want to reject the request from $workerEmail?',
+              _ => 'هل تريد فعلاً رفض طلب الانضمام من $workerEmail؟',
+            }),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text(switch (lang) {
+                  AppLanguage.french => 'Annuler',
+                  AppLanguage.english => 'Cancel',
+                  _ => 'إلغاء',
+                }),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                child: Text(switch (lang) {
+                  AppLanguage.french => 'Refuser',
+                  AppLanguage.english => 'Reject',
+                  _ => 'رفض',
+                }),
+              ),
+            ],
+          ),
+        ) ?? false;
+    if (!confirmed || !mounted) return;
+
+    try {
+      await SupabaseWorkshopSyncService().rejectPendingMemberByEmail(email: workerEmail);
+      await _loadWorkers();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        backgroundColor: Colors.red.shade700,
+        content: Text(switch (lang) {
+          AppLanguage.french => 'Demande de "$workerName" refusée.',
+          AppLanguage.english => 'Request from "$workerName" rejected.',
+          _ => 'تم رفض طلب انضمام "$workerName".',
+        }),
+      ));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        backgroundColor: Colors.red,
+        content: Text('تعذر رفض طلب الانضمام: $error'),
+      ));
+    }
+  }
+
   Widget _buildPendingRequestsCard(
     List<Map<String, dynamic>> pendingWorkers,
     AppLanguage lang,
@@ -566,6 +630,11 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
       AppLanguage.french => 'Accepter',
       AppLanguage.english => 'Accept',
       _ => 'قبول',
+    };
+    final rejectLabel = switch (lang) {
+      AppLanguage.french => 'Refuser',
+      AppLanguage.english => 'Reject',
+      _ => 'رفض',
     };
 
     return Container(
@@ -687,26 +756,39 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  ElevatedButton.icon(
-                    onPressed: () => _approveWorker(worker),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF059669),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: () => _rejectWorker(worker),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red.shade700,
+                          side: BorderSide(color: Colors.red.shade300),
+                        ),
+                        icon: const Icon(Icons.close_rounded, size: 16),
+                        label: Text(rejectLabel),
                       ),
-                    ),
-                    icon: const Icon(Icons.check_rounded, size: 16),
-                    label: Text(
-                      acceptLabel,
-                      style: const TextStyle(
-                        fontFamily: 'Cairo',
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
+                      ElevatedButton.icon(
+                        onPressed: () => _approveWorker(worker),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF059669),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        icon: const Icon(Icons.check_rounded, size: 16),
+                        label: Text(
+                          acceptLabel,
+                          style: const TextStyle(
+                            fontFamily: 'Cairo',
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ],
               ),
@@ -1077,6 +1159,16 @@ class _WorkerCardState extends State<WorkerCard> {
       'workshop_purchases': true,
       'store_purchases': true,
       'store_sales': true,
+      'view_store_sales': true,
+      'create_store_sales': false,
+      'edit_store_sales': false,
+      'confirm_store_sales': false,
+      'delete_store_sales': false,
+      'register_store_payments': false,
+      'return_store_sales': false,
+      'view_document_history': false,
+      'restore_deleted_documents': false,
+      'close_business_day': false,
       'internal_sales': true,
     };
     defaults.forEach((key, value) {
@@ -3878,6 +3970,16 @@ class _WorkerCardState extends State<WorkerCard> {
                     'access_store',
                     'access_management',
                     'store_sales',
+                    'view_store_sales',
+                    'create_store_sales',
+                    'edit_store_sales',
+                    'confirm_store_sales',
+                    'delete_store_sales',
+                    'register_store_payments',
+                    'return_store_sales',
+                    'view_document_history',
+                    'restore_deleted_documents',
+                    'close_business_day',
                     'store_purchases',
                     'workshop_purchases',
                     'internal_sales',
@@ -3957,6 +4059,83 @@ class _WorkerCardState extends State<WorkerCard> {
                   ),
                   value: perms['store_sales'] ?? true,
                   onChanged: (val) => _updatePermission('store_sales', val),
+                ),
+                ...[
+                  (
+                    'view_store_sales',
+                    'مشاهدة مبيعات ووثائق المحل',
+                    'Voir les ventes et documents du magasin',
+                    'View store sales and documents',
+                  ),
+                  (
+                    'create_store_sales',
+                    'إنشاء وثائق مبيعات المحل',
+                    'Créer les documents de vente magasin',
+                    'Create store sales documents',
+                  ),
+                  (
+                    'edit_store_sales',
+                    'تعديل مسودات مبيعات المحل',
+                    'Modifier les brouillons de vente magasin',
+                    'Edit store sales drafts',
+                  ),
+                  (
+                    'confirm_store_sales',
+                    'تأكيد وتسليم مبيعات المحل',
+                    'Confirmer et livrer les ventes magasin',
+                    'Confirm and deliver store sales',
+                  ),
+                  (
+                    'delete_store_sales',
+                    'إلغاء أو حذف وثائق المحل',
+                    'Annuler ou supprimer les documents magasin',
+                    'Cancel or delete store documents',
+                  ),
+                  (
+                    'register_store_payments',
+                    'تسجيل تحصيلات المحل',
+                    'Enregistrer les encaissements magasin',
+                    'Register store payments',
+                  ),
+                  (
+                    'return_store_sales',
+                    'تنفيذ مرتجعات المحل',
+                    'Exécuter les retours magasin',
+                    'Process store returns',
+                  ),
+                  (
+                    'view_document_history',
+                    'مشاهدة تاريخ الوثائق قبل وبعد التعديل',
+                    'Voir l’historique avant/après des documents',
+                    'View document before/after history',
+                  ),
+                  (
+                    'restore_deleted_documents',
+                    'استرجاع الوثائق المحذوفة',
+                    'Restaurer les documents supprimés',
+                    'Restore deleted documents',
+                  ),
+                  (
+                    'close_business_day',
+                    'إجراء التسوية والإقفال اليومي',
+                    'Effectuer la clôture journalière',
+                    'Perform daily closing',
+                  ),
+                ].map(
+                  (permission) => SwitchListTile(
+                    title: Text(
+                      _tr(
+                        permission.$2,
+                        permission.$3,
+                        permission.$4,
+                        lang,
+                      ),
+                      style: switchTitleStyle,
+                    ),
+                    value: perms[permission.$1] ?? false,
+                    onChanged: (val) =>
+                        _updatePermission(permission.$1, val),
+                  ),
                 ),
                 SwitchListTile(
                   title: Text(

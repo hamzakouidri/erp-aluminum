@@ -462,8 +462,44 @@ class AppSettingsProvider extends ChangeNotifier {
 
   bool canMaterialSales() =>
       isManager ||
+      _isPermissionTrue(_workerPermissions['store_sales']) ||
       _isPermissionTrue(_workerPermissions['material_sales']) ||
       canViewSales();
+
+  bool canViewStoreSales() =>
+      isManager ||
+      _isPermissionTrue(_workerPermissions['store_sales']) ||
+      _isPermissionTrue(_workerPermissions['view_store_sales']);
+
+  bool canCreateStoreSales() =>
+      isManager || _isPermissionTrue(_workerPermissions['create_store_sales']);
+
+  bool canEditStoreSales() =>
+      isManager || _isPermissionTrue(_workerPermissions['edit_store_sales']);
+
+  bool canConfirmStoreSales() =>
+      isManager || _isPermissionTrue(_workerPermissions['confirm_store_sales']);
+
+  bool canDeleteStoreSales() =>
+      isManager || _isPermissionTrue(_workerPermissions['delete_store_sales']);
+
+  bool canRegisterStorePayments() =>
+      isManager ||
+      _isPermissionTrue(_workerPermissions['register_store_payments']);
+
+  bool canReturnStoreSales() =>
+      isManager || _isPermissionTrue(_workerPermissions['return_store_sales']);
+
+  bool canViewDocumentHistory() =>
+      isManager ||
+      _isPermissionTrue(_workerPermissions['view_document_history']);
+
+  bool canRestoreDeletedDocuments() =>
+      isManager ||
+      _isPermissionTrue(_workerPermissions['restore_deleted_documents']);
+
+  bool canCloseBusinessDay() =>
+      isManager || _isPermissionTrue(_workerPermissions['close_business_day']);
 
   bool canViewGlobalConsumption() =>
       isManager || _isPermissionTrue(_workerPermissions['global_consumption']);
@@ -701,11 +737,7 @@ class AppSettingsProvider extends ChangeNotifier {
 
   bool canAccessStoreSales() =>
       hasMaterialsStore &&
-      (isManager ||
-          _isPermissionTrueOrDefault(
-            _workerPermissions['store_sales'],
-            defaultValue: true,
-          ));
+      canViewStoreSales();
 
   bool canExecuteInternalSales() =>
       isDualActivity &&
@@ -798,17 +830,10 @@ class AppSettingsProvider extends ChangeNotifier {
     // Load Font Size
     _fontSizeScale = prefs.getDouble('app_font_scale') ?? 1.0;
 
-    // Load API Key — always use the latest key
-    const latestKey = 'AQ.Ab8RN6K0VzsqO944GLUZOKqevI4ncAbuewu7Cx8pEUg3O-xVaA';
-    String savedKey = prefs.getString('app_gemini_api_key') ?? '';
-    // إذا كان المفتاح المحفوظ هو القديم أو فارغ، استخدم الجديد
-    if (savedKey.isEmpty ||
-        savedKey == 'AQ.Ab8RN6IG6H5dVvsdAM0aPusDJrTfJ2-SNA22NToPNklSb-27IQ') {
-      _geminiApiKey = latestKey;
-      await prefs.setString('app_gemini_api_key', latestKey);
-    } else {
-      _geminiApiKey = savedKey;
-    }
+    // Never ship a shared Gemini secret inside the client application.
+    // Existing users keep their locally configured key; new installations
+    // must configure one until requests are moved behind the server proxy.
+    _geminiApiKey = prefs.getString('app_gemini_api_key')?.trim() ?? '';
 
     await reloadPermissions();
   }

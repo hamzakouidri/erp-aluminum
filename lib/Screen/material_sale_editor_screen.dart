@@ -243,8 +243,13 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
   });
 
   bool get _isLocked =>
-      ((_convertedToSaleId != null || _status == 'delivered') &&
-      !_forceEditing);
+      !Provider.of<AppSettingsProvider>(context, listen: false)
+              .canEditStoreSales() ||
+      ((_convertedToSaleId != null ||
+              _status == 'confirmed' ||
+              _status == 'delivered' ||
+              _status == 'paid') &&
+          !_forceEditing);
 
   void _updateItemCalculations(Map<String, dynamic> item) {
     final qty = (item['quantity'] as num?)?.toDouble() ?? 1.0;
@@ -316,18 +321,31 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
       );
       return false;
     }
+    if (_items.isEmpty) {
+      _showSnack(_t('يجب إضافة عنصر واحد على الأقل قبل الحفظ أو التأكيد.'), isError: true);
+      return false;
+    }
     return true;
   }
 
   Future<int?> _createCurrentDocument({required String status}) async {
     if (!_validateBeforePersist()) return null;
+    final deductsStock =
+        (status == 'confirmed' || status == 'delivered') &&
+        (_docType == 'bon_livraison' ||
+            _docType == 'bon_route' ||
+            _docType == 'facture');
+    // A new posted document is first persisted as a draft. Its final status is
+    // applied only after the complete stock validation/deduction succeeds.
+    // Therefore a shortage can never leave a confirmed document without stock.
+    final initialStatus = deductsStock ? 'draft' : status;
     final saleId = await widget.db.insertMaterialSale(
       saleCode: _saleCode,
       clientId: _clientId,
       clientName: _clientName,
       clientPhone: _clientPhone,
       docType: _docType,
-      status: status,
+      status: initialStatus,
       subtotal: _subtotal,
       discountAmount: _discountAmount,
       netTotal: _netTotal,
@@ -346,11 +364,6 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
       netTotal: _netTotal,
       paidAmount: _paidAmount,
     );
-    final deductsStock =
-        (status == 'confirmed' || status == 'delivered') &&
-        (_docType == 'bon_livraison' ||
-            _docType == 'bon_route' ||
-            _docType == 'facture');
     if (_isInternalClient && _destLocationId != null && deductsStock) {
       await widget.db.executeInternalMaterialSaleTransfer(
         saleId: saleId,
@@ -362,11 +375,18 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
         locationId: _locationId ?? 1,
       );
     }
+    if (deductsStock && !(_isInternalClient && _destLocationId != null)) {
+      await widget.db.updateMaterialSale(saleId, status: status);
+    }
     CloudSyncService().notifyChange();
     return saleId;
   }
 
   Future<void> _validateDocument() async {
+    if (!context.read<AppSettingsProvider>().canConfirmStoreSales()) {
+      _showSnack(_t('ليست لديك صلاحية تأكيد أو تسليم وثائق المحل'), isError: true);
+      return;
+    }
     if (_convertedToSaleId != null) return;
     final nextStatus = _docType == 'bon_livraison' ? 'delivered' : 'confirmed';
     setState(() => _isSaving = true);
@@ -383,7 +403,58 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
           ),
         );
       } else {
-        await widget.db.updateMaterialSale(widget.saleId!, status: nextStatus);
+        if (!_validateBeforePersist()) return;
+        await widget.db.snapshotMaterialSale(
+          widget.saleId!,
+          actionType: 'before_confirm',
+          afterHeader: {'status': nextStatus},
+          afterItems: _items,
+        );
+        await widget.db.updateMaterialSale(
+          widget.saleId!,
+          clientId: _clientId,
+          clientName: _clientName,
+          clientPhone: _clientPhone,
+          docType: _docType,
+          subtotal: _subtotal,
+          discountAmount: _discountAmount,
+          netTotal: _netTotal,
+          paidAmount: _paidAmount,
+          remainingAmount: _remainingAmount,
+          notes: _notes,
+          saleDate: _saleDate.toUtc().toIso8601String(),
+        );
+        await widget.db.saveMaterialSaleWithItems(
+          saleId: widget.saleId!,
+          items: _items,
+          subtotal: _subtotal,
+          discountAmount: _discountAmount,
+          netTotal: _netTotal,
+          paidAmount: _paidAmount,
+        );
+        final deductsStock =
+            (_docType == 'bon_livraison' ||
+                _docType == 'bon_route' ||
+                _docType == 'facture');
+        if (deductsStock) {
+          if (_isInternalClient && _destLocationId != null) {
+            await widget.db.executeInternalMaterialSaleTransfer(
+              saleId: widget.saleId!,
+              destLocationId: _destLocationId!,
+            );
+          } else {
+            await widget.db.deductStockForMaterialSale(
+              widget.saleId!,
+              locationId: _locationId ?? 1,
+            );
+          }
+        }
+        if (!(_isInternalClient && _destLocationId != null && deductsStock)) {
+          await widget.db.updateMaterialSale(
+            widget.saleId!,
+            status: nextStatus,
+          );
+        }
         if (!mounted) return;
         setState(() => _status = nextStatus);
         _showSnack('${_t('تم تأكيد الوثيقة')} ✔', isError: false);
@@ -430,6 +501,10 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
 
   // ── Régler / Encaissement (صندوق المحل) ──────────────────────────────────────
   Future<void> _showPaymentDialog() async {
+    if (!context.read<AppSettingsProvider>().canRegisterStorePayments()) {
+      _showSnack(_t('ليست لديك صلاحية تسجيل تحصيلات المحل'), isError: true);
+      return;
+    }
     if (widget.saleId == null) {
       _showSnack(
         _trans(
@@ -663,7 +738,9 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
                   final amount =
                       double.tryParse(amountCtrl.text.replaceAll(',', '.')) ??
                       0.0;
-                  if (amount <= 0) return;
+                  if (amount <= 0 || amount > _remainingAmount + 0.000001) {
+                    return;
+                  }
                   Navigator.pop(dialogCtx, true);
                 },
               ),
@@ -676,7 +753,16 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
     if (result != true) return;
     final payAmount =
         double.tryParse(amountCtrl.text.replaceAll(',', '.')) ?? 0.0;
-    if (payAmount <= 0) return;
+    if (payAmount <= 0 || payAmount > _remainingAmount + 0.000001) {
+      _showSnack(
+        _trans(
+          'مبلغ الدفع أكبر من المتبقي في الوثيقة',
+          'Le paiement dépasse le reste du document',
+        ),
+        isError: true,
+      );
+      return;
+    }
 
     try {
       setState(() => _isSaving = true);
@@ -764,6 +850,23 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
 
   // ── Save ──────────────────────────────────────────────────────────────────
   Future<void> _save() async {
+    final settings = context.read<AppSettingsProvider>();
+    if (widget.saleId == null
+        ? !settings.canCreateStoreSales()
+        : !settings.canEditStoreSales()) {
+      _showSnack(_t('ليست لديك صلاحية حفظ تعديلات وثائق المحل'), isError: true);
+      return;
+    }
+    if (widget.saleId != null &&
+        (_status == 'confirmed' ||
+            _status == 'delivered' ||
+            _status == 'paid')) {
+      _showSnack(
+        _t('لا يمكن تعديل عناصر وثيقة مُرحّلة مباشرة. ألغِ الحركة أو أنشئ وثيقة تصحيح للحفاظ على سلامة المخزون والسجل.'),
+        isError: true,
+      );
+      return;
+    }
     if (_clientName.trim().isEmpty) {
       _showSnack(_t('يرجى اختيار العميل'), isError: true);
       return;
@@ -821,6 +924,25 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
         }
       } else {
         // Update existing
+        await widget.db.snapshotMaterialSale(
+          widget.saleId!,
+          actionType: 'before_update',
+          afterHeader: {
+            'client_id': _clientId,
+            'client_name': _clientName,
+            'client_phone': _clientPhone,
+            'doc_type': _docType,
+            'status': _status,
+            'subtotal': _subtotal,
+            'discount_amount': _discountAmount,
+            'net_total': _netTotal,
+            'paid_amount': _paidAmount,
+            'remaining_amount': _remainingAmount,
+            'notes': _notes,
+            'sale_date': saleDateStr,
+          },
+          afterItems: _items,
+        );
         await widget.db.updateMaterialSale(
           widget.saleId!,
           clientId: _clientId,
@@ -3012,7 +3134,7 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
   final _priceCtrl = TextEditingController(text: '0.00');
   bool _loading = false;
   bool _stockLoaded = false;
-  bool _showSearchResults = false;
+  bool _showSearchResults = true;
   Timer? _searchDebounce;
 
   List<Map<String, String>> get _categories => [
@@ -3028,7 +3150,10 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
   @override
   void initState() {
     super.initState();
-    _loadItems();
+    // Show the catalogue immediately. Previously the initial load deliberately
+    // returned an empty list until the search field was tapped, which looked
+    // like a broken/empty catalogue to the user.
+    _loadItems(showAll: true);
   }
 
   @override
@@ -3062,15 +3187,22 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
 
   Future<void> _loadStockQuantities() async {
     if (_stockLoaded) return;
-    final rows = await widget.db.readAllPossibleStock(1);
-    for (final row in rows) {
-      final type = row['item_type']?.toString() ?? '';
-      final id = (row['item_id'] as num?)?.toInt() ?? 0;
-      final colorId = (row['color_id'] as num?)?.toInt();
-      _stockQuantities['${type}_${id}_${colorId ?? 0}'] =
-          (row['quantity'] as num?)?.toDouble() ?? 0.0;
+    try {
+      final rows = await widget.db.readAllPossibleStock(1);
+      for (final row in rows) {
+        final type = row['item_type']?.toString() ?? '';
+        final id = (row['item_id'] as num?)?.toInt() ?? 0;
+        final colorId = (row['color_id'] as num?)?.toInt();
+        _stockQuantities['${type}_${id}_${colorId ?? 0}'] =
+            (row['quantity'] as num?)?.toDouble() ?? 0.0;
+      }
+    } catch (error) {
+      // Stock availability is supplementary information. A damaged/missing
+      // stock row must never hide the product catalogue itself.
+      debugPrint('Could not load picker stock quantities: $error');
+    } finally {
+      _stockLoaded = true;
     }
-    _stockLoaded = true;
   }
 
   double _stockFor(Map<String, dynamic> item, {int? colorId}) {
@@ -3086,32 +3218,40 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
   }
 
   Future<List<Map<String, dynamic>>> _readCategoryItems(String category) async {
-    final List<Map<String, dynamic>> rows;
-    switch (category) {
-      case 'Sections':
-        rows = await widget.db.searchSectionsWithProfile('');
-        break;
-      case 'Accessories':
-        rows = await widget.db.readAccessories();
-        break;
-      case 'Glass':
-        rows = await widget.db.readGlass();
-        break;
-      case 'Joints':
-        rows = await widget.db.readJoints();
-        break;
-      case 'ShutterComponents':
-        rows = await widget.db.readShutterComponents();
-        break;
-      case 'Sheets':
-        rows = await widget.db.readStandardSheets();
-        break;
-      default:
-        rows = <Map<String, dynamic>>[];
+    try {
+      final List<Map<String, dynamic>> rows;
+      switch (category) {
+        case 'Sections':
+          rows = await widget.db.searchSectionsWithProfile('');
+          break;
+        case 'Accessories':
+          rows = await widget.db.readAccessories();
+          break;
+        case 'Glass':
+          rows = await widget.db.readGlass();
+          break;
+        case 'Joints':
+          rows = await widget.db.readJoints();
+          break;
+        case 'ShutterComponents':
+          rows = await widget.db.readShutterComponents();
+          break;
+        case 'Sheets':
+          rows = await widget.db.readStandardSheets();
+          break;
+        default:
+          rows = <Map<String, dynamic>>[];
+      }
+      return rows
+          .map((row) => <String, dynamic>{...row, '_picker_category': category})
+          .toList();
+    } catch (error) {
+      // One optional catalogue table may not yet exist on an older database.
+      // Keep the remaining categories available instead of blanking the whole
+      // picker because Future.wait received one error.
+      debugPrint('Could not load picker category $category: $error');
+      return <Map<String, dynamic>>[];
     }
-    return rows
-        .map((row) => <String, dynamic>{...row, '_picker_category': category})
-        .toList();
   }
 
   String _normalizeSearch(String value) {
@@ -3338,14 +3478,11 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
       _selectedColorName = colorName;
       _quantityCtrl.text = '1';
       _priceCtrl.text = initialPrice.toStringAsFixed(2);
-      _searchCtrl.text = (item['name'] ?? item['type'] ?? '').toString();
-      _searchCtrl.selection = TextSelection.collapsed(
-        offset: _searchCtrl.text.length,
-      );
-      _showSearchResults = false;
-      _items = [];
+      // Keep the chosen row and all current results visible. The user can now
+      // inspect the complete details, quantity, price, colour and stock before
+      // adding it. Starting a new search clears the selection in onChanged.
+      _showSearchResults = true;
     });
-    _searchFocus.unfocus();
   }
 
   void _hideSearchResults() {
@@ -3657,7 +3794,15 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
                             final colorHex = item['_selected_color_hex']
                                 ?.toString();
                             final stock = _stockFor(item);
-                            final isSelected = identical(item, _selectedItem);
+                            final isSelected =
+                                _selectedItem != null &&
+                                (item['id'] as num?)?.toInt() ==
+                                    (_selectedItem!['id'] as num?)?.toInt() &&
+                                _categoryForItem(item) ==
+                                    _categoryForItem(_selectedItem!) &&
+                                (item['_selected_color_id'] as num?)?.toInt() ==
+                                    (_selectedItem!['_selected_color_id'] as num?)
+                                        ?.toInt();
                             return ListTile(
                               selected: isSelected,
                               selectedTileColor: _blue.withOpacity(0.08),
@@ -3771,6 +3916,31 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
                                 ),
                               ),
                             ],
+                          ),
+                          const SizedBox(height: 4),
+                          Align(
+                            alignment: AlignmentDirectional.centerStart,
+                            child: Text(
+                              [
+                                selected['code'],
+                                selected['profile_name'] ??
+                                    selected['system_name'],
+                                selected['series_name'],
+                                _selectedColorName,
+                                _t(_getUnit(selected)),
+                              ]
+                                  .where(
+                                    (value) =>
+                                        value != null &&
+                                        value.toString().trim().isNotEmpty,
+                                  )
+                                  .join(' · '),
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 11,
+                                color: colors.onSurfaceVariant,
+                              ),
+                            ),
                           ),
                           const SizedBox(height: 10),
                           LayoutBuilder(

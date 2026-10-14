@@ -157,6 +157,15 @@ class _AppDrawerState extends State<AppDrawer> {
         : event.scrollDelta.dx;
     if (delta == 0) return;
 
+    // Only claim the wheel when the list can still move; at an edge the event
+    // must stay available to the parent scrollable.
+    final position = _drawerScrollController.position;
+    if (!position.hasContentDimensions) return;
+    final target = (position.pixels + delta)
+        .clamp(position.minScrollExtent, position.maxScrollExtent)
+        .toDouble();
+    if ((target - position.pixels).abs() < 0.5) return;
+
     GestureBinding.instance.pointerSignalResolver.register(event, (_) {
       if (_drawerScrollController.hasClients) {
         _drawerScrollController.position.pointerScroll(delta);

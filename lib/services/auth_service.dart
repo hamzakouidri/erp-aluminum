@@ -481,6 +481,14 @@ class AppAuthService {
           'تم تجاوز حصة نقل البيانات في خادم السحابة (Supabase). يرجى فك الحظر أو ترقية الباقة لاستئناف الخدمة.',
         );
       }
+      if (msg.contains('signups not allowed') ||
+          msg.contains('signup is disabled') ||
+          msg.contains('user signups are disabled')) {
+        return const AppAuthException(
+          'signup-disabled',
+          'إنشاء الحسابات الجديدة متوقف في إعدادات Supabase. يجب تفعيل Allow new users to sign up من Authentication ثم المحاولة مجدداً.',
+        );
+      }
       if (msg.contains('token has expired') ||
           msg.contains('otp_expired') ||
           code == 'otp_expired') {

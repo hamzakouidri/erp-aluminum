@@ -7,20 +7,32 @@ class ExtractedInvoiceItem {
   final String itemName;
   final double quantity;
   final double price;
+  final String color;
+  final String unit;
+  final String rawDescription;
+  final double confidence;
 
   ExtractedInvoiceItem({
     required this.itemCode,
     required this.itemName,
     required this.quantity,
     required this.price,
+    this.color = '',
+    this.unit = '',
+    this.rawDescription = '',
+    this.confidence = 0.0,
   });
 
   factory ExtractedInvoiceItem.fromJson(Map<String, dynamic> json) {
     return ExtractedInvoiceItem(
       itemCode: (json['item_code'] ?? '').toString(),
       itemName: (json['item_name'] ?? '').toString(),
-      quantity: (json['quantity'] as num?)?.toDouble() ?? 0.0,
-      price: (json['price'] as num?)?.toDouble() ?? 0.0,
+      quantity: _number(json['quantity']),
+      price: _number(json['price']),
+      color: (json['color'] ?? '').toString().trim(),
+      unit: (json['unit'] ?? '').toString().trim(),
+      rawDescription: (json['raw_description'] ?? '').toString().trim(),
+      confidence: _number(json['confidence']).clamp(0.0, 1.0).toDouble(),
     );
   }
 
@@ -29,7 +41,21 @@ class ExtractedInvoiceItem {
     'item_name': itemName,
     'quantity': quantity,
     'price': price,
+    'color': color,
+    'unit': unit,
+    'raw_description': rawDescription,
+    'confidence': confidence,
   };
+
+  static double _number(dynamic value) {
+    if (value is num) return value.toDouble();
+    final normalized = value
+        ?.toString()
+        .replaceAll(RegExp(r'[^0-9,.-]'), '')
+        .replaceAll(',', '.') ??
+        '';
+    return double.tryParse(normalized) ?? 0.0;
+  }
 }
 
 class ExtractedInvoice {
@@ -57,7 +83,7 @@ class ExtractedInvoice {
       invoiceNumber: (json['invoice_number'] ?? '').toString(),
       supplierName: (json['supplier_name'] ?? '').toString(),
       date: (json['date'] ?? '').toString(),
-      total: (json['total'] as num?)?.toDouble() ?? 0.0,
+      total: ExtractedInvoiceItem._number(json['total']),
       items: parsedItems,
     );
   }
@@ -73,14 +99,16 @@ class ExtractedInvoice {
 
 class AiInvoiceService {
   /// تحليل صورة الفاتورة واستخراج البيانات.
-  /// إذا كان [apiKey] فارغاً، سيتم تفعيل وضع المحاكاة تلقائياً.
+  /// Requires a configured API key; failures must never be replaced with
+  /// fabricated invoice data that looks like a successful scan.
   static Future<ExtractedInvoice> analyzeInvoice(
     Uint8List imageBytes, {
     String? apiKey,
+    String mimeType = 'image/jpeg',
+    List<Map<String, String>> catalogHints = const [],
   }) async {
     if (apiKey == null || apiKey.trim().isEmpty) {
-      // 🟢 تفعيل وضع المحاكاة المدمج لتجربة الواجهة فوراً
-      return await _simulateMockAnalysis();
+      throw StateError('مفتاح Gemini غير مضبوط في الإعدادات.');
     }
 
     try {
@@ -92,8 +120,24 @@ class AiInvoiceService {
         ),
       );
 
+      final catalogText = catalogHints.take(350).map((entry) {
+        return '${entry['code'] ?? ''} | ${entry['name'] ?? ''} | ${entry['color'] ?? ''}';
+      }).join('\n');
+
       final prompt = '''
-حلل صورة الفاتورة هذه واستخرج البيانات بدقة متناهية باللغة العربية أو الفرنسية.
+أنت خبير OCR لفواتير الألمنيوم والزجاج والأكسسوارات. اقرأ الصورة سطراً سطراً، بما في ذلك الجداول الصغيرة أو الباهتة.
+لا تختصر قائمة السلع ولا تحذف سطراً لأنه غير واضح. أخرج كل سطر سلعة ظاهر في الصورة مرة واحدة وبنفس ترتيب الفاتورة.
+افصل كود السلعة عن اسمها وعن اللون والكمية والوحدة والسعر. لا تخلط الإجمالي بسعر الوحدة.
+قد تختلف تسمية المورد عن الكتالوج. استعمل الكتالوج أدناه فقط لفهم الأخطاء الإملائية المحتملة، ولا تستبدل النص الأصلي ولا تخترع تطابقاً.
+قواعد اللون مهمة:
+- FBM يعني لوناً خشبياً (Faux bois / bois). اكتب color = "خشبي FBM".
+- استخرج Blanc/White/أبيض، Noir/أسود، Gris، Bronze، Marron، Beige وأي كود لون كما هو.
+- إن لم يظهر اللون صراحة اكتب "غير مذكور"، ولا تستنتج لون البروفيل من سلعة أخرى.
+- احتفظ بالنص الكامل المقروء في raw_description حتى لا تضيع أي معلومة.
+
+الكتالوج المحلي المساعد:
+$catalogText
+
 أريدك أن تستخرج تفاصيل الفاتورة كـ JSON كالتالي تماماً:
 {
   "invoice_number": "رقم الفاتورة هنا",
@@ -105,16 +149,20 @@ class AiInvoiceService {
       "item_code": "كود المقطع أو السلعة التجاري مثل P400 أو S450 أو غير ذلك، اتركه فارغاً إن لم يكن مكتوباً",
       "item_name": "اسم المقطع الهندسي أو السلعة مثل حلق أو ضلفة أو زجاج أو إكسسوار",
       "quantity": الكمية كـ number,
-      "price": سعر الوحدة كـ number
+      "price": سعر الوحدة كـ number,
+      "color": "اللون أو كوده، ودائماً غير مذكور إن لم يظهر",
+      "unit": "الوحدة مثل barre أو pièce أو kg أو m",
+      "raw_description": "النص الكامل لسطر الفاتورة كما قرأته",
+      "confidence": رقم من 0 إلى 1 يمثل وضوح القراءة
     }
   ]
 }
 
-ركز جداً على استخراج الأكواد التجارية للمقاطع (مثل P400، P405، TPR) لأنها تستخدم للمطابقة مع الكتالوج.
+ركز جداً على الأكواد التجارية (مثل P400، P405، TPR)، وعلى جميع الأسطر واللون. إذا كان السطر ضعيفاً أبقه مع confidence منخفض بدلاً من حذفه.
 ''';
 
       final content = [
-        Content.multi([DataPart('image/jpeg', imageBytes), TextPart(prompt)]),
+        Content.multi([DataPart(mimeType, imageBytes), TextPart(prompt)]),
       ];
 
       final response = await model.generateContent(content);
@@ -124,50 +172,20 @@ class AiInvoiceService {
         throw Exception('الرد المستلم من الذكاء الاصطناعي فارغ.');
       }
 
-      final Map<String, dynamic> jsonMap = jsonDecode(responseText);
-      return ExtractedInvoice.fromJson(jsonMap);
-    } catch (e) {
-      // في حال حدوث أي خطأ في الاتصال أو التحليل، نتراجع إلى وضع المحاكاة الذكي
-      return await _simulateMockAnalysis();
+      final cleaned = responseText
+          .replaceFirst(RegExp(r'^\s*```(?:json)?\s*'), '')
+          .replaceFirst(RegExp(r'\s*```\s*$'), '')
+          .trim();
+      final Map<String, dynamic> jsonMap = jsonDecode(cleaned);
+      final invoice = ExtractedInvoice.fromJson(jsonMap);
+      if (invoice.items.isEmpty) {
+        throw const FormatException(
+          'لم يتم استخراج أي سطر سلعة. أعد التصوير مع إظهار كامل الجدول وإضاءة أوضح.',
+        );
+      }
+      return invoice;
+    } catch (_) {
+      rethrow;
     }
-  }
-
-  /// محاكاة تحليل الفاتورة وعرض فواتير حقيقية لتجربة مطابقة السلع التفاعلية
-  static Future<ExtractedInvoice> _simulateMockAnalysis() async {
-    // محاكاة تأخير معالجة الـ AI لمدة ثانيتين ونصف
-    await Future.delayed(const Duration(milliseconds: 2500));
-
-    // سنرجع فاتورة مشتريات ألمنيوم تحتوي على:
-    // 1. مقطع P400: وهو مقطع معروف وموجود افتراضياً في التطبيق (لتجربة المطابقة التلقائية)
-    // 2. مقطع S450: وهو مقطع جديد غير متوافر في الكتالوج الحالي (لتجربة ميزة إنشاء مقطع جديد)
-    // 3. مقطع زجاج مزدوج (Glass): لتجربة التخصيص أو الربط
-    final mockJson = {
-      "invoice_number": "ACH-2026-098",
-      "supplier_name": "نورالور للألمنيوم (Noralur)",
-      "date": DateTime.now().toUtc().toIso8601String().substring(0, 10),
-      "total": 85400.0,
-      "items": [
-        {
-          "item_code": "P400",
-          "item_name": "حلق ألمنيوم 45 مم (Frame)",
-          "quantity": 12.0,
-          "price": 2800.0,
-        },
-        {
-          "item_code": "S450",
-          "item_name": "ضلفة جرار عريضة (Sliding Sash)",
-          "quantity": 10.0,
-          "price": 3100.0,
-        },
-        {
-          "item_code": "GL-24",
-          "item_name": "زجاج مزدوج 24مم (Double Glass)",
-          "quantity": 5.0,
-          "price": 4160.0,
-        },
-      ],
-    };
-
-    return ExtractedInvoice.fromJson(mockJson);
   }
 }

@@ -1,6 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:database_data/widgets/app_material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../sql_database.dart';
 
@@ -43,23 +48,88 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
   }
 
   String? _accessoryImagePath(Map<String, dynamic> item) {
+    // 1. الأولوية المطلقة: المسار المربوط والمقيد صراحة بهذا الإكسسوار بعينه
     final savedPath = item['image_path']?.toString().trim() ?? '';
     if (savedPath.isNotEmpty) return savedPath;
 
-    final label = '${item['name'] ?? ''} ${item['type'] ?? ''}'.toLowerCase();
-    if (label.contains('intramatique') ||
-        label.contains('entrematique') ||
-        label.contains('أونتروماتيك') ||
-        label.contains('انتروماتيك') ||
-        label.contains('andramatique')) {
-      return 'assets/sections/intramatique.png';
+    // 2. المطابقة الدقيقة فقط بالرمز التجاري المحدد (Exact Code Match) بدون تخمين بالاسم
+    final code = (item['code'] ?? '').toString().trim().toUpperCase();
+    if (code.isNotEmpty) {
+      if (code == '40127') return 'assets/sections/40127.svg';
+      if (code == 'N245') return 'assets/sections/N245.svg';
+      if (code == 'N52034') return 'assets/sections/N52034.svg';
     }
-    if (label.contains('gache porte') ||
-        label.contains('gâche porte') ||
-        label.contains('قاش بورت')) {
-      return 'assets/sections/40127.svg';
-    }
+
+    // إذا لم تكن هناك صورة مقيدة صراحة ولا كود دقيق، لا نخمن بالكلمات تجنباً للخطأ
     return null;
+  }
+
+  Future<String?> _saveAccessoryImageLocally(XFile pickedFile, String accessoryName) async {
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final accDir = Directory(p.join(appDir.path, 'accessories_images'));
+      if (!await accDir.exists()) {
+        await accDir.create(recursive: true);
+      }
+      final ext = p.extension(pickedFile.path).isNotEmpty
+          ? p.extension(pickedFile.path)
+          : '.png';
+      final safeName = accessoryName
+          .replaceAll(RegExp(r'[^\w\s\.-]'), '_')
+          .replaceAll(' ', '_');
+      final fileName = 'acc_${DateTime.now().millisecondsSinceEpoch}_$safeName$ext';
+      final savedFile = File(p.join(accDir.path, fileName));
+      await File(pickedFile.path).copy(savedFile.path);
+      return savedFile.path;
+    } catch (e) {
+      debugPrint('Error saving accessory image locally: $e');
+      return pickedFile.path;
+    }
+  }
+
+  Future<void> _pickAndAssignImageForAccessory(Map<String, dynamic> item) async {
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+      );
+      if (pickedFile == null) return;
+
+      final accId = _databaseId(item['id']);
+      if (accId == null) return;
+
+      final savedPath = await _saveAccessoryImageLocally(
+        pickedFile,
+        item['name']?.toString() ?? 'accessory',
+      );
+      if (savedPath == null) return;
+
+      await widget.db.updateAccessory(accId, {
+        'image_path': savedPath,
+      });
+
+      await _loadItems();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_t('تم تحديث صورة الإكسسوار بنجاح.')),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${_t('حدث خطأ أثناء تعيين الصورة')}: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   List<Map<String, dynamic>> _items = [];
@@ -308,8 +378,6 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
     String scope = 'Global';
 
-    int? selectedSeriesId;
-
     bool isMoteurScrew = false;
 
     bool isCaissonScrew = false;
@@ -419,21 +487,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
     String screwUsage = 'التجميع';
 
-    final List<String> screwUsages = [
-      'التجميع',
-
-      'تجميع الصندوق',
-
-      'إكسسوارات',
-
-      'حديد الدعم',
-
-      'التثبيت',
-
-      'كيت الستار',
-
-      'الباتمو',
-    ];
+    String? selectedImagePath;
 
     final List<String> qualities = ['جودة رفيعة', 'جودة قياسية', 'جودة تجارية'];
 
@@ -933,6 +987,66 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                           );
                         },
                       ),
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final picker = ImagePicker();
+                        final pickedFile = await picker.pickImage(
+                          source: ImageSource.gallery,
+                          imageQuality: 85,
+                        );
+                        if (pickedFile != null) {
+                          setStateDialog(() {
+                            selectedImagePath = pickedFile.path;
+                          });
+                        }
+                      },
+                      icon: const Icon(Icons.add_photo_alternate_rounded),
+                      label: Text(
+                        selectedImagePath == null
+                            ? _t('إضافة صورة للإكسسوار (اختياري)')
+                            : _t('تغيير صورة الإكسسوار'),
+                      ),
+                    ),
+                    if (selectedImagePath != null) ...[
+                      const SizedBox(height: 10),
+                      Stack(
+                        alignment: Alignment.topRight,
+                        children: [
+                          Container(
+                            height: 110,
+                            width: 110,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.blue.shade200, width: 2),
+                              color: Colors.grey.shade50,
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: selectedImagePath!.toLowerCase().endsWith('.svg')
+                                ? SvgPicture.file(
+                                    File(selectedImagePath!),
+                                    fit: BoxFit.contain,
+                                  )
+                                : Image.file(
+                                    File(selectedImagePath!),
+                                    fit: BoxFit.cover,
+                                  ),
+                          ),
+                          IconButton(
+                            icon: const CircleAvatar(
+                              radius: 12,
+                              backgroundColor: Colors.red,
+                              child: Icon(Icons.close, size: 14, color: Colors.white),
+                            ),
+                            onPressed: () {
+                              setStateDialog(() {
+                                selectedImagePath = null;
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -1115,6 +1229,12 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                                       isKitScrew
                                   ? 1
                                   : 0,
+                              if (selectedImagePath != null &&
+                                  selectedImagePath!.isNotEmpty)
+                                'image_path': await _saveAccessoryImageLocally(
+                                  XFile(selectedImagePath!),
+                                  finalName,
+                                ),
                             });
 
                             // The catalogue notification refreshes the list once.
@@ -1198,8 +1318,6 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
     if (scope != 'Global' && scope != 'Unique') {
       scope = 'Global';
     }
-
-    int? selectedSeriesId = int.tryParse(item['series_id']?.toString() ?? '');
 
     bool isMoteurScrew = _databaseFlag(item['is_moteur_screw']);
 
@@ -1330,6 +1448,11 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
       'Autre',
     ];
+
+    String? selectedImagePath = item['image_path']?.toString().trim();
+    if (selectedImagePath != null && selectedImagePath.isEmpty) {
+      selectedImagePath = null;
+    }
 
     final List<String> qualities = ['جودة رفيعة', 'جودة قياسية', 'جودة تجارية'];
 
@@ -1852,6 +1975,72 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                       );
                     },
                   ),
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final picker = ImagePicker();
+                    final pickedFile = await picker.pickImage(
+                      source: ImageSource.gallery,
+                      imageQuality: 85,
+                    );
+                    if (pickedFile != null) {
+                      setStateDialog(() {
+                        selectedImagePath = pickedFile.path;
+                      });
+                    }
+                  },
+                  icon: const Icon(Icons.add_photo_alternate_rounded),
+                  label: Text(
+                    selectedImagePath == null || selectedImagePath!.isEmpty
+                        ? _t('إضافة صورة للإكسسوار (اختياري)')
+                        : _t('تغيير صورة الإكسسوار'),
+                  ),
+                ),
+                if (selectedImagePath != null && selectedImagePath!.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Stack(
+                    alignment: Alignment.topRight,
+                    children: [
+                      Container(
+                        height: 110,
+                        width: 110,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.blue.shade200, width: 2),
+                          color: Colors.grey.shade50,
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Builder(
+                          builder: (context) {
+                            final path = selectedImagePath!;
+                            if (path.toLowerCase().endsWith('.svg')) {
+                              if (path.startsWith('assets/')) {
+                                return SvgPicture.asset(path, fit: BoxFit.contain);
+                              }
+                              return SvgPicture.file(File(path), fit: BoxFit.contain);
+                            }
+                            if (path.startsWith('assets/')) {
+                              return Image.asset(path, fit: BoxFit.cover);
+                            }
+                            return Image.file(File(path), fit: BoxFit.cover);
+                          },
+                        ),
+                      ),
+                      IconButton(
+                        icon: const CircleAvatar(
+                          radius: 12,
+                          backgroundColor: Colors.red,
+                          child: Icon(Icons.close, size: 14, color: Colors.white),
+                        ),
+                        onPressed: () {
+                          setStateDialog(() {
+                            selectedImagePath = '';
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -2034,6 +2223,15 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                             _isScrewCategory(accessoryCategory) && isKitScrew
                             ? 1
                             : 0,
+                        if (selectedImagePath != null && selectedImagePath!.isNotEmpty)
+                          'image_path': selectedImagePath!.startsWith('assets/')
+                              ? selectedImagePath
+                              : await _saveAccessoryImageLocally(
+                                  XFile(selectedImagePath!),
+                                  finalName,
+                                )
+                        else if (selectedImagePath != null && selectedImagePath!.isEmpty)
+                          'image_path': '',
                       },
                     );
 
@@ -2832,12 +3030,39 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
             margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
 
             child: ListTile(
-              leading: SectionImageWidget(
-                imagePath: _accessoryImagePath(item),
-                code: item['code']?.toString(),
-                name: item['name']?.toString(),
-                size: 54,
-                fallbackIcon: sectionIcon,
+              leading: Stack(
+                alignment: Alignment.bottomRight,
+                children: [
+                  GestureDetector(
+                    onTap: isUserAdmin
+                        ? () => _pickAndAssignImageForAccessory(item)
+                        : null,
+                    child: SectionImageWidget(
+                      imagePath: _accessoryImagePath(item),
+                      code: item['code']?.toString(),
+                      name: item['name']?.toString(),
+                      size: 54,
+                      fallbackIcon: sectionIcon,
+                    ),
+                  ),
+                  if (isUserAdmin)
+                    GestureDetector(
+                      onTap: () => _pickAndAssignImageForAccessory(item),
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade700,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 1.5),
+                        ),
+                        child: const Icon(
+                          Icons.camera_alt,
+                          size: 11,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                ],
               ),
 
               title: Text(

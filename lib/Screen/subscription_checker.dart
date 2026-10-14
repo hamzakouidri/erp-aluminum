@@ -843,6 +843,7 @@ class _SupabaseSubscriptionGateState extends State<SupabaseSubscriptionGate> {
         final verifiedAccount = account!;
         if (verifiedAccount.blocked) {
           final isPendingApproval = verifiedAccount.role == 'worker' &&
+              verifiedAccount.permissions['is_rejected'] != true &&
               (verifiedAccount.permissions['is_pending'] == true ||
                   verifiedAccount.permissions['is_approved'] == false ||
                   (verifiedAccount.permissions['view_clients'] != true &&

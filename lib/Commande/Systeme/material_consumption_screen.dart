@@ -135,7 +135,12 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       '${_canonicalStockType(itemType)}|$itemId|${colorId ?? 0}';
 
   int? _itemColorId(BomItem item) {
-    final value = item.colorId ?? widget.model.selectedDbColor?['id'];
+    final isAccessory =
+        item.category == 'accessory' || item.category == 'other';
+    final selectedColor = isAccessory
+        ? widget.model.selectedAccessoryColor
+        : widget.model.selectedDbColor;
+    final value = item.colorId ?? selectedColor?['id'];
     return value is num ? value.toInt() : int.tryParse('${value ?? ''}');
   }
 
@@ -495,20 +500,19 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             (item.materialType ?? '').toLowerCase().trim() == 'shutter')) {
       return null;
     }
-    if (item.sourceSeriesId != null && item.sourceSeriesId! > 0) {
-      return item.sourceSeriesId;
-    }
     final mode = _accessoryDrawingModeForItem(item);
     if (mode == AccessoryDrawingMode.sliding) {
       return widget.model.activeSlidingSeries?.id ??
-          widget.model.activeSeries?.id;
+          widget.model.activeSeries?.id ??
+          item.sourceSeriesId;
     }
     if (mode == AccessoryDrawingMode.opening) {
-      return widget.model.activeSeries?.id;
+      return widget.model.activeSeries?.id ?? item.sourceSeriesId;
     }
-    return widget.model.systemMode == 'sliding'
+    final activeSeriesId = widget.model.systemMode == 'sliding'
         ? widget.model.activeSlidingSeries?.id
         : widget.model.activeSeries?.id;
+    return activeSeriesId ?? item.sourceSeriesId;
   }
 
   String _materialTypeForItem(BomItem item) {
@@ -1012,17 +1016,18 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   }
 
   int? _seriesIdForSwapTarget(BomItem item, _BomSwapTarget target) {
-    if (target.seriesId != null && target.seriesId! > 0) {
-      return target.seriesId;
-    }
     if (target.drawingMode == AccessoryDrawingMode.sliding) {
       return widget.model.activeSlidingSeries?.id ??
-          widget.model.activeSeries?.id;
+          widget.model.activeSeries?.id ??
+          target.seriesId;
     }
     if (target.drawingMode == AccessoryDrawingMode.opening) {
-      return widget.model.activeSeries?.id;
+      return widget.model.activeSeries?.id ?? target.seriesId;
     }
-    return _seriesIdForItem(item);
+    final activeSeriesId = widget.model.systemMode == 'sliding'
+        ? widget.model.activeSlidingSeries?.id
+        : widget.model.activeSeries?.id;
+    return activeSeriesId ?? target.seriesId ?? _seriesIdForItem(item);
   }
 
   String _materialTypeForSwapTarget(BomItem item, _BomSwapTarget target) {
@@ -1115,15 +1120,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   }
 
   int? _selectedAccessoryColorId() {
-    final rawId =
-        widget.model.selectedAccessoryColor?['id'] ??
-        widget.model.selectedDbColor?['id'];
+    final rawId = widget.model.selectedAccessoryColor?['id'];
     return rawId is num ? rawId.toInt() : int.tryParse('${rawId ?? ''}');
   }
 
   /// Accessories may keep their real selling price in AccessoryColorPrices
   /// while their base price remains zero. Use the accessory colour selected in
-  /// the drawing (or the profile colour when it was left automatic).
+  /// the drawing. A colourless accessory uses its base price and must not
+  /// inherit the profile colour.
   Future<double> _resolveSelectedAccessoryPrice(
     Database database,
     Map<String, dynamic> accessory,
@@ -1159,10 +1163,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     final settings = Provider.of<AppSettingsProvider>(context, listen: false);
     if (settings.applyPurchasePricesToCostTable && accessoryId != null) {
       final purchasePrice = await SqlDatabase().getLatestPurchasePrice(
-            itemId: accessoryId,
-            itemType: 'Accessories',
-            colorId: colorId,
-          );
+        itemId: accessoryId,
+        itemType: 'Accessories',
+        colorId: colorId,
+      );
       if (purchasePrice != null && purchasePrice >= 0) {
         price = purchasePrice;
       }
@@ -1183,6 +1187,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   double _shutterSqmPriceFromDb =
       0.0; // سعر متر مربع الستار من جدول ShutterSqmPrices
   double? _shutterSqmPriceOverride; // تعديل يدوي لسعر متر الستار
+  double _moustiquaireSqmPriceFromDb = 0.0;
   int _priceLoadGeneration = 0;
   double _moteurInstallFee = 0.0; // أجرة تركيب المحرك
   double _obInstallFee = 0.0; // أجرة تركيب System OB
@@ -1210,12 +1215,23 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         !_pageScrollController.hasClients) {
       return;
     }
+    // Only claim the wheel when the page can still move; at an edge the
+    // event must stay available to the table or another scrollable.
+    final current = _pageScrollController.position;
+    if (!current.hasContentDimensions) return;
+    final target = (current.pixels + event.scrollDelta.dy).clamp(
+      current.minScrollExtent,
+      current.maxScrollExtent,
+    );
+    if ((target - current.pixels).abs() < 0.5) return;
     GestureBinding.instance.pointerSignalResolver.register(event, (_) {
       if (!mounted || !_pageScrollController.hasClients) return;
       final position = _pageScrollController.position;
       if (!position.hasContentDimensions) return;
-      final newOffset = (position.pixels + event.scrollDelta.dy)
-          .clamp(position.minScrollExtent, position.maxScrollExtent);
+      final newOffset = (position.pixels + event.scrollDelta.dy).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      );
       if ((newOffset - position.pixels).abs() >= 0.5) {
         position.pointerScroll(event.scrollDelta.dy);
       }
@@ -2087,7 +2103,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     return items
         .where((item) {
           final hasPieces = item.pieces != null && item.pieces!.isNotEmpty;
-          final qty = item.requiredQuantity > 0 ? item.requiredQuantity : item.quantity;
+          final qty = item.requiredQuantity > 0
+              ? item.requiredQuantity
+              : item.quantity;
           if (!item.isActive || (!hasPieces && qty <= 0)) return false;
           final category = item.selectorCategory ?? item.category;
           final requiresCatalogueIdentity = const {
@@ -2164,11 +2182,15 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       window: widget.model,
       items: rawItems,
     );
-    return items.where((item) {
-      final hasPieces = item.pieces != null && item.pieces!.isNotEmpty;
-      final qty = item.requiredQuantity > 0 ? item.requiredQuantity : item.quantity;
-      return hasPieces || qty > 0;
-    }).toList(growable: false);
+    return items
+        .where((item) {
+          final hasPieces = item.pieces != null && item.pieces!.isNotEmpty;
+          final qty = item.requiredQuantity > 0
+              ? item.requiredQuantity
+              : item.quantity;
+          return hasPieces || qty > 0;
+        })
+        .toList(growable: false);
   }
 
   Future<void> _refreshVisibleBomItems() async {
@@ -2206,8 +2228,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       }
       final refreshedStock = await _loadMainWarehouseStock();
       if (!mounted || refreshGeneration != _bomRefreshGeneration) return;
-      final stockChanged = refreshedStock.length != _mainWarehouseStock.length ||
-          refreshedStock.entries.any((e) => _mainWarehouseStock[e.key] != e.value);
+      final stockChanged =
+          refreshedStock.length != _mainWarehouseStock.length ||
+          refreshedStock.entries.any(
+            (e) => _mainWarehouseStock[e.key] != e.value,
+          );
       if (stockChanged ||
           _bomItemsSignature(_visibleBomItems) !=
               _bomItemsSignature(visibleBomItems)) {
@@ -2286,9 +2311,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       _setFetchProgress(0.40);
 
       try {
-        await _loadPricesFromDb().timeout(
-          const Duration(seconds: 4),
-        );
+        await _loadPricesFromDb().timeout(const Duration(seconds: 4));
       } catch (e) {
         debugPrint('_loadPricesFromDb error/timeout: $e');
       }
@@ -2303,9 +2326,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       final dbInstance = await sqlDb.db;
       if (dbInstance != null) {
         try {
-          await _loadStrictKitBundles(dbInstance, sqlDb).timeout(
-            const Duration(seconds: 4),
-          );
+          await _loadStrictKitBundles(
+            dbInstance,
+            sqlDb,
+          ).timeout(const Duration(seconds: 4));
         } catch (e) {
           debugPrint('_loadStrictKitBundles error/timeout: $e');
         }
@@ -2328,6 +2352,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         await engine
             .stabilizeSelections(window: widget.model, items: bomItems)
             .timeout(const Duration(seconds: 4));
+        // Stabilization can select catalogue components. Rebuild and run one
+        // more pass so quick "Ajouter" and the manually opened quantity table
+        // price the exact same final BOM rather than two successive states.
+        bomItems = _generateRawBomItems();
+        await engine
+            .stabilizeSelections(window: widget.model, items: bomItems)
+            .timeout(const Duration(seconds: 4));
+        bomItems = _generateRawBomItems();
       } catch (e) {
         debugPrint('stabilizeSelections error/timeout: $e');
       }
@@ -2387,7 +2419,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         unawaited(_fetchDefaults());
       }
       if (_pricePerLinearMeterFromDb == 0 ||
-          (widget.model.hasShutter && _shutterSqmPriceFromDb == 0)) {
+          (widget.model.hasShutter && _shutterSqmPriceFromDb == 0) ||
+          (widget.model.hasMoustiquaireAddon &&
+              _moustiquaireSqmPriceFromDb <= 0)) {
         _scheduleInitialPriceRetries();
       }
     }
@@ -2395,14 +2429,29 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         !mustRepeatForRestoredSeries &&
         !_automaticCompletionStarted &&
         mounted) {
+      // The manual table remains open long enough for its price retry to
+      // finish. The quick Ajouter path must not save an earlier zero/default
+      // tariff, otherwise both buttons calculate the same BOM differently.
+      if (_pricePerLinearMeterFromDb == 0 ||
+          (widget.model.hasShutter && _shutterSqmPriceFromDb == 0) ||
+          (widget.model.hasMoustiquaireAddon &&
+              _moustiquaireSqmPriceFromDb <= 0)) {
+        try {
+          await _loadPricesFromDb().timeout(const Duration(seconds: 8));
+        } catch (e) {
+          debugPrint('Final automatic price load error/timeout: $e');
+        }
+      }
       _automaticCompletionStarted = true;
-      final pricedItems = _visibleBomItems.where((item) {
-        final hasPieces = item.pieces != null && item.pieces!.isNotEmpty;
-        final qty = item.requiredQuantity > 0
-            ? item.requiredQuantity
-            : item.quantity;
-        return hasPieces || qty > 0;
-      }).toList(growable: false);
+      final pricedItems = _visibleBomItems
+          .where((item) {
+            final hasPieces = item.pieces != null && item.pieces!.isNotEmpty;
+            final qty = item.requiredQuantity > 0
+                ? item.requiredQuantity
+                : item.quantity;
+            return hasPieces || qty > 0;
+          })
+          .toList(growable: false);
       final totals = _calculateTotals(pricedItems);
       final sellingPrice = totals['total']?['selling'] ?? 0.0;
       final quantity = math.max(1, widget.model.quantity);
@@ -2700,7 +2749,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         if (sectionId != null) profileRules[sectionId] = row;
       }
     } catch (e) {
-      debugPrint('Error getting profile calculation rules in _loadPricesFromDb: $e');
+      debugPrint(
+        'Error getting profile calculation rules in _loadPricesFromDb: $e',
+      );
     }
     final previousLinearMeterPrice = _pricePerLinearMeterFromDb;
     final previousShutterSqmPrice = _shutterSqmPriceFromDb;
@@ -2848,6 +2899,16 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       verrouInstall =
           (verrouRes.first['price_per_sqm'] as num?)?.toDouble() ?? 0.0;
     }
+    final moustiquaireRes = await dbInstance.query(
+      'ShutterSqmPrices',
+      columns: ['price_per_sqm'],
+      where: 'blade_type = ? AND color_id = ?',
+      whereArgs: ['Moustiquaire_Sqm', 0],
+      limit: 1,
+    );
+    final moustiquaireSqmPrice = moustiquaireRes.isEmpty
+        ? 0.0
+        : _safeDouble(moustiquaireRes.first['price_per_sqm']);
     if (!mounted || generation != _priceLoadGeneration) return;
     final effectiveLinearMeterPrice = linearMeterPrice > 0 || seriesId != null
         ? linearMeterPrice
@@ -2862,6 +2923,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       _pricePerLinearMeterFromDb = effectiveLinearMeterPrice;
       _shutterSqmPriceFromDb =
           effectiveShutterSqmPrice; // ⭐️ التحديث الحاسم لسعر الستار
+      _moustiquaireSqmPriceFromDb = moustiquaireSqmPrice;
       _moteurInstallFee = moteurInstall;
       _obInstallFee = obInstall;
       _demiObInstallFee = demiObInstall;
@@ -3168,11 +3230,15 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         ),
       );
     }
-    final items = _visibleBomItems.where((item) {
-      final hasPieces = item.pieces != null && item.pieces!.isNotEmpty;
-      final qty = item.requiredQuantity > 0 ? item.requiredQuantity : item.quantity;
-      return hasPieces || qty > 0;
-    }).toList(growable: false);
+    final items = _visibleBomItems
+        .where((item) {
+          final hasPieces = item.pieces != null && item.pieces!.isNotEmpty;
+          final qty = item.requiredQuantity > 0
+              ? item.requiredQuantity
+              : item.quantity;
+          return hasPieces || qty > 0;
+        })
+        .toList(growable: false);
     return Scaffold(
       appBar: AppBar(
         title: Text(Localization.translate('الالكمية والتكلفة', lang)),
@@ -3185,420 +3251,432 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           behavior: HitTestBehavior.translucent,
           onPointerSignal: _handleTablePageWheel,
           child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Keep refreshes invisible once a valid table is already shown.
-            // The progress panel is only useful for the initial empty load.
-            if (_isFetchingDefaults && _visibleBomItems.isEmpty)
-              _buildFetchProgress(lang),
-            // تحذير ارتفاع الستار (إن وُجد) — يظهر فقط إذا كان هناك تحذير في النموذج
-            if (widget.model.shutterHeightWarning != null) ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  border: Border.all(color: Colors.red.shade200),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.warning_amber_rounded,
-                      color: Colors.red.shade700,
-                      size: 24,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        widget
-                            .model
-                            .shutterHeightWarning!, // نص التحذير القادم من النموذج
-                        style: TextStyle(
-                          color: Colors.red.shade900,
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                        ),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Keep refreshes invisible once a valid table is already shown.
+              // The progress panel is only useful for the initial empty load.
+              if (_isFetchingDefaults && _visibleBomItems.isEmpty)
+                _buildFetchProgress(lang),
+              // تحذير ارتفاع الستار (إن وُجد) — يظهر فقط إذا كان هناك تحذير في النموذج
+              if (widget.model.shutterHeightWarning != null) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    border: Border.all(color: Colors.red.shade200),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        color: Colors.red.shade700,
+                        size: 24,
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            // Manual blade selections remain visible in the BOM, but a blade
-            // whose database width limit is too small must be clearly flagged.
-            if (widget.model.shutterWidthWarning != null) ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
-                  border: Border.all(color: Colors.orange.shade200),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.straighten,
-                      color: Colors.orange.shade800,
-                      size: 24,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        widget.model.localizedShutterWidthWarning(lang) ??
-                            widget.model.shutterWidthWarning!,
-                        style: TextStyle(
-                          color: Colors.orange.shade900,
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    if (widget.model.recommendedShutterBlade != null) ...[
                       const SizedBox(width: 12),
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange.shade800,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                        ),
-                        icon: const Icon(Icons.check_circle_outline, size: 18),
-                        label: Text(
-                          lang == AppLanguage.french
-                              ? 'Appliquer la lame recommandée'
-                              : (lang == AppLanguage.english
-                                  ? 'Apply recommended blade'
-                                  : 'تطبيق الشفرة المقترحة'),
-                          style: const TextStyle(
-                            fontSize: 13,
+                      Expanded(
+                        child: Text(
+                          widget
+                              .model
+                              .shutterHeightWarning!, // نص التحذير القادم من النموذج
+                          style: TextStyle(
+                            color: Colors.red.shade900,
+                            fontSize: 14,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        onPressed: () async {
-                          widget.model.applyRecommendedShutterBlade();
-                          await widget.model.updateShutterDefaultsIfNeeded();
-                          await _fetchDefaults();
-                          if (mounted) setState(() {});
-                        },
                       ),
                     ],
-                  ],
+                  ),
                 ),
-              ),
-            ],
-            const SizedBox(height: 10),
-            // رسم شكل النافذة (CustomPaint) بحجم مصغّر لعرض بصري سريع
-            Center(
-              child: SizedBox(
-                width: 250,
-                height: 250,
-                child: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: FittedBox(
-                    fit: BoxFit.contain,
-                    child: CustomPaint(
-                      painter: WindowPainter(
-                        model: widget.model,
-                        repaintToken: _bomRefreshGeneration,
-                      ), // الرسام المخصص
-                      size: Size(
-                        widget.model.width.toDouble(),
-                        widget.model.height.toDouble(),
+              ],
+              // Manual blade selections remain visible in the BOM, but a blade
+              // whose database width limit is too small must be clearly flagged.
+              if (widget.model.shutterWidthWarning != null) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    border: Border.all(color: Colors.orange.shade200),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.straighten,
+                        color: Colors.orange.shade800,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          widget.model.localizedShutterWidthWarning(lang) ??
+                              widget.model.shutterWidthWarning!,
+                          style: TextStyle(
+                            color: Colors.orange.shade900,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      if (widget.model.recommendedShutterBlade != null) ...[
+                        const SizedBox(width: 12),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange.shade800,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                          ),
+                          icon: const Icon(
+                            Icons.check_circle_outline,
+                            size: 18,
+                          ),
+                          label: Text(
+                            lang == AppLanguage.french
+                                ? 'Appliquer la lame recommandée'
+                                : (lang == AppLanguage.english
+                                      ? 'Apply recommended blade'
+                                      : 'تطبيق الشفرة المقترحة'),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          onPressed: () async {
+                            widget.model.applyRecommendedShutterBlade();
+                            await widget.model.updateShutterDefaultsIfNeeded();
+                            await _fetchDefaults();
+                            if (mounted) setState(() {});
+                          },
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 10),
+              // رسم شكل النافذة (CustomPaint) بحجم مصغّر لعرض بصري سريع
+              Center(
+                child: SizedBox(
+                  width: 250,
+                  height: 250,
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: FittedBox(
+                      fit: BoxFit.contain,
+                      child: CustomPaint(
+                        painter: WindowPainter(
+                          model: widget.model,
+                          repaintToken: _bomRefreshGeneration,
+                        ), // الرسام المخصص
+                        size: Size(
+                          widget.model.width.toDouble(),
+                          widget.model.height.toDouble(),
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-            const Divider(height: 1),
-            // ---- شريط مؤشر توفر "لايت كيت" مع أبعاد النافذة (دالة فورية IIFE) ----
-            (() {
-              // هل توجد أي حزمة كيت اسمها يحتوي "light/لايت/ليت" ضمن الأنظمة العامة (kit bundles)
-              final hasLightKitSystem = _kitBundleData.keys.any(
-                (key) =>
-                    key.toLowerCase().contains('light') ||
-                    key.contains('لايت') ||
-                    key.contains('ليت'),
-              );
-              // هل يوجد حاليًا كيت مفعّل من هذا النوع ضمن عناصر BOM الفعلية
-              final activeKits = items
-                  .where((i) => i.isActive && i.kitGroupName != null)
-                  .map((i) => i.kitGroupName!)
-                  .toSet();
-              final isLightKitSystemActive = activeKits.any(
-                (name) =>
-                    name.toLowerCase().contains('light') ||
-                    name.contains('لايت') ||
-                    name.contains('ليت'),
-              );
-              // تحقق مماثل لكيتات الستار المباشرة (وليس أنظمة الكيت العامة)
-              bool isShutterKitLight = false;
-              bool isShutterKitActive = false;
-              final isMotor = widget.model.shutterMechanism == 'محرك';
-              final kitKeysToCheck = isMotor
-                  ? ['كيت فولي موتور (Kit Volet Moteur)']
-                  : [
-                      'كيت فولي مانيفر (Kit Volet Manivelle)',
-                      'كيت مانيفر (Kit Manivelle)',
-                    ];
-              for (var key in kitKeysToCheck) {
-                final shutterKit = widget.model.componentOverrides[key];
-                if (shutterKit != null) {
-                  final shutterKitName = shutterKit['name']?.toString() ?? '';
-                  if (shutterKitName.toLowerCase().contains('light') ||
-                      shutterKitName.contains('لايت') ||
-                      shutterKitName.contains('ليت')) {
-                    isShutterKitLight = true;
+              const SizedBox(height: 10),
+              const Divider(height: 1),
+              // ---- شريط مؤشر توفر "لايت كيت" مع أبعاد النافذة (دالة فورية IIFE) ----
+              (() {
+                // هل توجد أي حزمة كيت اسمها يحتوي "light/لايت/ليت" ضمن الأنظمة العامة (kit bundles)
+                final hasLightKitSystem = _kitBundleData.keys.any(
+                  (key) =>
+                      key.toLowerCase().contains('light') ||
+                      key.contains('لايت') ||
+                      key.contains('ليت'),
+                );
+                // هل يوجد حاليًا كيت مفعّل من هذا النوع ضمن عناصر BOM الفعلية
+                final activeKits = items
+                    .where((i) => i.isActive && i.kitGroupName != null)
+                    .map((i) => i.kitGroupName!)
+                    .toSet();
+                final isLightKitSystemActive = activeKits.any(
+                  (name) =>
+                      name.toLowerCase().contains('light') ||
+                      name.contains('لايت') ||
+                      name.contains('ليت'),
+                );
+                // تحقق مماثل لكيتات الستار المباشرة (وليس أنظمة الكيت العامة)
+                bool isShutterKitLight = false;
+                bool isShutterKitActive = false;
+                final isMotor = widget.model.shutterMechanism == 'محرك';
+                final kitKeysToCheck = isMotor
+                    ? ['كيت فولي موتور (Kit Volet Moteur)']
+                    : [
+                        'كيت فولي مانيفر (Kit Volet Manivelle)',
+                        'كيت مانيفر (Kit Manivelle)',
+                      ];
+                for (var key in kitKeysToCheck) {
+                  final shutterKit = widget.model.componentOverrides[key];
+                  if (shutterKit != null) {
+                    final shutterKitName = shutterKit['name']?.toString() ?? '';
+                    if (shutterKitName.toLowerCase().contains('light') ||
+                        shutterKitName.contains('لايت') ||
+                        shutterKitName.contains('ليت')) {
+                      isShutterKitLight = true;
+                    }
+                  }
+                  if (activeVariants[key] == true) {
+                    isShutterKitActive = true;
                   }
                 }
-                if (activeVariants[key] == true) {
-                  isShutterKitActive = true;
-                }
-              }
-              // تجميع النتيجة النهائية: هل يوجد لايت كيت أصلًا، وهل هو مفعّل حاليًا
-              final isLightKitActive =
-                  isLightKitSystemActive ||
-                  (isShutterKitActive && isShutterKitLight);
-              final hasLightKit = hasLightKitSystem || isShutterKitLight;
-              // بناء الشريط نفسه: لون مختلف حسب الحالة (أخضر=مفعّل، أزرق=متاح، رمادي=غير متاح)
-              final isDark = Theme.of(context).brightness == Brightness.dark;
-              final lang = Provider.of<AppSettingsProvider>(
-                context,
-                listen: false,
-              ).language;
-              return Container(
-                margin: const EdgeInsets.symmetric(
-                  horizontal: 16.0,
-                  vertical: 8.0,
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14.0,
-                  vertical: 10.0,
-                ),
-                decoration: BoxDecoration(
-                  color: isLightKitActive
-                      ? (isDark
-                            ? Colors.green.shade900.withValues(alpha: 0.3)
-                            : Colors.green.shade50)
-                      : (hasLightKit
-                            ? (isDark
-                                  ? Colors.blue.shade900.withValues(alpha: 0.3)
-                                  : Colors.blue.shade50)
-                            : (isDark
-                                  ? Colors.blueGrey.shade900.withValues(
-                                      alpha: 0.3,
-                                    )
-                                  : Colors.blueGrey.shade50)),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
+                // تجميع النتيجة النهائية: هل يوجد لايت كيت أصلًا، وهل هو مفعّل حاليًا
+                final isLightKitActive =
+                    isLightKitSystemActive ||
+                    (isShutterKitActive && isShutterKitLight);
+                final hasLightKit = hasLightKitSystem || isShutterKitLight;
+                // بناء الشريط نفسه: لون مختلف حسب الحالة (أخضر=مفعّل، أزرق=متاح، رمادي=غير متاح)
+                final isDark = Theme.of(context).brightness == Brightness.dark;
+                final lang = Provider.of<AppSettingsProvider>(
+                  context,
+                  listen: false,
+                ).language;
+                return Container(
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 16.0,
+                    vertical: 8.0,
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14.0,
+                    vertical: 10.0,
+                  ),
+                  decoration: BoxDecoration(
                     color: isLightKitActive
                         ? (isDark
-                              ? Colors.green.shade700
-                              : Colors.green.shade200)
+                              ? Colors.green.shade900.withValues(alpha: 0.3)
+                              : Colors.green.shade50)
                         : (hasLightKit
                               ? (isDark
-                                    ? Colors.blue.shade700
-                                    : Colors.blue.shade200)
+                                    ? Colors.blue.shade900.withValues(
+                                        alpha: 0.3,
+                                      )
+                                    : Colors.blue.shade50)
                               : (isDark
-                                    ? Colors.blueGrey.shade700
-                                    : Colors.blueGrey.shade200)),
+                                    ? Colors.blueGrey.shade900.withValues(
+                                        alpha: 0.3,
+                                      )
+                                    : Colors.blueGrey.shade50)),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: isLightKitActive
+                          ? (isDark
+                                ? Colors.green.shade700
+                                : Colors.green.shade200)
+                          : (hasLightKit
+                                ? (isDark
+                                      ? Colors.blue.shade700
+                                      : Colors.blue.shade200)
+                                : (isDark
+                                      ? Colors.blueGrey.shade700
+                                      : Colors.blueGrey.shade200)),
+                    ),
                   ),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // أيقونة وأبعاد النافذة (عرض × ارتفاع)
-                        Icon(
-                          Icons.straighten,
-                          color: isDark
-                              ? Colors.white60
-                              : Colors.blueGrey.shade500,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 8),
-                        RichText(
-                          text: TextSpan(
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: isDark
-                                  ? Colors.white70
-                                  : Colors.blueGrey.shade800,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            children: [
-                              TextSpan(
-                                text:
-                                    '${Localization.translate('العرض:', lang)} ',
-                              ),
-                              TextSpan(
-                                text:
-                                    '${widget.model.width.toStringAsFixed(0)} mm',
-                                style: TextStyle(
-                                  color: isDark
-                                      ? Colors.white
-                                      : const Color(0xFF1A237E),
-                                  fontSize: 15,
-                                ),
-                              ),
-                              TextSpan(
-                                text: '  ×  ',
-                                style: TextStyle(
-                                  color: Colors.blueGrey.shade400,
-                                  fontWeight: FontWeight.normal,
-                                ),
-                              ),
-                              TextSpan(
-                                text:
-                                    '${Localization.translate('الارتفاع:', lang)} ',
-                              ),
-                              TextSpan(
-                                text:
-                                    '${widget.model.height.toStringAsFixed(0)} mm',
-                                style: TextStyle(
-                                  color: isDark
-                                      ? Colors.white
-                                      : const Color(0xFF1A237E),
-                                  fontSize: 15,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        // مؤشر اللايت كيت (يظهر فقط إذا كان متاحًا أصلًا)
-                        if (hasLightKit) ...[
-                          const SizedBox(width: 12),
-                          Container(
-                            width: 1,
-                            height: 20,
-                            color: Colors.blueGrey.shade200,
-                          ),
-                          const SizedBox(width: 12),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // أيقونة وأبعاد النافذة (عرض × ارتفاع)
                           Icon(
-                            isLightKitActive
-                                ? Icons
-                                      .check_circle // أخضر = مفعّل فعليًا
-                                : Icons
-                                      .info_outline, // أزرق = متاح لكن غير مفعّل
-                            color: isLightKitActive
-                                ? Colors.green
-                                : Colors.blue,
+                            Icons.straighten,
+                            color: isDark
+                                ? Colors.white60
+                                : Colors.blueGrey.shade500,
                             size: 18,
                           ),
-                        ],
-                      ],
-                    ),
-                    if (widget.model.systemMode == 'sliding')
-                      (() {
-                        final hasSlidingSash = widget.model.zones.any(
-                          (z) => z.content == ZoneContent.slidingSash,
-                        );
-                        if (!hasSlidingSash) return const SizedBox.shrink();
-                        final useClassicHandle = widget.model.zones.any(
-                          (z) =>
-                              z.content == ZoneContent.slidingSash &&
-                              z.useClassicHandle == true,
-                        );
-                        return Column(
-                          children: [
-                            const SizedBox(height: 6),
-                            Container(
-                              height: 1,
-                              color: Colors.blueGrey.shade100.withValues(
-                                alpha: 0.5,
+                          const SizedBox(width: 8),
+                          RichText(
+                            text: TextSpan(
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: isDark
+                                    ? Colors.white70
+                                    : Colors.blueGrey.shade800,
+                                fontWeight: FontWeight.bold,
                               ),
-                            ),
-                            const SizedBox(height: 6),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(
-                                  Icons.lock_outline_rounded,
-                                  color: Colors.blueGrey.shade500,
-                                  size: 16,
+                                TextSpan(
+                                  text:
+                                      '${Localization.translate('العرض:', lang)} ',
                                 ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  '${Localization.translate('نوع القفل:', lang)} ',
+                                TextSpan(
+                                  text:
+                                      '${widget.model.width.toStringAsFixed(0)} mm',
                                   style: TextStyle(
-                                    fontFamily: 'Cairo',
-                                    fontSize: 12,
-                                    color: Colors.blueGrey.shade700,
+                                    color: isDark
+                                        ? Colors.white
+                                        : const Color(0xFF1A237E),
+                                    fontSize: 15,
                                   ),
                                 ),
-                                Text(
-                                  useClassicHandle
-                                      ? Localization.translate(
-                                          'مقبض كلاسيكي (فتح)',
-                                          lang,
-                                        )
-                                      : '${Localization.translate('مقبض منزلق (جرار)', lang)} / ${Localization.translate('أودراماتيك', lang)}',
-                                  style: const TextStyle(
-                                    fontFamily: 'Cairo',
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF1A237E),
+                                TextSpan(
+                                  text: '  ×  ',
+                                  style: TextStyle(
+                                    color: Colors.blueGrey.shade400,
+                                    fontWeight: FontWeight.normal,
+                                  ),
+                                ),
+                                TextSpan(
+                                  text:
+                                      '${Localization.translate('الارتفاع:', lang)} ',
+                                ),
+                                TextSpan(
+                                  text:
+                                      '${widget.model.height.toStringAsFixed(0)} mm',
+                                  style: TextStyle(
+                                    color: isDark
+                                        ? Colors.white
+                                        : const Color(0xFF1A237E),
+                                    fontSize: 15,
                                   ),
                                 ),
                               ],
                             ),
+                          ),
+                          // مؤشر اللايت كيت (يظهر فقط إذا كان متاحًا أصلًا)
+                          if (hasLightKit) ...[
+                            const SizedBox(width: 12),
+                            Container(
+                              width: 1,
+                              height: 20,
+                              color: Colors.blueGrey.shade200,
+                            ),
+                            const SizedBox(width: 12),
+                            Icon(
+                              isLightKitActive
+                                  ? Icons
+                                        .check_circle // أخضر = مفعّل فعليًا
+                                  : Icons
+                                        .info_outline, // أزرق = متاح لكن غير مفعّل
+                              color: isLightKitActive
+                                  ? Colors.green
+                                  : Colors.blue,
+                              size: 18,
+                            ),
                           ],
-                        );
-                      })(),
-                  ],
+                        ],
+                      ),
+                      if (widget.model.systemMode == 'sliding')
+                        (() {
+                          final hasSlidingSash = widget.model.zones.any(
+                            (z) => z.content == ZoneContent.slidingSash,
+                          );
+                          if (!hasSlidingSash) return const SizedBox.shrink();
+                          final useClassicHandle = widget.model.zones.any(
+                            (z) =>
+                                z.content == ZoneContent.slidingSash &&
+                                z.useClassicHandle == true,
+                          );
+                          return Column(
+                            children: [
+                              const SizedBox(height: 6),
+                              Container(
+                                height: 1,
+                                color: Colors.blueGrey.shade100.withValues(
+                                  alpha: 0.5,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.lock_outline_rounded,
+                                    color: Colors.blueGrey.shade500,
+                                    size: 16,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    '${Localization.translate('نوع القفل:', lang)} ',
+                                    style: TextStyle(
+                                      fontFamily: 'Cairo',
+                                      fontSize: 12,
+                                      color: Colors.blueGrey.shade700,
+                                    ),
+                                  ),
+                                  Text(
+                                    useClassicHandle
+                                        ? Localization.translate(
+                                            'مقبض كلاسيكي (فتح)',
+                                            lang,
+                                          )
+                                        : '${Localization.translate('مقبض منزلق (جرار)', lang)} / ${Localization.translate('أودراماتيك', lang)}',
+                                    style: const TextStyle(
+                                      fontFamily: 'Cairo',
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF1A237E),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          );
+                        })(),
+                    ],
+                  ),
+                );
+              })(), // استدعاء الدالة الفورية مباشرة
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8.0,
+                  vertical: 8.0,
                 ),
-              );
-            })(), // استدعاء الدالة الفورية مباشرة
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 8.0,
-                vertical: 8.0,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_desktopTableMode)
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(
+                          start: 4,
+                          bottom: 6,
+                        ),
+                        child: Text(
+                          Localization.translate(
+                            '⠿ اضغط مطولاً على الصف ثم اسحبه لإعادة ترتيب العناصر',
+                            lang,
+                          ),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white54
+                                : Colors.blueGrey.shade600,
+                          ),
+                        ),
+                      ),
+                    _buildUnifiedTable(items),
+                  ],
+                ), // بناء الجدول الرئيسي بكل الأقسام
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (_desktopTableMode)
-                    Padding(
-                      padding: const EdgeInsetsDirectional.only(
-                        start: 4,
-                        bottom: 6,
-                      ),
-                      child: Text(
-                        Localization.translate(
-                          '⠿ اضغط مطولاً على الصف ثم اسحبه لإعادة ترتيب العناصر',
-                          lang,
-                        ),
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white54
-                              : Colors.blueGrey.shade600,
-                        ),
-                      ),
-                    ),
-                  _buildUnifiedTable(items),
-                ],
-              ), // بناء الجدول الرئيسي بكل الأقسام
-            ),
-            const SizedBox(
-              height: 100,
-            ), // مساحة فارغة أسفل الجدول حتى لا يغطيها الشريط السفلي
-          ],
+              const SizedBox(
+                height: 100,
+              ), // مساحة فارغة أسفل الجدول حتى لا يغطيها الشريط السفلي
+            ],
           ),
         ),
       ),
@@ -3623,6 +3701,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         linearMeterPrice:
             _pricePerLinearMeterOverride ?? _pricePerLinearMeterFromDb,
         shutterSqmPrice: _shutterSqmPriceOverride ?? _shutterSqmPriceFromDb,
+        moustiquaireSqmPrice: _moustiquaireSqmPriceFromDb,
         profileRules: _profileCalculationRules,
         obInstallFee: _obInstallFee,
         demiObInstallFee: _demiObInstallFee,
@@ -3641,11 +3720,15 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       listen: false,
     ).language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final items = _visibleBomItems.where((item) {
-      final hasPieces = item.pieces != null && item.pieces!.isNotEmpty;
-      final qty = item.requiredQuantity > 0 ? item.requiredQuantity : item.quantity;
-      return hasPieces || qty > 0;
-    }).toList(growable: false);
+    final items = _visibleBomItems
+        .where((item) {
+          final hasPieces = item.pieces != null && item.pieces!.isNotEmpty;
+          final qty = item.requiredQuantity > 0
+              ? item.requiredQuantity
+              : item.quantity;
+          return hasPieces || qty > 0;
+        })
+        .toList(growable: false);
     final totals = _calculateTotals(items);
     final double totalCostNoWaste =
         totals['total']?['cost'] ?? 0.0; // التكلفة الصافية بدون هدر
@@ -3866,6 +3949,28 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   },
                 ),
               ],
+            ],
+            if (widget.model.hasMoustiquaireAddon) ...[
+              const SizedBox(height: 10),
+              InputDecorator(
+                decoration: const InputDecoration(
+                  labelText:
+                      'سعر المتر المربع للموستيكير (دج) — من إدارة الأسعار',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.grid_on_rounded, color: Colors.green),
+                ),
+                child: Text(
+                  '${_moustiquaireSqmPriceFromDb.toStringAsFixed(2)} دج / م²',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.only(top: 5),
+                child: Text(
+                  'المساحة = عرض النافذة × ارتفاعها × الكمية. تعديل السعر يتم من إدارة الأسعار فقط.',
+                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+              ),
             ],
             const SizedBox(height: 20),
             const Divider(),
@@ -4606,86 +4711,87 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         behavior: HitTestBehavior.translucent,
         onPointerSignal: _handleTablePageWheel,
         child: SingleChildScrollView(
-        controller:
-            _scrollController, // نفس الكونترولر المستخدم لمراقبة موضع التمرير
-        scrollDirection:
-            Axis.horizontal, // تمرير أفقي لأن الجدول أعرض من الشاشة
-        child: SizedBox(
-          width: _minW, // عرض ثابت = مجموع عرض كل الأعمدة
-          child: Directionality(
-            textDirection: TextDirection.ltr,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _header(), // صف رأس الجدول (أسماء الأعمدة)
-                // قسم البروفيلات (يظهر فقط إذا كان فيه عناصر)
-                if (groups['profile']!.isNotEmpty) ...[
-                  _sectionTitle(
-                    'البروفيلات',
-                    Colors.blue.shade100,
-                    cost: totals['profile']?['cost'],
-                    selling: totals['profile']?['selling'],
-                  ),
-                  ...groups['profile']!.map(_buildDraggableMaterialRow),
+          controller:
+              _scrollController, // نفس الكونترولر المستخدم لمراقبة موضع التمرير
+          scrollDirection:
+              Axis.horizontal, // تمرير أفقي لأن الجدول أعرض من الشاشة
+          child: SizedBox(
+            width: _minW, // عرض ثابت = مجموع عرض كل الأعمدة
+            child: Directionality(
+              textDirection: TextDirection.ltr,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _header(), // صف رأس الجدول (أسماء الأعمدة)
+                  // قسم البروفيلات (يظهر فقط إذا كان فيه عناصر)
+                  if (groups['profile']!.isNotEmpty) ...[
+                    _sectionTitle(
+                      'البروفيلات',
+                      Colors.blue.shade100,
+                      cost: totals['profile']?['cost'],
+                      selling: totals['profile']?['selling'],
+                    ),
+                    ...groups['profile']!.map(_buildDraggableMaterialRow),
+                  ],
+                  // قسم الإكسسوارات (مقسّم إلى: عناصر كيت مجمّعة + عناصر عادية منفردة)
+                  if (groups['accessory']!.isNotEmpty) ...[
+                    _sectionTitle(
+                      'الإكسسوارات',
+                      Colors.orange.shade100,
+                      cost: totals['accessory']?['cost'],
+                      selling: totals['accessory']?['selling'],
+                    ),
+                    ..._buildKitGroups(
+                      groups['accessory']!
+                          .where((i) => i.kitGroupName != null)
+                          .toList(),
+                    ),
+                    ...groups['accessory']!
+                        .where((i) => i.kitGroupName == null)
+                        .map(_buildDraggableMaterialRow),
+                  ],
+                  // قسم مكوّنات الستار (نفس منطق التقسيم: كيت مجمّع + عناصر عادية)
+                  if (groups['shutter']!.isNotEmpty) ...[
+                    _sectionTitle(
+                      'مكوّنات الستار',
+                      Colors.purple.shade100,
+                      cost: totals['shutter']?['cost'],
+                      selling: totals['shutter']?['selling'],
+                    ),
+                    ..._buildKitGroups(
+                      groups['shutter']!
+                          .where((i) => i.kitGroupName != null)
+                          .toList(),
+                    ),
+                    ...groups['shutter']!
+                        .where((i) => i.kitGroupName == null)
+                        .map(_buildDraggableMaterialRow),
+                  ],
+                  // قسم الزجاج (بدون كيتات — كل عناصره عادية)
+                  if (groups['glass']!.isNotEmpty) ...[
+                    _sectionTitle(
+                      'الزجاج',
+                      Colors.teal.shade100,
+                      cost: totals['glass']?['cost'],
+                      selling: totals['glass']?['selling'],
+                    ),
+                    ...groups['glass']!.map(_buildDraggableMaterialRow),
+                  ],
+                  // قسم الجوينات (Gaskets)
+                  if (groups['joint'] != null &&
+                      groups['joint']!.isNotEmpty) ...[
+                    _sectionTitle(
+                      'الجوينات',
+                      Colors.purple.shade50,
+                      cost: totals['joint']?['cost'],
+                      selling: totals['joint']?['selling'],
+                    ),
+                    ...groups['joint']!.map(_buildDraggableMaterialRow),
+                  ],
                 ],
-                // قسم الإكسسوارات (مقسّم إلى: عناصر كيت مجمّعة + عناصر عادية منفردة)
-                if (groups['accessory']!.isNotEmpty) ...[
-                  _sectionTitle(
-                    'الإكسسوارات',
-                    Colors.orange.shade100,
-                    cost: totals['accessory']?['cost'],
-                    selling: totals['accessory']?['selling'],
-                  ),
-                  ..._buildKitGroups(
-                    groups['accessory']!
-                        .where((i) => i.kitGroupName != null)
-                        .toList(),
-                  ),
-                  ...groups['accessory']!
-                      .where((i) => i.kitGroupName == null)
-                      .map(_buildDraggableMaterialRow),
-                ],
-                // قسم مكوّنات الستار (نفس منطق التقسيم: كيت مجمّع + عناصر عادية)
-                if (groups['shutter']!.isNotEmpty) ...[
-                  _sectionTitle(
-                    'مكوّنات الستار',
-                    Colors.purple.shade100,
-                    cost: totals['shutter']?['cost'],
-                    selling: totals['shutter']?['selling'],
-                  ),
-                  ..._buildKitGroups(
-                    groups['shutter']!
-                        .where((i) => i.kitGroupName != null)
-                        .toList(),
-                  ),
-                  ...groups['shutter']!
-                      .where((i) => i.kitGroupName == null)
-                      .map(_buildDraggableMaterialRow),
-                ],
-                // قسم الزجاج (بدون كيتات — كل عناصره عادية)
-                if (groups['glass']!.isNotEmpty) ...[
-                  _sectionTitle(
-                    'الزجاج',
-                    Colors.teal.shade100,
-                    cost: totals['glass']?['cost'],
-                    selling: totals['glass']?['selling'],
-                  ),
-                  ...groups['glass']!.map(_buildDraggableMaterialRow),
-                ],
-                // قسم الجوينات (Gaskets)
-                if (groups['joint'] != null && groups['joint']!.isNotEmpty) ...[
-                  _sectionTitle(
-                    'الجوينات',
-                    Colors.purple.shade50,
-                    cost: totals['joint']?['cost'],
-                    selling: totals['joint']?['selling'],
-                  ),
-                  ...groups['joint']!.map(_buildDraggableMaterialRow),
-                ],
-              ],
+              ),
             ),
           ),
-        ),
         ),
       ),
     );
@@ -5062,6 +5168,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     double glassSelling,
     double shutterSelling,
     double accessorySelling,
+    double moustiquaireSelling,
     double finalSellingPrice,
   ) {
     final lang = Provider.of<AppSettingsProvider>(
@@ -5096,6 +5203,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 Localization.translate('سعر الإكسسوارات:', lang),
                 accessorySelling,
               ),
+              _detailRow('سعر الموستيكير:', moustiquaireSelling),
               const Divider(thickness: 2),
               _detailRow(
                 Localization.translate('المجموع الإجمالي:', lang),
@@ -5243,6 +5351,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       totals['glass']?['selling'] ?? 0.0,
                       totals['shutter']?['selling'] ?? 0.0,
                       totals['accessory']?['selling'] ?? 0.0,
+                      totals['moustiquaire']?['selling'] ?? 0.0,
                       sellingPrice,
                     ),
                     icon: Icon(
@@ -5855,7 +5964,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                                   lower == 'dormant') {
                                 return false;
                               }
-                              if (lower == localizedTitle.toLowerCase()) return false;
+                              if (lower == localizedTitle.toLowerCase())
+                                return false;
                               // If French language, hide pure Arabic subparts
                               if (_lang == 'fr' && _hasArabic(trimmed)) {
                                 return false;
@@ -6057,7 +6167,13 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             // عمود اللون (لا يُعرض للزجاج)
             _cell(
               Text(
-                item.category == 'glass' ? '-' : (item.colorName ?? '-'),
+                item.category == 'glass'
+                    ? '-'
+                    : ((item.category == 'accessory' ||
+                                  item.category == 'other') &&
+                              (item.colorName ?? '').trim().isEmpty
+                          ? ''
+                          : (item.colorName ?? '-')),
                 style: TextStyle(
                   fontSize: 12,
                   color: isDark ? Colors.white70 : Colors.black87,
@@ -6239,6 +6355,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           hasShutter: widget.model.hasShutter,
           isCaissonTunnel: widget.model.isCaissonTunnel,
           hasSideCovers: widget.model.hasSideCovers,
+          multiFrameDrawing: widget.model.getFrameRects().length > 1,
           accessoryDrawingMode: swapTarget.drawingMode,
           roleKeys: dialogRoleKeys,
           hasSimpleGlassForReducer: widget.model.hasSimpleGlassForReducer,
@@ -6655,8 +6772,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         double price = 0.0;
         final db = SqlDatabase();
         // حساب السعر: بروفيل حسب اللون، وإلا السعر العام المباشر
-        final settings =
-            Provider.of<AppSettingsProvider>(context, listen: false);
+        final settings = Provider.of<AppSettingsProvider>(
+          context,
+          listen: false,
+        );
         if (pCategory == 'profile' && widget.model.selectedDbColor != null) {
           int colorId = widget.model.selectedDbColor!['id'];
           price = await db.getSectionPrice(selected['id'], colorId);
@@ -6680,11 +6799,13 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               : await _resolveSelectedAccessoryPrice(dbInstance, selected);
         } else {
           price = _safeDouble(selected['price_dzd'] ?? selected['price']);
-          if (settings.applyPurchasePricesToCostTable && selected['id'] != null) {
+          if (settings.applyPurchasePricesToCostTable &&
+              selected['id'] != null) {
             final purchasePrice = await db.getLatestPurchasePrice(
               itemId: (selected['id'] as num).toInt(),
-              itemType:
-                  pCategory == 'shutter' ? 'ShutterComponents' : pCategory,
+              itemType: pCategory == 'shutter'
+                  ? 'ShutterComponents'
+                  : pCategory,
               colorId: widget.model.selectedDbColor?['id'],
             );
             if (purchasePrice != null && purchasePrice > 0) {
@@ -7034,25 +7155,32 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 manualSelection: true,
               );
             } else {
-              widget.model.componentOverrides[overrideKey] =
-                  mutableSelected; // حفظ الاختيار الجديد كـ override
               final normalizedPType = pType.toLowerCase();
-              if (pCategory == 'profile' &&
+              final isParcloseSelection =
+                  pCategory == 'profile' &&
                   (normalizedPType == 'parclose' ||
                       normalizedPType.contains('parclose') ||
                       normalizedPType.contains('باكيت') ||
-                      normalizedPType.contains('بيركلوز'))) {
-                final isSpecificParclose =
-                    item.originalName.contains('مفرد') ||
-                    item.originalName.toLowerCase().contains('simple') ||
-                    item.originalName.contains('مزدوج') ||
-                    item.originalName.toLowerCase().contains('double') ||
-                    item.originalName.toLowerCase().contains('coulissant') ||
-                    item.originalName.contains('منزلق');
-                if (!isSpecificParclose) {
-                  widget.model.componentOverrides['باكيت الزجاج (Parclose)'] =
-                      mutableSelected;
+                      normalizedPType.contains('بيركلوز'));
+              if (isParcloseSelection) {
+                // A BOM row represents the profile family, not one physical
+                // occurrence. Replace the old simple/double/sliding aliases
+                // so every matching parclose in the drawing uses the choice.
+                for (final key in widget.model.componentOverrides.keys.where((
+                  key,
+                ) {
+                  final lower = key.toLowerCase();
+                  return lower.contains('parclose') ||
+                      key.contains('باكيت') ||
+                      key.contains('بيركلوز');
+                }).toList()) {
+                  widget.model.componentOverrides.remove(key);
                 }
+                widget.model.componentOverrides['باكيت الزجاج (Parclose)'] =
+                    mutableSelected;
+              } else {
+                widget.model.componentOverrides[overrideKey] =
+                    mutableSelected; // حفظ الاختيار الجديد كـ override
               }
             }
             widget.model

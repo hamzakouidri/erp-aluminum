@@ -914,6 +914,20 @@ class CatalogCandidateResolver {
 
     return sections
         .where((section) {
+          final sectionMaterial = (section['material_type'] ?? '')
+              .toString()
+              .toLowerCase()
+              .trim();
+          if (normalizedMaterial == 'pvc' &&
+              sectionMaterial.isNotEmpty &&
+              sectionMaterial != 'pvc' &&
+              sectionMaterial != 'both') {
+            return false;
+          }
+          if (isAluminium &&
+              (sectionMaterial == 'pvc' || sectionMaterial == 'upvc')) {
+            return false;
+          }
           final sectionName = (section['name'] ?? '').toString().toLowerCase();
           final sectionType = (section['type'] ?? '').toString().toLowerCase();
           final selectingSlidingMontant = roleKeys.any(
@@ -968,6 +982,11 @@ class CatalogCandidateResolver {
     CatalogCandidateQuery query,
   ) {
     final roleKey = (section['design_role_key'] ?? '').toString();
+    // The quantity-table swap is a component-family selector. A glazing bead
+    // row must therefore offer every glazing-bead variant configured for the
+    // active series (simple/double); the chosen profile itself then becomes
+    // the single override used by every matching BOM occurrence.
+    if (roleKey.trim().toLowerCase() == 'glazing_bead') return true;
     if (_roleIgnoresGlassRule(roleKey)) return true;
     final glassRule = (section['design_show_when_glass'] ?? 'any')
         .toString()

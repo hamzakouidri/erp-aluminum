@@ -844,10 +844,19 @@ class _ShowClientState extends State<ShowClient> {
                 const SizedBox(height: 10),
 
                 _StatCard(
-                  label: Localization.translate('Rest of the order', lang),
-                  value: '${remaining.toStringAsFixed(2)} دج',
+                  label: remaining < -0.0001
+                      ? switch (lang) {
+                          AppLanguage.french => 'Crédit client prépayé',
+                          AppLanguage.english => 'Prepaid customer credit',
+                          _ => 'رصيد الزبون المدفوع مسبقًا',
+                        }
+                      : Localization.translate('Rest of the order', lang),
+                  value:
+                      '${(remaining < -0.0001 ? -remaining : remaining).toStringAsFixed(2)} دج',
                   color: remaining > 0 ? Colors.red : Colors.green,
-                  icon: remaining > 0
+                  icon: remaining < -0.0001
+                      ? Icons.account_balance_wallet_outlined
+                      : remaining > 0
                       ? Icons.warning_amber_rounded
                       : Icons.check_circle_outline,
                   fullWidth: true,

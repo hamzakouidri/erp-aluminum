@@ -42,8 +42,6 @@ class WorkerPushNotificationService {
         options: DefaultFirebaseOptions.currentPlatform,
       );
     }
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-
     final messaging = FirebaseMessaging.instance;
     await messaging.requestPermission(alert: true, badge: true, sound: true);
     await _registerToken(await messaging.getToken());
@@ -272,6 +270,7 @@ class WorkerPushNotificationService {
         '${author.trim().isEmpty ? '' : '\nبواسطة: ${author.trim()}'}';
     final eventId =
         '${eventType}_${orderId}_${DateTime.now().microsecondsSinceEpoch}';
+    final senderUserId = Supabase.instance.client.auth.currentUser?.id ?? '';
     final response = await Supabase.instance.client.functions.invoke(
       'send-worker-assignment',
       body: {
@@ -290,6 +289,7 @@ class WorkerPushNotificationService {
           'order_code': displayCode,
           'client_name': cleanClient,
           'author': author.trim(),
+          'sender_user_id': senderUserId,
         },
       },
     );

@@ -1104,7 +1104,7 @@ class BomEngineV2 {
                 name: label,
                 quantity: (context.ekarCount * window.quantity).toDouble(),
                 unit: 'حبة',
-                unitPrice: await _accessoryPrice(database, candidate),
+                unitPrice: await _accessoryPrice(database, candidate, window),
                 catalogItemId: id,
                 inventoryItemType: 'Accessory',
                 profileCode: candidate['code']?.toString(),
@@ -1153,7 +1153,7 @@ class BomEngineV2 {
             name: details.isEmpty ? heading : '$heading\n$details',
             quantity: (candidateKitCount * window.quantity).toDouble(),
             unit: 'kit',
-            unitPrice: await _accessoryPrice(database, candidate),
+            unitPrice: await _accessoryPrice(database, candidate, window),
             catalogItemId: id,
             inventoryItemType: 'Accessory',
             profileCode: candidate['code']?.toString(),
@@ -1196,7 +1196,7 @@ class BomEngineV2 {
               ),
               quantity: (context.ekarCount * window.quantity).toDouble(),
               unit: 'حبة',
-              unitPrice: await _accessoryPrice(database, candidate),
+              unitPrice: await _accessoryPrice(database, candidate, window),
               catalogItemId: id,
               inventoryItemType: 'Accessory',
               profileCode: candidate['code']?.toString(),
@@ -1422,7 +1422,7 @@ class BomEngineV2 {
           name: details.isEmpty ? displayName : '$displayName\n$details',
           quantity: quantity.toDouble(),
           unit: 'حبة',
-          unitPrice: await _accessoryPrice(database, candidate),
+          unitPrice: await _accessoryPrice(database, candidate, window),
           catalogItemId: id,
           inventoryItemType: 'Accessory',
           profileCode: candidate['code']?.toString(),
@@ -1840,7 +1840,11 @@ class BomEngineV2 {
       return;
     }
     final selected = Map<String, dynamic>.from(candidates.first);
-    selected['calculated_price'] = await _accessoryPrice(database, selected);
+    selected['calculated_price'] = await _accessoryPrice(
+      database,
+      selected,
+      window,
+    );
     final selectedId = _catalogInt(selected['id']);
     if (selectedId != null) {
       selected['linked_accessories'] = await _db.readAccessoryLinksWithDetails(
@@ -2062,19 +2066,22 @@ class BomEngineV2 {
   Future<double> _accessoryPrice(
     Database database,
     Map<String, dynamic> item,
+    WindowModel window,
   ) async {
     final id = _catalogInt(item['id']);
     if (id == null) return _safeDouble(item['price_dzd'] ?? item['price']);
-    final prices = await database.query(
-      'AccessoryColorPrices',
-      where: 'accessory_id = ?',
-      whereArgs: [id],
-      orderBy: 'price DESC',
-      limit: 1,
-    );
-    if (prices.isNotEmpty) {
-      final price = _safeDouble(prices.first['price']);
-      if (price > 0) return price;
+    final colorId = _catalogInt(window.selectedAccessoryColor?['id']);
+    if (colorId != null) {
+      final prices = await database.query(
+        'AccessoryColorPrices',
+        where: 'accessory_id = ? AND color_id = ?',
+        whereArgs: [id, colorId],
+        limit: 1,
+      );
+      if (prices.isNotEmpty) {
+        final price = _safeDouble(prices.first['price']);
+        if (price > 0) return price;
+      }
     }
     return _safeDouble(item['price_dzd'] ?? item['price']);
   }

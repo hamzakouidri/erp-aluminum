@@ -11,6 +11,7 @@ Map<String, Map<String, double>> calculateSellingTotals({
   required double pricePerSqm,
   required double linearMeterPrice,
   required double shutterSqmPrice,
+  double moustiquaireSqmPrice = 0,
   Map<int, Map<String, dynamic>> profileRules = const {},
   double obInstallFee = 0,
   double demiObInstallFee = 0,
@@ -205,6 +206,7 @@ Map<String, Map<String, double>> calculateSellingTotals({
   double profileSelling = 0.0;
   double glassSelling = 0.0;
   double shutterSelling = 0.0;
+  double moustiquaireSelling = 0.0;
   double accessorySelling = 0.0;
   double jointSelling = 0.0;
   // السعر الفعلي لمتر مربع الستار (يدوي إن وُجد، وإلا من قاعدة البيانات)
@@ -217,6 +219,9 @@ Map<String, Map<String, double>> calculateSellingTotals({
   double shutterAreaPrice =
       hasShutter // سعر بيع الستار محسوبًا بالمتر المربع (يُستخدم في طريقتين من الثلاث)
       ? (effectiveShutterSqmPrice * areaSqm * model.quantity)
+      : 0.0;
+  final moustiquaireAreaPrice = model.hasMoustiquaireAddon
+      ? moustiquaireSqmPrice * areaSqm * model.quantity
       : 0.0;
   // ---- طريقة 1: النسبة المئوية — سعر البيع = التكلفة × (1 + نسبة الربح) ----
   if (costMethod == CostMethod.percentage) {
@@ -261,6 +266,9 @@ Map<String, Map<String, double>> calculateSellingTotals({
         motorCrankInstallFees;
     jointSelling = jointCost;
   }
+  // The add-on is priced independently from the selected window pricing
+  // method, exactly like a shutter sold by square metre.
+  moustiquaireSelling = moustiquaireAreaPrice;
   // المجاميع الكلية للتكلفة وسعر البيع
   double totalCost =
       profileCost + glassCost + shutterCost + accessoryCost + jointCost;
@@ -269,7 +277,8 @@ Map<String, Map<String, double>> calculateSellingTotals({
       glassSelling +
       shutterSelling +
       accessorySelling +
-      jointSelling;
+      jointSelling +
+      moustiquaireSelling;
   // إرجاع كل القيم كخريطة مقسّمة حسب القسم (لكل قسم: cost و selling)
   return {
     'profile': {'cost': profileCost, 'selling': profileSelling},
@@ -277,6 +286,7 @@ Map<String, Map<String, double>> calculateSellingTotals({
     'shutter': {'cost': shutterCost, 'selling': shutterSelling},
     'accessory': {'cost': accessoryCost, 'selling': accessorySelling},
     'joint': {'cost': jointCost, 'selling': jointSelling},
+    'moustiquaire': {'cost': 0.0, 'selling': moustiquaireSelling},
     'total': {'cost': totalCost, 'selling': totalSelling},
   };
 }

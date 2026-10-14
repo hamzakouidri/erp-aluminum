@@ -232,4 +232,254 @@ const subscriptionStatusKeys = <String, Map<AppLanguage, String>>{
     AppLanguage.french: 'Réseau SATIM',
     AppLanguage.english: 'SATIM Network',
   },
+  'إعدادات بوابات الدفع الإلكتروني': {
+    AppLanguage.arabic: 'إعدادات بوابات الدفع الإلكتروني',
+    AppLanguage.french: 'Paramètres des passerelles de paiement',
+    AppLanguage.english: 'Payment Gateway Settings',
+  },
+  'بوابات الدفع الإلكتروني والاشتراكات': {
+    AppLanguage.arabic: 'بوابات الدفع الإلكتروني والاشتراكات',
+    AppLanguage.french: 'Passerelles de paiement & Abonnements',
+    AppLanguage.english: 'Payment Gateways & Subscriptions',
+  },
+  'تهيئة وسائل الدفع الرقمي بالبطاقة الذهبية، CIB، فيزا / ماستركارد، وبريدي موب.': {
+    AppLanguage.arabic: 'تهيئة وسائل الدفع الرقمي بالبطاقة الذهبية، CIB، فيزا / ماستركارد، وبريدي موب.',
+    AppLanguage.french: 'Configuration des paiements Edahabia, CIB, Visa / Mastercard et BaridiMob.',
+    AppLanguage.english: 'Configure digital payment methods: Edahabia, CIB, Visa / Mastercard, and BaridiMob.',
+  },
+  'بريدي موب BaridiMob': {
+    AppLanguage.arabic: 'بريدي موب BaridiMob',
+    AppLanguage.french: 'BaridiMob',
+    AppLanguage.english: 'BaridiMob',
+  },
+  'رقم CCP / RIP لـ BaridiMob (20 رقماً)': {
+    AppLanguage.arabic: 'رقم CCP / RIP لـ BaridiMob (20 رقماً)',
+    AppLanguage.french: 'Numéro CCP / RIP BaridiMob (20 chiffres)',
+    AppLanguage.english: 'BaridiMob CCP / RIP Number (20 digits)',
+  },
+  'بوابة الدفع Chargily Pay V2 (الذهبية / CIB / Visa / RedotPay)': {
+    AppLanguage.arabic: 'بوابة الدفع Chargily Pay V2 (الذهبية / CIB / Visa / RedotPay)',
+    AppLanguage.french: 'Passerelle Chargily Pay V2 (Edahabia / CIB / Visa / RedotPay)',
+    AppLanguage.english: 'Chargily Pay V2 Gateway (Edahabia / CIB / Visa / RedotPay)',
+  },
+  'مفتاح السر لـ Chargily (API Secret Key)': {
+    AppLanguage.arabic: 'مفتاح السر لـ Chargily (API Secret Key)',
+    AppLanguage.french: 'Clé secrète Chargily (API Secret Key)',
+    AppLanguage.english: 'Chargily API Secret Key',
+  },
+  'الوضع المباشر الحقيقي (Live Mode - مدفوعات حقيقية)': {
+    AppLanguage.arabic: 'الوضع المباشر الحقيقي (Live Mode - مدفوعات حقيقية)',
+    AppLanguage.french: 'Mode Réel (Live Mode - Paiements réels)',
+    AppLanguage.english: 'Live Mode (Real payments)',
+  },
+  'وضع التجربة (Test Mode - بيئة اختبار مجانية)': {
+    AppLanguage.arabic: 'وضع التجربة (Test Mode - بيئة اختبار مجانية)',
+    AppLanguage.french: 'Mode Test (Test Mode - Environnement de test)',
+    AppLanguage.english: 'Test Mode (Free test environment)',
+  },
+  'تتم المعاملات المالية الفعلية مع البنوك وبريد الجزائر': {
+    AppLanguage.arabic: 'تتم المعاملات المالية الفعلية مع البنوك وبريد الجزائر',
+    AppLanguage.french: 'Les transactions financières réelles sont traitées avec les banques et Algérie Poste',
+    AppLanguage.english: 'Real financial transactions are processed with banks and Algérie Poste',
+  },
+  'يستخدم بطاقات الاختبار أو بطاقة RedotPay في وضع التجربة دون خصم أموال حقيقية': {
+    AppLanguage.arabic: 'يستخدم بطاقات الاختبار أو بطاقة RedotPay في وضع التجربة دون خصم أموال حقيقية',
+    AppLanguage.french: 'Utilise les cartes de test ou RedotPay en mode test sans débit réel',
+    AppLanguage.english: 'Uses test cards or RedotPay in test mode without real charges',
+  },
+  'حفظ إعدادات بوابات الدفع': {
+    AppLanguage.arabic: 'حفظ إعدادات بوابات الدفع',
+    AppLanguage.french: 'Enregistrer les paramètres de paiement',
+    AppLanguage.english: 'Save Payment Settings',
+  },
+  'تم حفظ إعدادات بوابات الدفع (Chargily & BaridiMob) بنجاح.': {
+    AppLanguage.arabic: 'تم حفظ إعدادات بوابات الدفع (Chargily & BaridiMob) بنجاح.',
+    AppLanguage.french: 'Paramètres des passerelles de paiement (Chargily & BaridiMob) enregistrés avec succès.',
+    AppLanguage.english: 'Payment gateway settings (Chargily & BaridiMob) saved successfully.',
+  },
+  'تعذر حفظ إعدادات الدفع:': {
+    AppLanguage.arabic: 'تعذر حفظ إعدادات الدفع:',
+    AppLanguage.french: 'Impossible d\'enregistrer les paramètres de paiement :',
+    AppLanguage.english: 'Could not save payment settings:',
+  },
+  'تعذر فتح صفحة الدفع البنكية.': {
+    AppLanguage.arabic: 'تعذر فتح صفحة الدفع البنكية.',
+    AppLanguage.french: 'Impossible d\'ouvrir la page de paiement bancaire.',
+    AppLanguage.english: 'Unable to open the bank payment page.',
+  },
+  'تعذر إنشاء جلسة الدفع الإلكتروني، يرجى المحاولة لاحقاً أو التحقق من الإعدادات.': {
+    AppLanguage.arabic: 'تعذر إنشاء جلسة الدفع الإلكتروني، يرجى المحاولة لاحقاً أو التحقق من الإعدادات.',
+    AppLanguage.french: 'Échec de création de la session de paiement. Veuillez réessayer plus tard ou vérifier les paramètres.',
+    AppLanguage.english: 'Failed to create payment session. Please try again later or check settings.',
+  },
+  'حدث خطأ أثناء الاتصال ببوابة الدفع:': {
+    AppLanguage.arabic: 'حدث خطأ أثناء الاتصال ببوابة الدفع:',
+    AppLanguage.french: 'Une erreur est survenue lors de la connexion à la passerelle de paiement :',
+    AppLanguage.english: 'An error occurred while connecting to the payment gateway:',
+  },
+  'بانتظار إتمام الدفع...': {
+    AppLanguage.arabic: 'بانتظار إتمام الدفع...',
+    AppLanguage.french: 'En attente de paiement...',
+    AppLanguage.english: 'Awaiting payment...',
+  },
+  'تم فتح صفحة الدفع الآمنة على المتصفح.\nيرجى إدخال بيانات البطاقة والرمز السري SMS المرسل إلى هاتفك لإتمام المعاملة.': {
+    AppLanguage.arabic: 'تم فتح صفحة الدفع الآمنة على المتصفح.\nيرجى إدخال بيانات البطاقة والرمز السري SMS المرسل إلى هاتفك لإتمام المعاملة.',
+    AppLanguage.french: 'La page sécurisée a été ouverte dans le navigateur.\nVeuillez saisir vos coordonnées de carte et le code SMS reçu pour finaliser la transaction.',
+    AppLanguage.english: 'The secure payment page was opened in the browser.\nPlease enter card details and the SMS code sent to your phone to complete.',
+  },
+  'تحقق من تفعيل الدفع': {
+    AppLanguage.arabic: 'تحقق من تفعيل الدفع',
+    AppLanguage.french: 'Vérifier l\'activation',
+    AppLanguage.english: 'Check Activation',
+  },
+  'تم الدفع وتفعيل الاشتراك بنجاح!': {
+    AppLanguage.arabic: 'تم الدفع وتفعيل الاشتراك بنجاح!',
+    AppLanguage.french: 'Paiement effectué et abonnement activé avec succès !',
+    AppLanguage.english: 'Payment successful and subscription activated!',
+  },
+  'تم تجديد اشتراك الورشة لـ': {
+    AppLanguage.arabic: 'تم تجديد اشتراك الورشة لـ',
+    AppLanguage.french: 'L\'abonnement de l\'atelier a été renouvelé pour',
+    AppLanguage.english: 'Workshop subscription renewed for',
+  },
+  'شكراً لثقتكم!': {
+    AppLanguage.arabic: 'شكراً لثقتكم!',
+    AppLanguage.french: 'Merci pour votre confiance !',
+    AppLanguage.english: 'Thank you for your trust!',
+  },
+  'العودة للتطبيق': {
+    AppLanguage.arabic: 'العودة للتطبيق',
+    AppLanguage.french: 'Retour à l\'application',
+    AppLanguage.english: 'Back to app',
+  },
+  'لم يتم تأكيد الدفع بعد (الحالة الحالية: ': {
+    AppLanguage.arabic: 'لم يتم تأكيد الدفع بعد (الحالة الحالية: ',
+    AppLanguage.french: 'Le paiement n\'est pas encore confirmé (Statut actuel : ',
+    AppLanguage.english: 'Payment not confirmed yet (Current status: ',
+  },
+  '). يرجى إتمام العملية وإعادة المحاولة.': {
+    AppLanguage.arabic: '). يرجى إتمام العملية وإعادة المحاولة.',
+    AppLanguage.french: '). Veuillez finaliser et réessayer.',
+    AppLanguage.english: '). Please complete and retry.',
+  },
+  'قيد المعالجة': {
+    AppLanguage.arabic: 'قيد المعالجة',
+    AppLanguage.french: 'En cours de traitement',
+    AppLanguage.english: 'Processing',
+  },
+  'حدث خطأ أثناء فحص حالة المعاملة:': {
+    AppLanguage.arabic: 'حدث خطأ أثناء فحص حالة المعاملة:',
+    AppLanguage.french: 'Erreur lors de la vérification de la transaction :',
+    AppLanguage.english: 'Error checking transaction status:',
+  },
+  'يرجى إدخال رقم المعاملة من تطبيق بريدي موب.': {
+    AppLanguage.arabic: 'يرجى إدخال رقم المعاملة من تطبيق بريدي موب.',
+    AppLanguage.french: 'Veuillez saisir le numéro de transaction BaridiMob.',
+    AppLanguage.english: 'Please enter the BaridiMob transaction number.',
+  },
+  'تم استلام معلومات التحويل': {
+    AppLanguage.arabic: 'تم استلام معلومات التحويل',
+    AppLanguage.french: 'Informations de virement reçues',
+    AppLanguage.english: 'Transfer details received',
+  },
+  'تم إرسال إشعار الدفع عبر بريدي موب للإدارة.\nسيتم مراجعة رقم المعاملة وتفعيل الاشتراك خلال دقائق معدودة.': {
+    AppLanguage.arabic: 'تم إرسال إشعار الدفع عبر بريدي موب للإدارة.\nسيتم مراجعة رقم المعاملة وتفعيل الاشتراك خلال دقائق معدودة.',
+    AppLanguage.french: 'Notification de paiement BaridiMob envoyée à l\'administration.\nLe numéro sera vérifié et l\'abonnement activé sous peu.',
+    AppLanguage.english: 'BaridiMob notification sent to administration.\nThe reference will be verified and subscription activated promptly.',
+  },
+  'حدث خطأ أثناء إرسال الإشعار:': {
+    AppLanguage.arabic: 'حدث خطأ أثناء إرسال الإشعار:',
+    AppLanguage.french: 'Erreur lors de l\'envoi de la notification :',
+    AppLanguage.english: 'Error sending notification:',
+  },
+  'الدفع الإلكتروني وتجديد الاشتراك': {
+    AppLanguage.arabic: 'الدفع الإلكتروني وتجديد الاشتراك',
+    AppLanguage.french: 'Paiement électronique & Renouvellement',
+    AppLanguage.english: 'Electronic Payment & Renewal',
+  },
+  'بوابة الدفع الإلكتروني المعتمدة': {
+    AppLanguage.arabic: 'بوابة الدفع الإلكتروني المعتمدة',
+    AppLanguage.french: 'Passerelle de paiement certifiée',
+    AppLanguage.english: 'Certified Payment Gateway',
+  },
+  'الدفع متاح الآن مباشرة بالبطاقات الجزائرية دون الحاجة للتنقل': {
+    AppLanguage.arabic: 'الدفع متاح الآن مباشرة بالبطاقات الجزائرية دون الحاجة للتنقل',
+    AppLanguage.french: 'Le paiement est disponible directement par cartes algériennes sans déplacement',
+    AppLanguage.english: 'Payment is directly available with Algerian cards from anywhere',
+  },
+  'الذهبية': {
+    AppLanguage.arabic: 'الذهبية',
+    AppLanguage.french: 'Edahabia',
+    AppLanguage.english: 'Edahabia',
+  },
+  'CIB': {
+    AppLanguage.arabic: 'CIB',
+    AppLanguage.french: 'CIB',
+    AppLanguage.english: 'CIB',
+  },
+  'BaridiMob': {
+    AppLanguage.arabic: 'BaridiMob',
+    AppLanguage.french: 'BaridiMob',
+    AppLanguage.english: 'BaridiMob',
+  },
+  'المبلغ الإجمالي للدفع:': {
+    AppLanguage.arabic: 'المبلغ الإجمالي للدفع:',
+    AppLanguage.french: 'Montant total à payer :',
+    AppLanguage.english: 'Total amount to pay:',
+  },
+  'جاري تجهيز بوابة الدفع...': {
+    AppLanguage.arabic: 'جاري تجهيز بوابة الدفع...',
+    AppLanguage.french: 'Préparation du paiement...',
+    AppLanguage.english: 'Preparing payment gateway...',
+  },
+  'ادفع الآن بالبطاقة': {
+    AppLanguage.arabic: 'ادفع الآن بالبطاقة',
+    AppLanguage.french: 'Payer par carte',
+    AppLanguage.english: 'Pay with card',
+  },
+  'خطوات الدفع عبر بريدي موب (BaridiMob):': {
+    AppLanguage.arabic: 'خطوات الدفع عبر بريدي موب (BaridiMob):',
+    AppLanguage.french: 'Étapes de paiement via BaridiMob :',
+    AppLanguage.english: 'Payment steps via BaridiMob:',
+  },
+  '1. انسخ رقم الـ RIP أدناه.\n2. افتح تطبيق BaridiMob وقم بإجراء تحويل بالمبلغ المطلوب.\n3. ضع رقم المعاملة (N° de transaction) هنا لتفعيل اشتراكك.': {
+    AppLanguage.arabic: '1. انسخ رقم الـ RIP أدناه.\n2. افتح تطبيق BaridiMob وقم بإجراء تحويل بالمبلغ المطلوب.\n3. ضع رقم المعاملة (N° de transaction) هنا لتفعيل اشتراكك.',
+    AppLanguage.french: '1. Copiez le numéro RIP ci-dessous.\n2. Ouvrez BaridiMob et effectuez le virement du montant.\n3. Saisissez ici le N° de transaction pour activer votre abonnement.',
+    AppLanguage.english: '1. Copy the RIP number below.\n2. Open BaridiMob and transfer the required amount.\n3. Enter the transaction number here to activate your subscription.',
+  },
+  'رقم الحساب البريدي (RIP):': {
+    AppLanguage.arabic: 'رقم الحساب البريدي (RIP):',
+    AppLanguage.french: 'Numéro de compte postal (RIP) :',
+    AppLanguage.english: 'Postal Account Number (RIP):',
+  },
+  'نسخ رقم الـ RIP': {
+    AppLanguage.arabic: 'نسخ رقم الـ RIP',
+    AppLanguage.french: 'Copier le RIP',
+    AppLanguage.english: 'Copy RIP',
+  },
+  'تم نسخ رقم الـ RIP بنجاح': {
+    AppLanguage.arabic: 'تم نسخ رقم الـ RIP بنجاح',
+    AppLanguage.french: 'Numéro RIP copié avec succès',
+    AppLanguage.english: 'RIP number copied successfully',
+  },
+  'رقم معاملة بريدي موب (Numéro de transaction)': {
+    AppLanguage.arabic: 'رقم معاملة بريدي موب (Numéro de transaction)',
+    AppLanguage.french: 'N° de transaction BaridiMob',
+    AppLanguage.english: 'BaridiMob Transaction Number',
+  },
+  'ملاحظة إضافية (اختياري - اسم الورشة أو رقم الهاتف)': {
+    AppLanguage.arabic: 'ملاحظة إضافية (اختياري - اسم الورشة أو رقم الهاتف)',
+    AppLanguage.french: 'Remarque (Optionnel - nom atelier ou tél)',
+    AppLanguage.english: 'Additional Note (Optional - workshop name or phone)',
+  },
+  'تأكيد التحويل وإرسال الإشعار': {
+    AppLanguage.arabic: 'تأكيد التحويل وإرسال الإشعار',
+    AppLanguage.french: 'Confirmer le virement & envoyer',
+    AppLanguage.english: 'Confirm Transfer & Submit',
+  },
+  'دفع مشفر وآمن 100% ومطابق لمعايير الأمان البنكي وبريد الجزائر': {
+    AppLanguage.arabic: 'دفع مشفر وآمن 100% ومطابق لمعايير الأمان البنكي وبريد الجزائر',
+    AppLanguage.french: 'Paiement sécurisé et chiffré à 100% conforme aux normes bancaires et Algérie Poste',
+    AppLanguage.english: '100% encrypted & secure payment compliant with banking and Algérie Poste standards',
+  },
 };

@@ -19,6 +19,7 @@ import 'package:flutter/services.dart'
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/settings/shortcut_bindings.dart';
 import 'package:database_data/Commande/window_painter.dart';
+import 'package:database_data/Commande/window_3d_preview.dart';
 import 'package:database_data/Commande/decor_panel_designs.dart';
 import 'package:database_data/Commande/Systeme/model.dart'
     hide getComponentSize;
@@ -74,6 +75,25 @@ class _WindowViewState extends State<WindowView> {
   // contains enough geometry to draw immediately, and an empty model can
   // show its workspace while systems/colours load in the background.
   bool _initialCatalogReady = true;
+
+  Future<void> _open3DPreview() async {
+    if (widget.model.width <= 0 || widget.model.height <= 0) {
+      _showShortcutFeedback(
+        Localization.translate(
+          'ارسم النافذة أولاً لعرضها بثلاثة أبعاد',
+          Provider.of<AppSettingsProvider>(context, listen: false).language,
+        ),
+        icon: Icons.view_in_ar_rounded,
+        color: Colors.orange,
+      );
+      return;
+    }
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => Window3DPreview(model: widget.model),
+      ),
+    );
+  }
 
   Future<void> _loadInitialCatalog() async {
     try {
@@ -202,6 +222,20 @@ class _WindowViewState extends State<WindowView> {
       ),
       icon: newVal ? Icons.layers_rounded : Icons.layers_clear_rounded,
       color: newVal ? Colors.green.shade700 : Colors.red.shade700,
+    );
+    setState(() {});
+  }
+
+  void _toggleMoustiquaireAddon() {
+    final enabled = !widget.model.hasMoustiquaireAddon;
+    widget.model.hasMoustiquaireAddon = enabled;
+    widget.model.notifyListeners();
+    _showShortcutFeedback(
+      enabled
+          ? 'تمت إضافة الموستيكير إلى حساب النافذة'
+          : 'تم حذف الموستيكير من حساب النافذة',
+      icon: Icons.grid_on_rounded,
+      color: enabled ? Colors.green.shade700 : Colors.red.shade700,
     );
     setState(() {});
   }
@@ -536,6 +570,16 @@ class _WindowViewState extends State<WindowView> {
             lang,
           ),
           onTap: _toggleShutterFeature,
+        ),
+        // Pricing-only mosquito screen. It must not alter the drawing.
+        _buildQuickCanvasPill(
+          context: context,
+          label: 'موستيكير',
+          icon: Icons.grid_on_rounded,
+          isActive: widget.model.hasMoustiquaireAddon,
+          activeColor: Colors.green.shade700,
+          tooltip: 'إضافتها إلى الكمية والتكلفة دون إظهارها في الرسم',
+          onTap: _toggleMoustiquaireAddon,
         ),
         // زر صندوق النفق
         _buildQuickCanvasPill(
@@ -11139,6 +11183,22 @@ class _WindowViewState extends State<WindowView> {
                   );
                 }()),
 
+              if (!widget.model.isShutterOnly)
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(
+                    'الموستيكير (Moustiquaire)',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: const Text(
+                    'تظهر في الكمية والتكلفة فقط ولا تظهر في الرسم',
+                    style: TextStyle(fontSize: 11),
+                  ),
+                  value: widget.model.hasMoustiquaireAddon,
+                  activeThumbColor: Colors.green,
+                  onChanged: (_) => _toggleMoustiquaireAddon(),
+                ),
+
               if (widget.model.hasShutter) ...[
                 if (widget.model.shutterHeightWarning != null)
                   Container(
@@ -15194,6 +15254,14 @@ class _WindowViewState extends State<WindowView> {
         ),
       ),
       actions: [
+        IconButton(
+          tooltip: Localization.translate('معاينة ثلاثية الأبعاد', lang),
+          onPressed: _open3DPreview,
+          icon: Icon(
+            Icons.view_in_ar_rounded,
+            color: isDark ? Colors.lightBlueAccent : Colors.blue.shade700,
+          ),
+        ),
         // The mobile bottom panel already owns the quantity/cost action.
         // Keeping this large AppBar action on a narrow screen squeezed the
         // drawing controls and produced horizontal overflow.
@@ -22197,6 +22265,10 @@ class _WindowViewState extends State<WindowView> {
         pricePerSqm: prefs.getDouble('app_price_per_sqm') ?? 0,
         linearMeterPrice: linearMeterPrice,
         shutterSqmPrice: shutterSqmPrice,
+        moustiquaireSqmPrice: await dbInstance.getShutterSqmPrice(
+          'Moustiquaire_Sqm',
+          0,
+        ),
         profileRules: {
           for (final rule in pricingRules)
             if (rule['section_id'] is num)

@@ -36,8 +36,12 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   bool _isSearching = false;
   List<Map<String, dynamic>> _searchResults = [];
   Timer? _debounceTimer;
+  Timer? _reverseGeocodeTimer;
   bool _isSatellite = false;
   bool _isLocating = false;
+  bool _isResolvingAddress = false;
+  bool _hasCompletedSearch = false;
+  String? _selectedAddress;
 
   @override
   void initState() {
@@ -53,6 +57,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   @override
   void dispose() {
     _debounceTimer?.cancel();
+    _reverseGeocodeTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -63,6 +68,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
       setState(() {
         _searchResults = [];
         _isSearching = false;
+        _hasCompletedSearch = false;
       });
       return;
     }
@@ -77,6 +83,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
 
     setState(() {
       _isSearching = true;
+      _hasCompletedSearch = false;
     });
 
     final results = <Map<String, dynamic>>[];
@@ -192,8 +199,67 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
       setState(() {
         _searchResults = results;
         _isSearching = false;
+        _hasCompletedSearch = true;
       });
     }
+  }
+
+  void _selectPoint(LatLng point, {String? knownAddress, double? zoom}) {
+    setState(() {
+      _selectedPoint = point;
+      _selectedAddress = knownAddress;
+      _searchResults = [];
+      _hasCompletedSearch = false;
+    });
+    if (zoom != null) _mapController.move(point, zoom);
+    if (knownAddress == null || knownAddress.trim().isEmpty) {
+      _scheduleReverseGeocode(point);
+    }
+  }
+
+  void _scheduleReverseGeocode(LatLng point) {
+    _reverseGeocodeTimer?.cancel();
+    _reverseGeocodeTimer = Timer(
+      const Duration(milliseconds: 350),
+      () => _reverseGeocode(point),
+    );
+  }
+
+  Future<void> _reverseGeocode(LatLng point) async {
+    if (!mounted) return;
+    setState(() => _isResolvingAddress = true);
+    try {
+      final url = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse?format=jsonv2'
+        '&lat=${point.latitude}&lon=${point.longitude}'
+        '&zoom=18&addressdetails=1&accept-language=ar,fr',
+      );
+      final response = await http.get(
+        url,
+        headers: const {
+          'User-Agent': 'ERPAluminumApp/1.0 (contact: info@erpalum.com)',
+        },
+      ).timeout(const Duration(seconds: 5));
+      if (response.statusCode != 200) return;
+      final data = json.decode(response.body);
+      final address = data is Map ? data['display_name']?.toString().trim() : null;
+      if (!mounted || address == null || address.isEmpty) return;
+      if ((_selectedPoint.latitude - point.latitude).abs() > 0.000001 ||
+          (_selectedPoint.longitude - point.longitude).abs() > 0.000001) {
+        return;
+      }
+      setState(() => _selectedAddress = address);
+    } catch (_) {
+      // Coordinates remain usable when the address service is offline.
+    } finally {
+      if (mounted) setState(() => _isResolvingAddress = false);
+    }
+  }
+
+  void _changeZoom(double delta) {
+    final camera = _mapController.camera;
+    final nextZoom = (camera.zoom + delta).clamp(3.0, 20.0).toDouble();
+    _mapController.move(camera.center, nextZoom);
   }
 
   Future<void> _getCurrentLocation() async {
@@ -239,10 +305,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
       );
 
       final newPoint = LatLng(position.latitude, position.longitude);
-      setState(() {
-        _selectedPoint = newPoint;
-      });
-      _mapController.move(newPoint, 16.5);
+      _selectPoint(newPoint, zoom: 17.0);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -329,11 +392,9 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
               maxZoom: 20.0,
               minZoom: 3.0,
               onTap: (tapPosition, point) {
-                setState(() {
-                  _selectedPoint = point;
-                  _searchResults = [];
-                });
+                _selectPoint(point);
               },
+              onLongPress: (tapPosition, point) => _selectPoint(point),
             ),
             children: [
               TileLayer(
@@ -368,8 +429,8 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                         ),
                         const Icon(
                           Icons.location_on,
-                          color: Colors.red,
-                          size: 38.0,
+                          color: Color(0xFFEA4335),
+                          size: 40.0,
                         ),
                       ],
                     ),
@@ -429,6 +490,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                               _searchController.clear();
                               setState(() {
                                 _searchResults = [];
+                                _hasCompletedSearch = false;
                               });
                             },
                           ),
@@ -463,16 +525,22 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(color: Colors.black87, fontSize: 13),
                               ),
+                              subtitle: place['distanceKm'] is double
+                                  ? Text(
+                                      '${(place['distanceKm'] as double).toStringAsFixed(1)} km',
+                                      style: const TextStyle(fontSize: 11),
+                                    )
+                                  : null,
                               onTap: () {
                                 final lat = place['lat'] as double;
                                 final lon = place['lon'] as double;
                                 final newPoint = LatLng(lat, lon);
-                                setState(() {
-                                  _selectedPoint = newPoint;
-                                  _searchResults = [];
-                                  _searchController.text = place['name'];
-                                });
-                                _mapController.move(newPoint, 16.5);
+                                _searchController.text = place['name'];
+                                _selectPoint(
+                                  newPoint,
+                                  knownAddress: place['name']?.toString(),
+                                  zoom: 16.5,
+                                );
                                 FocusScope.of(context).unfocus();
                               },
                             );
@@ -481,14 +549,71 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                       ),
                     ),
                   ),
+                if (_hasCompletedSearch &&
+                    !_isSearching &&
+                    _searchResults.isEmpty &&
+                    _searchController.text.trim().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Material(
+                      elevation: 5,
+                      borderRadius: BorderRadius.circular(12),
+                      color: Colors.white,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 13,
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.search_off_rounded, color: Colors.grey),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                Localization.translate('لا توجد نتائج مطابقة', lang),
+                                style: const TextStyle(color: Colors.black87),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
               ],
+            ),
+          ),
+
+          Positioned(
+            right: 16,
+            bottom: 154,
+            child: Material(
+              color: Colors.white,
+              elevation: 4,
+              borderRadius: BorderRadius.circular(12),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: Localization.translate('تكبير', lang),
+                    onPressed: () => _changeZoom(1),
+                    icon: const Icon(Icons.add, color: Colors.black87),
+                  ),
+                  const SizedBox(width: 42, child: Divider(height: 1)),
+                  IconButton(
+                    tooltip: Localization.translate('تصغير', lang),
+                    onPressed: () => _changeZoom(-1),
+                    icon: const Icon(Icons.remove, color: Colors.black87),
+                  ),
+                ],
+              ),
             ),
           ),
 
           // GPS "Locate Me" Floating Button
           Positioned(
             right: 16,
-            bottom: 95,
+            bottom: 250,
             child: FloatingActionButton.small(
               heroTag: 'locate_me_btn',
               backgroundColor: Colors.white,

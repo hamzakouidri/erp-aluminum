@@ -24,6 +24,7 @@ class Customers extends StatefulWidget {
   /// When this page is opened from the dashboard's "Add client" action,
   /// display the existing client form as soon as the page is ready.
   final bool openAddClientOnStart;
+
   /// Limits the page to store customers (`materials` and `both`).
   final bool storeOnly;
 
@@ -110,7 +111,10 @@ class _CustomersState extends State<Customers> {
 
       // Numeric ID filter
       if (_clientNumericFilters['id']?.isActive == true) {
-        final idNum = (d['display_number'] as num?)?.toDouble() ?? (d['id'] as num?)?.toDouble() ?? 0.0;
+        final idNum =
+            (d['display_number'] as num?)?.toDouble() ??
+            (d['id'] as num?)?.toDouble() ??
+            0.0;
         if (!_clientNumericFilters['id']!.matches(idNum)) return false;
       }
       final q = _searchQuery.toLowerCase().trim();
@@ -320,18 +324,21 @@ class _CustomersState extends State<Customers> {
   }
 
   void _refreshData() {
-    final future = _searchQuery.isEmpty
-        ? db.readClientsForDisplay()
-        : db.searchClientsForDisplay(_searchQuery);
+    // Keep one complete client snapshot and filter it locally. Starting a
+    // database query for every keystroke allowed an older, slower search to
+    // arrive after the field was cleared and leave the page looking empty.
+    final future = db.readClientsForDisplay();
     _data = future.then((list) {
       final scoped = widget.storeOnly
-          ? list.where((client) {
-              final segment = (client['business_segment'] ?? 'windows')
-                  .toString()
-                  .trim()
-                  .toLowerCase();
-              return segment == 'materials' || segment == 'both';
-            }).toList(growable: false)
+          ? list
+                .where((client) {
+                  final segment = (client['business_segment'] ?? 'windows')
+                      .toString()
+                      .trim()
+                      .toLowerCase();
+                  return segment == 'materials' || segment == 'both';
+                })
+                .toList(growable: false)
           : list;
       if (mounted) {
         setState(() {
@@ -341,8 +348,6 @@ class _CustomersState extends State<Customers> {
       return scoped;
     });
   }
-
-
 
   /// Result lists received from SQLite/FutureBuilder may be read-only.
   /// Keep the current page and scroll position by replacing the displayed
@@ -385,8 +390,41 @@ class _CustomersState extends State<Customers> {
               if (widget.storeOnly) {
                 await db.setClientBusinessSegment(clientId, 'materials');
               }
+            } on DuplicateClientException catch (error) {
+              if (!context.mounted) return;
+              final lang = Provider.of<AppSettingsProvider>(
+                context,
+                listen: false,
+              ).language;
+              final message = error.field == 'phone'
+                  ? switch (lang) {
+                      AppLanguage.french =>
+                        'Ce numéro de téléphone appartient déjà à un autre client.',
+                      AppLanguage.english =>
+                        'This phone number already belongs to another client.',
+                      _ => 'رقم الهاتف مسجل مسبقًا لزبون آخر.',
+                    }
+                  : switch (lang) {
+                      AppLanguage.french =>
+                        'Un client portant le même nom existe déjà.',
+                      AppLanguage.english =>
+                        'A client with the same name already exists.',
+                      _ => 'يوجد زبون مسجل مسبقًا بنفس الاسم.',
+                    };
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(message), backgroundColor: Colors.red),
+              );
+              return;
             } catch (e) {
               debugPrint('Error inserting client: $e');
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(e.toString()),
+                  backgroundColor: Colors.red,
+                ),
+              );
+              return;
             }
 
             if (dialogContext.mounted) {
@@ -430,23 +468,50 @@ class _CustomersState extends State<Customers> {
         return ClientFormDialog(
           client: client,
           onSubmit: (values) async {
-            await db.updateClient(
-              id,
-              values['firstname']!,
-              values['lastname']!,
-              values['phone1']!,
-              values['phone2']!,
-              values['email']!,
-              values['address']!,
-              DateTime.now().toUtc().toIso8601String(),
-              values['nif']!,
-              values['nis']!,
-              values['rc']!,
-              values['ai']!,
-            );
-            final latitude = values['latitude'] as double?;
-            final longitude = values['longitude'] as double?;
-            await db.updateClientCoordinates(id, latitude, longitude);
+            try {
+              await db.updateClient(
+                id,
+                values['firstname']!,
+                values['lastname']!,
+                values['phone1']!,
+                values['phone2']!,
+                values['email']!,
+                values['address']!,
+                DateTime.now().toUtc().toIso8601String(),
+                values['nif']!,
+                values['nis']!,
+                values['rc']!,
+                values['ai']!,
+              );
+              final latitude = values['latitude'] as double?;
+              final longitude = values['longitude'] as double?;
+              await db.updateClientCoordinates(id, latitude, longitude);
+            } on DuplicateClientException catch (error) {
+              if (!context.mounted) return;
+              final lang = Provider.of<AppSettingsProvider>(
+                context,
+                listen: false,
+              ).language;
+              final message = error.field == 'phone'
+                  ? switch (lang) {
+                      AppLanguage.french =>
+                        'Ce numéro de téléphone appartient déjà à un autre client.',
+                      AppLanguage.english =>
+                        'This phone number already belongs to another client.',
+                      _ => 'رقم الهاتف مسجل مسبقًا لزبون آخر.',
+                    }
+                  : switch (lang) {
+                      AppLanguage.french =>
+                        'Un client portant le même nom existe déjà.',
+                      AppLanguage.english =>
+                        'A client with the same name already exists.',
+                      _ => 'يوجد زبون مسجل مسبقًا بنفس الاسم.',
+                    };
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(message), backgroundColor: Colors.red),
+              );
+              return;
+            }
             if (dialogContext.mounted) {
               Navigator.pop(dialogContext);
             }
@@ -471,21 +536,24 @@ class _CustomersState extends State<Customers> {
             ? TextField(
                 controller: searchController,
                 autofocus: true,
-                style: const TextStyle(color: Colors.white, fontFamily: 'Cairo'),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontFamily: 'Cairo',
+                ),
                 cursorColor: Colors.white,
                 decoration: InputDecoration(
                   hintText: Localization.translate(
                     "Search by name or phone",
                     lang,
                   ),
-                  hintStyle: const TextStyle(color: Colors.white70, fontFamily: 'Cairo'),
+                  hintStyle: const TextStyle(
+                    color: Colors.white70,
+                    fontFamily: 'Cairo',
+                  ),
                   border: InputBorder.none,
                 ),
                 onChanged: (val) {
-                  setState(() {
-                    _searchQuery = val;
-                    _refreshData();
-                  });
+                  setState(() => _searchQuery = val);
                 },
               )
             : Text(Localization.translate("Customers", lang)),
@@ -495,7 +563,9 @@ class _CustomersState extends State<Customers> {
             : Colors.blue,
         actions: [
           IconButton(
-            icon: Icon(_isSearching ? Icons.close_rounded : Icons.search_rounded),
+            icon: Icon(
+              _isSearching ? Icons.close_rounded : Icons.search_rounded,
+            ),
             tooltip: Localization.translate("Search", lang),
             onPressed: () {
               setState(() {
@@ -503,7 +573,6 @@ class _CustomersState extends State<Customers> {
                   _isSearching = false;
                   searchController.clear();
                   _searchQuery = '';
-                  _refreshData();
                 } else {
                   _isSearching = true;
                 }
@@ -542,109 +611,192 @@ class _CustomersState extends State<Customers> {
             : _mobileClientsScrollController,
         child: Column(
           children: [
+            // 📋 List section
+            Expanded(
+              child: Container(
+                margin: EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardColor,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+                ),
+                child: FutureBuilder<List<Map<String, dynamic>>>(
+                  future: _data,
+                  builder: (context, snapshot) {
+                    if (snapshot.hasData) {
+                      _cachedClients = snapshot.data;
+                    }
 
+                    if (snapshot.connectionState == ConnectionState.waiting &&
+                        _cachedClients == null) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
 
-          // 📋 List section
-          Expanded(
-            child: Container(
-              margin: EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-              ),
-              child: FutureBuilder<List<Map<String, dynamic>>>(
-                future: _data,
-                builder: (context, snapshot) {
-                  if (snapshot.hasData) {
-                    _cachedClients = snapshot.data;
-                  }
+                    if (snapshot.hasError && _cachedClients == null) {
+                      return Center(
+                        child: SingleChildScrollView(
+                          child: Padding(
+                            padding: const EdgeInsets.all(20.0),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(25),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.withValues(alpha: 0.1),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.warning_amber_rounded,
+                                    size: 70,
+                                    color: Colors.red.shade400,
+                                  ),
+                                ),
+                                const SizedBox(height: 25),
+                                Text(
+                                  Localization.translate(
+                                    "Error loading data",
+                                    lang,
+                                  ),
+                                  style: TextStyle(
+                                    color: Colors.red.shade800,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 15),
+                                Container(
+                                  padding: const EdgeInsets.all(15),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.shade50,
+                                    borderRadius: BorderRadius.circular(15),
+                                    border: Border.all(
+                                      color: Colors.red.shade200,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    Localization.translate(
+                                      "Could not load data. Please try again.",
+                                      lang,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Colors.red.shade700,
+                                      fontSize: 15,
+                                      height: 1.5,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(height: 30),
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Theme.of(
+                                      context,
+                                    ).cardColor,
+                                    foregroundColor: Colors.red.shade600,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 30,
+                                      vertical: 12,
+                                    ),
+                                    elevation: 0,
+                                    side: BorderSide(
+                                      color: Colors.red.shade200,
+                                      width: 1.5,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(30),
+                                    ),
+                                  ),
+                                  onPressed: _refreshData,
+                                  icon: const Icon(
+                                    Icons.refresh_rounded,
+                                    size: 22,
+                                  ),
+                                  label: Text(
+                                    Localization.translate("Refresh", lang),
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }
 
-                  if (snapshot.connectionState == ConnectionState.waiting &&
-                      _cachedClients == null) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
+                    final rawData = snapshot.hasData
+                        ? snapshot.data!
+                        : (_cachedClients ?? <Map<String, dynamic>>[]);
 
-                  if (snapshot.hasError && _cachedClients == null) {
-                    return Center(
-                      child: SingleChildScrollView(
-                        child: Padding(
-                          padding: const EdgeInsets.all(20.0),
+                    if (rawData.isEmpty) {
+                      return Center(
+                        child: SingleChildScrollView(
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Container(
-                                padding: const EdgeInsets.all(25),
+                                padding: const EdgeInsets.all(30),
                                 decoration: BoxDecoration(
-                                  color: Colors.red.withValues(alpha: 0.1),
+                                  color: Colors.blue.withValues(alpha: 0.1),
                                   shape: BoxShape.circle,
                                 ),
                                 child: Icon(
-                                  Icons.warning_amber_rounded,
-                                  size: 70,
-                                  color: Colors.red.shade400,
+                                  Icons.people_outline,
+                                  size: 80,
+                                  color: Colors.blue.shade400,
                                 ),
                               ),
                               const SizedBox(height: 25),
                               Text(
-                                Localization.translate(
-                                  "Error loading data",
-                                  lang,
-                                ),
+                                Localization.translate("No Data", lang),
                                 style: TextStyle(
-                                  color: Colors.red.shade800,
+                                  color: Colors.blueGrey.shade800,
                                   fontSize: 22,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              const SizedBox(height: 15),
-                              Container(
-                                padding: const EdgeInsets.all(15),
-                                decoration: BoxDecoration(
-                                  color: Colors.red.shade50,
-                                  borderRadius: BorderRadius.circular(15),
-                                  border: Border.all(
-                                    color: Colors.red.shade200,
-                                  ),
+                              const SizedBox(height: 10),
+                              Text(
+                                Localization.translate(
+                                  "No clients registered yet. Add your first client.",
+                                  lang,
                                 ),
-                                child: Text(
-                                  Localization.translate(
-                                    "Could not load data. Please try again.",
-                                    lang,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: Colors.red.shade700,
-                                    fontSize: 15,
-                                    height: 1.5,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
+                                textAlign: TextAlign.center,
+                                style: TextStyle(fontSize: 15, height: 1.5),
                               ),
-                              SizedBox(height: 30),
+                              SizedBox(height: 35),
                               ElevatedButton.icon(
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: Theme.of(context).cardColor,
-                                  foregroundColor: Colors.red.shade600,
+                                  backgroundColor:
+                                      Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Theme.of(
+                                          context,
+                                        ).appBarTheme.backgroundColor
+                                      : Colors.blue.shade600,
+                                  foregroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 30,
-                                    vertical: 12,
+                                    vertical: 15,
                                   ),
-                                  elevation: 0,
-                                  side: BorderSide(
-                                    color: Colors.red.shade200,
-                                    width: 1.5,
+                                  elevation: 4,
+                                  shadowColor: Colors.blue.withValues(
+                                    alpha: 0.4,
                                   ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(30),
                                   ),
                                 ),
-                                onPressed: _refreshData,
+                                onPressed: () => _showAddClientDialog(context),
                                 icon: const Icon(
-                                  Icons.refresh_rounded,
-                                  size: 22,
+                                  Icons.person_add_outlined,
+                                  size: 24,
                                 ),
                                 label: Text(
-                                  Localization.translate("Refresh", lang),
+                                  Localization.translate("Add Client", lang),
                                   style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
@@ -654,354 +806,287 @@ class _CustomersState extends State<Customers> {
                             ],
                           ),
                         ),
-                      ),
-                    );
-                  }
+                      );
+                    }
 
-                  final rawData = snapshot.hasData
-                      ? snapshot.data!
-                      : (_cachedClients ?? <Map<String, dynamic>>[]);
+                    // Filter by search query
+                    final data = rawData.where((d) {
+                      final q = _searchQuery.toLowerCase().trim();
+                      if (q.isEmpty) return true;
+                      final first = (d['firstname'] ?? '')
+                          .toString()
+                          .toLowerCase();
+                      final last = (d['lastname'] ?? '')
+                          .toString()
+                          .toLowerCase();
+                      final phone = (d['phone1'] ?? '')
+                          .toString()
+                          .toLowerCase();
+                      final full = '$first $last $phone';
+                      return q.split(' ').every((term) => full.contains(term));
+                    }).toList();
 
-                  if (rawData.isEmpty) {
-                    return Center(
-                      child: SingleChildScrollView(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(30),
-                              decoration: BoxDecoration(
-                                color: Colors.blue.withValues(alpha: 0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                Icons.people_outline,
-                                size: 80,
-                                color: Colors.blue.shade400,
-                              ),
-                            ),
-                            const SizedBox(height: 25),
-                            Text(
-                              Localization.translate("No Data", lang),
-                              style: TextStyle(
-                                color: Colors.blueGrey.shade800,
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              Localization.translate(
-                                "No clients registered yet. Add your first client.",
-                                lang,
-                              ),
-                              textAlign: TextAlign.center,
-                              style: TextStyle(fontSize: 15, height: 1.5),
-                            ),
-                            SizedBox(height: 35),
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor:
-                                    Theme.of(context).brightness ==
-                                        Brightness.dark
-                                    ? Theme.of(
-                                        context,
-                                      ).appBarTheme.backgroundColor
-                                    : Colors.blue.shade600,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 30,
-                                  vertical: 15,
-                                ),
-                                elevation: 4,
-                                shadowColor: Colors.blue.withValues(alpha: 0.4),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(30),
-                                ),
-                              ),
-                              onPressed: () => _showAddClientDialog(context),
-                              icon: const Icon(
-                                Icons.person_add_outlined,
-                                size: 24,
-                              ),
-                              label: Text(
-                                Localization.translate("Add Client", lang),
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }
+                    if (MediaQuery.of(context).size.width >= 900 ||
+                        Platform.isWindows) {
+                      return _buildDesktopClientsTableView(context, data, lang);
+                    }
 
-                  // Filter by search query
-                  final data = rawData.where((d) {
-                    final q = _searchQuery.toLowerCase().trim();
-                    if (q.isEmpty) return true;
-                    final first = (d['firstname'] ?? '')
-                        .toString()
-                        .toLowerCase();
-                    final last = (d['lastname'] ?? '').toString().toLowerCase();
-                    final phone = (d['phone1'] ?? '').toString().toLowerCase();
-                    final full = '$first $last $phone';
-                    return q.split(' ').every((term) => full.contains(term));
-                  }).toList();
-
-                  if (data.isEmpty) {
-                    return Center(
-                      child: Text(
-                        Localization.translate("No matching results", lang),
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                    );
-                  }
-
-                  if (MediaQuery.of(context).size.width >= 900 ||
-                      Platform.isWindows) {
-                    return _buildDesktopClientsTableView(context, data, lang);
-                  }
-
-                  return ListView.builder(
-                    controller: _mobileClientsScrollController,
-                    primary: false,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    itemCount: data.length,
-                    itemBuilder: (context, index) {
-                      final item = data[index];
-                      final id = item['id'] ?? '';
-                      final firstName = item['firstname'] ?? '';
-                      final lastName = item['lastname'] ?? '';
-                      final clientName = '$lastName $firstName'.trim();
-                      final phone1 = item['phone1']?.toString() ?? '';
-                      final phone2 = item['phone2']?.toString() ?? '';
-                      final createdAt = item['created_at'] ?? '';
-
-                      final bool hasPhone2 =
-                          phone2.isNotEmpty &&
-                          phone2 != '0' &&
-                          phone2 != 'null';
-
-                      return Card(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-                        elevation: 2,
-                        margin: const EdgeInsets.symmetric(vertical: 6),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.all(15),
-                          onTap: settings.canViewClientDetails()
-                              ? () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) =>
-                                          ShowClient(clientId: id),
-                                    ),
-                                  ).then((_) => _refreshData());
-                                }
-                              : null,
-                          onLongPress: settings.canEditClients()
-                              ? () {
-                                  _showUpdateClientDialog(context, item);
-                                }
-                              : null,
-                          leading: CircleAvatar(
-                            radius: 25,
-                            backgroundColor:
-                                Theme.of(context).brightness == Brightness.dark
-                                ? Theme.of(context).appBarTheme.backgroundColor
-                                : Colors.blue.shade100,
-                            child: const Icon(Icons.person, color: Colors.blue),
+                    if (data.isEmpty) {
+                      return Center(
+                        child: Text(
+                          Localization.translate("No matching results", lang),
+                          style: const TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 16,
                           ),
-                          title: RichText(
-                            text: TextSpan(
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                                color:
-                                    Theme.of(context).brightness ==
-                                        Brightness.dark
-                                    ? Colors.white
-                                    : Colors.black87,
+                        ),
+                      );
+                    }
+
+                    return ListView.builder(
+                      controller: _mobileClientsScrollController,
+                      primary: false,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      itemCount: data.length,
+                      itemBuilder: (context, index) {
+                        final item = data[index];
+                        final id = item['id'] ?? '';
+                        final firstName = item['firstname'] ?? '';
+                        final lastName = item['lastname'] ?? '';
+                        final clientName = '$lastName $firstName'.trim();
+                        final phone1 = item['phone1']?.toString() ?? '';
+                        final phone2 = item['phone2']?.toString() ?? '';
+                        final createdAt = item['created_at'] ?? '';
+
+                        final bool hasPhone2 =
+                            phone2.isNotEmpty &&
+                            phone2 != '0' &&
+                            phone2 != 'null';
+
+                        return Card(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          elevation: 2,
+                          margin: const EdgeInsets.symmetric(vertical: 6),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.all(15),
+                            onTap: settings.canViewClientDetails()
+                                ? () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            ShowClient(clientId: id),
+                                      ),
+                                    ).then((_) => _refreshData());
+                                  }
+                                : null,
+                            onLongPress: settings.canEditClients()
+                                ? () {
+                                    _showUpdateClientDialog(context, item);
+                                  }
+                                : null,
+                            leading: CircleAvatar(
+                              radius: 25,
+                              backgroundColor:
+                                  Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? Theme.of(
+                                      context,
+                                    ).appBarTheme.backgroundColor
+                                  : Colors.blue.shade100,
+                              child: const Icon(
+                                Icons.person,
+                                color: Colors.blue,
                               ),
+                            ),
+                            title: RichText(
+                              text: TextSpan(
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color:
+                                      Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.white
+                                      : Colors.black87,
+                                ),
+                                children: [
+                                  highlightText(clientName, _searchQuery),
+                                ],
+                              ),
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                highlightText(clientName, _searchQuery),
+                                const SizedBox(height: 5),
+                                if (phone1.isNotEmpty)
+                                  RichText(
+                                    text: TextSpan(
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color:
+                                            Theme.of(context).brightness ==
+                                                Brightness.dark
+                                            ? Colors.white70
+                                            : Colors.black87,
+                                      ),
+                                      children: [
+                                        WidgetSpan(
+                                          child: Icon(
+                                            Icons.phone,
+                                            size: 14,
+                                            color:
+                                                Theme.of(context).brightness ==
+                                                    Brightness.dark
+                                                ? Colors.white70
+                                                : Colors.black54,
+                                          ),
+                                          alignment:
+                                              PlaceholderAlignment.middle,
+                                        ),
+                                        const TextSpan(text: '  '),
+                                        highlightText(phone1, _searchQuery),
+                                        if (hasPhone2) ...[
+                                          const TextSpan(text: '  ·  '),
+                                          highlightText(phone2, _searchQuery),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                if (createdAt.isNotEmpty)
+                                  Text(
+                                    formatDate(createdAt),
+                                    style: const TextStyle(fontSize: 13),
+                                  ),
                               ],
                             ),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: 5),
-                              if (phone1.isNotEmpty)
-                                RichText(
-                                  text: TextSpan(
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color:
-                                          Theme.of(context).brightness ==
-                                              Brightness.dark
-                                          ? Colors.white70
-                                          : Colors.black87,
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (settings.canEditClients())
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.edit,
+                                      color: Colors.blue,
                                     ),
-                                    children: [
-                                      WidgetSpan(
-                                        child: Icon(
-                                          Icons.phone,
-                                          size: 14,
-                                          color:
-                                              Theme.of(context).brightness ==
-                                                  Brightness.dark
-                                              ? Colors.white70
-                                              : Colors.black54,
-                                        ),
-                                        alignment: PlaceholderAlignment.middle,
-                                      ),
-                                      const TextSpan(text: '  '),
-                                      highlightText(phone1, _searchQuery),
-                                      if (hasPhone2) ...[
-                                        const TextSpan(text: '  ·  '),
-                                        highlightText(phone2, _searchQuery),
-                                      ],
-                                    ],
+                                    onPressed: () {
+                                      _showUpdateClientDialog(context, item);
+                                    },
                                   ),
-                                ),
-                              if (createdAt.isNotEmpty)
-                                Text(
-                                  formatDate(createdAt),
-                                  style: const TextStyle(fontSize: 13),
-                                ),
-                            ],
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-
-                              if (settings.canEditClients())
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.edit,
-                                    color: Colors.blue,
-                                  ),
-                                  onPressed: () {
-                                    _showUpdateClientDialog(context, item);
-                                  },
-                                ),
-                              if (settings.canDeleteClients())
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.delete_outline,
-                                    color: Colors.red,
-                                  ),
-                                  onPressed: () async {
-                                    final confirm = await showDialog<bool>(
-                                      context: context,
-                                      builder: (ctx) => AlertDialog(
-                                        title: Text(
-                                          Localization.translate(
-                                            "Delete Client",
-                                            lang,
-                                          ),
-                                        ),
-                                        content: Text(
-                                          Localization.translate(
-                                            "Are you sure you want to delete this client?",
-                                            lang,
-                                          ),
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () =>
-                                                Navigator.pop(ctx, false),
-                                            child: Text(
-                                              Localization.translate(
-                                                "Cancel",
-                                                lang,
-                                              ),
+                                if (settings.canDeleteClients())
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.delete_outline,
+                                      color: Colors.red,
+                                    ),
+                                    onPressed: () async {
+                                      final confirm = await showDialog<bool>(
+                                        context: context,
+                                        builder: (ctx) => AlertDialog(
+                                          title: Text(
+                                            Localization.translate(
+                                              "Delete Client",
+                                              lang,
                                             ),
                                           ),
-                                          TextButton(
-                                            onPressed: () =>
-                                                Navigator.pop(ctx, true),
-                                            child: Text(
-                                              Localization.translate(
-                                                "Delete",
-                                                lang,
-                                              ),
-                                              style: const TextStyle(
-                                                color: Colors.red,
-                                              ),
+                                          content: Text(
+                                            Localization.translate(
+                                              "Are you sure you want to delete this client?",
+                                              lang,
                                             ),
                                           ),
-                                        ],
-                                      ),
-                                    );
-                                    if (confirm == true) {
-                                      try {
-                                        final deletedRows = await db
-                                            .deleteClient(id);
-                                        if (!mounted) return;
-                                        if (deletedRows == 0) {
-                                          // A remote sync can remove the record just before
-                                          // this action. Remove the stale row locally as well,
-                                          // without reloading or moving the current page.
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(ctx, false),
+                                              child: Text(
+                                                Localization.translate(
+                                                  "Cancel",
+                                                  lang,
+                                                ),
+                                              ),
+                                            ),
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(ctx, true),
+                                              child: Text(
+                                                Localization.translate(
+                                                  "Delete",
+                                                  lang,
+                                                ),
+                                                style: const TextStyle(
+                                                  color: Colors.red,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                      if (confirm == true) {
+                                        try {
+                                          final deletedRows = await db
+                                              .deleteClient(id);
+                                          if (!mounted) return;
+                                          if (deletedRows == 0) {
+                                            // A remote sync can remove the record just before
+                                            // this action. Remove the stale row locally as well,
+                                            // without reloading or moving the current page.
+                                            _removeClientFromView(id);
+                                            ScaffoldMessenger.of(context)
+                                              ..hideCurrentSnackBar()
+                                              ..showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                    'الزبون لم يعد موجوداً في قاعدة البيانات.',
+                                                  ),
+                                                  backgroundColor:
+                                                      Colors.orange,
+                                                ),
+                                              );
+                                            return;
+                                          }
                                           _removeClientFromView(id);
                                           ScaffoldMessenger.of(context)
                                             ..hideCurrentSnackBar()
                                             ..showSnackBar(
                                               const SnackBar(
                                                 content: Text(
-                                                  'الزبون لم يعد موجوداً في قاعدة البيانات.',
+                                                  'تم حذف الزبون بنجاح.',
                                                 ),
-                                                backgroundColor: Colors.orange,
+                                                backgroundColor: Colors.green,
                                               ),
                                             );
-                                          return;
+                                        } catch (error) {
+                                          if (!mounted) return;
+                                          ScaffoldMessenger.of(context)
+                                            ..hideCurrentSnackBar()
+                                            ..showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  'تعذر حذف الزبون: $error',
+                                                ),
+                                                backgroundColor: Colors.red,
+                                              ),
+                                            );
                                         }
-                                        _removeClientFromView(id);
-                                        ScaffoldMessenger.of(context)
-                                          ..hideCurrentSnackBar()
-                                          ..showSnackBar(
-                                            const SnackBar(
-                                              content: Text(
-                                                'تم حذف الزبون بنجاح.',
-                                              ),
-                                              backgroundColor: Colors.green,
-                                            ),
-                                          );
-                                      } catch (error) {
-                                        if (!mounted) return;
-                                        ScaffoldMessenger.of(context)
-                                          ..hideCurrentSnackBar()
-                                          ..showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                'تعذر حذف الزبون: $error',
-                                              ),
-                                              backgroundColor: Colors.red,
-                                            ),
-                                          );
                                       }
-                                    }
-                                  },
-                                ),
-                            ],
+                                    },
+                                  ),
+                              ],
+                            ),
                           ),
-                        ),
-                      );
-                    },
-                  );
-                },
+                        );
+                      },
+                    );
+                  },
+                ),
               ),
             ),
-          ),
           ],
         ),
       ),
@@ -1080,10 +1165,7 @@ class _CustomersState extends State<Customers> {
           PopupMenuItem(
             value: 'ledger',
             child: Text(
-              Localization.translate(
-                'عرض كشف الحساب التفصيلي (Chrono)',
-                lang,
-              ),
+              Localization.translate('عرض كشف الحساب التفصيلي (Chrono)', lang),
             ),
           ),
         if (settings.canViewClientDetails())
@@ -1119,9 +1201,7 @@ class _CustomersState extends State<Customers> {
       case 'details':
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (_) => ShowClient(clientId: clientId),
-          ),
+          MaterialPageRoute(builder: (_) => ShowClient(clientId: clientId)),
         ).then((_) => _refreshData());
       case 'edit':
         _showUpdateClientDialog(context, client);
@@ -1134,7 +1214,10 @@ class _CustomersState extends State<Customers> {
     String raw = (rawPlatform ?? '').trim();
     raw = raw
         .replaceFirst(
-          RegExp(r'\s+\((?:web|phone|computer|هاتف|كمبيوتر|ÙˆÙŠØ¨|ÙƒÙ…Ø¨ÙŠÙˆØªØ±|Ù‡Ø§ØªÙ)\)$', caseSensitive: false),
+          RegExp(
+            r'\s+\((?:web|phone|computer|هاتف|كمبيوتر|ÙˆÙŠØ¨|ÙƒÙ…Ø¨ÙŠÙˆØªØ±|Ù‡Ø§ØªÙ)\)$',
+            caseSensitive: false,
+          ),
           '',
         )
         .trim();
@@ -1238,20 +1321,28 @@ class _CustomersState extends State<Customers> {
         Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black;
     final mutedColor =
         Theme.of(context).textTheme.bodySmall?.color ?? Colors.grey;
-    final borderColor = isDark ? Colors.grey.shade800 : Colors.lightBlue.shade100;
+    final borderColor = isDark
+        ? Colors.grey.shade800
+        : Colors.lightBlue.shade100;
 
     final data = _applyClientFiltersAndSort(rawData);
 
     final columns = [
       ResizableTableColumn(
         id: 'id',
-        label: _buildSortableHeaderCell(label: '#', colKey: 'id', mutedColor: mutedColor),
+        label: _buildSortableHeaderCell(
+          label: '#',
+          colKey: 'id',
+          mutedColor: mutedColor,
+        ),
         filter: CompactTableFilterField(
           hintText: '#...',
           isNumeric: true,
           lang: lang,
-          initialNumericState: _clientNumericFilters['id'] ?? const NumericFilterState(),
-          onNumericFilterChanged: (f) => setState(() => _clientNumericFilters['id'] = f),
+          initialNumericState:
+              _clientNumericFilters['id'] ?? const NumericFilterState(),
+          onNumericFilterChanged: (f) =>
+              setState(() => _clientNumericFilters['id'] = f),
         ),
         initialWidth: 70,
         minWidth: 50,
@@ -1395,7 +1486,10 @@ class _CustomersState extends State<Customers> {
                   onTap: _clearAllClientColumnFilters,
                   borderRadius: BorderRadius.circular(4),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.red.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(4),
@@ -1403,11 +1497,19 @@ class _CustomersState extends State<Customers> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.clear_all, size: 13, color: Colors.red),
+                        const Icon(
+                          Icons.clear_all,
+                          size: 13,
+                          color: Colors.red,
+                        ),
                         const SizedBox(width: 2),
                         Text(
                           Localization.translate('مسح', lang),
-                          style: const TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Colors.red,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ],
                     ),
@@ -1440,8 +1542,7 @@ class _CustomersState extends State<Customers> {
           ? client['address'].toString().trim()
           : '—';
 
-      final emailDisplay =
-          (client['email'] ?? '').toString().trim().isNotEmpty
+      final emailDisplay = (client['email'] ?? '').toString().trim().isNotEmpty
           ? client['email'].toString().trim()
           : '—';
 
@@ -1498,51 +1599,82 @@ class _CustomersState extends State<Customers> {
           // Phone
           Text(
             phoneDisplay,
-            style: TextStyle(fontFamily: 'Cairo', fontSize: 11.5, color: contentColor),
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 11.5,
+              color: contentColor,
+            ),
           ),
           // Address
           Text(
             addressDisplay,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontFamily: 'Cairo', fontSize: 11.5, color: mutedColor),
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 11.5,
+              color: mutedColor,
+            ),
           ),
           // Email
           Text(
             emailDisplay,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontFamily: 'Cairo', fontSize: 11.5, color: mutedColor),
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 11.5,
+              color: mutedColor,
+            ),
           ),
           // Fiscal
           Text(
             taxDisplay,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Color(0xFF8B5CF6)),
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 11,
+              color: Color(0xFF8B5CF6),
+            ),
           ),
           // Date
           Text(
             createdAt.isEmpty ? '—' : createdAt,
-            style: TextStyle(fontFamily: 'Cairo', fontSize: 11.5, color: mutedColor),
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 11.5,
+              color: mutedColor,
+            ),
           ),
           // Creator
           Text(
             addedBy,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontFamily: 'Cairo', fontSize: 11.5, color: mutedColor),
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 11.5,
+              color: mutedColor,
+            ),
           ),
           // Actions
           Center(
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-
                 IconButton(
-                  icon: const Icon(Icons.edit_rounded, size: 18, color: Colors.blue),
+                  icon: const Icon(
+                    Icons.edit_rounded,
+                    size: 18,
+                    color: Colors.blue,
+                  ),
                   onPressed: () => _showUpdateClientDialog(context, client),
                   tooltip: Localization.translate('تعديل', lang),
                   visualDensity: VisualDensity.compact,
                 ),
                 IconButton(
-                  icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red),
+                  icon: const Icon(
+                    Icons.delete_outline_rounded,
+                    size: 18,
+                    color: Colors.red,
+                  ),
                   onPressed: () => _deleteClient(client['id']),
                   tooltip: Localization.translate('حذف', lang),
                   visualDensity: VisualDensity.compact,
@@ -1584,61 +1716,41 @@ class _CustomersState extends State<Customers> {
 
           // ── Desktop Resizable Table with zero vertical overflow ──
           Expanded(
-            child: data.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.search_off_rounded,
-                          size: 48,
-                          color: Colors.grey.shade400,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          Localization.translate("No matching results", lang),
-                          style: TextStyle(
-                            fontSize: 15,
-                            color: Colors.grey.shade600,
-                            fontFamily: 'Cairo',
-                          ),
-                        ),
-                        if (_hasActiveClientColumnFilters) ...[
-                          const SizedBox(height: 8),
-                          TextButton.icon(
-                            onPressed: _clearAllClientColumnFilters,
-                            icon: const Icon(Icons.refresh, size: 16),
-                            label: const Text(
-                              'إعادة ضبط البحث والتصفية',
-                              style: TextStyle(fontFamily: 'Cairo'),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  )
-                : Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: borderColor),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: ResizableColumnsTable(
-                        persistenceKey: 'clients',
-                        columns: columns,
-                        rows: rows,
-                        headerColor: const Color(0xFF0EA5E9).withValues(alpha: 0.08),
-                        filterRowColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
-                        borderColor: borderColor,
-                        rowColor: cardColor,
-                        verticalController: _desktopClientsScrollController,
-                        headerMinHeight: 38,
-                        filterRowMinHeight: 34,
-                        rowMinHeight: 46,
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: borderColor),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: ResizableColumnsTable(
+                  persistenceKey: 'clients',
+                  emptyPlaceholder: Center(
+                    child: Text(
+                      Localization.translate('No matching results', lang),
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: Colors.grey.shade600,
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
+                  columns: columns,
+                  rows: rows,
+                  headerColor: const Color(0xFF0EA5E9).withValues(alpha: 0.08),
+                  filterRowColor: isDark
+                      ? const Color(0xFF1E293B)
+                      : const Color(0xFFF8FAFC),
+                  borderColor: borderColor,
+                  rowColor: cardColor,
+                  verticalController: _desktopClientsScrollController,
+                  headerMinHeight: 38,
+                  filterRowMinHeight: 34,
+                  rowMinHeight: 46,
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -1997,7 +2109,10 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                   TextFormField(
                     controller: _aiController,
                     decoration: InputDecoration(
-                      labelText: Localization.translate('رقم المادة / AI', lang),
+                      labelText: Localization.translate(
+                        'رقم المادة / AI',
+                        lang,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),

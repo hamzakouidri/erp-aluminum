@@ -9,6 +9,7 @@ import '../sql_database.dart';
 import '../services/cloud_sync_service.dart';
 import '../widgets/section_image.dart';
 import '../widgets/auto_scroll_expansion_tile.dart';
+import '../widgets/desktop_scroll_behavior.dart';
 import '../Commande/Systeme/accessory_assembly.dart';
 
 class CatalogRulesScreen extends StatefulWidget {
@@ -2677,7 +2678,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               heightFactor: 0.94,
               child: Padding(
                 padding: EdgeInsets.only(bottom: keyboardInset),
-                child: Scrollbar(
+                child: ExplicitScrollbar(
                   controller: inspectorScrollController,
                   thumbVisibility: true,
                   interactive: true,

@@ -44,6 +44,7 @@ import 'package:database_data/widgets/table_date_range_filter.dart';
 import 'package:database_data/widgets/desktop_scroll_behavior.dart';
 import 'package:printing/printing.dart';
 import '../services/auth_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'order_export_service.dart';
 import 'order_import_dialog.dart';
 import 'order_pinning.dart';
@@ -53,11 +54,13 @@ class Commande extends StatefulWidget {
   /// The dashboard uses this so its add action behaves like the page action.
   final bool openAddOrderOnStart;
   final int? initialOrderId;
+  final bool openOrdersOnly;
 
   const Commande({
     super.key,
     this.openAddOrderOnStart = false,
     this.initialOrderId,
+    this.openOrdersOnly = false,
   });
 
   @override
@@ -103,10 +106,13 @@ class _CommandeState extends State<Commande> {
   Map<int, String> _seenOrderVersions = {};
 
   String get _seenOrdersPreferenceKey {
-    final uid = AppAuthService().currentUser?.uid.trim();
-    return 'seen_order_versions_v1_${uid == null || uid.isEmpty
-        ? 'local'
-        : uid}';
+    String? supabaseUid;
+    try {
+      supabaseUid = Supabase.instance.client.auth.currentUser?.id.trim();
+    } catch (_) {}
+    final firebaseUid = AppAuthService().currentUser?.uid.trim();
+    final uid = supabaseUid?.isNotEmpty == true ? supabaseUid : firebaseUid;
+    return 'seen_order_versions_v1_${uid == null || uid.isEmpty ? 'local' : uid}';
   }
 
   static const String _localSeenOrdersPreferenceKey =
@@ -134,12 +140,22 @@ class _CommandeState extends State<Commande> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final seen = <int, String>{};
-      // Authentication and workshop restoration finish asynchronously. Merge
-      // the device fallback with the account-scoped state so a screen opened
-      // during startup cannot make every order appear unread again.
+      // Read state is per user. Never merge the device-wide fallback into an
+      // authenticated account, otherwise one worker can make another
+      // worker's orders appear read (or unread) on a shared phone.
+      var hasSupabaseUser = false;
+      try {
+        hasSupabaseUser =
+            Supabase.instance.client.auth.currentUser?.id.trim().isNotEmpty ==
+            true;
+      } catch (_) {}
+      final hasAuthenticatedUser =
+          hasSupabaseUser ||
+          AppAuthService().currentUser?.uid.trim().isNotEmpty == true;
       final keys = <String>{
-        _localSeenOrdersPreferenceKey,
-        _seenOrdersPreferenceKey,
+        hasAuthenticatedUser
+            ? _seenOrdersPreferenceKey
+            : _localSeenOrdersPreferenceKey,
       };
       for (final key in keys) {
         final stored = prefs.getString(key);
@@ -176,10 +192,21 @@ class _CommandeState extends State<Commande> {
     final encoded = jsonEncode({
       for (final entry in retained) '${entry.key}': entry.value,
     });
-    await Future.wait([
-      prefs.setString(_localSeenOrdersPreferenceKey, encoded),
-      prefs.setString(_seenOrdersPreferenceKey, encoded),
-    ]);
+    var hasSupabaseUser = false;
+    try {
+      hasSupabaseUser =
+          Supabase.instance.client.auth.currentUser?.id.trim().isNotEmpty ==
+          true;
+    } catch (_) {}
+    final hasAuthenticatedUser =
+        hasSupabaseUser ||
+        AppAuthService().currentUser?.uid.trim().isNotEmpty == true;
+    await prefs.setString(
+      hasAuthenticatedUser
+          ? _seenOrdersPreferenceKey
+          : _localSeenOrdersPreferenceKey,
+      encoded,
+    );
   }
 
   Future<void> _markOrderSeen(Map<String, dynamic> order) async {
@@ -195,7 +222,8 @@ class _CommandeState extends State<Commande> {
   }
 
   Future<void> _upgradeLegacySeenVersions(
-      List<Map<String, dynamic>> orders,) async {
+    List<Map<String, dynamic>> orders,
+  ) async {
     var changed = false;
     for (final order in orders) {
       final id = _readId(order['id']) ?? 0;
@@ -271,12 +299,10 @@ class _CommandeState extends State<Commande> {
   }
 
   String _t(String key) {
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
     return Localization.translate(key, lang);
   }
 
@@ -454,8 +480,8 @@ class _CommandeState extends State<Commande> {
   String _orderClientName(Map<String, dynamic> order) {
     final direct =
         order['client_name']?.toString().trim() ??
-            order['client_display']?.toString().trim() ??
-            '';
+        order['client_display']?.toString().trim() ??
+        '';
     if (direct.isNotEmpty) return direct;
     final first = order['firstname']?.toString().trim() ?? '';
     final last = order['lastname']?.toString().trim() ?? '';
@@ -463,8 +489,10 @@ class _CommandeState extends State<Commande> {
     return full.isEmpty ? 'Client' : full;
   }
 
-  void _showAddOrderPaymentDialog(Map<String, dynamic> orderData,
-      AppLanguage lang,) {
+  void _showAddOrderPaymentDialog(
+    Map<String, dynamic> orderData,
+    AppLanguage lang,
+  ) {
     final orderId = _readId(orderData['id']);
     final clientId = _readId(orderData['client_id']);
     if (orderId == null || clientId == null) return;
@@ -479,99 +507,91 @@ class _CommandeState extends State<Commande> {
 
     showDialog(
       context: context,
-      builder: (dialogContext) =>
-          StatefulBuilder(
-            builder: (dialogContext, setDialogState) =>
-                AlertDialog(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  title: Text(
-                    '${Localization.translate(
-                        'Add payment to order', lang)} ${_displayOrderLabel(
-                        orderData)}',
-                    style: const TextStyle(
-                      fontFamily: 'Cairo',
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                  content: TextField(
-                    controller: amountCtrl,
-                    autofocus: true,
-                    enabled: !isSavingPayment,
-                    keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true),
-                    decoration: InputDecoration(
-                      labelText: Localization.translate('Amount paid', lang),
-                      hintText:
-                      '${Localization.translate('Remaining:', lang)} ${remaining
-                          .toStringAsFixed(2)} د.ج',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      prefixIcon: const Icon(Icons.payments_outlined),
-                    ),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: isSavingPayment
-                          ? null
-                          : () => Navigator.pop(dialogContext),
-                      child: Text(Localization.translate('Cancel', lang)),
-                    ),
-                    ElevatedButton(
-                      onPressed: isSavingPayment
-                          ? null
-                          : () async {
-                        final amount = _readMoney(amountCtrl.text);
-                        if (amount <= 0) return;
-
-                        final navigator = Navigator.of(dialogContext);
-                        setDialogState(() => isSavingPayment = true);
-                        try {
-                          await db.insertTreasury(
-                            'Encaissement',
-                            amount,
-                            'دفعة لطلبية رقم ${_displayOrderNumber(
-                                orderData)} من الزبون: $clientName',
-                            referenceId: orderId,
-                            entityType: 'Client',
-                            entityId: clientId,
-                            recordedBy: settings.userDisplayName,
-                          );
-                          if (navigator.mounted && navigator.canPop()) {
-                            navigator.pop();
-                          }
-                          if (mounted) _fetchCommandes();
-                        } catch (error) {
-                          if (dialogContext.mounted) {
-                            setDialogState(() => isSavingPayment = false);
-                          }
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  '${Localization.translate(
-                                      'فشل حفظ الدفعة', lang)}: $error',
-                                ),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          }
-                        }
-                      },
-                      child: isSavingPayment
-                          ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                          : Text(Localization.translate('Save payment', lang)),
-                    ),
-                  ],
-                ),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
           ),
+          title: Text(
+            '${Localization.translate('Add payment to order', lang)} ${_displayOrderLabel(orderData)}',
+            style: const TextStyle(
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+          content: TextField(
+            controller: amountCtrl,
+            autofocus: true,
+            enabled: !isSavingPayment,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: Localization.translate('Amount paid', lang),
+              hintText:
+                  '${Localization.translate('Remaining:', lang)} ${remaining.toStringAsFixed(2)} د.ج',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              prefixIcon: const Icon(Icons.payments_outlined),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSavingPayment
+                  ? null
+                  : () => Navigator.pop(dialogContext),
+              child: Text(Localization.translate('Cancel', lang)),
+            ),
+            ElevatedButton(
+              onPressed: isSavingPayment
+                  ? null
+                  : () async {
+                      final amount = _readMoney(amountCtrl.text);
+                      if (amount <= 0) return;
+
+                      final navigator = Navigator.of(dialogContext);
+                      setDialogState(() => isSavingPayment = true);
+                      try {
+                        await db.insertTreasury(
+                          'Encaissement',
+                          amount,
+                          'دفعة لطلبية رقم ${_displayOrderNumber(orderData)} من الزبون: $clientName',
+                          referenceId: orderId,
+                          entityType: 'Client',
+                          entityId: clientId,
+                          recordedBy: settings.userDisplayName,
+                        );
+                        if (navigator.mounted && navigator.canPop()) {
+                          navigator.pop();
+                        }
+                        if (mounted) _fetchCommandes();
+                      } catch (error) {
+                        if (dialogContext.mounted) {
+                          setDialogState(() => isSavingPayment = false);
+                        }
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                '${Localization.translate('فشل حفظ الدفعة', lang)}: $error',
+                              ),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+              child: isSavingPayment
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(Localization.translate('Save payment', lang)),
+            ),
+          ],
+        ),
+      ),
     ).whenComplete(amountCtrl.dispose);
   }
 
@@ -652,7 +672,7 @@ class _CommandeState extends State<Commande> {
       final initialOrderId = widget.initialOrderId;
       if (!_initialOrderOpened && initialOrderId != null) {
         final matches = list.where(
-              (order) => order['id'].toString() == initialOrderId.toString(),
+          (order) => order['id'].toString() == initialOrderId.toString(),
         );
         if (matches.isNotEmpty) {
           _initialOrderOpened = true;
@@ -708,7 +728,7 @@ class _CommandeState extends State<Commande> {
         final initialOrderId = widget.initialOrderId;
         if (!_initialOrderOpened && initialOrderId != null) {
           final matches = list.where(
-                (order) => order['id'].toString() == initialOrderId.toString(),
+            (order) => order['id'].toString() == initialOrderId.toString(),
           );
           if (matches.isNotEmpty) {
             _initialOrderOpened = true;
@@ -816,10 +836,7 @@ class _CommandeState extends State<Commande> {
     return _orderSortColumn != null ||
         _orderDateRange.isActive ||
         _orderNumericFilters.values.any((f) => f.isActive) ||
-        _orderColumnControllers.values.any((c) =>
-        c.text
-            .trim()
-            .isNotEmpty);
+        _orderColumnControllers.values.any((c) => c.text.trim().isNotEmpty);
   }
 
   String _orderSortText(String key, AppLanguage lang) {
@@ -848,9 +865,8 @@ class _CommandeState extends State<Commande> {
     final tooltip = activeSort == null
         ? _orderSortText('title', lang)
         : '${_orderSortText('title', lang)}: '
-        '${_orderSortText(activeSort, lang)} · '
-        '${_orderSortText(
-        _orderSortAscending ? 'ascending' : 'descending', lang)}';
+              '${_orderSortText(activeSort, lang)} · '
+              '${_orderSortText(_orderSortAscending ? 'ascending' : 'descending', lang)}';
 
     return PopupMenuButton<String>(
       tooltip: tooltip,
@@ -901,28 +917,27 @@ class _CommandeState extends State<Commande> {
             ),
           ),
           ...columns.map(
-                (column) =>
-                PopupMenuItem<String>(
-                  value: 'column:$column',
-                  child: Row(
-                    children: [
-                      Icon(
-                        _orderSortColumn == column
-                            ? Icons.radio_button_checked_rounded
-                            : Icons.radio_button_unchecked_rounded,
-                        size: 18,
-                        color: _orderSortColumn == column
-                            ? const Color(0xFF2563EB)
-                            : Colors.grey,
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        _orderSortText(column, lang),
-                        style: const TextStyle(fontFamily: 'Cairo'),
-                      ),
-                    ],
+            (column) => PopupMenuItem<String>(
+              value: 'column:$column',
+              child: Row(
+                children: [
+                  Icon(
+                    _orderSortColumn == column
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.radio_button_unchecked_rounded,
+                    size: 18,
+                    color: _orderSortColumn == column
+                        ? const Color(0xFF2563EB)
+                        : Colors.grey,
                   ),
-                ),
+                  const SizedBox(width: 10),
+                  Text(
+                    _orderSortText(column, lang),
+                    style: const TextStyle(fontFamily: 'Cairo'),
+                  ),
+                ],
+              ),
+            ),
           ),
           const PopupMenuDivider(),
           PopupMenuItem<String>(
@@ -988,17 +1003,12 @@ class _CommandeState extends State<Commande> {
         height: 44,
         decoration: BoxDecoration(
           color: activeSort == null
-              ? Theme
-              .of(context)
-              .colorScheme
-              .surface
+              ? Theme.of(context).colorScheme.surface
               : const Color(0xFF2563EB).withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: activeSort == null
-                ? Theme
-                .of(context)
-                .dividerColor
+                ? Theme.of(context).dividerColor
                 : const Color(0xFF2563EB),
           ),
         ),
@@ -1028,9 +1038,14 @@ class _CommandeState extends State<Commande> {
   }
 
   List<Map<String, dynamic>> _applyOrderFiltersAndSort(
-      List<Map<String, dynamic>> rawData,
-      AppLanguage lang,) {
+    List<Map<String, dynamic>> rawData,
+    AppLanguage lang,
+  ) {
     List<Map<String, dynamic>> filtered = rawData.where((d) {
+      if (widget.openOrdersOnly &&
+          !isOpenOrderStatus((d['status'] ?? '').toString())) {
+        return false;
+      }
       final query = _searchQuery.trim();
       if (query.isNotEmpty) {
         final first = (d['firstname'] ?? '').toString();
@@ -1067,8 +1082,8 @@ class _CommandeState extends State<Commande> {
 
       final netPayable =
           (d['net_payable'] as num?)?.toDouble() ??
-              (d['total'] as num?)?.toDouble() ??
-              0.0;
+          (d['total'] as num?)?.toDouble() ??
+          0.0;
       final advance = (d['advance_payment'] as num?)?.toDouble() ?? 0.0;
       final remaining = netPayable - advance;
 
@@ -1209,11 +1224,9 @@ class _CommandeState extends State<Commande> {
             break;
           case 'client_project':
             final aName =
-                '${a['firstname'] ?? ''} ${a['lastname'] ??
-                ''} ${a['project_name'] ?? ''}';
+                '${a['firstname'] ?? ''} ${a['lastname'] ?? ''} ${a['project_name'] ?? ''}';
             final bName =
-                '${b['firstname'] ?? ''} ${b['lastname'] ??
-                ''} ${b['project_name'] ?? ''}';
+                '${b['firstname'] ?? ''} ${b['lastname'] ?? ''} ${b['project_name'] ?? ''}';
             comp = aName.compareTo(bName);
             break;
           case 'date':
@@ -1234,12 +1247,12 @@ class _CommandeState extends State<Commande> {
           case 'total':
             final aTot =
                 (a['net_payable'] as num?)?.toDouble() ??
-                    (a['total'] as num?)?.toDouble() ??
-                    0.0;
+                (a['total'] as num?)?.toDouble() ??
+                0.0;
             final bTot =
                 (b['net_payable'] as num?)?.toDouble() ??
-                    (b['total'] as num?)?.toDouble() ??
-                    0.0;
+                (b['total'] as num?)?.toDouble() ??
+                0.0;
             comp = aTot.compareTo(bTot);
             break;
           case 'advance':
@@ -1252,12 +1265,12 @@ class _CommandeState extends State<Commande> {
                 ((a['net_payable'] as num?)?.toDouble() ??
                     (a['total'] as num?)?.toDouble() ??
                     0.0) -
-                    ((a['advance_payment'] as num?)?.toDouble() ?? 0.0);
+                ((a['advance_payment'] as num?)?.toDouble() ?? 0.0);
             final bRem =
                 ((b['net_payable'] as num?)?.toDouble() ??
                     (b['total'] as num?)?.toDouble() ??
                     0.0) -
-                    ((b['advance_payment'] as num?)?.toDouble() ?? 0.0);
+                ((b['advance_payment'] as num?)?.toDouble() ?? 0.0);
             comp = aRem.compareTo(bRem);
             break;
           case 'status':
@@ -1328,25 +1341,15 @@ class _CommandeState extends State<Commande> {
     final settings = Provider.of<AppSettingsProvider>(context);
     final lang = settings.language;
     final isDesktop =
-        MediaQuery
-            .of(context)
-            .size
-            .width >= 900 || Platform.isWindows;
+        MediaQuery.of(context).size.width >= 900 || Platform.isWindows;
 
     return Scaffold(
-      backgroundColor: Theme
-          .of(context)
-          .scaffoldBackgroundColor,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(Localization.translate("Commande", lang)),
         centerTitle: !isDesktop,
-        backgroundColor: Theme
-            .of(context)
-            .brightness == Brightness.dark
-            ? Theme
-            .of(context)
-            .appBarTheme
-            .backgroundColor
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? Theme.of(context).appBarTheme.backgroundColor
             : Colors.blue,
         actions: [
           if (!isDesktop)
@@ -1378,13 +1381,13 @@ class _CommandeState extends State<Commande> {
           IconButton(
             icon: _isImportPicking
                 ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
-              ),
-            )
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
                 : const Icon(Icons.file_upload_outlined, color: Colors.white),
             tooltip: Localization.translate('import_order', lang),
             onPressed: _isImportPicking ? null : _importOrder,
@@ -1421,8 +1424,8 @@ class _CommandeState extends State<Commande> {
                   lang == AppLanguage.arabic
                       ? 'إضافة طلبية جديدة'
                       : (lang == AppLanguage.french
-                      ? 'Nouvelle commande'
-                      : 'Add New Order'),
+                            ? 'Nouvelle commande'
+                            : 'Add New Order'),
                   style: const TextStyle(
                     fontFamily: 'Cairo',
                     fontWeight: FontWeight.bold,
@@ -1468,34 +1471,30 @@ class _CommandeState extends State<Commande> {
                       suffixIcon: _searchQuery.isEmpty
                           ? null
                           : IconButton(
-                        tooltip: Localization.translate(
-                          'مسح البحث',
-                          lang,
-                        ),
-                        icon: const Icon(Icons.clear_rounded),
-                        onPressed: () {
-                          _mobileSearchController.clear();
-                          setState(() => _searchQuery = '');
-                          if (_mobileOrdersScrollController.hasClients) {
-                            _mobileOrdersScrollController.jumpTo(0);
-                          }
-                          if (_desktopOrdersScrollController.hasClients) {
-                            _desktopOrdersScrollController.jumpTo(0);
-                          }
-                          _mobileSearchFocusNode.requestFocus();
-                        },
-                      ),
+                              tooltip: Localization.translate(
+                                'مسح البحث',
+                                lang,
+                              ),
+                              icon: const Icon(Icons.clear_rounded),
+                              onPressed: () {
+                                _mobileSearchController.clear();
+                                setState(() => _searchQuery = '');
+                                if (_mobileOrdersScrollController.hasClients) {
+                                  _mobileOrdersScrollController.jumpTo(0);
+                                }
+                                if (_desktopOrdersScrollController.hasClients) {
+                                  _desktopOrdersScrollController.jumpTo(0);
+                                }
+                                _mobileSearchFocusNode.requestFocus();
+                              },
+                            ),
                       isDense: true,
                       filled: true,
-                      fillColor: Theme
-                          .of(context)
-                          .cardColor,
+                      fillColor: Theme.of(context).cardColor,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide(
-                          color: Theme
-                              .of(context)
-                              .dividerColor,
+                          color: Theme.of(context).dividerColor,
                         ),
                       ),
                     ),
@@ -1508,9 +1507,7 @@ class _CommandeState extends State<Commande> {
                       : const EdgeInsets.fromLTRB(8, 6, 8, 0),
                   clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
-                    color: Theme
-                        .of(context)
-                        .cardColor,
+                    color: Theme.of(context).cardColor,
                     borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(24),
                     ),
@@ -1658,11 +1655,9 @@ class _CommandeState extends State<Commande> {
                                 Text(
                                   Localization.translate(
                                     "No Data",
-                                    Provider
-                                        .of<AppSettingsProvider>(
+                                    Provider.of<AppSettingsProvider>(
                                       context,
-                                    )
-                                        .language,
+                                    ).language,
                                   ),
                                   style: TextStyle(
                                     color: Colors.blueGrey.shade800,
@@ -1725,19 +1720,7 @@ class _CommandeState extends State<Commande> {
                       }
                       final data = _applyOrderFiltersAndSort(rawData, lang);
 
-                      if (data.isEmpty) {
-                        return const Center(
-                          child: Text(
-                            'لا توجد نتائج مطابقة للبحث',
-                            style: TextStyle(fontSize: 16),
-                          ),
-                        );
-                      }
-
-                      if (MediaQuery
-                          .of(context)
-                          .size
-                          .width >= 900 ||
+                      if (MediaQuery.of(context).size.width >= 900 ||
                           Platform.isWindows) {
                         return _buildDesktopOrdersTableView(
                           context,
@@ -1746,11 +1729,23 @@ class _CommandeState extends State<Commande> {
                         );
                       }
 
+                      if (data.isEmpty) {
+                        return Center(
+                          child: Text(
+                            Localization.translate('No matching results', lang),
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 16,
+                            ),
+                          ),
+                        );
+                      }
+
                       return ListView.builder(
                         controller: _mobileOrdersScrollController,
                         primary: false,
                         keyboardDismissBehavior:
-                        ScrollViewKeyboardDismissBehavior.onDrag,
+                            ScrollViewKeyboardDismissBehavior.onDrag,
                         padding: EdgeInsets.fromLTRB(
                           10,
                           8,
@@ -1766,11 +1761,8 @@ class _CommandeState extends State<Commande> {
                           final clientPhone = data[index]['phone'];
                           final bool hasPhone =
                               clientPhone != null &&
-                                  clientPhone
-                                      .toString()
-                                      .trim()
-                                      .isNotEmpty &&
-                                  clientPhone.toString() != 'null';
+                              clientPhone.toString().trim().isNotEmpty &&
+                              clientPhone.toString() != 'null';
 
                           final clientName = '$clientFirst $clientLast'.trim();
                           final clientDisplay = clientName.isEmpty
@@ -1780,7 +1772,7 @@ class _CommandeState extends State<Commande> {
                           final netPayable =
                               (data[index]['net_payable'] as num?)
                                   ?.toDouble() ??
-                                  0.0;
+                              0.0;
                           final rawTotal =
                               (data[index]['total'] as num?)?.toDouble() ?? 0.0;
                           final total = netPayable > 0.0
@@ -1795,21 +1787,19 @@ class _CommandeState extends State<Commande> {
                               borderRadius: BorderRadius.circular(15),
                               side: isUnseen
                                   ? const BorderSide(
-                                color: Color(0xFF10B981),
-                                width: 1.6,
-                              )
+                                      color: Color(0xFF10B981),
+                                      width: 1.6,
+                                    )
                                   : BorderSide.none,
                             ),
                             elevation: isUnseen ? 3 : 2,
                             color: isUnseen
-                                ? (Theme
-                                .of(context)
-                                .brightness ==
-                                Brightness.dark
-                                ? const Color(
-                              0xFF064E3B,
-                            ).withValues(alpha: 0.35)
-                                : const Color(0xFFF0FDF4))
+                                ? (Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? const Color(
+                                          0xFF064E3B,
+                                        ).withValues(alpha: 0.35)
+                                      : const Color(0xFFF0FDF4))
                                 : null,
                             margin: const EdgeInsets.symmetric(vertical: 6),
                             clipBehavior: Clip.antiAlias,
@@ -1817,9 +1807,9 @@ class _CommandeState extends State<Commande> {
                               borderRadius: BorderRadius.circular(15),
                               onTap: settings.canViewOrderDetails()
                                   ? () {
-                                _markOrderSeen(data[index]);
-                                _showOrderOptions(context, data[index]);
-                              }
+                                      _markOrderSeen(data[index]);
+                                      _showOrderOptions(context, data[index]);
+                                    }
                                   : null,
                               child: Padding(
                                 padding: const EdgeInsets.all(12),
@@ -1843,20 +1833,16 @@ class _CommandeState extends State<Commande> {
                                     Expanded(
                                       child: Column(
                                         crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                            CrossAxisAlignment.start,
                                         children: [
                                           RichText(
                                             text: TextSpan(
                                               style: TextStyle(
                                                 fontWeight: FontWeight.bold,
                                                 fontSize: 15,
-                                                color: Theme
-                                                    .of(
+                                                color: Theme.of(
                                                   context,
-                                                )
-                                                    .textTheme
-                                                    .bodyLarge
-                                                    ?.color,
+                                                ).textTheme.bodyLarge?.color,
                                               ),
                                               children: [
                                                 highlightText(
@@ -1871,13 +1857,9 @@ class _CommandeState extends State<Commande> {
                                             formatDate(data[index]),
                                             style: TextStyle(
                                               fontSize: 12,
-                                              color: Theme
-                                                  .of(
+                                              color: Theme.of(
                                                 context,
-                                              )
-                                                  .textTheme
-                                                  .bodySmall
-                                                  ?.color,
+                                              ).textTheme.bodySmall?.color,
                                             ),
                                           ),
                                           if (hasPhone) ...[
@@ -1885,13 +1867,9 @@ class _CommandeState extends State<Commande> {
                                             RichText(
                                               text: TextSpan(
                                                 style: TextStyle(
-                                                  color: Theme
-                                                      .of(
+                                                  color: Theme.of(
                                                     context,
-                                                  )
-                                                      .textTheme
-                                                      .bodySmall
-                                                      ?.color,
+                                                  ).textTheme.bodySmall?.color,
                                                   fontSize: 13,
                                                 ),
                                                 children: [
@@ -1904,7 +1882,7 @@ class _CommandeState extends State<Commande> {
                                             ),
                                           ],
                                           if (data[index]['project_name'] !=
-                                              null &&
+                                                  null &&
                                               data[index]['project_name']
                                                   .toString()
                                                   .isNotEmpty) ...[
@@ -1914,21 +1892,21 @@ class _CommandeState extends State<Commande> {
                                                 Flexible(
                                                   child: Container(
                                                     padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 8,
-                                                      vertical: 2,
-                                                    ),
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 8,
+                                                          vertical: 2,
+                                                        ),
                                                     decoration: BoxDecoration(
                                                       color:
-                                                      Colors.blue.shade50,
+                                                          Colors.blue.shade50,
                                                       borderRadius:
-                                                      BorderRadius.circular(
-                                                        6,
-                                                      ),
+                                                          BorderRadius.circular(
+                                                            6,
+                                                          ),
                                                     ),
                                                     child: Row(
                                                       mainAxisSize:
-                                                      MainAxisSize.min,
+                                                          MainAxisSize.min,
                                                       children: [
                                                         Icon(
                                                           Icons.folder,
@@ -1945,8 +1923,8 @@ class _CommandeState extends State<Commande> {
                                                             data[index]['project_name']
                                                                 .toString(),
                                                             overflow:
-                                                            TextOverflow
-                                                                .ellipsis,
+                                                                TextOverflow
+                                                                    .ellipsis,
                                                             maxLines: 1,
                                                             style: TextStyle(
                                                               color: Colors
@@ -1954,8 +1932,8 @@ class _CommandeState extends State<Commande> {
                                                                   .shade800,
                                                               fontSize: 12,
                                                               fontWeight:
-                                                              FontWeight
-                                                                  .bold,
+                                                                  FontWeight
+                                                                      .bold,
                                                             ),
                                                           ),
                                                         ),
@@ -1971,11 +1949,10 @@ class _CommandeState extends State<Commande> {
                                             spacing: 8,
                                             runSpacing: 6,
                                             crossAxisAlignment:
-                                            WrapCrossAlignment.center,
+                                                WrapCrossAlignment.center,
                                             children: [
                                               Text(
-                                                '${total.toStringAsFixed(
-                                                    2)} دج',
+                                                '${total.toStringAsFixed(2)} دج',
                                                 style: const TextStyle(
                                                   fontWeight: FontWeight.bold,
                                                   color: Colors.green,
@@ -1984,27 +1961,26 @@ class _CommandeState extends State<Commande> {
                                               ),
                                               Container(
                                                 padding:
-                                                const EdgeInsets.symmetric(
-                                                  horizontal: 8,
-                                                  vertical: 3,
-                                                ),
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 3,
+                                                    ),
                                                 decoration: BoxDecoration(
                                                   color: _getStatusColor(
                                                     status,
                                                   ),
                                                   borderRadius:
-                                                  BorderRadius.circular(20),
+                                                      BorderRadius.circular(20),
                                                 ),
                                                 child: Text(
                                                   _translateStatus(
                                                     status,
-                                                    Provider
-                                                        .of<
-                                                        AppSettingsProvider
-                                                    >(
-                                                      context,
-                                                      listen: false,
-                                                    )
+                                                    Provider.of<
+                                                          AppSettingsProvider
+                                                        >(
+                                                          context,
+                                                          listen: false,
+                                                        )
                                                         .language,
                                                   ),
                                                   style: const TextStyle(
@@ -2017,103 +1993,99 @@ class _CommandeState extends State<Commande> {
                                               Builder(
                                                 builder: (ctx) {
                                                   final currentStatus =
-                                                  (data[index]['status'] ??
-                                                      '')
-                                                      .toString();
+                                                      (data[index]['status'] ??
+                                                              '')
+                                                          .toString();
                                                   if (_hasPassedFullManufacturing(
                                                     currentStatus,
                                                   )) {
-                                                    return const SizedBox
-                                                        .shrink();
+                                                    return const SizedBox.shrink();
                                                   }
                                                   final isStockReserved =
                                                       (data[index]['is_stock_reserved']
-                                                      as num?)
+                                                              as num?)
                                                           ?.toInt() ==
-                                                          1;
+                                                      1;
                                                   final lang =
-                                                      Provider
-                                                          .of<
-                                                          AppSettingsProvider
-                                                      >(ctx, listen: false)
+                                                      Provider.of<
+                                                            AppSettingsProvider
+                                                          >(ctx, listen: false)
                                                           .language;
                                                   return Container(
                                                     padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 7,
-                                                      vertical: 2.5,
-                                                    ),
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 7,
+                                                          vertical: 2.5,
+                                                        ),
                                                     decoration: BoxDecoration(
                                                       color: isStockReserved
                                                           ? Colors.green
-                                                          .withValues(
-                                                        alpha: 0.15,
-                                                      )
+                                                                .withValues(
+                                                                  alpha: 0.15,
+                                                                )
                                                           : Colors.grey
-                                                          .withValues(
-                                                        alpha: 0.12,
-                                                      ),
+                                                                .withValues(
+                                                                  alpha: 0.12,
+                                                                ),
                                                       borderRadius:
-                                                      BorderRadius.circular(
-                                                        12,
-                                                      ),
+                                                          BorderRadius.circular(
+                                                            12,
+                                                          ),
                                                       border: Border.all(
                                                         color: isStockReserved
                                                             ? Colors
-                                                            .green
-                                                            .shade600
+                                                                  .green
+                                                                  .shade600
                                                             : Colors
-                                                            .grey
-                                                            .shade400,
+                                                                  .grey
+                                                                  .shade400,
                                                         width: 0.8,
                                                       ),
                                                     ),
                                                     child: Row(
                                                       mainAxisSize:
-                                                      MainAxisSize.min,
+                                                          MainAxisSize.min,
                                                       children: [
                                                         Icon(
                                                           isStockReserved
                                                               ? Icons
-                                                              .check_circle
+                                                                    .check_circle
                                                               : Icons
-                                                              .inventory_2_outlined,
+                                                                    .inventory_2_outlined,
                                                           size: 11,
                                                           color: isStockReserved
                                                               ? Colors
-                                                              .green
-                                                              .shade800
+                                                                    .green
+                                                                    .shade800
                                                               : Colors
-                                                              .grey
-                                                              .shade600,
+                                                                    .grey
+                                                                    .shade600,
                                                         ),
                                                         const SizedBox(
                                                           width: 3,
                                                         ),
                                                         Text(
                                                           isStockReserved
-                                                              ? Localization
-                                                              .translate(
-                                                            'تم الحجز',
-                                                            lang,
-                                                          )
-                                                              : Localization
-                                                              .translate(
-                                                            'لم يُحجز بعد',
-                                                            lang,
-                                                          ),
+                                                              ? Localization.translate(
+                                                                  'تم الحجز',
+                                                                  lang,
+                                                                )
+                                                              : Localization.translate(
+                                                                  'لم يُحجز بعد',
+                                                                  lang,
+                                                                ),
                                                           style: TextStyle(
                                                             color:
-                                                            isStockReserved
+                                                                isStockReserved
                                                                 ? Colors
-                                                                .green
-                                                                .shade900
+                                                                      .green
+                                                                      .shade900
                                                                 : Colors
-                                                                .grey
-                                                                .shade700,
+                                                                      .grey
+                                                                      .shade700,
                                                             fontSize: 10,
                                                             fontWeight:
-                                                            FontWeight.bold,
+                                                                FontWeight.bold,
                                                           ),
                                                         ),
                                                       ],
@@ -2160,28 +2132,27 @@ class _CommandeState extends State<Commande> {
       ),
 
       floatingActionButton:
-      (!isDesktop &&
-          settings.canCreateOrders() &&
-          MediaQuery
-              .of(context)
-              .viewInsets
-              .bottom == 0)
+          (!isDesktop &&
+              settings.canCreateOrders() &&
+              MediaQuery.of(context).viewInsets.bottom == 0)
           ? FloatingActionButton(
-        onPressed: () {
-          openOrderInWorkspaceTab(
-            context,
-            db: db,
-            onSaved: _fetchCommandes,
-          );
-        },
-        child: const Icon(Icons.add),
-      )
+              onPressed: () {
+                openOrderInWorkspaceTab(
+                  context,
+                  db: db,
+                  onSaved: _fetchCommandes,
+                );
+              },
+              child: const Icon(Icons.add),
+            )
           : null,
     );
   }
 
-  void _showOrderOptions(BuildContext context,
-      Map<String, dynamic> orderData,) async {
+  void _showOrderOptions(
+    BuildContext context,
+    Map<String, dynamic> orderData,
+  ) async {
     final orderId = (orderData['id'] as num?)?.toInt() ?? 0;
     // The list row can legitimately be one repaint behind a live detail
     // update. Documents must always use the newest order header as well as
@@ -2214,41 +2185,38 @@ class _CommandeState extends State<Commande> {
             .toLowerCase();
         final isPending =
             statusRaw == 'nouveau' ||
-                statusRaw == 'جديد' ||
-                statusRaw == 'جديدة' ||
-                statusRaw == 'en attente' ||
-                statusRaw == 'في الانتظار' ||
-                statusRaw == 'pending' ||
-                statusRaw == 'draft' ||
-                statusRaw == 'new' ||
-                statusRaw == 'en_attente';
+            statusRaw == 'جديد' ||
+            statusRaw == 'جديدة' ||
+            statusRaw == 'en attente' ||
+            statusRaw == 'في الانتظار' ||
+            statusRaw == 'pending' ||
+            statusRaw == 'draft' ||
+            statusRaw == 'new' ||
+            statusRaw == 'en_attente';
         final isConfirmedOrBeyond = !isPending;
         final isManufacturingOrBeyond =
             isConfirmedOrBeyond &&
-                statusRaw != 'confirmed' &&
-                statusRaw != 'مؤكدة' &&
-                statusRaw != 'مؤكد';
+            statusRaw != 'confirmed' &&
+            statusRaw != 'مؤكدة' &&
+            statusRaw != 'مؤكد';
 
         final isDistributedOrBeyond =
             isFullyManufactured ||
-                statusRaw.contains('full manufacturing') ||
-                statusRaw.contains('تصنيع كلي') ||
-                statusRaw.contains('distribution') ||
-                statusRaw.contains('توزيع') ||
-                statusRaw.contains('installation') ||
-                statusRaw.contains('تركيب') ||
-                statusRaw.contains('reserve') ||
-                statusRaw.contains('تحفظ') ||
-                statusRaw.contains('done') ||
-                statusRaw.contains('انتهاء') ||
-                statusRaw.contains('منتهية');
+            statusRaw.contains('full manufacturing') ||
+            statusRaw.contains('تصنيع كلي') ||
+            statusRaw.contains('distribution') ||
+            statusRaw.contains('توزيع') ||
+            statusRaw.contains('installation') ||
+            statusRaw.contains('تركيب') ||
+            statusRaw.contains('reserve') ||
+            statusRaw.contains('تحفظ') ||
+            statusRaw.contains('done') ||
+            statusRaw.contains('انتهاء') ||
+            statusRaw.contains('منتهية');
 
         return ConstrainedBox(
           constraints: BoxConstraints(
-            maxHeight: MediaQuery
-                .of(ctx)
-                .size
-                .height * 0.85,
+            maxHeight: MediaQuery.of(ctx).size.height * 0.85,
           ),
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 10),
@@ -2275,11 +2243,11 @@ class _CommandeState extends State<Commande> {
                   title: Text(
                     isOrderPinned(orderData)
                         ? (lang == AppLanguage.french
-                        ? 'Désépingler la commande'
-                        : 'إلغاء تثبيت الطلبية')
+                              ? 'Désépingler la commande'
+                              : 'إلغاء تثبيت الطلبية')
                         : (lang == AppLanguage.french
-                        ? 'Épingler la commande en haut'
-                        : 'تثبيت الطلبية في الأعلى'),
+                              ? 'Épingler la commande en haut'
+                              : 'تثبيت الطلبية في الأعلى'),
                     style: const TextStyle(fontFamily: 'Cairo'),
                   ),
                   onTap: () async {
@@ -2303,18 +2271,14 @@ class _CommandeState extends State<Commande> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '${lang == AppLanguage.french
-                                  ? "Commande"
-                                  : "طلب"} ${_displayOrderLabel(orderData)}',
+                              '${lang == AppLanguage.french ? "Commande" : "طلب"} ${_displayOrderLabel(orderData)}',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16,
                                 fontFamily: 'Cairo',
                                 color:
-                                Theme
-                                    .of(context)
-                                    .brightness ==
-                                    Brightness.dark
+                                    Theme.of(context).brightness ==
+                                        Brightness.dark
                                     ? Colors.white
                                     : Colors.black87,
                               ),
@@ -2328,10 +2292,8 @@ class _CommandeState extends State<Commande> {
                                   "Client",
                               style: TextStyle(
                                 color:
-                                Theme
-                                    .of(context)
-                                    .brightness ==
-                                    Brightness.dark
+                                    Theme.of(context).brightness ==
+                                        Brightness.dark
                                     ? Colors.grey.shade400
                                     : Colors.grey.shade600,
                                 fontSize: 13,
@@ -2358,11 +2320,10 @@ class _CommandeState extends State<Commande> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) =>
-                                  OrderMeasurementsDetailsScreen(
-                                    orderData: orderData,
-                                    db: db,
-                                  ),
+                              builder: (_) => OrderMeasurementsDetailsScreen(
+                                orderData: orderData,
+                                db: db,
+                              ),
                             ),
                           );
                         },
@@ -2498,11 +2459,7 @@ class _CommandeState extends State<Commande> {
                     ),
                     title: Text(Localization.translate('Add payment', lang)),
                     subtitle: Text(
-                      '${Localization.translate(
-                          'Remaining:', lang)} ${(_readMoney(
-                          orderData['net_payable'] ?? orderData['total']) -
-                          _readMoney(orderData['advance_payment'])).clamp(
-                          0.0, double.infinity).toStringAsFixed(2)} د.ج',
+                      '${Localization.translate('Remaining:', lang)} ${(_readMoney(orderData['net_payable'] ?? orderData['total']) - _readMoney(orderData['advance_payment'])).clamp(0.0, double.infinity).toStringAsFixed(2)} د.ج',
                       style: const TextStyle(fontSize: 11),
                     ),
                     onTap: () {
@@ -2721,7 +2678,7 @@ class _CommandeState extends State<Commande> {
                                   final str = jsonRaw.toString().trim();
                                   if (str.length >= 5) {
                                     modelMap =
-                                    jsonDecode(str) as Map<String, dynamic>;
+                                        jsonDecode(str) as Map<String, dynamic>;
                                   }
                                 }
                                 if (modelMap.isNotEmpty) {
@@ -2835,7 +2792,7 @@ class _CommandeState extends State<Commande> {
                                   final str = jsonRaw.toString().trim();
                                   if (str.length >= 5) {
                                     modelMap =
-                                    jsonDecode(str) as Map<String, dynamic>;
+                                        jsonDecode(str) as Map<String, dynamic>;
                                   }
                                 }
                                 if (modelMap.isNotEmpty) {
@@ -2922,11 +2879,10 @@ class _CommandeState extends State<Commande> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) =>
-                              PartialProformaScreen(
-                                order: orderData,
-                                documentTitleKey: 'doc_bon_livraison_partiel',
-                              ),
+                          builder: (context) => PartialProformaScreen(
+                            order: orderData,
+                            documentTitleKey: 'doc_bon_livraison_partiel',
+                          ),
                         ),
                       );
                     },
@@ -2950,13 +2906,12 @@ class _CommandeState extends State<Commande> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) =>
-                              PartialProformaScreen(
-                                order: orderData,
-                                hidePrices: true,
-                                documentTitleKey:
+                          builder: (context) => PartialProformaScreen(
+                            order: orderData,
+                            hidePrices: true,
+                            documentTitleKey:
                                 'doc_bon_livraison_partiel_sans_prix',
-                              ),
+                          ),
                         ),
                       );
                     },
@@ -2977,87 +2932,83 @@ class _CommandeState extends State<Commande> {
 
                       final choice = await showDialog<String>(
                         context: context,
-                        builder: (dialogCtx) =>
-                            AlertDialog(
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
+                        builder: (dialogCtx) => AlertDialog(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          title: Row(
+                            children: [
+                              const Icon(
+                                Icons.local_shipping,
+                                color: Colors.teal,
                               ),
-                              title: Row(
-                                children: [
-                                  const Icon(
-                                    Icons.local_shipping,
-                                    color: Colors.teal,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    lang == AppLanguage.french
-                                        ? 'Type de Bon d\'expédition'
-                                        : 'نوع فاتورة الشحن',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontFamily: 'Cairo',
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                ],
+                              const SizedBox(width: 8),
+                              Text(
+                                lang == AppLanguage.french
+                                    ? 'Type de Bon d\'expédition'
+                                    : 'نوع فاتورة الشحن',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontFamily: 'Cairo',
+                                  fontSize: 16,
+                                ),
                               ),
-                              content: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  ListTile(
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10),
-                                      side: BorderSide(
-                                          color: Colors.grey.shade300),
-                                    ),
-                                    leading: const Icon(
-                                      Icons.inventory_2,
-                                      color: Colors.blue,
-                                    ),
-                                    title: Text(
-                                      lang == AppLanguage.french
-                                          ? 'Expédition complète (Toutes les fenêtres)'
-                                          : lang == AppLanguage.english
-                                          ? 'Full Shipping (All windows)'
-                                          : 'فاتورة شحن كلية (جميع النوافذ)',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontFamily: 'Cairo',
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                    onTap: () =>
-                                        Navigator.pop(dialogCtx, 'FULL'),
+                            ],
+                          ),
+                          content: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ListTile(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  side: BorderSide(color: Colors.grey.shade300),
+                                ),
+                                leading: const Icon(
+                                  Icons.inventory_2,
+                                  color: Colors.blue,
+                                ),
+                                title: Text(
+                                  lang == AppLanguage.french
+                                      ? 'Expédition complète (Toutes les fenêtres)'
+                                      : lang == AppLanguage.english
+                                      ? 'Full Shipping (All windows)'
+                                      : 'فاتورة شحن كلية (جميع النوافذ)',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontFamily: 'Cairo',
+                                    fontSize: 13,
                                   ),
-                                  const SizedBox(height: 10),
-                                  ListTile(
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10),
-                                      side: BorderSide(
-                                          color: Colors.grey.shade300),
-                                    ),
-                                    leading: const Icon(
-                                      Icons.local_shipping_outlined,
-                                      color: Colors.orange,
-                                    ),
-                                    title: Text(
-                                      lang == AppLanguage.french
-                                          ? 'Expédition partielle (Par bon de livraison)'
-                                          : lang == AppLanguage.english
-                                          ? 'Partial Shipping (By delivery note)'
-                                          : 'فاتورة شحن جزئية (حسب وصل الشحن الجزئي)',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontFamily: 'Cairo',
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                    onTap: () =>
-                                        Navigator.pop(dialogCtx, 'PARTIAL'),
-                                  ),
-                                ],
+                                ),
+                                onTap: () => Navigator.pop(dialogCtx, 'FULL'),
                               ),
-                            ),
+                              const SizedBox(height: 10),
+                              ListTile(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  side: BorderSide(color: Colors.grey.shade300),
+                                ),
+                                leading: const Icon(
+                                  Icons.local_shipping_outlined,
+                                  color: Colors.orange,
+                                ),
+                                title: Text(
+                                  lang == AppLanguage.french
+                                      ? 'Expédition partielle (Par bon de livraison)'
+                                      : lang == AppLanguage.english
+                                      ? 'Partial Shipping (By delivery note)'
+                                      : 'فاتورة شحن جزئية (حسب وصل الشحن الجزئي)',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontFamily: 'Cairo',
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                onTap: () =>
+                                    Navigator.pop(dialogCtx, 'PARTIAL'),
+                              ),
+                            ],
+                          ),
+                        ),
                       );
 
                       if (choice == null) return;
@@ -3084,21 +3035,19 @@ class _CommandeState extends State<Commande> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) =>
-                                  PartialProformaScreen(
-                                    order: orderData,
-                                    hidePrices: true,
-                                    documentTitleKey: 'doc_bon_livraison_partiel',
-                                    autoOpenBonDeChargeOnSave: true,
-                                  ),
+                              builder: (context) => PartialProformaScreen(
+                                order: orderData,
+                                hidePrices: true,
+                                documentTitleKey: 'doc_bon_livraison_partiel',
+                                autoOpenBonDeChargeOnSave: true,
+                              ),
                             ),
                           );
                           return;
                         }
 
                         if (!mounted) return;
-                        final selectedResult = await showModalBottomSheet<
-                            dynamic>(
+                        final selectedResult = await showModalBottomSheet<dynamic>(
                           context: context,
                           isScrollControlled: true,
                           shape: const RoundedRectangleBorder(
@@ -3111,10 +3060,7 @@ class _CommandeState extends State<Commande> {
                               padding: const EdgeInsets.all(16),
                               constraints: BoxConstraints(
                                 maxHeight:
-                                MediaQuery
-                                    .of(context)
-                                    .size
-                                    .height * 0.7,
+                                    MediaQuery.of(context).size.height * 0.7,
                               ),
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
@@ -3136,11 +3082,11 @@ class _CommandeState extends State<Commande> {
                                       shrinkWrap: true,
                                       itemCount: deliveries.length,
                                       separatorBuilder: (_, _) =>
-                                      const Divider(height: 1),
+                                          const Divider(height: 1),
                                       itemBuilder: (context, index) {
                                         final del = deliveries[index];
                                         final isLoaded =
-                                        (del['is_loaded'] == 1);
+                                            (del['is_loaded'] == 1);
                                         List items = [];
                                         try {
                                           items = jsonDecode(del['items_json']);
@@ -3180,16 +3126,16 @@ class _CommandeState extends State<Commande> {
                                                   ? Colors.green.shade100
                                                   : Colors.orange.shade100,
                                               borderRadius:
-                                              BorderRadius.circular(6),
+                                                  BorderRadius.circular(6),
                                             ),
                                             child: Text(
                                               isLoaded
                                                   ? (lang == AppLanguage.french
-                                                  ? 'Chargé'
-                                                  : 'تم التحميل')
+                                                        ? 'Chargé'
+                                                        : 'تم التحميل')
                                                   : (lang == AppLanguage.french
-                                                  ? 'En attente'
-                                                  : 'معلق'),
+                                                        ? 'En attente'
+                                                        : 'معلق'),
                                               style: TextStyle(
                                                 fontSize: 11,
                                                 fontWeight: FontWeight.bold,
@@ -3251,13 +3197,12 @@ class _CommandeState extends State<Commande> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) =>
-                                  PartialProformaScreen(
-                                    order: orderData,
-                                    hidePrices: true,
-                                    documentTitleKey: 'doc_bon_livraison_partiel',
-                                    autoOpenBonDeChargeOnSave: true,
-                                  ),
+                              builder: (context) => PartialProformaScreen(
+                                order: orderData,
+                                hidePrices: true,
+                                documentTitleKey: 'doc_bon_livraison_partiel',
+                                autoOpenBonDeChargeOnSave: true,
+                              ),
                             ),
                           );
                           return;
@@ -3268,7 +3213,7 @@ class _CommandeState extends State<Commande> {
                           try {
                             final itemsJsonStr =
                                 selectedResult['items_json']?.toString() ??
-                                    '[]';
+                                '[]';
                             final List<dynamic> rawDecoded = jsonDecode(
                               itemsJsonStr,
                             );
@@ -3301,8 +3246,8 @@ class _CommandeState extends State<Commande> {
                                       final str = jsonRaw.toString().trim();
                                       if (str.length >= 5) {
                                         modelMap =
-                                        jsonDecode(str)
-                                        as Map<String, dynamic>;
+                                            jsonDecode(str)
+                                                as Map<String, dynamic>;
                                       }
                                     }
                                     if (modelMap.isNotEmpty) {
@@ -3316,7 +3261,7 @@ class _CommandeState extends State<Commande> {
                                         item,
                                       );
                                       final newPath =
-                                      await saveWindowImageToDisk(model);
+                                          await saveWindowImageToDisk(model);
                                       if (newPath.isNotEmpty) {
                                         await db.updateCommandeDetailImagePath(
                                           item['id'] as int,
@@ -3335,7 +3280,7 @@ class _CommandeState extends State<Commande> {
                             }
 
                             final workshop =
-                            await DevisBuilder.loadWorkshopInfo();
+                                await DevisBuilder.loadWorkshopInfo();
                             final devis = await DevisBuilder.build(
                               order: orderData,
                               items: items,
@@ -3359,7 +3304,7 @@ class _CommandeState extends State<Commande> {
                                 data: devis,
                                 deliveryId: selectedResult['id'] as int?,
                                 initialIsLoaded:
-                                (selectedResult['is_loaded'] == 1),
+                                    (selectedResult['is_loaded'] == 1),
                               ),
                             );
                           } catch (e) {
@@ -3410,7 +3355,7 @@ class _CommandeState extends State<Commande> {
                                   final str = jsonRaw.toString().trim();
                                   if (str.length >= 5) {
                                     modelMap =
-                                    jsonDecode(str) as Map<String, dynamic>;
+                                        jsonDecode(str) as Map<String, dynamic>;
                                   }
                                 }
                                 if (modelMap.isNotEmpty) {
@@ -3498,11 +3443,10 @@ class _CommandeState extends State<Commande> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) =>
-                            CuttingOptimizationScreen(
-                              db: db,
-                              initialOrderId: orderId,
-                            ),
+                        builder: (_) => CuttingOptimizationScreen(
+                          db: db,
+                          initialOrderId: orderId,
+                        ),
                       ),
                     );
                   },
@@ -3528,11 +3472,10 @@ class _CommandeState extends State<Commande> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) =>
-                            SheetOptimizationScreen(
-                              orderId: orderId,
-                              orderName: _displayOrderLabel(orderData),
-                            ),
+                        builder: (_) => SheetOptimizationScreen(
+                          orderId: orderId,
+                          orderName: _displayOrderLabel(orderData),
+                        ),
                       ),
                     );
                   },
@@ -3566,26 +3509,23 @@ class _CommandeState extends State<Commande> {
                         );
                         final workshop = await DevisBuilder.loadWorkshopInfo();
                         final pdfBytes =
-                        await PdfFicheCoupeApi.generateFicheCoupe(
-                          order: orderData,
-                          items: items,
-                          workshopName: workshop.name,
-                          db: db,
-                          language: lang,
-                        );
+                            await PdfFicheCoupeApi.generateFicheCoupe(
+                              order: orderData,
+                              items: items,
+                              workshopName: workshop.name,
+                              db: db,
+                              language: lang,
+                            );
                         if (!mounted) return;
                         final orderId2 = orderData['id']?.toString() ?? '';
                         final num = _displayOrderNumber(orderData);
                         _openInWorkspaceTab(
                           entryId: 'fiche_coupe_$orderId2',
                           title: lang == AppLanguage.french
-                              ? 'Fiche de coupe pour commande #$num — ${_orderClientName(
-                              orderData)}'
+                              ? 'Fiche de coupe pour commande #$num — ${_orderClientName(orderData)}'
                               : (lang == AppLanguage.english
-                              ? 'Cutting sheet for order #$num — ${_orderClientName(
-                              orderData)}'
-                              : 'ورقة التقطيع للطلبية رقم $num — ${_orderClientName(
-                              orderData)}'),
+                                    ? 'Cutting sheet for order #$num — ${_orderClientName(orderData)}'
+                                    : 'ورقة التقطيع للطلبية رقم $num — ${_orderClientName(orderData)}'),
                           icon: Icons.cut_outlined,
                           content: PdfPreview(
                             build: (_) async => pdfBytes,
@@ -3600,8 +3540,7 @@ class _CommandeState extends State<Commande> {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(
-                                '${Localization.translate(
-                                    'خطأ أثناء توليد الفاتورة:', lang)} $e',
+                                '${Localization.translate('خطأ أثناء توليد الفاتورة:', lang)} $e',
                               ),
                               backgroundColor: Colors.red,
                             ),
@@ -3634,8 +3573,7 @@ class _CommandeState extends State<Commande> {
                       _openInWorkspaceTab(
                         entryId: 'required_goods_$ordId',
                         title:
-                        '${Localization.translate(
-                            'كمية السلع المطلوبة', lang)} #$ordId',
+                            '${Localization.translate('كمية السلع المطلوبة', lang)} #$ordId',
                         icon: Icons.inventory_2_outlined,
                         content: OrderRequiredGoodsScreen(
                           orderData: orderData,
@@ -3672,8 +3610,7 @@ class _CommandeState extends State<Commande> {
                       _openInWorkspaceTab(
                         entryId: 'measurements_$ordId',
                         title:
-                        '${Localization.translate(
-                            'تأكيد القياسات', lang)} #$ordId',
+                            '${Localization.translate('تأكيد القياسات', lang)} #$ordId',
                         icon: Icons.line_weight_rounded,
                         content: OrderMeasurementsConfirmScreen(
                           orderData: orderData,
@@ -3750,17 +3687,14 @@ class _CommandeState extends State<Commande> {
                     final point = await Navigator.push<LatLng>(
                       context,
                       MaterialPageRoute(
-                        builder: (_) =>
-                            MapPickerScreen(
-                              initialLatitude: initialLat,
-                              initialLongitude: initialLng,
-                              clientName: clientName.isNotEmpty
-                                  ? clientName
-                                  : null,
-                              title: lang == AppLanguage.french
-                                  ? 'Position client : ' + clientName
-                                  : 'تثبيت موقع الزبون : ' + clientName,
-                            ),
+                        builder: (_) => MapPickerScreen(
+                          initialLatitude: initialLat,
+                          initialLongitude: initialLng,
+                          clientName: clientName.isNotEmpty ? clientName : null,
+                          title: lang == AppLanguage.french
+                              ? 'Position client : ' + clientName
+                              : 'تثبيت موقع الزبون : ' + clientName,
+                        ),
                       ),
                     );
 
@@ -3817,8 +3751,7 @@ class _CommandeState extends State<Commande> {
                       _openInWorkspaceTab(
                         entryId: 'allocation_$ordId',
                         title:
-                        '${Localization.translate(
-                            'توزيع المهام', lang)} #$ordId',
+                            '${Localization.translate('توزيع المهام', lang)} #$ordId',
                         icon: Icons.engineering_rounded,
                         content: OrderAllocationScreen(
                           orderData: orderData,
@@ -3844,10 +3777,8 @@ class _CommandeState extends State<Commande> {
                     ),
                     subtitle: Text(
                       lang == AppLanguage.french
-                          ? 'Passer la commande de "${_translateStatus(
-                          currentStatus, lang)}" à l\'étape suivante'
-                          : 'نقل الطلبية من حالة "${_translateStatus(
-                          currentStatus, lang)}" إلى المرحلة التي تليها',
+                          ? 'Passer la commande de "${_translateStatus(currentStatus, lang)}" à l\'étape suivante'
+                          : 'نقل الطلبية من حالة "${_translateStatus(currentStatus, lang)}" إلى المرحلة التي تليها',
                       style: const TextStyle(fontSize: 11),
                     ),
                     onTap: () async {
@@ -3892,8 +3823,8 @@ class _CommandeState extends State<Commande> {
                       );
                       if (currentIndex == -1) {
                         if (normalizedStatus.toLowerCase().contains(
-                          'attente',
-                        ) ||
+                              'attente',
+                            ) ||
                             normalizedStatus.toLowerCase().contains('انتظار')) {
                           currentIndex = 2;
                         } else if (normalizedStatus.toLowerCase().contains(
@@ -3913,28 +3844,27 @@ class _CommandeState extends State<Commande> {
                           showDialog(
                             context: context,
                             barrierDismissible: false,
-                            builder: (_) =>
-                                PopScope(
-                                  canPop: false,
-                                  child: AlertDialog(
-                                    content: Row(
-                                      children: [
-                                        const CircularProgressIndicator(),
-                                        const SizedBox(width: 16),
-                                        Expanded(
-                                          child: Text(
-                                            lang == AppLanguage.french
-                                                ? 'Vérification des mesures…'
-                                                : 'جاري التحقق من القياسات…',
-                                            style: const TextStyle(
-                                              fontFamily: 'Cairo',
-                                            ),
-                                          ),
+                            builder: (_) => PopScope(
+                              canPop: false,
+                              child: AlertDialog(
+                                content: Row(
+                                  children: [
+                                    const CircularProgressIndicator(),
+                                    const SizedBox(width: 16),
+                                    Expanded(
+                                      child: Text(
+                                        lang == AppLanguage.french
+                                            ? 'Vérification des mesures…'
+                                            : 'جاري التحقق من القياسات…',
+                                        style: const TextStyle(
+                                          fontFamily: 'Cairo',
                                         ),
-                                      ],
+                                      ),
                                     ),
-                                  ),
+                                  ],
                                 ),
+                              ),
+                            ),
                           );
                           await WidgetsBinding.instance.endOfFrame;
                           var allConfirmed = false;
@@ -3998,12 +3928,11 @@ class _CommandeState extends State<Commande> {
                           final inventoryIssued = await Navigator.push<bool>(
                             context,
                             MaterialPageRoute(
-                              builder: (_) =>
-                                  OrderRequiredGoodsScreen(
-                                    orderData: orderData,
-                                    db: db,
-                                    issueAtManufacturingStart: true,
-                                  ),
+                              builder: (_) => OrderRequiredGoodsScreen(
+                                orderData: orderData,
+                                db: db,
+                                issueAtManufacturingStart: true,
+                              ),
                             ),
                           );
                           if (inventoryIssued != true || !mounted) return;
@@ -4013,28 +3942,27 @@ class _CommandeState extends State<Commande> {
                         showDialog(
                           context: context,
                           barrierDismissible: false,
-                          builder: (_) =>
-                              PopScope(
-                                canPop: false,
-                                child: AlertDialog(
-                                  content: Row(
-                                    children: [
-                                      const CircularProgressIndicator(),
-                                      const SizedBox(width: 16),
-                                      Expanded(
-                                        child: Text(
-                                          lang == AppLanguage.french
-                                              ? 'Mise à jour de la commande…'
-                                              : 'جاري تحديث حالة الطلبية…',
-                                          style: const TextStyle(
-                                            fontFamily: 'Cairo',
-                                          ),
-                                        ),
+                          builder: (_) => PopScope(
+                            canPop: false,
+                            child: AlertDialog(
+                              content: Row(
+                                children: [
+                                  const CircularProgressIndicator(),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Text(
+                                      lang == AppLanguage.french
+                                          ? 'Mise à jour de la commande…'
+                                          : 'جاري تحديث حالة الطلبية…',
+                                      style: const TextStyle(
+                                        fontFamily: 'Cairo',
                                       ),
-                                    ],
+                                    ),
                                   ),
-                                ),
+                                ],
                               ),
+                            ),
+                          ),
                         );
 
                         await WidgetsBinding.instance.endOfFrame;
@@ -4087,11 +4015,10 @@ class _CommandeState extends State<Commande> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) =>
-                                    OrderMeasurementsConfirmScreen(
-                                      orderData: orderData,
-                                      db: db,
-                                    ),
+                                builder: (_) => OrderMeasurementsConfirmScreen(
+                                  orderData: orderData,
+                                  db: db,
+                                ),
                               ),
                             );
                           }
@@ -4101,10 +4028,8 @@ class _CommandeState extends State<Commande> {
                               SnackBar(
                                 content: Text(
                                   lang == AppLanguage.french
-                                      ? 'Commande passée à l\'étape: ${_translateStatus(
-                                      nextStatus, lang)}'
-                                      : 'تم نقل الطلبية بنجاح إلى مرحلة: ${_translateStatus(
-                                      nextStatus, lang)}',
+                                      ? 'Commande passée à l\'étape: ${_translateStatus(nextStatus, lang)}'
+                                      : 'تم نقل الطلبية بنجاح إلى مرحلة: ${_translateStatus(nextStatus, lang)}',
                                 ),
                                 backgroundColor: Colors.green,
                               ),
@@ -4189,8 +4114,7 @@ class _CommandeState extends State<Commande> {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(
-                                '${Localization.translate(
-                                    'حدث خطأ أثناء التكرار:', lang)} $e',
+                                '${Localization.translate('حدث خطأ أثناء التكرار:', lang)} $e',
                               ),
                               backgroundColor: Colors.red,
                             ),
@@ -4231,26 +4155,29 @@ class _CommandeState extends State<Commande> {
     );
   }
 
-  Future<void> _exportOrderPicturePdf(BuildContext context,
-      Map<String, dynamic> orderData,
-      AppLanguage lang,) async {
+  Future<void> _exportOrderPicturePdf(
+    BuildContext context,
+    Map<String, dynamic> orderData,
+    AppLanguage lang,
+  ) async {
     if (!mounted || !context.mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            _OrderPicturePdfPreviewPage(
-              db: db,
-              orderData: Map<String, dynamic>.from(orderData),
-              lang: lang,
-            ),
+        builder: (_) => _OrderPicturePdfPreviewPage(
+          db: db,
+          orderData: Map<String, dynamic>.from(orderData),
+          lang: lang,
+        ),
       ),
     );
   }
 
-  Future<void> _exportOrderGlassFabricationPdf(BuildContext context,
-      Map<String, dynamic> orderData,
-      AppLanguage lang,) async {
+  Future<void> _exportOrderGlassFabricationPdf(
+    BuildContext context,
+    Map<String, dynamic> orderData,
+    AppLanguage lang,
+  ) async {
     final orderId = (orderData['id'] as num?)?.toInt() ?? 0;
     final details = await db.readCommandeDetails(orderId);
     final payloads = <Map<String, dynamic>>[];
@@ -4261,8 +4188,8 @@ class _CommandeState extends State<Commande> {
           final decoded = partitionsJson is Map
               ? Map<String, dynamic>.from(partitionsJson)
               : Map<String, dynamic>.from(
-            jsonDecode(partitionsJson.toString()),
-          );
+                  jsonDecode(partitionsJson.toString()),
+                );
           if (decoded['isGlassWork'] == true ||
               decoded['glassWorkPayload'] != null ||
               (d['window_type']?.toString().contains('Verre Trempé') == true) ||
@@ -4292,19 +4219,18 @@ class _CommandeState extends State<Commande> {
       return;
     }
     final clientName =
-    '${orderData['firstname'] ?? ''} ${orderData['lastname'] ?? ''}'.trim();
+        '${orderData['firstname'] ?? ''} ${orderData['lastname'] ?? ''}'.trim();
     final clientPhone = orderData['phone']?.toString() ?? '';
     final orderNumber = orderData['id']?.toString() ?? '';
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            GlassFabricationPreviewScreen(
-              payloads: payloads,
-              clientName: clientName,
-              clientPhone: clientPhone,
-              orderNumber: orderNumber,
-            ),
+        builder: (_) => GlassFabricationPreviewScreen(
+          payloads: payloads,
+          clientName: clientName,
+          clientPhone: clientPhone,
+          orderNumber: orderNumber,
+        ),
       ),
     );
   }
@@ -4319,8 +4245,10 @@ class _CommandeState extends State<Commande> {
     );
   }
 
-  Future<void> _openOrderDevis(Map<String, dynamic> orderData,
-      AppLanguage lang,) async {
+  Future<void> _openOrderDevis(
+    Map<String, dynamic> orderData,
+    AppLanguage lang,
+  ) async {
     await _showHeavyLoadingDialog(context, lang);
     try {
       final rawItems = await db
@@ -4365,10 +4293,12 @@ class _CommandeState extends State<Commande> {
     }
   }
 
-  Future<void> _showOrderContextMenu(BuildContext context,
-      Map<String, dynamic> order,
-      Offset position,
-      AppLanguage lang,) async {
+  Future<void> _showOrderContextMenu(
+    BuildContext context,
+    Map<String, dynamic> order,
+    Offset position,
+    AppLanguage lang,
+  ) async {
     final settings = Provider.of<AppSettingsProvider>(context, listen: false);
     final orderId = (order['id'] as num?)?.toInt() ?? 0;
     Map<String, dynamic> orderData = Map<String, dynamic>.from(order);
@@ -4387,37 +4317,35 @@ class _CommandeState extends State<Commande> {
         .toLowerCase();
     final isPending =
         statusRaw == 'nouveau' ||
-            statusRaw == 'جديد' ||
-            statusRaw == 'جديدة' ||
-            statusRaw == 'en attente' ||
-            statusRaw == 'في الانتظار' ||
-            statusRaw == 'pending' ||
-            statusRaw == 'draft' ||
-            statusRaw == 'new' ||
-            statusRaw == 'en_attente';
+        statusRaw == 'جديد' ||
+        statusRaw == 'جديدة' ||
+        statusRaw == 'en attente' ||
+        statusRaw == 'في الانتظار' ||
+        statusRaw == 'pending' ||
+        statusRaw == 'draft' ||
+        statusRaw == 'new' ||
+        statusRaw == 'en_attente';
     final isConfirmedOrBeyond = !isPending;
     final isManufacturingOrBeyond =
         isConfirmedOrBeyond &&
-            statusRaw != 'confirmed' &&
-            statusRaw != 'مؤكدة' &&
-            statusRaw != 'مؤكد';
+        statusRaw != 'confirmed' &&
+        statusRaw != 'مؤكدة' &&
+        statusRaw != 'مؤكد';
     final isDistributedOrBeyond =
         isFullyManufactured ||
-            statusRaw.contains('full manufacturing') ||
-            statusRaw.contains('تصنيع كلي') ||
-            statusRaw.contains('distribution') ||
-            statusRaw.contains('توزيع') ||
-            statusRaw.contains('installation') ||
-            statusRaw.contains('تركيب') ||
-            statusRaw.contains('reserve') ||
-            statusRaw.contains('تحفظ') ||
-            statusRaw.contains('done') ||
-            statusRaw.contains('انتهاء') ||
-            statusRaw.contains('منتهية');
+        statusRaw.contains('full manufacturing') ||
+        statusRaw.contains('تصنيع كلي') ||
+        statusRaw.contains('distribution') ||
+        statusRaw.contains('توزيع') ||
+        statusRaw.contains('installation') ||
+        statusRaw.contains('تركيب') ||
+        statusRaw.contains('reserve') ||
+        statusRaw.contains('تحفظ') ||
+        statusRaw.contains('done') ||
+        statusRaw.contains('انتهاء') ||
+        statusRaw.contains('منتهية');
 
-    final isDark = Theme
-        .of(context)
-        .brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final shortcuts = ShortcutBindings.instance;
     String? _getShortcutBadgeText(String commandId) {
       final binding = shortcuts.bindings[commandId];
@@ -4426,13 +4354,14 @@ class _CommandeState extends State<Commande> {
       return lbl == '—' ? null : lbl;
     }
 
-    PopupMenuItem<String> _menuItem(String value,
-        IconData icon,
-        Color color,
-        String title, {
-          Color? textColor,
-          String? shortcut,
-        }) {
+    PopupMenuItem<String> _menuItem(
+      String value,
+      IconData icon,
+      Color color,
+      String title, {
+      Color? textColor,
+      String? shortcut,
+    }) {
       return PopupMenuItem<String>(
         value: value,
         height: 38,
@@ -4502,11 +4431,11 @@ class _CommandeState extends State<Commande> {
         Colors.orange.shade700,
         isOrderPinned(orderData)
             ? (lang == AppLanguage.french
-            ? 'Désépingler la commande'
-            : 'إلغاء تثبيت الطلبية')
+                  ? 'Désépingler la commande'
+                  : 'إلغاء تثبيت الطلبية')
             : (lang == AppLanguage.french
-            ? 'Épingler la commande en haut'
-            : 'تثبيت الطلبية في الأعلى'),
+                  ? 'Épingler la commande en haut'
+                  : 'تثبيت الطلبية في الأعلى'),
       ),
       const PopupMenuDivider(height: 8),
       // تفاصيل الطلبية
@@ -4517,8 +4446,8 @@ class _CommandeState extends State<Commande> {
         lang == AppLanguage.arabic
             ? 'تفاصيل الطلبية والقياسات'
             : (lang == AppLanguage.french
-            ? 'Détails de la commande'
-            : 'Order Details'),
+                  ? 'Détails de la commande'
+                  : 'Order Details'),
         shortcut: _getShortcutBadgeText('details_order'),
       ),
       const PopupMenuDivider(height: 8),
@@ -5049,100 +4978,96 @@ class _CommandeState extends State<Commande> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                PartialProformaScreen(
-                  order: orderData,
-                  documentTitleKey: 'doc_bon_livraison_partiel',
-                ),
+            builder: (context) => PartialProformaScreen(
+              order: orderData,
+              documentTitleKey: 'doc_bon_livraison_partiel',
+            ),
           ),
         );
       case 'bon_livraison_partiel_sans_prix':
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                PartialProformaScreen(
-                  order: orderData,
-                  hidePrices: true,
-                  documentTitleKey: 'doc_bon_livraison_partiel_sans_prix',
-                ),
+            builder: (context) => PartialProformaScreen(
+              order: orderData,
+              hidePrices: true,
+              documentTitleKey: 'doc_bon_livraison_partiel_sans_prix',
+            ),
           ),
         );
       case 'bon_charge':
         final choice = await showDialog<String>(
           context: context,
-          builder: (dialogCtx) =>
-              AlertDialog(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+          builder: (dialogCtx) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Row(
+              children: [
+                const Icon(Icons.local_shipping, color: Colors.teal),
+                const SizedBox(width: 8),
+                Text(
+                  lang == AppLanguage.french
+                      ? 'Type de Bon d\'expédition'
+                      : 'نوع فاتورة الشحن',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Cairo',
+                    fontSize: 16,
+                  ),
                 ),
-                title: Row(
-                  children: [
-                    const Icon(Icons.local_shipping, color: Colors.teal),
-                    const SizedBox(width: 8),
-                    Text(
-                      lang == AppLanguage.french
-                          ? 'Type de Bon d\'expédition'
-                          : 'نوع فاتورة الشحن',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontFamily: 'Cairo',
-                        fontSize: 16,
-                      ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  leading: const Icon(Icons.inventory_2, color: Colors.blue),
+                  title: Text(
+                    lang == AppLanguage.french
+                        ? 'Expédition complète (Toutes les fenêtres)'
+                        : lang == AppLanguage.english
+                        ? 'Full Shipping (All windows)'
+                        : 'فاتورة شحن كلية (جميع النوافذ)',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Cairo',
+                      fontSize: 13,
                     ),
-                  ],
+                  ),
+                  onTap: () => Navigator.pop(dialogCtx, 'FULL'),
                 ),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ListTile(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        side: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      leading: const Icon(
-                          Icons.inventory_2, color: Colors.blue),
-                      title: Text(
-                        lang == AppLanguage.french
-                            ? 'Expédition complète (Toutes les fenêtres)'
-                            : lang == AppLanguage.english
-                            ? 'Full Shipping (All windows)'
-                            : 'فاتورة شحن كلية (جميع النوافذ)',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'Cairo',
-                          fontSize: 13,
-                        ),
-                      ),
-                      onTap: () => Navigator.pop(dialogCtx, 'FULL'),
+                const SizedBox(height: 10),
+                ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  leading: const Icon(
+                    Icons.local_shipping_outlined,
+                    color: Colors.orange,
+                  ),
+                  title: Text(
+                    lang == AppLanguage.french
+                        ? 'Expédition partielle (Par bon de livraison)'
+                        : lang == AppLanguage.english
+                        ? 'Partial Shipping (By delivery note)'
+                        : 'فاتورة شحن جزئية (حسب وصل الشحن الجزئي)',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Cairo',
+                      fontSize: 13,
                     ),
-                    const SizedBox(height: 10),
-                    ListTile(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        side: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      leading: const Icon(
-                        Icons.local_shipping_outlined,
-                        color: Colors.orange,
-                      ),
-                      title: Text(
-                        lang == AppLanguage.french
-                            ? 'Expédition partielle (Par bon de livraison)'
-                            : lang == AppLanguage.english
-                            ? 'Partial Shipping (By delivery note)'
-                            : 'فاتورة شحن جزئية (حسب وصل الشحن الجزئي)',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'Cairo',
-                          fontSize: 13,
-                        ),
-                      ),
-                      onTap: () => Navigator.pop(dialogCtx, 'PARTIAL'),
-                    ),
-                  ],
+                  ),
+                  onTap: () => Navigator.pop(dialogCtx, 'PARTIAL'),
                 ),
-              ),
+              ],
+            ),
+          ),
         );
         if (choice == null || !mounted) return;
         if (choice == 'PARTIAL') {
@@ -5164,13 +5089,12 @@ class _CommandeState extends State<Commande> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) =>
-                    PartialProformaScreen(
-                      order: orderData,
-                      hidePrices: true,
-                      documentTitleKey: 'doc_bon_livraison_partiel',
-                      autoOpenBonDeChargeOnSave: true,
-                    ),
+                builder: (context) => PartialProformaScreen(
+                  order: orderData,
+                  hidePrices: true,
+                  documentTitleKey: 'doc_bon_livraison_partiel',
+                  autoOpenBonDeChargeOnSave: true,
+                ),
               ),
             );
             return;
@@ -5186,10 +5110,7 @@ class _CommandeState extends State<Commande> {
               return Container(
                 padding: const EdgeInsets.all(16),
                 constraints: BoxConstraints(
-                  maxHeight: MediaQuery
-                      .of(context)
-                      .size
-                      .height * 0.7,
+                  maxHeight: MediaQuery.of(context).size.height * 0.7,
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -5255,11 +5176,11 @@ class _CommandeState extends State<Commande> {
                               child: Text(
                                 isLoaded
                                     ? (lang == AppLanguage.french
-                                    ? 'Chargé'
-                                    : 'تم التحميل')
+                                          ? 'Chargé'
+                                          : 'تم التحميل')
                                     : (lang == AppLanguage.french
-                                    ? 'En attente'
-                                    : 'معلق'),
+                                          ? 'En attente'
+                                          : 'معلق'),
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.bold,
@@ -5308,13 +5229,12 @@ class _CommandeState extends State<Commande> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) =>
-                    PartialProformaScreen(
-                      order: orderData,
-                      hidePrices: true,
-                      documentTitleKey: 'doc_bon_livraison_partiel',
-                      autoOpenBonDeChargeOnSave: true,
-                    ),
+                builder: (context) => PartialProformaScreen(
+                  order: orderData,
+                  hidePrices: true,
+                  documentTitleKey: 'doc_bon_livraison_partiel',
+                  autoOpenBonDeChargeOnSave: true,
+                ),
               ),
             );
             return;
@@ -5418,11 +5338,10 @@ class _CommandeState extends State<Commande> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) =>
-                SheetOptimizationScreen(
-                  orderId: orderId,
-                  orderName: _displayOrderLabel(orderData),
-                ),
+            builder: (_) => SheetOptimizationScreen(
+              orderId: orderId,
+              orderName: _displayOrderLabel(orderData),
+            ),
           ),
         );
       case 'fiche_coupe':
@@ -5451,13 +5370,10 @@ class _CommandeState extends State<Commande> {
           _openInWorkspaceTab(
             entryId: 'fiche_coupe_$oId',
             title: lang == AppLanguage.french
-                ? 'Fiche de coupe pour commande #$numStr — ${_orderClientName(
-                orderData)}'
+                ? 'Fiche de coupe pour commande #$numStr — ${_orderClientName(orderData)}'
                 : (lang == AppLanguage.english
-                ? 'Cutting sheet for order #$numStr — ${_orderClientName(
-                orderData)}'
-                : 'ورقة التقطيع للطلبية رقم $numStr — ${_orderClientName(
-                orderData)}'),
+                      ? 'Cutting sheet for order #$numStr — ${_orderClientName(orderData)}'
+                      : 'ورقة التقطيع للطلبية رقم $numStr — ${_orderClientName(orderData)}'),
             icon: Icons.cut_outlined,
             content: PdfPreview(
               build: (_) async => pdfBytes,
@@ -5472,8 +5388,7 @@ class _CommandeState extends State<Commande> {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
-                  '${Localization.translate(
-                      'خطأ أثناء توليد الفاتورة:', lang)} $e',
+                  '${Localization.translate('خطأ أثناء توليد الفاتورة:', lang)} $e',
                 ),
                 backgroundColor: Colors.red,
               ),
@@ -5485,7 +5400,7 @@ class _CommandeState extends State<Commande> {
         _openInWorkspaceTab(
           entryId: 'required_goods_$ordId',
           title:
-          '${Localization.translate('كمية السلع المطلوبة', lang)} #$ordId',
+              '${Localization.translate('كمية السلع المطلوبة', lang)} #$ordId',
           icon: Icons.inventory_2_outlined,
           content: OrderRequiredGoodsScreen(orderData: orderData, db: db),
         );
@@ -5556,26 +5471,25 @@ class _CommandeState extends State<Commande> {
             showDialog(
               context: context,
               barrierDismissible: false,
-              builder: (_) =>
-                  PopScope(
-                    canPop: false,
-                    child: AlertDialog(
-                      content: Row(
-                        children: [
-                          const CircularProgressIndicator(),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Text(
-                              lang == AppLanguage.french
-                                  ? 'Vérification des mesures…'
-                                  : 'جاري التحقق من القياسات…',
-                              style: const TextStyle(fontFamily: 'Cairo'),
-                            ),
-                          ),
-                        ],
+              builder: (_) => PopScope(
+                canPop: false,
+                child: AlertDialog(
+                  content: Row(
+                    children: [
+                      const CircularProgressIndicator(),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Text(
+                          lang == AppLanguage.french
+                              ? 'Vérification des mesures…'
+                              : 'جاري التحقق من القياسات…',
+                          style: const TextStyle(fontFamily: 'Cairo'),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
+                ),
+              ),
             );
             await WidgetsBinding.instance.endOfFrame;
             var allConfirmed = false;
@@ -5622,11 +5536,10 @@ class _CommandeState extends State<Commande> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) =>
-                        OrderMeasurementsConfirmScreen(
-                          orderData: orderData,
-                          db: db,
-                        ),
+                    builder: (_) => OrderMeasurementsConfirmScreen(
+                      orderData: orderData,
+                      db: db,
+                    ),
                   ),
                 );
               }
@@ -5638,12 +5551,11 @@ class _CommandeState extends State<Commande> {
             final inventoryIssued = await Navigator.push<bool>(
               context,
               MaterialPageRoute(
-                builder: (_) =>
-                    OrderRequiredGoodsScreen(
-                      orderData: orderData,
-                      db: db,
-                      issueAtManufacturingStart: true,
-                    ),
+                builder: (_) => OrderRequiredGoodsScreen(
+                  orderData: orderData,
+                  db: db,
+                  issueAtManufacturingStart: true,
+                ),
               ),
             );
             if (inventoryIssued != true || !mounted) return;
@@ -5652,26 +5564,25 @@ class _CommandeState extends State<Commande> {
           showDialog(
             context: context,
             barrierDismissible: false,
-            builder: (_) =>
-                PopScope(
-                  canPop: false,
-                  child: AlertDialog(
-                    content: Row(
-                      children: [
-                        const CircularProgressIndicator(),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Text(
-                            lang == AppLanguage.french
-                                ? 'Mise à jour de la commande…'
-                                : 'جاري تحديث حالة الطلبية…',
-                            style: const TextStyle(fontFamily: 'Cairo'),
-                          ),
-                        ),
-                      ],
+            builder: (_) => PopScope(
+              canPop: false,
+              child: AlertDialog(
+                content: Row(
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        lang == AppLanguage.french
+                            ? 'Mise à jour de la commande…'
+                            : 'جاري تحديث حالة الطلبية…',
+                        style: const TextStyle(fontFamily: 'Cairo'),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
+              ),
+            ),
           );
           await WidgetsBinding.instance.endOfFrame;
           Object? statusUpdateError;
@@ -5721,11 +5632,10 @@ class _CommandeState extends State<Commande> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) =>
-                      OrderMeasurementsConfirmScreen(
-                        orderData: orderData,
-                        db: db,
-                      ),
+                  builder: (_) => OrderMeasurementsConfirmScreen(
+                    orderData: orderData,
+                    db: db,
+                  ),
                 ),
               );
             }
@@ -5735,10 +5645,8 @@ class _CommandeState extends State<Commande> {
                 SnackBar(
                   content: Text(
                     lang == AppLanguage.french
-                        ? 'Commande passée à l\'étape: ${_translateStatus(
-                        nextStatus, lang)}'
-                        : 'تم نقل الطلبية بنجاح إلى مرحلة: ${_translateStatus(
-                        nextStatus, lang)}',
+                        ? 'Commande passée à l\'étape: ${_translateStatus(nextStatus, lang)}'
+                        : 'تم نقل الطلبية بنجاح إلى مرحلة: ${_translateStatus(nextStatus, lang)}',
                   ),
                   backgroundColor: Colors.green,
                 ),
@@ -5786,20 +5694,17 @@ class _CommandeState extends State<Commande> {
   Future<void> _importOrder() async {
     if (_isImportPicking) return;
     setState(() => _isImportPicking = true);
-    final lang = context
-        .read<AppSettingsProvider>()
-        .language;
+    final lang = context.read<AppSettingsProvider>().language;
     try {
       final payload = await OrderExportService.pickOrderFile();
       if (payload == null || !mounted) return;
       final result = await showDialog<dynamic>(
         context: context,
-        builder: (_) =>
-            OrderImportDialog(
-              payload: payload,
-              db: db,
-              onImported: _fetchCommandes,
-            ),
+        builder: (_) => OrderImportDialog(
+          payload: payload,
+          db: db,
+          onImported: _fetchCommandes,
+        ),
       );
       if (result != null && mounted) {
         _fetchCommandes();
@@ -5850,25 +5755,24 @@ class _CommandeState extends State<Commande> {
 
     final copiedDetails = items
         .map(
-          (item) =>
-      <String, dynamic>{
-        'largeur': (item['largeur'] as num?)?.toInt() ?? 0,
-        'hauteur': (item['hauteur'] as num?)?.toInt() ?? 0,
-        'game': item['game']?.toString() ?? '',
-        'quantity': (item['quantity'] as num?)?.toInt() ?? 1,
-        'glass': item['glass']?.toString() ?? '',
-        'color': item['color']?.toString() ?? '',
-        'volet': item['volet']?.toString() ?? '',
-        'accessories': item['accessories']?.toString() ?? '',
-        'description': item['description']?.toString() ?? '',
-        'price': (item['price'] as num?)?.toDouble() ?? 0.0,
-        'window_type': item['window_type']?.toString() ?? '',
-        'partitions_json': item['partitions_json']?.toString() ?? '{}',
-        'drawing_image_path': item['drawing_image_path']?.toString() ?? '',
-        if (item['drawing_image_base64'] != null)
-          'drawing_image_base64': item['drawing_image_base64'],
-      },
-    )
+          (item) => <String, dynamic>{
+            'largeur': (item['largeur'] as num?)?.toInt() ?? 0,
+            'hauteur': (item['hauteur'] as num?)?.toInt() ?? 0,
+            'game': item['game']?.toString() ?? '',
+            'quantity': (item['quantity'] as num?)?.toInt() ?? 1,
+            'glass': item['glass']?.toString() ?? '',
+            'color': item['color']?.toString() ?? '',
+            'volet': item['volet']?.toString() ?? '',
+            'accessories': item['accessories']?.toString() ?? '',
+            'description': item['description']?.toString() ?? '',
+            'price': (item['price'] as num?)?.toDouble() ?? 0.0,
+            'window_type': item['window_type']?.toString() ?? '',
+            'partitions_json': item['partitions_json']?.toString() ?? '{}',
+            'drawing_image_path': item['drawing_image_path']?.toString() ?? '',
+            if (item['drawing_image_base64'] != null)
+              'drawing_image_base64': item['drawing_image_base64'],
+          },
+        )
         .toList(growable: false);
 
     await db.saveCommandeWithDetails(
@@ -5893,28 +5797,27 @@ class _CommandeState extends State<Commande> {
       // ✋ ممنوع الحذف: العناصر تُستخدم
       showDialog(
         context: context,
-        builder: (dialogContext) =>
-            AlertDialog(
-              title: Row(
-                children: [
-                  const Icon(Icons.block, color: Colors.red),
-                  const SizedBox(width: 8),
-                  Text(_t('لا يمكن الحذف')),
-                ],
-              ),
-              content: Text(
-                _t(
-                  'هذه الطلبية لا يمكن حذفها لأن بعض عناصرها قد تم استخدامها أو خصمها من المخزون.\n\nيمكنك تغيير حالتها بدلاً من حذفها.',
-                ),
-                textAlign: TextAlign.start,
-              ),
-              actions: [
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: Text(_t('موافق')),
-                ),
-              ],
+        builder: (dialogContext) => AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.block, color: Colors.red),
+              const SizedBox(width: 8),
+              Text(_t('لا يمكن الحذف')),
+            ],
+          ),
+          content: Text(
+            _t(
+              'هذه الطلبية لا يمكن حذفها لأن بعض عناصرها قد تم استخدامها أو خصمها من المخزون.\n\nيمكنك تغيير حالتها بدلاً من حذفها.',
             ),
+            textAlign: TextAlign.start,
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(_t('موافق')),
+            ),
+          ],
+        ),
       );
       return;
     }
@@ -5924,28 +5827,27 @@ class _CommandeState extends State<Commande> {
     if (!settings.canDeleteOrders()) {
       showDialog(
         context: context,
-        builder: (dialogContext) =>
-            AlertDialog(
-              title: Row(
-                children: [
-                  const Icon(Icons.lock, color: Colors.orange),
-                  const SizedBox(width: 8),
-                  Text(_t('غير مصرح')),
-                ],
-              ),
-              content: Text(
-                _t(
-                  'ليس لديك صلاحية حذف الطلبيات.\nتواصل مع المدير للحصول على هذه الصلاحية.',
-                ),
-                textAlign: TextAlign.start,
-              ),
-              actions: [
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: Text(_t('موافق')),
-                ),
-              ],
+        builder: (dialogContext) => AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.lock, color: Colors.orange),
+              const SizedBox(width: 8),
+              Text(_t('غير مصرح')),
+            ],
+          ),
+          content: Text(
+            _t(
+              'ليس لديك صلاحية حذف الطلبيات.\nتواصل مع المدير للحصول على هذه الصلاحية.',
             ),
+            textAlign: TextAlign.start,
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(_t('موافق')),
+            ),
+          ],
+        ),
       );
       return;
     }
@@ -5953,31 +5855,30 @@ class _CommandeState extends State<Commande> {
     // 3. تأكيد النقل إلى سلة المهملات
     bool? confirm = await showDialog(
       context: context,
-      builder: (dialogContext) =>
-          AlertDialog(
-            title: Row(
-              children: [
-                const Icon(Icons.delete_outline_rounded, color: Colors.red),
-                const SizedBox(width: 8),
-                Text(_t('move_to_trash')),
-              ],
-            ),
-            content: Text(_t('confirm_move_to_trash')),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: Text(_t('إلغاء')),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                ),
-                onPressed: () => Navigator.pop(dialogContext, true),
-                child: Text(_t('move_to_trash')),
-              ),
-            ],
+      builder: (dialogContext) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.delete_outline_rounded, color: Colors.red),
+            const SizedBox(width: 8),
+            Text(_t('move_to_trash')),
+          ],
+        ),
+        content: Text(_t('confirm_move_to_trash')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_t('إلغاء')),
           ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_t('move_to_trash')),
+          ),
+        ],
+      ),
     );
     if (confirm == true) {
       try {
@@ -6068,12 +5969,13 @@ class _CommandeState extends State<Commande> {
   }
 
   Future<void> _restoreDocumentImagesFromStoredBytes(
-      List<Map<String, dynamic>> items,) async {
+    List<Map<String, dynamic>> items,
+  ) async {
     final missingImages = items
         .where((item) {
-      final path = item['drawing_image_path']?.toString() ?? '';
-      return path.isEmpty || !File(path).existsSync();
-    })
+          final path = item['drawing_image_path']?.toString() ?? '';
+          return path.isEmpty || !File(path).existsSync();
+        })
         .toList(growable: false);
     if (missingImages.isEmpty) return;
 
@@ -6106,7 +6008,7 @@ class _CommandeState extends State<Commande> {
                 (item['id'] as num?)?.toInt() ?? encoded.hashCode.abs();
             final file = File(
               '${cacheDirectory!.path}${Platform.pathSeparator}'
-                  'devis_item_$detailId.img',
+              'devis_item_$detailId.img',
             );
             if (!await file.exists() || await file.length() != bytes.length) {
               await file
@@ -6166,12 +6068,10 @@ class _CommandeState extends State<Commande> {
       'Done',
     ];
 
-    final lang = Provider
-        .of<AppSettingsProvider>(
+    final lang = Provider.of<AppSettingsProvider>(
       context,
       listen: false,
-    )
-        .language;
+    ).language;
 
     showDialog(
       context: context,
@@ -6200,10 +6100,7 @@ class _CommandeState extends State<Commande> {
           content: Container(
             width: double.maxFinite,
             constraints: BoxConstraints(
-              maxHeight: MediaQuery
-                  .of(context)
-                  .size
-                  .height * 0.6,
+              maxHeight: MediaQuery.of(context).size.height * 0.6,
             ),
             child: SingleChildScrollView(
               child: Column(
@@ -6211,14 +6108,14 @@ class _CommandeState extends State<Commande> {
                 children: statuses.map((stageKey) {
                   final bool isCurrent =
                       (stageKey.toLowerCase() == currentStatus.toLowerCase()) ||
-                          (stageKey == 'Nouveau' &&
-                              (currentStatus == 'New' ||
-                                  currentStatus == 'Draft' ||
-                                  currentStatus == 'جديدة' ||
-                                  currentStatus == 'جديد')) ||
-                          (stageKey == 'Pending' &&
-                              (currentStatus == 'en_attente' ||
-                                  currentStatus == 'في الانتظار'));
+                      (stageKey == 'Nouveau' &&
+                          (currentStatus == 'New' ||
+                              currentStatus == 'Draft' ||
+                              currentStatus == 'جديدة' ||
+                              currentStatus == 'جديد')) ||
+                      (stageKey == 'Pending' &&
+                          (currentStatus == 'en_attente' ||
+                              currentStatus == 'في الانتظار'));
                   final color = _getStatusColor(stageKey);
                   return Container(
                     margin: const EdgeInsets.symmetric(vertical: 4),
@@ -6242,10 +6139,10 @@ class _CommandeState extends State<Commande> {
                         backgroundColor: color,
                         child: isCurrent
                             ? const Icon(
-                          Icons.check,
-                          size: 14,
-                          color: Colors.white,
-                        )
+                                Icons.check,
+                                size: 14,
+                                color: Colors.white,
+                              )
                             : null,
                       ),
                       title: Text(
@@ -6256,51 +6153,49 @@ class _CommandeState extends State<Commande> {
                               : FontWeight.normal,
                           color: isCurrent
                               ? color
-                              : (Theme
-                              .of(context)
-                              .brightness == Brightness.dark
-                              ? Colors.white70
-                              : Colors.black87),
+                              : (Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white70
+                                    : Colors.black87),
                           fontFamily: 'Cairo',
                           fontSize: 14,
                         ),
                       ),
                       trailing: isCurrent
                           ? Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: color,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          lang == AppLanguage.french
-                              ? 'Actuel'
-                              : 'الحالية',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            fontFamily: 'Cairo',
-                          ),
-                        ),
-                      )
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: color,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                lang == AppLanguage.french
+                                    ? 'Actuel'
+                                    : 'الحالية',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  fontFamily: 'Cairo',
+                                ),
+                              ),
+                            )
                           : const Icon(
-                        Icons.chevron_right,
-                        size: 18,
-                        color: Colors.grey,
-                      ),
+                              Icons.chevron_right,
+                              size: 18,
+                              color: Colors.grey,
+                            ),
                       onTap: () async {
                         final progressIndex = statuses.indexOf('In Progress');
                         final targetIndex = statuses.indexOf(stageKey);
 
                         if (targetIndex > progressIndex) {
                           final allConfirmed =
-                          await _areAllMeasurementsConfirmed(
-                            orderData['id'],
-                          );
+                              await _areAllMeasurementsConfirmed(
+                                orderData['id'],
+                              );
                           if (!allConfirmed) {
                             Navigator.pop(dialogContext);
                             if (mounted) {
@@ -6335,12 +6230,11 @@ class _CommandeState extends State<Commande> {
                           final inventoryIssued = await Navigator.push<bool>(
                             context,
                             MaterialPageRoute(
-                              builder: (_) =>
-                                  OrderRequiredGoodsScreen(
-                                    orderData: orderData,
-                                    db: db,
-                                    issueAtManufacturingStart: true,
-                                  ),
+                              builder: (_) => OrderRequiredGoodsScreen(
+                                orderData: orderData,
+                                db: db,
+                                issueAtManufacturingStart: true,
+                              ),
                             ),
                           );
                           if (inventoryIssued != true || !mounted) return;
@@ -6370,11 +6264,10 @@ class _CommandeState extends State<Commande> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) =>
-                                    OrderMeasurementsConfirmScreen(
-                                      orderData: orderData,
-                                      db: db,
-                                    ),
+                                builder: (_) => OrderMeasurementsConfirmScreen(
+                                  orderData: orderData,
+                                  db: db,
+                                ),
                               ),
                             );
                           }
@@ -6384,10 +6277,8 @@ class _CommandeState extends State<Commande> {
                               SnackBar(
                                 content: Text(
                                   lang == AppLanguage.french
-                                      ? 'Statut changé à: ${_translateStatus(
-                                      stageKey, lang)}'
-                                      : 'تم تغيير حالة الطلبية إلى: ${_translateStatus(
-                                      stageKey, lang)}',
+                                      ? 'Statut changé à: ${_translateStatus(stageKey, lang)}'
+                                      : 'تم تغيير حالة الطلبية إلى: ${_translateStatus(stageKey, lang)}',
                                 ),
                                 backgroundColor: Colors.green,
                               ),
@@ -6415,8 +6306,10 @@ class _CommandeState extends State<Commande> {
     );
   }
 
-  Future<void> _showHeavyLoadingDialog(BuildContext context,
-      AppLanguage lang,) async {
+  Future<void> _showHeavyLoadingDialog(
+    BuildContext context,
+    AppLanguage lang,
+  ) async {
     final ready = Completer<void>();
     BuildContext? shownDialogContext;
     final dialogFuture = showDialog<void>(
@@ -6462,12 +6355,12 @@ class _CommandeState extends State<Commande> {
     // the person name, but never display the technical platform suffix.
     raw = raw
         .replaceFirst(
-      RegExp(
-        r'\s+\((?:web|phone|computer|هاتف|كمبيوتر|ÙˆÙŠØ¨|ÙƒÙ…Ø¨ÙŠÙˆØªØ±|Ù‡Ø§ØªÙ)\)$',
-        caseSensitive: false,
-      ),
-      '',
-    )
+          RegExp(
+            r'\s+\((?:web|phone|computer|هاتف|كمبيوتر|ÙˆÙŠØ¨|ÙƒÙ…Ø¨ÙŠÙˆØªØ±|Ù‡Ø§ØªÙ)\)$',
+            caseSensitive: false,
+          ),
+          '',
+        )
         .trim();
     if (raw.isNotEmpty &&
         raw != 'unknown' &&
@@ -6485,10 +6378,7 @@ class _CommandeState extends State<Commande> {
     if (displayName.isNotEmpty) return displayName;
     final email = user?.email?.trim() ?? '';
     if (email.isNotEmpty) {
-      return email.contains('@') ? email
-          .split('@')
-          .first
-          .trim() : email;
+      return email.contains('@') ? email.split('@').first.trim() : email;
     }
     return '—';
   }
@@ -6497,15 +6387,15 @@ class _CommandeState extends State<Commande> {
     final raw = (rawEditor ?? '').trim();
     final isGeneric =
         raw.isEmpty ||
-            raw == 'unknown' ||
-            raw == 'المدير / عامل الورشة' ||
-            raw == 'مدير الورشة' ||
-            raw == 'عامل ورشة' ||
-            raw == 'عامل';
+        raw == 'unknown' ||
+        raw == 'المدير / عامل الورشة' ||
+        raw == 'مدير الورشة' ||
+        raw == 'عامل ورشة' ||
+        raw == 'عامل';
     final isWorkshopName =
         raw.isNotEmpty &&
-            _workshopNameForIdentity.isNotEmpty &&
-            raw == _workshopNameForIdentity;
+        _workshopNameForIdentity.isNotEmpty &&
+        raw == _workshopNameForIdentity;
     if (!isGeneric && !isWorkshopName) return raw;
 
     final user = AppAuthService().currentUser;
@@ -6513,10 +6403,7 @@ class _CommandeState extends State<Commande> {
     if (displayName.isNotEmpty) return displayName;
     final email = user?.email?.trim() ?? '';
     if (email.isNotEmpty) {
-      return email.contains('@') ? email
-          .split('@')
-          .first
-          .trim() : email;
+      return email.contains('@') ? email.split('@').first.trim() : email;
     }
     return '—';
   }
@@ -6597,11 +6484,7 @@ class _CommandeState extends State<Commande> {
             style: TextStyle(
               fontSize: 13,
               fontFamily: 'Cairo',
-              color: Theme
-                  .of(context)
-                  .textTheme
-                  .bodyLarge
-                  ?.color,
+              color: Theme.of(context).textTheme.bodyLarge?.color,
             ),
             decoration: InputDecoration(
               hintText: hintText,
@@ -6615,9 +6498,7 @@ class _CommandeState extends State<Commande> {
                 vertical: 7,
               ),
               filled: true,
-              fillColor: Theme
-                  .of(context)
-                  .cardColor,
+              fillColor: Theme.of(context).cardColor,
               isDense: true,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -6640,16 +6521,16 @@ class _CommandeState extends State<Commande> {
               ),
               suffixIcon: controller.text.isNotEmpty
                   ? InkWell(
-                onTap: () {
-                  controller.clear();
-                  setState(() {});
-                },
-                child: const Icon(
-                  Icons.close,
-                  size: 17,
-                  color: Colors.red,
-                ),
-              )
+                      onTap: () {
+                        controller.clear();
+                        setState(() {});
+                      },
+                      child: const Icon(
+                        Icons.close,
+                        size: 17,
+                        color: Colors.red,
+                      ),
+                    )
                   : null,
             ),
           ),
@@ -6658,27 +6539,17 @@ class _CommandeState extends State<Commande> {
     );
   }
 
-  Widget _buildDesktopOrdersTableView(BuildContext context,
-      List<Map<String, dynamic>> rawData,
-      AppLanguage lang,) {
-    final cardColor = Theme
-        .of(context)
-        .cardColor;
-    final isDark = Theme
-        .of(context)
-        .brightness == Brightness.dark;
+  Widget _buildDesktopOrdersTableView(
+    BuildContext context,
+    List<Map<String, dynamic>> rawData,
+    AppLanguage lang,
+  ) {
+    final cardColor = Theme.of(context).cardColor;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final contentColor =
-        Theme
-            .of(context)
-            .textTheme
-            .bodyLarge
-            ?.color ?? Colors.black;
+        Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black;
     final mutedColor =
-        Theme
-            .of(context)
-            .textTheme
-            .bodySmall
-            ?.color ?? Colors.grey;
+        Theme.of(context).textTheme.bodySmall?.color ?? Colors.grey;
     final borderColor = isDark ? Colors.grey.shade800 : Colors.blue.shade100;
 
     final data = _applyOrderFiltersAndSort(rawData, lang);
@@ -6697,7 +6568,7 @@ class _CommandeState extends State<Commande> {
           isNumeric: true,
           lang: lang,
           initialNumericState:
-          _orderNumericFilters['id'] ?? const NumericFilterState(),
+              _orderNumericFilters['id'] ?? const NumericFilterState(),
           onNumericFilterChanged: (f) =>
               setState(() => _orderNumericFilters['id'] = f),
         ),
@@ -6785,7 +6656,7 @@ class _CommandeState extends State<Commande> {
           isNumeric: true,
           lang: lang,
           initialNumericState:
-          _orderNumericFilters['total'] ?? const NumericFilterState(),
+              _orderNumericFilters['total'] ?? const NumericFilterState(),
           onNumericFilterChanged: (f) =>
               setState(() => _orderNumericFilters['total'] = f),
         ),
@@ -6805,7 +6676,7 @@ class _CommandeState extends State<Commande> {
           isNumeric: true,
           lang: lang,
           initialNumericState:
-          _orderNumericFilters['advance'] ?? const NumericFilterState(),
+              _orderNumericFilters['advance'] ?? const NumericFilterState(),
           onNumericFilterChanged: (f) =>
               setState(() => _orderNumericFilters['advance'] = f),
         ),
@@ -6825,7 +6696,7 @@ class _CommandeState extends State<Commande> {
           isNumeric: true,
           lang: lang,
           initialNumericState:
-          _orderNumericFilters['remaining'] ?? const NumericFilterState(),
+              _orderNumericFilters['remaining'] ?? const NumericFilterState(),
           onNumericFilterChanged: (f) =>
               setState(() => _orderNumericFilters['remaining'] = f),
         ),
@@ -6930,40 +6801,40 @@ class _CommandeState extends State<Commande> {
         ),
         filter: _hasActiveOrderColumnFilters
             ? Center(
-          child: InkWell(
-            onTap: _clearAllOrderColumnFilters,
-            borderRadius: BorderRadius.circular(4),
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 6,
-                vertical: 2,
-              ),
-              decoration: BoxDecoration(
-                color: Colors.red.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.clear_all,
-                    size: 13,
-                    color: Colors.red,
-                  ),
-                  const SizedBox(width: 2),
-                  Text(
-                    Localization.translate('مسح', lang),
-                    style: const TextStyle(
-                      fontSize: 10,
-                      color: Colors.red,
-                      fontWeight: FontWeight.bold,
+                child: InkWell(
+                  onTap: _clearAllOrderColumnFilters,
+                  borderRadius: BorderRadius.circular(4),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.clear_all,
+                          size: 13,
+                          color: Colors.red,
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          Localization.translate('مسح', lang),
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Colors.red,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
-            ),
-          ),
-        )
+                ),
+              )
             : null,
         initialWidth: 95,
         minWidth: 75,
@@ -6982,8 +6853,8 @@ class _CommandeState extends State<Commande> {
 
       final netPayable =
           (order['net_payable'] as num?)?.toDouble() ??
-              (order['total'] as num?)?.toDouble() ??
-              0.0;
+          (order['total'] as num?)?.toDouble() ??
+          0.0;
       final advance = (order['advance_payment'] as num?)?.toDouble() ?? 0.0;
       final remaining = netPayable - advance;
       final status = (order['status'] ?? 'Pending').toString();
@@ -7018,7 +6889,7 @@ class _CommandeState extends State<Commande> {
           return KeyEventResult.handled;
         }
         if ((shortcuts.matches('delete_order', event) ||
-            event.logicalKey == LogicalKeyboardKey.delete) &&
+                event.logicalKey == LogicalKeyboardKey.delete) &&
             settings.canDeleteOrders()) {
           _showDeleteConfirmDialog(id);
           return KeyEventResult.handled;
@@ -7040,18 +6911,14 @@ class _CommandeState extends State<Commande> {
           _notificationHighlightedOrderId?.toString() == order['id'].toString();
 
       final rowBgColor = isHighlighted
-          ? (Theme
-          .of(context)
-          .brightness == Brightness.dark
-          ? const Color(0xFF594B16)
-          : const Color(0xFFFFF1A8))
+          ? (Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF594B16)
+                : const Color(0xFFFFF1A8))
           : (isUnseen
-          ? (Theme
-          .of(context)
-          .brightness == Brightness.dark
-          ? const Color(0xFF064E3B).withValues(alpha: 0.45)
-          : const Color(0xFFECFDF5))
-          : null);
+                ? (Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF064E3B).withValues(alpha: 0.45)
+                      : const Color(0xFFECFDF5))
+                : null);
 
       return ResizableTableRow(
         reorderId: order['id'].toString(),
@@ -7066,13 +6933,12 @@ class _CommandeState extends State<Commande> {
         },
         onKeyEvent: handleOrderKey,
         onDoubleTap: context.read<AppSettingsProvider>().canEditOrders()
-            ? () =>
-            openOrderInWorkspaceTab(
-              context,
-              db: db,
-              editCommandeId: (order['id'] as num?)?.toInt(),
-              onSaved: _fetchCommandes,
-            )
+            ? () => openOrderInWorkspaceTab(
+                context,
+                db: db,
+                editCommandeId: (order['id'] as num?)?.toInt(),
+                onSaved: _fetchCommandes,
+              )
             : null,
         onSecondaryTapDown: (position) =>
             _showOrderContextMenu(context, order, position, lang),
@@ -7235,11 +7101,11 @@ class _CommandeState extends State<Commande> {
                     Text(
                       isStockReserved
                           ? (lang == AppLanguage.french
-                          ? 'Réservé'
-                          : Localization.translate('تم الحجز', lang))
+                                ? 'Réservé'
+                                : Localization.translate('تم الحجز', lang))
                           : (lang == AppLanguage.french
-                          ? 'Non réservé'
-                          : Localization.translate('لم يُحجز بعد', lang)),
+                                ? 'Non réservé'
+                                : Localization.translate('لم يُحجز بعد', lang)),
                       style: TextStyle(
                         color: isStockReserved
                             ? Colors.green.shade900
@@ -7322,40 +7188,7 @@ class _CommandeState extends State<Commande> {
 
           // ── Desktop Resizable Table with zero vertical overflow ──
           Expanded(
-            child: data.isEmpty
-                ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.search_off_rounded,
-                    size: 48,
-                    color: Colors.grey.shade400,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    Localization.translate("No matching results", lang),
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: Colors.grey.shade600,
-                      fontFamily: 'Cairo',
-                    ),
-                  ),
-                  if (_hasActiveOrderColumnFilters) ...[
-                    const SizedBox(height: 8),
-                    TextButton.icon(
-                      onPressed: _clearAllOrderColumnFilters,
-                      icon: const Icon(Icons.refresh, size: 16),
-                      label: const Text(
-                        'إعادة ضبط البحث والتصفية',
-                        style: TextStyle(fontFamily: 'Cairo'),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            )
-                : Container(
+            child: Container(
               decoration: BoxDecoration(
                 border: Border.all(color: borderColor),
                 borderRadius: BorderRadius.circular(10),
@@ -7364,59 +7197,63 @@ class _CommandeState extends State<Commande> {
                 borderRadius: BorderRadius.circular(10),
                 child: ResizableColumnsTable(
                   persistenceKey: 'orders',
-                  revealRowId: _notificationHighlightedOrderId
-                      ?.toString(),
+                  emptyPlaceholder: Center(
+                    child: Text(
+                      Localization.translate('No matching results', lang),
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: Colors.grey.shade600,
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  revealRowId: _notificationHighlightedOrderId?.toString(),
                   footerCells: {
                     'total': Text(
                       data
                           .fold<double>(
-                        0,
+                            0,
                             (sum, row) =>
-                        sum +
-                            ((row['net_payable'] as num?)
-                                ?.toDouble() ??
-                                (row['total'] as num?)?.toDouble() ??
-                                0),
-                      )
+                                sum +
+                                ((row['net_payable'] as num?)?.toDouble() ??
+                                    (row['total'] as num?)?.toDouble() ??
+                                    0),
+                          )
                           .toStringAsFixed(2),
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     'advance': Text(
                       data
                           .fold<double>(
-                        0,
+                            0,
                             (sum, row) =>
-                        sum +
-                            ((row['advance_payment'] as num?)
-                                ?.toDouble() ??
-                                0),
-                      )
+                                sum +
+                                ((row['advance_payment'] as num?)?.toDouble() ??
+                                    0),
+                          )
                           .toStringAsFixed(2),
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     'remaining': Text(
                       data
                           .fold<double>(
-                        0,
+                            0,
                             (sum, row) =>
-                        sum +
-                            ((row['net_payable'] as num?)
-                                ?.toDouble() ??
-                                (row['total'] as num?)?.toDouble() ??
-                                0) -
-                            ((row['advance_payment'] as num?)
-                                ?.toDouble() ??
-                                0),
-                      )
+                                sum +
+                                ((row['net_payable'] as num?)?.toDouble() ??
+                                    (row['total'] as num?)?.toDouble() ??
+                                    0) -
+                                ((row['advance_payment'] as num?)?.toDouble() ??
+                                    0),
+                          )
                           .toStringAsFixed(2),
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                   },
                   columns: columns,
                   rows: rows,
-                  headerColor: const Color(
-                    0xFF2563EB,
-                  ).withValues(alpha: 0.08),
+                  headerColor: const Color(0xFF2563EB).withValues(alpha: 0.08),
                   filterRowColor: isDark
                       ? const Color(0xFF1E293B)
                       : const Color(0xFFF8FAFC),
@@ -7436,8 +7273,9 @@ class _CommandeState extends State<Commande> {
   }
 
   List<TableFilterOption> _buildOrderStatusFilterOptions(
-      List<Map<String, dynamic>> rawData,
-      AppLanguage lang,) {
+    List<Map<String, dynamic>> rawData,
+    AppLanguage lang,
+  ) {
     final statusesByGroup = <String, String>{};
     for (final status in canonicalOrderStatuses) {
       statusesByGroup[orderStatusGroupKey(status)] = status;
@@ -7632,7 +7470,8 @@ class _OrderPicturePdfPreviewPageState
   }
 
   Future<_OrderPicturePdfPayload> _ensurePdfPayload(
-      _OrderPicturePreviewPayload preview,) async {
+    _OrderPicturePreviewPayload preview,
+  ) async {
     final existing = _pdfPayload;
     if (existing != null) return existing;
     final bytes = await OrderPicturePdfService.buildPdfBytes(
@@ -7650,8 +7489,10 @@ class _OrderPicturePdfPreviewPageState
     return payload;
   }
 
-  Future<void> _runPdfAction(_OrderPicturePreviewPayload preview,
-      Future<void> Function(_OrderPicturePdfPayload payload) action,) async {
+  Future<void> _runPdfAction(
+    _OrderPicturePreviewPayload preview,
+    Future<void> Function(_OrderPicturePdfPayload payload) action,
+  ) async {
     if (_isPdfBusy) return;
     setState(() => _isPdfBusy = true);
     try {
@@ -7662,8 +7503,7 @@ class _OrderPicturePdfPreviewPageState
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '${Localization.translate(
-                'فشل توليد ملف PDF', widget.lang)}: $error',
+            '${Localization.translate('فشل توليد ملف PDF', widget.lang)}: $error',
           ),
           backgroundColor: Colors.red,
         ),
@@ -7777,10 +7617,10 @@ class _OrderPicturePdfPreviewPageState
                   ),
                   icon: _isPdfBusy
                       ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
                       : const Icon(Icons.save_alt),
                   onPressed: _isPdfBusy
                       ? null
@@ -7815,8 +7655,10 @@ class _OrderPicturePdfPreviewPageState
     );
   }
 
-  Widget _buildBody(AsyncSnapshot<_OrderPicturePreviewPayload> snapshot,
-      _OrderPicturePreviewPayload? payload,) {
+  Widget _buildBody(
+    AsyncSnapshot<_OrderPicturePreviewPayload> snapshot,
+    _OrderPicturePreviewPayload? payload,
+  ) {
     if (snapshot.hasError) {
       return Center(
         child: Padding(
@@ -7827,9 +7669,7 @@ class _OrderPicturePdfPreviewPageState
               const Icon(Icons.error_outline, color: Colors.red, size: 42),
               const SizedBox(height: 12),
               Text(
-                '${Localization.translate(
-                    'خطأ أثناء توليد ملف الصور: ', widget.lang)}${snapshot
-                    .error}',
+                '${Localization.translate('خطأ أثناء توليد ملف الصور: ', widget.lang)}${snapshot.error}',
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontFamily: 'Cairo'),
               ),
@@ -7890,12 +7730,9 @@ class _OrderPicturePdfPreviewPageState
         .toList(growable: false);
     final meta = <String>[
       if (item.width > 0 || item.height > 0)
-        '${Localization.translate('الأبعاد', widget.lang)}: ${item
-            .width} x ${item.height} mm',
+        '${Localization.translate('الأبعاد', widget.lang)}: ${item.width} x ${item.height} mm',
       '${Localization.translate('الكمية', widget.lang)}: ${item.quantity}',
-      if (item.color
-          .trim()
-          .isNotEmpty)
+      if (item.color.trim().isNotEmpty)
         '${Localization.translate('اللون', widget.lang)}: ${item.color}',
     ];
 
@@ -7930,9 +7767,7 @@ class _OrderPicturePdfPreviewPageState
             ],
             const SizedBox(height: 10),
             SizedBox(
-              height: MediaQuery
-                  .sizeOf(context)
-                  .height * 0.74,
+              height: MediaQuery.sizeOf(context).height * 0.74,
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -7940,40 +7775,38 @@ class _OrderPicturePdfPreviewPageState
                 ),
                 child: item.imageBytes == null
                     ? Center(
-                  child: Text(
-                    Localization.translate(
-                      'لا توجد صورة محفوظة لهذا العنصر',
-                      widget.lang,
-                    ),
-                    style: const TextStyle(fontFamily: 'Cairo'),
-                  ),
-                )
+                        child: Text(
+                          Localization.translate(
+                            'لا توجد صورة محفوظة لهذا العنصر',
+                            widget.lang,
+                          ),
+                          style: const TextStyle(fontFamily: 'Cairo'),
+                        ),
+                      )
                     : InteractiveViewer(
-                  minScale: 0.7,
-                  maxScale: 5,
-                  child: Center(
-                    child: Image.memory(
-                      item.imageBytes!,
-                      fit: BoxFit.contain,
-                      gaplessPlayback: true,
-                    ),
-                  ),
-                ),
+                        minScale: 0.7,
+                        maxScale: 5,
+                        child: Center(
+                          child: Image.memory(
+                            item.imageBytes!,
+                            fit: BoxFit.contain,
+                            gaplessPlayback: true,
+                          ),
+                        ),
+                      ),
               ),
             ),
             if (details.isNotEmpty) ...[
               const SizedBox(height: 10),
               ...details.map(
-                    (line) =>
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 3),
-                      child: Text(
-                        line,
-                        textAlign: TextAlign.right,
-                        style: const TextStyle(
-                            fontFamily: 'Cairo', fontSize: 12),
-                      ),
-                    ),
+                (line) => Padding(
+                  padding: const EdgeInsets.only(bottom: 3),
+                  child: Text(
+                    line,
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                  ),
+                ),
               ),
             ],
           ],

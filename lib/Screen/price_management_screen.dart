@@ -1972,11 +1972,32 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         (shutterSqmPrices['DemiOB_Install']?[0]) ?? 0.0;
     final double verrouInstallPrice =
         (shutterSqmPrices['Verrou_Install']?[0]) ?? 0.0;
+    final double moustiquaireSqmPrice =
+        (shutterSqmPrices['Moustiquaire_Sqm']?[0]) ?? 0.0;
 
     return ListView(
       key: const PageStorageKey<String>('price-shutter-sqm-list'),
       padding: const EdgeInsets.only(bottom: 16),
       children: [
+        sectionCard(
+          title: 'الموستيكير (Moustiquaire) — سعر المتر المربع',
+          icon: Icons.grid_on_rounded,
+          color: Colors.green,
+          body: PriceEditRow(
+            title: 'السعر الرسمي للمتر المربع',
+            titleIcon: const Icon(
+              Icons.square_foot_rounded,
+              size: 18,
+              color: Colors.green,
+            ),
+            subtitle: 'يُطبق تلقائياً عند إضافتها إلى النافذة',
+            currentPrice: moustiquaireSqmPrice,
+            canChangePrices: canChangePrices,
+            onSave: (parsed) =>
+                _updateShutterSqmPrice('Moustiquaire_Sqm', 0, parsed),
+          ),
+        ),
+
         // ── 1. Lames ──────────────────────────────────────────────────────
         sectionCard(
           title: Localization.translate(

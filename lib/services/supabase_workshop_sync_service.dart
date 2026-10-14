@@ -11,6 +11,7 @@ import 'package:database_data/settings/shortcut_bindings.dart';
 import 'package:database_data/services/order_notification_service.dart';
 import 'package:database_data/services/worker_push_notification_service.dart';
 import 'package:database_data/services/app_admin_status_service.dart';
+import 'package:database_data/services/supabase_account_service.dart';
 
 class WorkshopDataDiagnostics {
   const WorkshopDataDiagnostics({
@@ -717,6 +718,10 @@ class SupabaseWorkshopSyncService {
       // Subscribe to order-event notifications for this workshop.
       _subscribeToOrderNotifications();
       _startBackgroundSync();
+      // Realtime is the fast path, but mobile networks can silently drop a
+      // channel. Start the lightweight permission poll on the first session
+      // too (previously it only started after background/resume).
+      _startPermissionsRefreshFallback();
       // A temporary permission/RLS read failure must not abort the workshop
       // data download. The permission listener and the next sync cycle will
       // retry it; business data must continue to sync independently.
@@ -874,6 +879,10 @@ class SupabaseWorkshopSyncService {
       'permissions_cloud_fingerprint',
       jsonEncode(permissions),
     );
+
+    // Other account consumers must not keep the previous two-minute account
+    // snapshot after a live role/permission change.
+    SupabaseAccountService().invalidateCurrentAccountCache();
 
     _permissionsController.add({
       'role': appRole,
@@ -1043,7 +1052,7 @@ class SupabaseWorkshopSyncService {
       throw Exception('تعذر تحديد كود الورشة في Supabase.');
     }
 
-    await _client.rpc(
+    final saved = await _client.rpc(
       'update_workshop_member_permissions',
       params: {
         'target_code': code,
@@ -1053,6 +1062,9 @@ class SupabaseWorkshopSyncService {
         'member_blocked': _permissionTruthy(permissions['isBlocked']),
       },
     );
+    if (saved != true) {
+      throw StateError('لم يؤكد Supabase حفظ صلاحيات العامل.');
+    }
   }
 
   Future<List<Map<String, dynamic>>> fetchWorkshopMembers() async {
@@ -1069,6 +1081,29 @@ class SupabaseWorkshopSyncService {
         .whereType<Map>()
         .map((row) => Map<String, dynamic>.from(row))
         .toList(growable: false);
+  }
+
+  Future<void> rejectPendingMemberByEmail({required String email}) async {
+    final cleanEmail = email.trim().toLowerCase();
+    if (cleanEmail.isEmpty) return;
+    await updateMemberPermissionsByEmail(
+      email: cleanEmail,
+      role: 'worker',
+      permissions: const <String, dynamic>{
+        'is_pending': false,
+        'is_approved': false,
+        'is_rejected': true,
+        'isBlocked': true,
+        'view_clients': false,
+        'view_orders': false,
+        'view_client_details': false,
+        'view_order_details': false,
+        'view_my_tasks': false,
+        'view_my_accreditations': false,
+        'access_workshop': false,
+        'access_store': false,
+      },
+    );
   }
 
   Future<void> _runSerializedUpload() async {
