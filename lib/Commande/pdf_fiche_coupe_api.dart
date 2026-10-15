@@ -747,7 +747,16 @@ class PdfFicheCoupeApi {
       final row = rows[i];
       final isAlt = i.isOdd;
       final cutCount = row.cuts.length;
-      final totalRowHeight = cutCount * 25.0;
+      final descriptionLines = row.description.split('\n').fold<int>(
+        0,
+        (sum, line) =>
+            sum + (line.trim().length / 34).ceil().clamp(1, 99).toInt(),
+      );
+      final contentHeight = descriptionLines * 11.0 + 8.0;
+      final cutsHeight = cutCount * 25.0;
+      final totalRowHeight = contentHeight > cutsHeight
+          ? contentHeight
+          : cutsHeight;
 
       tableRows.add(
         pw.TableRow(
@@ -1773,6 +1782,7 @@ class PdfFicheCoupeApi {
             String description,
             String? imagePath,
             int? catalogItemId,
+            Set<String> productionNotes,
             Map<String, ({int qty, int lengthMm, String angles, String windowNumber})> cuts,
           })
         >{};
@@ -1825,9 +1835,14 @@ class PdfFicheCoupeApi {
           description: desc,
           imagePath: bom.imagePath,
           catalogItemId: bom.catalogItemId,
+          productionNotes: <String>{},
           cuts: <String, ({int qty, int lengthMm, String angles, String windowNumber})>{},
         ),
       );
+      final productionNote = bom.productionNote?.trim();
+      if (productionNote != null && productionNote.isNotEmpty) {
+        existing.productionNotes.add(productionNote);
+      }
 
       for (var pieceIndex = 0; pieceIndex < pieces.length; pieceIndex++) {
         final pM = pieces[pieceIndex];
@@ -1887,10 +1902,15 @@ class PdfFicheCoupeApi {
               .toList()
             ..sort((a, b) => b.lengthMm.compareTo(a.lengthMm));
 
+      var description = entry.description;
+      if (entry.productionNotes.isNotEmpty) {
+        description = '$description\n${entry.productionNotes.join('\n')}';
+      }
+
       result.add(
         _ProfileCutRow(
           reference: entry.reference,
-          description: entry.description,
+          description: description,
           imageWidget: image,
           cuts: sortedCuts,
         ),
@@ -2131,7 +2151,7 @@ class PdfFicheCoupeApi {
         .where((line) => line.isNotEmpty)
         .toList();
     final title = lines.isEmpty ? '-' : lines.first;
-    final detail = lines.length > 1 ? lines.skip(1).join(' · ') : '';
+    final details = lines.length > 1 ? lines.skip(1).toList() : <String>[];
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
       child: pw.Column(
@@ -2144,14 +2164,31 @@ class PdfFicheCoupeApi {
             style: pw.TextStyle(font: fontBold, fontSize: 8),
             textAlign: align,
           ),
-          if (detail.isNotEmpty) ...[
+          for (final detail in details) ...[
             pw.SizedBox(height: 1.5),
             pw.Text(
               _shapeText(detail),
               style: pw.TextStyle(
-                font: font,
+                font:
+                    detail.contains('تنبيه') ||
+                        detail.contains('Attention') ||
+                        detail.contains('Warning') ||
+                        detail.contains('المطلوب الفعلي') ||
+                        detail.contains('Besoin réel') ||
+                        detail.contains('Actual requirement')
+                    ? fontBold
+                    : font,
                 fontSize: 6.8,
-                color: PdfColors.grey600,
+                color:
+                    detail.contains('تنبيه') ||
+                        detail.contains('Attention') ||
+                        detail.contains('Warning')
+                    ? PdfColors.orange800
+                    : detail.contains('المطلوب الفعلي') ||
+                          detail.contains('Besoin réel') ||
+                          detail.contains('Actual requirement')
+                    ? _kBlue
+                    : PdfColors.grey600,
               ),
               textAlign: align,
             ),

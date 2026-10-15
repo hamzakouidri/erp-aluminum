@@ -37,9 +37,8 @@ void main() {
       ),
     ];
     final rows = ComponentCalculator.generateBom(window, {});
-    for (final role in ['batmo', 'bouchon_batmo']) {
-      final row = rows.singleWhere((row) => row.roleKey == role);
-      expect(row.sourceSeriesId, 10);
-    }
+    final batmo = rows.singleWhere((row) => row.roleKey == 'batmo');
+    expect(batmo.sourceSeriesId, 10);
+    expect(rows.where((row) => row.roleKey == 'bouchon_batmo'), isEmpty);
   });
 }

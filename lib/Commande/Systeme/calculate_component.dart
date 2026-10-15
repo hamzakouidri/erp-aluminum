@@ -38,6 +38,9 @@ class BomItem {
   /// Cutting angles aligned with [pieces], stored as `left/right` degrees.
   final List<String>? pieceCutAngles;
   final String? cuttingList;
+  /// Workshop-only instruction rendered on the cutting sheet, never in the
+  /// quantity/cost table or price editor.
+  final String? productionNote;
   final String? kitGroupName; // اسم Kit التابع له (مثال: System OB)
   final double? exactQuantity;
   final int? catalogItemId;
@@ -137,6 +140,7 @@ class BomItem {
     this.pieces,
     this.pieceCutAngles,
     this.cuttingList,
+    this.productionNote,
     this.kitGroupName,
     this.exactQuantity,
     this.catalogItemId,
@@ -698,6 +702,9 @@ class BomItem {
 
   static String localizeSubText(String text, String lang) {
     if (text.contains('المطلوب الفعلي:')) {
+      // The Arabic line may also contain the full-bars/remaining-centimetres
+      // breakdown. Keep it intact instead of truncating it at the first unit.
+      if (lang == 'ar') return text;
       final reg = RegExp(
         r'المطلوب الفعلي:\s*([0-9\.]+)\s*([^\s\)\/]+)(?:\s*\/\s*([0-9\.]+)\s*([^\s\)]+))?',
       );
@@ -791,6 +798,7 @@ class BomItem {
     String? materialType,
     int? pieceCount,
     String? cuttingList,
+    String? productionNote,
     List<String>? pieceCutAngles,
   }) {
     return BomItem(
@@ -813,6 +821,7 @@ class BomItem {
       pieces: pieces,
       pieceCutAngles: pieceCutAngles ?? this.pieceCutAngles,
       cuttingList: cuttingList ?? this.cuttingList,
+      productionNote: productionNote ?? this.productionNote,
       kitGroupName: kitGroupName ?? this.kitGroupName,
       exactQuantity: exactQuantity,
       catalogItemId: catalogItemId ?? this.catalogItemId,
@@ -2000,45 +2009,53 @@ class ComponentCalculator {
     List<double> sortedPieces = List.from(pieces)
       ..sort((a, b) => b.compareTo(a));
 
-    double smallestPiece = sortedPieces.isEmpty ? 0.0 : sortedPieces.last;
-
     List<double> bins = []; // Remaining space in each bin
-    List<double> binUsed = []; // Total length of pieces cut in each bin
+    double totalUsedMeters = 0.0;
 
     for (double piece in sortedPieces) {
       if (piece <= 0) continue;
+      totalUsedMeters += piece;
       double pieceWithWaste = piece + effectiveBladeWaste;
       bool placed = false;
       for (int i = 0; i < bins.length; i++) {
-        if (bins[i] >= piece) {
+        if (bins[i] >= pieceWithWaste) {
           bins[i] -= pieceWithWaste;
-          binUsed[i] += piece;
           placed = true;
           break;
         }
       }
       if (!placed) {
         bins.add(barLength - pieceWithWaste);
-        binUsed.add(piece);
       }
     }
-
-    double exactBars = 0.0;
-    for (int i = 0; i < bins.length; i++) {
-      double leftover = bins[i];
-      if (leftover < smallestPiece) {
-        // Leftover is too small to be used for any remaining pieces, count as 1.0 bar consumed
-        exactBars += 1.0;
-      } else {
-        // Leftover is large enough to potentially be used, so only count fraction of bar used
-        exactBars += binUsed[i] / barLength;
-      }
-    }
+    // "Actual requirement" means the sum of the pieces really used. Waste
+    // and the unusable remainder of the last stock bar never inflate it.
+    final exactBars = barLength > 0 ? totalUsedMeters / barLength : 0.0;
 
     return {
       'exactBars': exactBars,
       'optimizedBars': bins.isEmpty ? 0 : bins.length,
+      'usedMeters': totalUsedMeters,
     };
+  }
+
+  static String formatProfileUsageDetails({
+    required double usedMeters,
+    required double barLength,
+  }) {
+    if (barLength <= 0 || usedMeters <= 0) return '';
+    final exactBars = usedMeters / barLength;
+    var completeBars = (usedMeters / barLength).floor();
+    var remainingCm = ((usedMeters - completeBars * barLength) * 100).round();
+    final barCm = (barLength * 100).round();
+    if (remainingCm >= barCm) {
+      completeBars++;
+      remainingCm = 0;
+    }
+    final detail = remainingCm == 0
+        ? '$completeBars بارة كاملة'
+        : '$completeBars بارة كاملة + $remainingCm سم من البارة الأخيرة';
+    return '(المطلوب الفعلي: ${exactBars.toStringAsFixed(2)} بارة — $detail)';
   }
 
   static List<BomItem> generateBom(
@@ -2305,13 +2322,17 @@ class ComponentCalculator {
       bool priceByWholeBar = false,
       String? selectorType,
       String? roleKey,
+      bool ignoreSavedOverride = false,
     }) {
-      final savedOverride = window.componentOverrides[originalName];
       // Section overrides always carry the Sections schema. Ignore a legacy
       // Accessories row saved under the same Bouchon Batmo name; otherwise
       // moving that item to Profiles would keep the old accessory id/price.
-      final savedProfileOverride =
-          savedOverride is Map && savedOverride.containsKey('bar_length')
+
+      final savedOverride = ignoreSavedOverride
+          ? null
+          : (window.componentOverrides[originalName] ??
+                window.componentOverrides[selectorType ?? '']);
+      final savedProfileOverride = savedOverride is Map
           ? Map<String, dynamic>.from(savedOverride)
           : null;
       final resolvedSelectorType =
@@ -2327,11 +2348,13 @@ class ComponentCalculator {
             useSlidingSeries: usesSlidingSeries,
           )
           ?.toMap();
-      final selectedOverride = preferOverrideMap && overrideMap != null
-          ? overrideMap
-          : savedProfileOverride != null
-          ? savedProfileOverride
-          : overrideMap ?? configuredOverride;
+      // إذا كان المستخدم قد عدّل السعر يدوياً في componentOverrides نعطيه الأولوية القصوى
+      final selectedOverride = savedProfileOverride != null
+          ? (overrideMap != null
+                ? (Map<String, dynamic>.from(overrideMap)
+                    ..addAll(savedProfileOverride))
+                : savedProfileOverride)
+          : (overrideMap ?? configuredOverride);
       // A standalone couvre-joint may be shared by the opening and sliding
       // series of one drawing.  Its own `series_id` is therefore the only
       // reliable source for catalogue validation and stock accounting. Using
@@ -2360,7 +2383,9 @@ class ComponentCalculator {
         }
       }
       return _createProfile(
-        window.componentOverrides,
+        ignoreSavedOverride
+            ? const <String, dynamic>{}
+            : window.componentOverrides,
         originalName,
         color,
         unit: unit,
@@ -2907,6 +2932,56 @@ class ComponentCalculator {
     final hasSeparateCoverTop = hasSeparateCoverOn('top');
     final hasSeparateCoverBottom = hasSeparateCoverOn('bottom');
 
+    String? customSideCoverNote({required bool integrated}) {
+      if (!customSideCoverLayout) return null;
+      if (integrated && !hasIntegratedSideCover) return null;
+      if (!integrated && !hasNonIntegratedSideCover) return null;
+      final fallbackWidth = integrated
+          ? integratedFrameCoverWidth
+          : separateCoverWidth;
+      String sideLabel(String side) => switch (side) {
+        'left' => 'يسار',
+        'right' => 'يمين',
+        'top' => 'أعلى',
+        'bottom' => 'أسفل',
+        _ => side,
+      };
+      String cm(double mm) {
+        final value = mm / 10.0;
+        return value.toStringAsFixed(value == value.roundToDouble() ? 0 : 1);
+      }
+      final details = window.effectiveSideCoverSegments
+          .where((segment) => segment.endOffset > segment.startOffset)
+          .map((segment) {
+            final width = segment.visibleWidth > 0
+                ? segment.visibleWidth
+                : fallbackWidth;
+            final sideLength = window.sideCoverSideLength(segment.side);
+            final hasSpecialSpan =
+                segment.startOffset > 0.1 ||
+                (sideLength > 0 &&
+                    (segment.endOffset - sideLength).abs() > 0.1);
+            final hasSpecialWidth =
+                segment.visibleWidth > 0 &&
+                (segment.visibleWidth - fallbackWidth).abs() > 0.1;
+            if (!hasSpecialSpan && !hasSpecialWidth) return null;
+            final spanText = hasSpecialSpan
+                ? 'من ${cm(segment.startOffset)} إلى ${cm(segment.endOffset)} سم، '
+                : '';
+            return '${sideLabel(segment.side)}: $spanTextعرضه الظاهر ${cm(width)} سم';
+          })
+          .whereType<String>()
+          .toList();
+      if (details.isEmpty) return null;
+      return '⚠ تنبيه الغطاء الجانبي ${integrated ? 'المدمج' : 'المنفصل'}: ${details.join('؛ ')}';
+    }
+
+    BomItem appendSideCoverNote(BomItem item, {required bool integrated}) {
+      final note = customSideCoverNote(integrated: integrated);
+      if (note == null) return item;
+      return item.copyWith(productionNote: note);
+    }
+
     Map<String, dynamic>? selectedSeparateCoverMap;
     if (selectedSeparateSideCover != null) {
       selectedSeparateCoverMap = selectedSeparateSideCover.toMap();
@@ -2934,8 +3009,9 @@ class ComponentCalculator {
     // An accessory colour is independent from the profile colour.  A missing
     // accessory colour means that the catalogue item is colourless; never
     // make it look coloured by inheriting the selected profile colour.
-    final rawAccessoryColorName =
-        window.selectedAccessoryColor?['name']?.toString().trim();
+    final rawAccessoryColorName = window.selectedAccessoryColor?['name']
+        ?.toString()
+        .trim();
     final String? accessoryColorName =
         rawAccessoryColorName == null || rawAccessoryColorName.isEmpty
         ? null
@@ -3803,16 +3879,19 @@ class ComponentCalculator {
 
     if (framePieces.isNotEmpty) {
       items.add(
-        createProfile(
-          'الإطار (Frame)',
-          colorName,
-          pieces: framePieces,
-          pieceCutAngles: framePieceAngles,
-          unit: 'قطاع',
-          overrideMap: outerFrameOverride,
-          // The frame selected in the drawing is authoritative. A stale table
-          // value from an earlier selection must not replace it.
-          preferOverrideMap: true,
+        appendSideCoverNote(
+          createProfile(
+            'الإطار (Frame)',
+            colorName,
+            pieces: framePieces,
+            pieceCutAngles: framePieceAngles,
+            unit: 'قطاع',
+            overrideMap: outerFrameOverride,
+            // The frame selected in the drawing is authoritative. A stale table
+            // value from an earlier selection must not replace it.
+            preferOverrideMap: true,
+          ),
+          integrated: true,
         ),
       );
     }
@@ -4479,19 +4558,22 @@ class ComponentCalculator {
 
       if (sideCoverPieces.isNotEmpty) {
         items.add(
-          createProfile(
-            'الغطاء الجانبي (Side Cover)',
-            colorName,
-            pieces: sideCoverPieces,
-            pieceCutAngles: sideCoverAngles,
-            unit: 'قطاع',
-            overrideMap: selectedSeparateCoverMap,
-            preferOverrideMap: true,
-            // This row is a separate stock profile. Make its catalogue role
-            // explicit instead of relying on its translated display name, so
-            // it survives strict BOM filtering and remains selectable.
-            selectorType: 'side_cover',
-            roleKey: 'side_cover',
+          appendSideCoverNote(
+            createProfile(
+              'الغطاء الجانبي (Side Cover)',
+              colorName,
+              pieces: sideCoverPieces,
+              pieceCutAngles: sideCoverAngles,
+              unit: 'قطاع',
+              overrideMap: selectedSeparateCoverMap,
+              preferOverrideMap: true,
+              // This row is a separate stock profile. Make its catalogue role
+              // explicit instead of relying on its translated display name, so
+              // it survives strict BOM filtering and remains selectable.
+              selectorType: 'side_cover',
+              roleKey: 'side_cover',
+            ),
+            integrated: false,
           ),
         );
       }
@@ -5982,12 +6064,20 @@ class ComponentCalculator {
       );
       final bouchonOverride =
           window.componentOverrides['بوشون باتمو (Bouchon Batmo)'];
-      final bouchonSection =
-          window.getConfiguredSectionForRole('bouchon_batmo') ??
-          window.getSectionByType('bouchon_batmo');
-      final hasBouchonBatmo =
-          bouchonSection != null ||
-          (bouchonOverride is Map && bouchonOverride.isNotEmpty);
+      final bouchonSection = window.getConfiguredSectionForRole(
+        'bouchon_batmo',
+        useSlidingSeries: false,
+      );
+      final configuredBouchonId = bouchonSection?.id;
+      final overrideBouchonId = bouchonOverride is Map
+          ? int.tryParse('${bouchonOverride['id'] ?? ''}')
+          : null;
+      final validBouchonOverride =
+          configuredBouchonId != null &&
+              overrideBouchonId == configuredBouchonId
+          ? Map<String, dynamic>.from(bouchonOverride as Map)
+          : bouchonSection?.toMap();
+      final hasBouchonBatmo = bouchonSection != null;
 
       if (hasBouchonBatmo) {
         if (bouchonSection != null ||
@@ -5999,8 +6089,9 @@ class ComponentCalculator {
               accessoryColorName,
               unit: 'قطعة',
               qty: doubleSashCount.toDouble(),
-              overrideMap: bouchonOverride,
+              overrideMap: validBouchonOverride,
               preferOverrideMap: true,
+              ignoreSavedOverride: true,
               selectorType: 'bouchon_batmo',
               roleKey: 'bouchon_batmo',
             ),
@@ -8598,20 +8689,19 @@ class ComponentCalculator {
           // requested parclose capacity or the resulting Intercalaire.
           double cellThick = cellGlass.totalThickness(window.allGlassCache);
           if (cellGlass.structure == GlassStructure.double) {
-            final spacerSizes = window.availableIntercalls
-                .map((item) {
-                  final raw = item['thickness'];
-                  return raw is num
-                      ? raw.toDouble()
-                      : double.tryParse(raw?.toString() ?? '');
-                })
-                .whereType<double>()
-                .where((value) => value > 0)
-                .toList()
-              ..sort();
-            final minimumSpacer = spacerSizes.isEmpty
-                ? 6.0
-                : spacerSizes.first;
+            final spacerSizes =
+                window.availableIntercalls
+                    .map((item) {
+                      final raw = item['thickness'];
+                      return raw is num
+                          ? raw.toDouble()
+                          : double.tryParse(raw?.toString() ?? '');
+                    })
+                    .whereType<double>()
+                    .where((value) => value > 0)
+                    .toList()
+                  ..sort();
+            final minimumSpacer = spacerSizes.isEmpty ? 6.0 : spacerSizes.first;
             cellThick =
                 (cellGlass.thicknessOuter ?? 4.0) +
                 (cellGlass.thicknessInner ?? 4.0) +
@@ -8692,10 +8782,12 @@ class ComponentCalculator {
           // series role; drawing mode or product name must not enable it.
           final reductionSeriesForGlass =
               window.activeSlidingSeries ?? window.activeSeries;
+          // A reducer is never inferred from a product name or from missing
+          // role metadata. It is valid only when the active series explicitly
+          // assigns one of its own sections to the reducer role.
           final bool reducerAllowed =
-              reductionSeriesForGlass == null ||
-              window.seriesUsesReducer(reductionSeriesForGlass) ||
-              !window.seriesHasConfiguredRoles(reductionSeriesForGlass);
+              reductionSeriesForGlass != null &&
+              window.seriesUsesReducer(reductionSeriesForGlass);
 
           void addReducteurPieces(int multiplier) {
             hasSimpleGlassReducerPieces = true;
@@ -9387,6 +9479,16 @@ class ComponentCalculator {
         'glazing_bead',
         useSlidingSeries: window.activeSlidingSeries?.id == series.id,
       );
+      final configuredSimpleSections = window.getConfiguredSectionsForRole(
+        'glazing_bead',
+        useSlidingSeries: window.activeSlidingSeries?.id == series.id,
+        showWhenGlass: 'simple',
+      );
+      final configuredDoubleSections = window.getConfiguredSectionsForRole(
+        'glazing_bead',
+        useSlidingSeries: window.activeSlidingSeries?.id == series.id,
+        showWhenGlass: 'double',
+      );
       // A configured role is authoritative. Only legacy series with no role
       // rows may use the historical code/type fallback below.
       if (configuredSections.isEmpty &&
@@ -9410,7 +9512,17 @@ class ComponentCalculator {
       }
 
       AluminumSection? findSimpleParclose() {
-        final candidates = series.sections.where(isParcloseSection).toList();
+        final allowedIds = configuredSimpleSections
+            .map((section) => section.id)
+            .toSet();
+        final candidates = series.sections
+            .where(
+              (section) =>
+                  isParcloseSection(section) &&
+                  (configuredSections.isEmpty ||
+                      allowedIds.contains(section.id)),
+            )
+            .toList();
         for (final section in candidates) {
           if (section.code.trim() == '514') return section;
         }
@@ -9425,11 +9537,16 @@ class ComponentCalculator {
 
       AluminumSection? findDoubleParclose() {
         final minimumCapacity = math.max(10.0, requiredDoubleThickness);
+        final allowedIds = configuredDoubleSections
+            .map((section) => section.id)
+            .toSet();
         final candidates =
             series.sections
                 .where(
                   (section) =>
                       isParcloseSection(section) &&
+                      (configuredSections.isEmpty ||
+                          allowedIds.contains(section.id)) &&
                       section.maxGlassThickness >= minimumCapacity,
                 )
                 .toList()
@@ -9443,6 +9560,8 @@ class ComponentCalculator {
                 .where(
                   (section) =>
                       isParcloseSection(section) &&
+                      (configuredSections.isEmpty ||
+                          allowedIds.contains(section.id)) &&
                       section.maxGlassThickness > 10,
                 )
                 .toList()
@@ -9549,17 +9668,55 @@ class ComponentCalculator {
       return null;
     }
 
-    final selectedParcloseSimple = overrideMap(
-      'باكيت زجاج مفرد (Parclose Simple)',
+    Map<String, dynamic>? validParcloseOverride(
+      Map<String, dynamic>? candidate,
+      AluminumSeries? series, {
+      required bool sliding,
+      required String glassRule,
+    }) {
+      if (candidate == null || series == null) return null;
+      final rawId = candidate['id'];
+      final id = rawId is num
+          ? rawId.toInt()
+          : int.tryParse(rawId?.toString() ?? '');
+      if (id == null || !series.sections.any((section) => section.id == id)) {
+        return null;
+      }
+      final configured = window.getConfiguredSectionsForRole(
+        'glazing_bead',
+        useSlidingSeries: sliding,
+        showWhenGlass: glassRule,
+      );
+      if (window.seriesHasConfiguredRoles(series) &&
+          !configured.any((section) => section.id == id)) {
+        return null;
+      }
+      return candidate;
+    }
+
+    final selectedParcloseSimple = validParcloseOverride(
+      overrideMap('باكيت زجاج مفرد (Parclose Simple)'),
+      window.activeSeries,
+      sliding: false,
+      glassRule: 'simple',
     );
-    final selectedParcloseDouble = overrideMap(
-      'باكيت زجاج مزدوج (Parclose Double)',
+    final selectedParcloseDouble = validParcloseOverride(
+      overrideMap('باكيت زجاج مزدوج (Parclose Double)'),
+      window.activeSeries,
+      sliding: false,
+      glassRule: 'double',
     );
-    final selectedSlidingParcloseSimple = overrideMap(
-      'باكيت زجاج منزلق مفرد (Parclose Simple Coulissant)',
+    final selectedSlidingParcloseSimple = validParcloseOverride(
+      overrideMap('باكيت زجاج منزلق مفرد (Parclose Simple Coulissant)'),
+      window.activeSlidingSeries,
+      sliding: true,
+      glassRule: 'simple',
     );
-    final selectedSlidingParcloseDouble = overrideMap(
-      'باكيت زجاج منزلق مزدوج (Parclose Double Coulissant)',
+    final selectedSlidingParcloseDouble = validParcloseOverride(
+      overrideMap('باكيت زجاج منزلق مزدوج (Parclose Double Coulissant)'),
+      window.activeSlidingSeries,
+      sliding: true,
+      glassRule: 'double',
     );
 
     bool genericParcloseMatches({required bool doubleGlass}) {
@@ -9574,41 +9731,53 @@ class ComponentCalculator {
           selectedParcloseSimple ??
           parcloseSimple ??
           (genericParcloseMatches(doubleGlass: false)
-              ? chosenParclose
-              : null) ??
-          (parcloseDouble != null ? parcloseDouble : chosenParclose);
-      if (targetOverride != null) {
-        items.add(
-          createProfile(
-            'باكيت زجاج مفرد (Parclose Simple)',
-            colorName,
-            pieces: parcloseSimplePieces,
-            unit: 'قطاع',
-            overrideMap: targetOverride,
-            selectorType: 'parclose_simple',
-          ),
-        );
-      }
+              ? validParcloseOverride(
+                  chosenParclose,
+                  window.activeSeries,
+                  sliding: false,
+                  glassRule: 'simple',
+                )
+              : null);
+      items.add(
+        createProfile(
+          targetOverride == null
+              ? 'لا توجد Parclose Simple مناسبة لهذا الزجاج'
+              : 'باكيت زجاج مفرد (Parclose Simple)',
+          colorName,
+          pieces: parcloseSimplePieces,
+          unit: 'قطاع',
+          overrideMap: targetOverride,
+          selectorType: 'parclose_simple',
+          ignoreSavedOverride: true,
+        ),
+      );
     }
 
     if (parcloseDoublePieces.isNotEmpty) {
       final targetOverride =
           selectedParcloseDouble ??
           parcloseDouble ??
-          (genericParcloseMatches(doubleGlass: true) ? chosenParclose : null) ??
-          (parcloseSimple != null ? parcloseSimple : chosenParclose);
-      if (targetOverride != null) {
-        items.add(
-          createProfile(
-            'باكيت زجاج مزدوج (Parclose Double)',
-            colorName,
-            pieces: parcloseDoublePieces,
-            unit: 'قطاع',
-            overrideMap: targetOverride,
-            selectorType: 'parclose_double',
-          ),
-        );
-      }
+          (genericParcloseMatches(doubleGlass: true)
+              ? validParcloseOverride(
+                  chosenParclose,
+                  window.activeSeries,
+                  sliding: false,
+                  glassRule: 'double',
+                )
+              : null);
+      items.add(
+        createProfile(
+          targetOverride == null
+              ? 'لا توجد Parclose Double مناسبة لهذا الزجاج'
+              : 'باكيت زجاج مزدوج (Parclose Double)',
+          colorName,
+          pieces: parcloseDoublePieces,
+          unit: 'قطاع',
+          overrideMap: targetOverride,
+          selectorType: 'parclose_double',
+          ignoreSavedOverride: true,
+        ),
+      );
     }
 
     if (slidingParcloseSimplePieces.isNotEmpty) {
@@ -9616,45 +9785,53 @@ class ComponentCalculator {
           selectedSlidingParcloseSimple ??
           slidingParcloseSimple ??
           (genericParcloseMatches(doubleGlass: false)
-              ? chosenParclose
-              : null) ??
-          selectedParcloseSimple ??
-          parcloseSimple ??
-          chosenParclose;
-      if (targetOverride != null) {
-        items.add(
-          createProfile(
-            'باكيت زجاج منزلق مفرد (Parclose Simple Coulissant)',
-            colorName,
-            pieces: slidingParcloseSimplePieces,
-            unit: 'قطاع',
-            overrideMap: targetOverride,
-            selectorType: 'sliding_parclose_simple',
-          ),
-        );
-      }
+              ? validParcloseOverride(
+                  chosenParclose,
+                  window.activeSlidingSeries,
+                  sliding: true,
+                  glassRule: 'simple',
+                )
+              : null);
+      items.add(
+        createProfile(
+          targetOverride == null
+              ? 'لا توجد Parclose Simple منزلقة مناسبة لهذا الزجاج'
+              : 'باكيت زجاج منزلق مفرد (Parclose Simple Coulissant)',
+          colorName,
+          pieces: slidingParcloseSimplePieces,
+          unit: 'قطاع',
+          overrideMap: targetOverride,
+          selectorType: 'sliding_parclose_simple',
+          ignoreSavedOverride: true,
+        ),
+      );
     }
 
     if (slidingParcloseDoublePieces.isNotEmpty) {
       final targetOverride =
           selectedSlidingParcloseDouble ??
           slidingParcloseDouble ??
-          (genericParcloseMatches(doubleGlass: true) ? chosenParclose : null) ??
-          selectedParcloseDouble ??
-          parcloseDouble ??
-          chosenParclose;
-      if (targetOverride != null) {
-        items.add(
-          createProfile(
-            'باكيت زجاج منزلق مزدوج (Parclose Double Coulissant)',
-            colorName,
-            pieces: slidingParcloseDoublePieces,
-            unit: 'قطاع',
-            overrideMap: targetOverride,
-            selectorType: 'sliding_parclose_double',
-          ),
-        );
-      }
+          (genericParcloseMatches(doubleGlass: true)
+              ? validParcloseOverride(
+                  chosenParclose,
+                  window.activeSlidingSeries,
+                  sliding: true,
+                  glassRule: 'double',
+                )
+              : null);
+      items.add(
+        createProfile(
+          targetOverride == null
+              ? 'لا توجد Parclose Double منزلقة مناسبة لهذا الزجاج'
+              : 'باكيت زجاج منزلق مزدوج (Parclose Double Coulissant)',
+          colorName,
+          pieces: slidingParcloseDoublePieces,
+          unit: 'قطاع',
+          overrideMap: targetOverride,
+          selectorType: 'sliding_parclose_double',
+          ignoreSavedOverride: true,
+        ),
+      );
     }
 
     double maxGlassCapacity(Map<String, dynamic>? profile) {
@@ -9801,43 +9978,31 @@ class ComponentCalculator {
       // outer frame belongs to the opening series, but Réducteure must still
       // be resolved against the selected sliding series.
       final reductionSeries = window.activeSlidingSeries ?? window.activeSeries;
-      final bool reducerAllowedForSeries =
-          reductionSeries == null ||
-          window.seriesUsesReducer(reductionSeries) ||
-          !window.seriesHasConfiguredRoles(reductionSeries);
-      if (reducerAllowedForSeries && reducteurOverride == null) {
-        bool isReducteurSection(dynamic s) {
-          final n = s.name.toLowerCase();
-          final t = s.type.toLowerCase();
-          final c = s.code.toLowerCase();
-          return (c.contains('67114') ||
-                  n.contains('reduct') ||
-                  n.contains('مخفض') ||
-                  n.contains('ريديكتور') ||
-                  t.contains('reduct')) &&
-              !t.contains('rail') &&
-              !t.contains('cadre') &&
-              !t.contains('frame') &&
-              !n.contains('rail') &&
-              !n.contains('سكة') &&
-              !n.contains('cadre') &&
-              !n.contains('إطار');
-        }
-
-        // البحث عن قطاع reducteur صريح (كود 67114 أو reducteur) واستبعاد الباركلوز والسكة
-        if (reductionSeries != null) {
-          try {
-            final redSec = reductionSeries.sections.firstWhere(
-              isReducteurSection,
+      final configuredReducers = reductionSeries == null
+          ? const <AluminumSection>[]
+          : window.getConfiguredSectionsForRole(
+              'reducer',
+              useSlidingSeries:
+                  window.activeSlidingSeries?.id == reductionSeries.id,
             );
-            reducteurOverride = redSec.toMap();
-          } catch (_) {}
-        }
+      final configuredReducerIds = configuredReducers
+          .map((section) => section.id)
+          .toSet();
+      final rawReducerId = reducteurOverride?['id'];
+      final reducerId = rawReducerId is num
+          ? rawReducerId.toInt()
+          : int.tryParse(rawReducerId?.toString() ?? '');
+      if (reducerId == null || !configuredReducerIds.contains(reducerId)) {
+        reducteurOverride = configuredReducers.isEmpty
+            ? null
+            : window.sectionMapWithSelectedColorPrice(configuredReducers.first);
       }
+      final bool reducerAllowedForSeries =
+          reductionSeries != null && reducteurOverride != null;
 
-      // A manually selected reducer is already a valid catalogue selection;
-      // do not hide its quantity row just because the active series has not
-      // finished loading (this is common immediately after app startup).
+      // The selected reducer must be one of the sections explicitly assigned
+      // to this series. A stale manual selection from another series is never
+      // allowed to leak into the BOM.
       if (reducerAllowedForSeries) {
         items.add(
           createProfile(
@@ -9848,6 +10013,7 @@ class ComponentCalculator {
             overrideMap: reducteurOverride,
             selectorType: '67114',
             roleKey: 'reducer',
+            ignoreSavedOverride: true,
           ),
         );
       }
@@ -10551,8 +10717,12 @@ class ComponentCalculator {
       final displayName = [
         roles.join(' + '),
         if (catalogLabel.isNotEmpty) catalogLabel,
-        '(المطلوب الفعلي: ${exact.toStringAsFixed(2)} بارة)',
       ].join('\n');
+      final productionNotes = group
+          .map((item) => item.productionNote?.trim())
+          .whereType<String>()
+          .where((note) => note.isNotEmpty)
+          .toSet();
 
       mergedByFirst[first] = BomItem(
         category: 'profile',
@@ -10573,6 +10743,9 @@ class ComponentCalculator {
         pieces: pieces.isEmpty ? null : pieces,
         pieceCutAngles: pieces.isEmpty ? null : pieceCutAngles,
         cuttingList: cuttingList,
+        productionNote: productionNotes.isEmpty
+            ? null
+            : productionNotes.join('\n'),
         exactQuantity: exact,
         catalogItemId: first.catalogItemId,
         inventoryItemType: first.inventoryItemType,
@@ -10683,7 +10856,6 @@ class ComponentCalculator {
       final displayName = [
         roles.join(' + '),
         if (catalogLabel != null && catalogLabel.isNotEmpty) catalogLabel,
-        '(المطلوب الفعلي: ${exact.toStringAsFixed(2)} بارة)',
       ].join('\n');
 
       mergedByFirst[first] = BomItem(
@@ -10705,6 +10877,7 @@ class ComponentCalculator {
         pieces: pieces.isEmpty ? null : pieces,
         pieceCutAngles: pieces.isEmpty ? null : pieceCutAngles,
         cuttingList: cuttingList,
+        productionNote: first.productionNote,
         exactQuantity: exact,
         catalogItemId: first.catalogItemId,
         inventoryItemType: first.inventoryItemType,
@@ -11136,11 +11309,6 @@ class ComponentCalculator {
     if (subName.isNotEmpty) {
       name += '\n$subName';
     }
-    if (exactBars != null) {
-      name +=
-          '\n(المطلوب الفعلي: ${exactBars.toStringAsFixed(2)} بارة / ${exactBars.toStringAsFixed(2)} bar)';
-    }
-
     if (isLinked && (finalLength == null || finalLength == 0.0)) {
       final ov = selectedOverride;
       finalLength = (ov['bar_length'] as num?)?.toDouble() ?? 0.0;
@@ -11521,11 +11689,12 @@ class ComponentCalculator {
         double exactBars = optimization['exactBars'];
         int optimizedBars = optimization['optimizedBars'];
 
-        if (!isSqmOrLinear) finalQty = optimizedBars.toDouble();
+        if (!isSqmOrLinear) {
+          finalQty = optimizedBars.toDouble();
+          finalExactQuantity = exactBars;
+        }
         finalLength = barLength;
 
-        // Append subtext to name
-        name = "$name\n(المطلوب الفعلي: ${exactBars.toStringAsFixed(2)} قطاع)";
       }
 
       // Format cutting list

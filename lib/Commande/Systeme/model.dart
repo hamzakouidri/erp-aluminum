@@ -3889,6 +3889,7 @@ class WindowModel extends ChangeNotifier {
   List<AluminumSection> getConfiguredSectionsForRole(
     String roleKey, {
     bool? useSlidingSeries,
+    String? showWhenGlass,
   }) {
     final series = _seriesForConfiguredRole(useSlidingSeries: useSlidingSeries);
     if (series == null) return const <AluminumSection>[];
@@ -3913,10 +3914,29 @@ class WindowModel extends ChangeNotifier {
     final sliding =
         useSlidingSeries ??
         (systemMode == 'sliding' || usesSlidingPrimaryProfiles);
+    final requestedGlass = showWhenGlass?.trim().toLowerCase();
+    bool matchesGlassRule(int sectionId) {
+      if (requestedGlass == null || requestedGlass.isEmpty) return true;
+      final configuredRule =
+          _seriesDesignRoleOptions[series.id]?[roleKey
+                  .trim()]?[sectionId]?['show_when_glass']
+              ?.toString()
+              .trim()
+              .toLowerCase() ??
+          'any';
+      if (configuredRule.isEmpty || configuredRule == 'any') return true;
+      if (requestedGlass == 'simple' || requestedGlass == 'single') {
+        return configuredRule == 'simple' || configuredRule == 'single';
+      }
+      if (requestedGlass == 'double') return configuredRule == 'double';
+      return configuredRule == requestedGlass;
+    }
+
     return series.sections
         .where(
           (section) =>
               configuredIds.contains(section.id) &&
+              matchesGlassRule(section.id) &&
               _configuredSectionMatchesScope(
                 series,
                 roleKey,
@@ -10796,85 +10816,8 @@ class WindowModel extends ChangeNotifier {
       }
     }
 
-    // Set Bouchon Batmo
-    if (!strictProfileRoles &&
-        !componentOverrides.containsKey('بوشون باتمو (Bouchon Batmo)')) {
-      var bouchons = series.sections.where((s) {
-        final t = s.type.toLowerCase().trim();
-        final n = s.name.toLowerCase().trim();
-        final isBouchon =
-            t.contains('bouchon') ||
-            n.contains('bouchon') ||
-            t.contains('بوشون') ||
-            n.contains('بوشون') ||
-            t.contains('bochon') ||
-            n.contains('bochon');
-        if (!isBouchon) return false;
-        return t.contains('batmo') ||
-            t.contains('battement') ||
-            t.contains('meneau') ||
-            t.contains('باطم') ||
-            t.contains('باطو') ||
-            t.contains('منو') ||
-            n.contains('batmo') ||
-            n.contains('battement') ||
-            n.contains('meneau') ||
-            n.contains('باطم') ||
-            n.contains('باطو') ||
-            n.contains('منو');
-      }).toList();
-
-      if (bouchons.isEmpty) {
-        bouchons = series.sections.where((s) {
-          final t = s.type.toLowerCase().trim();
-          final n = s.name.toLowerCase().trim();
-          return t.contains('bouchon') ||
-              n.contains('bouchon') ||
-              t.contains('بوشون') ||
-              n.contains('بوشون') ||
-              t.contains('bochon') ||
-              n.contains('bochon');
-        }).toList();
-      }
-
-      if (bouchons.isNotEmpty) {
-        componentOverrides['بوشون باتمو (Bouchon Batmo)'] = bouchons.first
-            .toMap();
-      } else if (d != null) {
-        var res = await d.query(
-          'Sections',
-          where:
-              'series_id = ? AND '
-              '(type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ?) AND '
-              '(type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ? OR type LIKE ? OR name LIKE ?)',
-          whereArgs: [
-            series.id,
-            '%bouchon%',
-            '%bouchon%',
-            '%بوشون%',
-            '%بوشون%',
-            '%bochon%',
-            '%bochon%',
-            '%batmo%',
-            '%batmo%',
-            '%battement%',
-            '%battement%',
-            '%meneau%',
-            '%meneau%',
-            '%باطم%',
-            '%باطم%',
-            '%باطو%',
-            '%باطو%',
-            '%منو%',
-            '%منو%',
-          ],
-        );
-        if (res.isNotEmpty) {
-          componentOverrides['بوشون باتمو (Bouchon Batmo)'] =
-              Map<String, dynamic>.from(res.first);
-        }
-      }
-    }
+    // Bouchon Batmo is deliberately never inferred from a section name. It
+    // is loaded only from the explicit `bouchon_batmo` role of this series.
 
     // Set Default Shutter Components
     if (d != null) {

@@ -630,7 +630,18 @@ void main() {
     );
 
     expect(result['optimizedBars'], 2);
-    expect(result['exactBars'], closeTo(1.75, 0.001));
+    expect(result['exactBars'], closeTo(10 / 6, 0.001));
+    expect(result['usedMeters'], 10);
+  });
+
+  test('profile usage explains complete bars and last remainder', () {
+    expect(
+      ComponentCalculator.formatProfileUsageDetails(
+        usedMeters: 33,
+        barLength: 6,
+      ),
+      '(المطلوب الفعلي: 5.50 بارة — 5 بارة كاملة + 300 سم من البارة الأخيرة)',
+    );
   });
 
   test('bardage is priced by complete stock pieces, not linear metres', () {
@@ -1386,6 +1397,80 @@ void main() {
     expect(coverItem.pieces, containsAllInOrder([1.275, 1.075]));
   });
 
+  test('side-cover workshop note lists only customised sides', () {
+    final frame = AluminumSection(
+      id: 1,
+      seriesId: 1,
+      code: 'F-1',
+      name: 'Plain frame',
+      type: 'frame',
+      isFrame: true,
+      visibleWidth: 60,
+    );
+    final cover = AluminumSection(
+      id: 2,
+      seriesId: 1,
+      code: 'CJ-2',
+      name: 'Side cover',
+      type: 'side_cover',
+      couvreJointWidth: 60,
+      visibleWidth: 30,
+      barLength: 6,
+    );
+    final model = WindowModel(db: FakeSqlDatabase(), width: 1000, height: 1200)
+      ..activeSeries = AluminumSeries(
+        id: 1,
+        profileId: 1,
+        name: 'Test',
+        type: 'PVC',
+        sections: [frame, cover],
+      )
+      ..frameOverride = frame.toMap()
+      ..selectedSideCover = cover
+      ..sideCoverOverride = cover.toMap()
+      ..useCustomSideCoverLayout = true
+      ..sideCoverSegments = const [
+        SideCoverSegment(
+          side: 'left',
+          startOffset: 0,
+          endOffset: 1200,
+          visibleWidth: 60,
+        ),
+        SideCoverSegment(
+          side: 'right',
+          startOffset: 0,
+          endOffset: 700,
+          visibleWidth: 30,
+        ),
+        SideCoverSegment(
+          side: 'top',
+          startOffset: 0,
+          endOffset: 1000,
+          visibleWidth: 60,
+        ),
+        SideCoverSegment(
+          side: 'bottom',
+          startOffset: 0,
+          endOffset: 1000,
+          visibleWidth: 60,
+        ),
+      ]
+      ..zones = [
+        WindowZone(id: 'z1', boundary: const Rect.fromLTWH(0, 0, 1000, 1200)),
+      ];
+
+    final coverItem = ComponentCalculator.generateBom(model, {}).firstWhere(
+      (item) => item.originalName == 'الغطاء الجانبي (Side Cover)',
+    );
+
+    expect(coverItem.productionNote, contains('يمين'));
+    expect(coverItem.productionNote, contains('من 0 إلى 70 سم'));
+    expect(coverItem.productionNote, contains('عرضه الظاهر 3 سم'));
+    expect(coverItem.productionNote, isNot(contains('يسار')));
+    expect(coverItem.productionNote, isNot(contains('أعلى')));
+    expect(coverItem.productionNote, isNot(contains('أسفل')));
+  });
+
   test('series colour previews use the real requested finishes', () {
     final ral9007 = getEffectiveGradientColors(FrameColor.white, {
       'name': 'Gris 9007',
@@ -1473,6 +1558,55 @@ void main() {
       glass.name,
       contains('Dimensions / القياس: 990 × 990 مم\n- Quantité / الكمية: 2'),
     );
+  });
+
+  test('simple glazing never falls back to a double parclose', () {
+    final frame = AluminumSection(
+      id: 1,
+      seriesId: 1,
+      code: 'F-1',
+      name: 'Frame',
+      type: 'frame',
+      isFrame: true,
+      visibleWidth: 60,
+    );
+    final doubleParclose = AluminumSection(
+      id: 20,
+      seriesId: 1,
+      code: 'PD',
+      name: 'Parclose Double',
+      type: 'parclose',
+      maxGlassThickness: 24,
+      barLength: 6,
+    );
+    final model = WindowModel(db: FakeSqlDatabase(), width: 1000, height: 1000)
+      ..activeSeries = AluminumSeries(
+        id: 1,
+        profileId: 1,
+        name: 'TPR 40000',
+        type: 'Aluminium',
+        sections: [frame, doubleParclose],
+      )
+      ..frameOverride = frame.toMap()
+      ..zones = [
+        WindowZone(
+          id: 'z1',
+          boundary: const Rect.fromLTWH(0, 0, 1000, 1000),
+          glass: const GlassSpecification(
+            structure: GlassStructure.simple,
+            thicknessOuter: 5,
+          ),
+        ),
+      ];
+
+    final parclose = ComponentCalculator.generateBom(
+      model,
+      {},
+    ).firstWhere((row) => row.selectorType == 'parclose_simple');
+
+    expect(parclose.isMissing, isTrue);
+    expect(parclose.catalogItemId, isNull);
+    expect(parclose.originalName, 'لا توجد Parclose Simple مناسبة لهذا الزجاج');
   });
 
   test(

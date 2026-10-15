@@ -862,8 +862,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
 
   Future<void> _shareSectionForRole(_SeriesRole role) async {
     final targetSeriesId = _seriesId;
-    final targetProfileId = (_selectedProfile?['id'] as num?)?.toInt();
-    if (targetSeriesId == null || targetProfileId == null) return;
+    if (targetSeriesId == null) return;
 
     final allSections = await widget.db.searchSectionsWithProfile('');
     final candidates = allSections.where((section) {
@@ -887,7 +886,6 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       context: context,
       builder: (dialogContext) {
         int? selectedSectionId;
-        var targetScope = 'profile';
         return StatefulBuilder(
           builder: (context, setDialogState) => AlertDialog(
             title: Text(
@@ -902,30 +900,18 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  DropdownButtonFormField<String>(
-                    initialValue: targetScope,
-                    decoration: InputDecoration(
-                      labelText: _t('نطاق المشاركة', 'Portée du partage'),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.account_tree_outlined),
+                    title: Text(
+                      _t('السلسلة الحالية فقط', 'Série actuelle seulement'),
                     ),
-                    items: [
-                      DropdownMenuItem(
-                        value: 'profile',
-                        child: Text(
-                          _t(
-                            'كل سلاسل النظام الحالي',
-                            'Toutes les séries du système actuel',
-                          ),
-                        ),
+                    subtitle: Text(
+                      _t(
+                        'سيظهر البروفيل داخل السلسلة المفتوحة فقط، ولن ينتقل إلى بقية السلاسل.',
+                        'Le profil sera disponible uniquement dans la série ouverte.',
                       ),
-                      DropdownMenuItem(
-                        value: 'series',
-                        child: Text(
-                          _t('السلسلة الحالية فقط', 'Série actuelle seulement'),
-                        ),
-                      ),
-                    ],
-                    onChanged: (value) =>
-                        setDialogState(() => targetScope = value ?? 'profile'),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -981,7 +967,6 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                     ? null
                     : () => Navigator.pop(dialogContext, {
                         'section_id': selectedSectionId,
-                        'target_scope': targetScope,
                       }),
                 child: Text(_t('مشاركة', 'Partager')),
               ),
@@ -991,14 +976,11 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       },
     );
     final sourceSectionId = (result?['section_id'] as num?)?.toInt();
-    final selectedTargetScope = result?['target_scope']?.toString();
-    if (sourceSectionId == null || selectedTargetScope == null) return;
+    if (sourceSectionId == null) return;
     await widget.db.saveSectionSharingRule(
       sourceSectionId: sourceSectionId,
-      targetScope: selectedTargetScope,
-      targetId: selectedTargetScope == 'profile'
-          ? targetProfileId
-          : targetSeriesId,
+      targetScope: 'series',
+      targetId: targetSeriesId,
       roleKey: role.key,
     );
     if (mounted && _selectedSeries != null) {

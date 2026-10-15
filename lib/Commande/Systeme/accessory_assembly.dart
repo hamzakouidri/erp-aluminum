@@ -314,11 +314,18 @@ int assemblyQuantity(
     final sectionQuantities = demand.sectionId == null
         ? null
         : sectionSideQuantities[demand.sectionId];
-
     if (sectionQuantities != null) {
-      quantity +=
-          topCorners * sectionQuantities.$1 +
-          bottomCorners * sectionQuantities.$2;
+      if (isClam) {
+        // الكلام يركب في جميع زوايا الـ 45° (العلوية والسفلية) بنفس الكمية
+        final clamPerCorner = sectionQuantities.$1 > 0
+            ? sectionQuantities.$1
+            : 1;
+        quantity += (topCorners + bottomCorners) * clamPerCorner;
+      } else {
+        quantity +=
+            topCorners * sectionQuantities.$1 +
+            bottomCorners * sectionQuantities.$2;
+      }
     } else if (demand.isExtension) {
       // إطار الإضافة المنفرد (سكة واحدة) يأخذ 1 كالم لكل زاوية 45°
       quantity += topCorners * 1 + bottomCorners * 1;

@@ -982,11 +982,6 @@ class CatalogCandidateResolver {
     CatalogCandidateQuery query,
   ) {
     final roleKey = (section['design_role_key'] ?? '').toString();
-    // The quantity-table swap is a component-family selector. A glazing bead
-    // row must therefore offer every glazing-bead variant configured for the
-    // active series (simple/double); the chosen profile itself then becomes
-    // the single override used by every matching BOM occurrence.
-    if (roleKey.trim().toLowerCase() == 'glazing_bead') return true;
     if (_roleIgnoresGlassRule(roleKey)) return true;
     final glassRule = (section['design_show_when_glass'] ?? 'any')
         .toString()
@@ -2290,16 +2285,18 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
                     : isBaseSashSelector
                     ? const ['sash']
                     : roleKeys;
-                final configured = await db.getDesignSectionsForScopedDialogRoles(
-                  widget.seriesId!,
-                  scopedRoleKeys,
-                  usageScope:
-                      widget.accessoryDrawingMode == AccessoryDrawingMode.sliding
-                      ? 'sliding'
-                      : 'opening',
-                  requireDialog: true,
-                  requireQuantity: true,
-                );
+                final configured = await db
+                    .getDesignSectionsForScopedDialogRoles(
+                      widget.seriesId!,
+                      scopedRoleKeys,
+                      usageScope:
+                          widget.accessoryDrawingMode ==
+                              AccessoryDrawingMode.sliding
+                          ? 'sliding'
+                          : 'opening',
+                      requireDialog: true,
+                      requireQuantity: true,
+                    );
                 if (configured.isNotEmpty) {
                   data = configured;
                 }

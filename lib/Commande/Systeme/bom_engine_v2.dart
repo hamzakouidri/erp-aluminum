@@ -129,26 +129,6 @@ class BomEngineV2 {
           return item;
         }
 
-        // A real catalogue product already selected for this BOM is not a
-        // placeholder.  It may be selected through a section/default rule
-        // whose child role is intentionally not offered in the replacement
-        // dialog.  Do not make that physical, enabled item disappear merely
-        // because a second resolver pass cannot rediscover the same rule.
-        // Invalid selections are cleared during stabilization, before this
-        // point, so this does not revive accessories from another series.
-        if (item.isActive &&
-            !item.isMissing &&
-            item.catalogItemId != null &&
-            item.catalogItemId! > 0) {
-          final hasPieces = item.pieces != null && item.pieces!.isNotEmpty;
-          final qty = item.requiredQuantity > 0
-              ? item.requiredQuantity
-              : item.quantity;
-          if (!hasPieces && qty <= 0) {
-            return null;
-          }
-          return item;
-        }
         // A configured Kit is authoritative: its active child rows are the
         // complete list saved on the Kits page. They must remain available for
         // the expandable Kit row even when a child has no standalone rule row.
@@ -204,18 +184,6 @@ class BomEngineV2 {
     final kept = resolved.whereType<BomItem>().toList();
     final assemblyResult = await _assemblyItems(window, kept);
     kept.addAll(assemblyResult);
-    if (!assemblyResult.any(
-      (i) => i.roleKey == 'assembly_screw' || i.originalName == 'براغي التجميع',
-    )) {
-      final rawAssemblyScrews = items.where(
-        (i) =>
-            (i.originalName == 'براغي التجميع' ||
-                (i.roleKey ?? '').trim().toLowerCase() == 'assembly_screw') &&
-            i.isActive &&
-            i.quantity > 0,
-      );
-      kept.addAll(rawAssemblyScrews);
-    }
     kept.addAll(await _linkedAccessoryItems(window, kept));
     final existingIds = kept
         .map((item) => item.catalogItemId)
@@ -230,21 +198,6 @@ class BomEngineV2 {
               !existingIds.contains(item.catalogItemId),
         ),
       );
-    } else {
-      final rawKits = items.where(
-        (i) =>
-            const {
-              'kit',
-              'sliding_kit',
-              'sliding_kit_40000',
-              'sliding_kit_67000',
-            }.contains(
-              (i.roleKey ?? i.selectorType ?? '').trim().toLowerCase(),
-            ) &&
-            i.isActive &&
-            i.quantity > 0,
-      );
-      kept.addAll(rawKits);
     }
     kept.addAll(await _frameRoleJoints(kept));
     final visibleItems = _deduplicateRoleAccessories(kept);
@@ -288,29 +241,6 @@ class BomEngineV2 {
       );
       if (rules.any((rule) => _catalogInt(rule['show_in_quantity']) != 0)) {
         return true;
-      }
-    }
-    // Legacy fallback: if no CatalogItemRule exists for this series+role, check
-    // whether any accessory carries the corresponding boolean flag directly on
-    // the Accessories table (e.g. is_installation_screw = 1).  This keeps
-    // vis de pose visible for series that were configured before the rule
-    // system was introduced, preventing it from appearing unlinked/orange.
-    const legacyFlagForRole = <String, String>{
-      'installation_screw': 'is_installation_screw',
-      'batmo_screw': 'is_batmo_screw',
-      'bouchon_batmo_screw': 'is_bouchon_batmo_screw',
-    };
-    final legacyFlag = legacyFlagForRole[role.trim().toLowerCase()];
-    if (legacyFlag != null) {
-      final database = await _db.db;
-      if (database != null) {
-        final legacyRows = await database.query(
-          'Accessories',
-          columns: ['id'],
-          where: '$legacyFlag = 1 AND (is_active = 1 OR is_active IS NULL)',
-          limit: 1,
-        );
-        if (legacyRows.isNotEmpty) return true;
       }
     }
     return false;
@@ -1690,16 +1620,6 @@ class BomEngineV2 {
       ),
     );
     if (sections.isEmpty) {
-      // A couvre-joint selected from the drawing's own series is already a
-      // real, enabled catalogue section.  Some older databases do not have a
-      // duplicate quantity rule for it, so candidate resolution is empty even
-      // though the selected profile is valid.  Never clear that selection:
-      // doing so was the source of the apparent on/off oscillation in the
-      // drawing and of the missing BOM row.
-      if (roleKeys.contains('side_cover') &&
-          _isAvailableSideCoverSelection(window, currentProfile)) {
-        return;
-      }
       _clearInvalidProfileSelection(window, item, roleKeys);
       return;
     }

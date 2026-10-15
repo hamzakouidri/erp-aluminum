@@ -1100,14 +1100,14 @@ void main() {
     },
   );
   test(
-    'opening simple glass produces reducer demand without drawing role cache',
+    'simple glass never invents reducer demand without a configured role',
     () {
       final window = makeWindow(RuleDatabase());
       window.zones.first.glass = const GlassSpecification(
         structure: GlassStructure.simple,
       );
       final bom = ComponentCalculator.generateBom(window, {});
-      expect(bom.where((r) => r.roleKey == 'reducer'), isNotEmpty);
+      expect(bom.where((r) => r.roleKey == 'reducer'), isEmpty);
       window.zones.first.glass = const GlassSpecification(
         structure: GlassStructure.double,
       );
@@ -1120,7 +1120,7 @@ void main() {
       );
     },
   );
-  test('mixed glazing keeps reducer pieces for simple-glass cells', () {
+  test('mixed glazing never invents reducer without a configured role', () {
     final window = makeWindow(RuleDatabase());
     window.zones = [
       WindowZone(
@@ -1140,7 +1140,6 @@ void main() {
       {},
     ).where((row) => row.roleKey == 'reducer');
 
-    expect(reducers, isNotEmpty);
-    expect(reducers.single.pieces, isNotEmpty);
+    expect(reducers, isEmpty);
   });
 }

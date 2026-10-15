@@ -2576,13 +2576,25 @@ class WindowPainter extends CustomPainter {
       // A custom value is a visible projection, never an instruction to let
       // a cover grow beyond the selected cover profile itself.  This also
       // repairs older drawings that accidentally stored a larger value.
-      final fallbackCoverWidth = _drawableStandaloneSideCoverWidth;
+      final fallbackCoverWidth = model.isIntegratedFrame
+          ? model.integratedFrameSideCoverWidth
+          : _drawableStandaloneSideCoverWidth;
       final visible =
           (segment.visibleWidth > 0 ? segment.visibleWidth : fallbackCoverWidth)
               .clamp(0.0, fallbackCoverWidth)
               .toDouble();
       if (visible <= 0) continue;
-      geometry[segment.side] = {'start': start, 'end': end, 'visible': visible};
+      final isSpecial =
+          start > 0.1 ||
+          (sideLength - end).abs() > 0.1 ||
+          (segment.visibleWidth > 0 &&
+              (segment.visibleWidth - fallbackCoverWidth).abs() > 0.1);
+      geometry[segment.side] = {
+        'start': start,
+        'end': end,
+        'visible': visible,
+        'special': isSpecial ? 1 : 0,
+      };
     }
     if (geometry.isEmpty) return;
 
@@ -2728,6 +2740,40 @@ class WindowPainter extends CustomPainter {
       }
       canvas.drawPath(path, paint);
       canvas.drawPath(path, borderPaint);
+
+      // Keep a custom visible width explicit on the drawing (for example a
+      // 30 mm projection selected from a 60 mm integrated cover).
+      if (data['special'] != 1) continue;
+      final label =
+          '${(visible / 10).toStringAsFixed(visible % 10 == 0 ? 0 : 1)} cm';
+      final labelPainter = TextPainter(
+        text: TextSpan(
+          text: label,
+          style: const TextStyle(
+            color: Colors.deepOrange,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      final center = switch (side) {
+        'left' => Offset(
+          -visible - labelPainter.width - 3,
+          topY + (start + end) / 2,
+        ),
+        'right' => Offset(w + visible + 3, topY + (start + end) / 2),
+        'top' => Offset(
+          (start + end - labelPainter.width) / 2,
+          topY - visible - labelPainter.height - 3,
+        ),
+        'bottom' => Offset(
+          (start + end - labelPainter.width) / 2,
+          h + visible + 3,
+        ),
+        _ => Offset.zero,
+      };
+      labelPainter.paint(canvas, center);
     }
   }
 
@@ -2752,7 +2798,7 @@ class WindowPainter extends CustomPainter {
       return;
     }
 
-    if (!model.isIntegratedFrame && model.useCustomSideCoverLayout) {
+    if (model.useCustomSideCoverLayout) {
       final segments = model.effectiveSideCoverSegments;
       if (segments.isNotEmpty) {
         _drawCustomSideCovers(canvas, w, h, topY);

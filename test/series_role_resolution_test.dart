@@ -25,9 +25,13 @@ class _RoleDatabase extends SqlDatabase {
     return roles
         .where((role) => accepted.contains(role['role_key']))
         .map(
-          (role) => sections.firstWhere(
-            (section) => section['id'] == role['section_id'],
-          ),
+          (role) => <String, dynamic>{
+            ...sections.firstWhere(
+              (section) => section['id'] == role['section_id'],
+            ),
+            'design_role_key': role['role_key'],
+            'design_show_when_glass': role['show_when_glass'] ?? 'any',
+          },
         )
         .toList();
   }
@@ -116,6 +120,68 @@ void main() {
       expect(result, isEmpty);
     },
   );
+
+  test('glazing bead rules keep simple and double profiles separate', () async {
+    final database = _RoleDatabase(
+      roles: [
+        {
+          'role_key': 'glazing_bead',
+          'section_id': 10,
+          'show_when_glass': 'simple',
+          'is_visible': 1,
+          'show_in_dialog': 1,
+          'show_in_quantity': 1,
+        },
+        {
+          'role_key': 'glazing_bead',
+          'section_id': 20,
+          'show_when_glass': 'double',
+          'is_visible': 1,
+          'show_in_dialog': 1,
+          'show_in_quantity': 1,
+        },
+      ],
+      sections: [
+        {
+          'id': 10,
+          'series_id': 40000,
+          'code': 'PS',
+          'name': 'Parclose Simple',
+          'type': 'parclose',
+        },
+        {
+          'id': 20,
+          'series_id': 40000,
+          'code': 'PD',
+          'name': 'Parclose Double',
+          'type': 'parclose',
+        },
+      ],
+    );
+    final resolver = CatalogCandidateResolver(database: database);
+
+    final simple = await resolver.resolve(
+      const CatalogCandidateQuery(
+        category: 'profile',
+        selectorType: 'parclose_simple',
+        seriesId: 40000,
+        hasSimpleGlassForReducer: true,
+        hasDoubleGlassForRules: false,
+      ),
+    );
+    final doubled = await resolver.resolve(
+      const CatalogCandidateQuery(
+        category: 'profile',
+        selectorType: 'parclose_double',
+        seriesId: 40000,
+        hasSimpleGlassForReducer: false,
+        hasDoubleGlassForRules: true,
+      ),
+    );
+
+    expect(simple.map((row) => row['code']), ['PS']);
+    expect(doubled.map((row) => row['code']), ['PD']);
+  });
 
   test('global catalogue rules apply to all enabled accessory roles', () {
     expect(

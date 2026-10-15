@@ -537,9 +537,7 @@ class SqlDatabase {
       'Locations',
     ];
     try {
-      await db.execute(
-        "ALTER TABLE Profile ADD COLUMN code TEXT DEFAULT '';",
-      );
+      await db.execute("ALTER TABLE Profile ADD COLUMN code TEXT DEFAULT '';");
     } catch (_) {}
     try {
       await db.execute(
@@ -2282,18 +2280,28 @@ class SqlDatabase {
     if (_decorPanelDesignSchemaReady) return;
     try {
       final cols = await db.rawQuery('PRAGMA table_info(Glass)');
-      final existingCols = cols.map((c) => c['name'].toString().toLowerCase()).toSet();
+      final existingCols = cols
+          .map((c) => c['name'].toString().toLowerCase())
+          .toSet();
       if (!existingCols.contains('visible_width')) {
-        await db.execute('ALTER TABLE Glass ADD COLUMN visible_width REAL DEFAULT NULL;');
+        await db.execute(
+          'ALTER TABLE Glass ADD COLUMN visible_width REAL DEFAULT NULL;',
+        );
       }
       if (!existingCols.contains('decor_design_code')) {
-        await db.execute("ALTER TABLE Glass ADD COLUMN decor_design_code TEXT NOT NULL DEFAULT '';");
+        await db.execute(
+          "ALTER TABLE Glass ADD COLUMN decor_design_code TEXT NOT NULL DEFAULT '';",
+        );
       }
       if (!existingCols.contains('panel_width')) {
-        await db.execute('ALTER TABLE Glass ADD COLUMN panel_width REAL DEFAULT NULL;');
+        await db.execute(
+          'ALTER TABLE Glass ADD COLUMN panel_width REAL DEFAULT NULL;',
+        );
       }
       if (!existingCols.contains('panel_height')) {
-        await db.execute('ALTER TABLE Glass ADD COLUMN panel_height REAL DEFAULT NULL;');
+        await db.execute(
+          'ALTER TABLE Glass ADD COLUMN panel_height REAL DEFAULT NULL;',
+        );
       }
       _decorPanelDesignSchemaReady = true;
     } catch (_) {}
@@ -4303,9 +4311,9 @@ class SqlDatabase {
     );
   }
 
-  /// Returns local sections plus sections shared with this series or with
-  /// its entire profile system. Local rows come first and duplicate section
-  /// ids are removed so a shared section never appears twice.
+  /// Returns local sections plus sections explicitly shared with this series.
+  /// A shared section is never promoted to every series in the same profile
+  /// system: sharing is a directed source-section -> target-series relation.
   Future<List<Map<String, dynamic>>> readAvailableSectionsBySeries(
     int seriesId, {
     String? roleKey,
@@ -4315,29 +4323,15 @@ class SqlDatabase {
     if (myDb == null) return [];
     await _ensureSectionSharingSchema(myDb);
 
-    final seriesRows = await myDb.query(
-      'Series',
-      columns: ['profile_id'],
-      where: 'id = ?',
-      whereArgs: [seriesId],
-      limit: 1,
-    );
-    if (seriesRows.isEmpty) return readSectionsBySeries(seriesId);
-    final profileId = (seriesRows.first['profile_id'] as num?)?.toInt();
-    if (profileId == null) return readSectionsBySeries(seriesId);
-
     final where = StringBuffer('''
       (s.is_active = 1 OR s.is_active IS NULL)
       AND (ownerSer.is_active = 1 OR ownerSer.is_active IS NULL)
       AND (ownerProfile.is_active = 1 OR ownerProfile.is_active IS NULL)
       AND r.is_active = 1
-      AND (
-        (r.target_scope = 'series' AND r.target_id = ?)
-        OR
-        (r.target_scope = 'profile' AND r.target_id = ?)
-      )
+      AND r.target_scope = 'series'
+      AND r.target_id = ?
     ''');
-    final args = <Object?>[seriesId, profileId];
+    final args = <Object?>[seriesId];
     final normalizedRole = roleKey?.trim();
     if (normalizedRole != null && normalizedRole.isNotEmpty) {
       where.write(' AND r.role_key = ?');
@@ -4436,8 +4430,10 @@ class SqlDatabase {
     if (myDb == null) return 0;
     await _ensureSectionSharingSchema(myDb);
     final normalizedTarget = targetScope.trim().toLowerCase();
-    if (normalizedTarget != 'series' && normalizedTarget != 'profile') {
-      throw ArgumentError('targetScope must be series or profile');
+    if (normalizedTarget != 'series') {
+      throw ArgumentError(
+        'Sections can only be shared with one explicit target series',
+      );
     }
     final normalizedRole = roleKey.trim();
     if (normalizedRole.isEmpty) throw ArgumentError('roleKey is required');
@@ -10033,10 +10029,7 @@ class SqlDatabase {
       await snapshotCommande(
         commandeId,
         actionType: 'UPDATE',
-        afterHeader: {
-          'detail_id': idDetail,
-          'delivered_qty': newDeliveredQty,
-        },
+        afterHeader: {'detail_id': idDetail, 'delivered_qty': newDeliveredQty},
       );
     }
     var res = await myDb!.update(
@@ -11644,8 +11637,7 @@ class SqlDatabase {
               }),
             );
           } else {
-            final current =
-                (stock.first['quantity'] as num?)?.toDouble() ?? 0;
+            final current = (stock.first['quantity'] as num?)?.toDouble() ?? 0;
             await txn.update(
               'CurrentStock',
               {'quantity': current + qty, 'updated_at': now},
@@ -18062,9 +18054,7 @@ class SqlDatabase {
         );
       } else {
         if (quantityChange < -0.000001) {
-          throw StateError(
-            'لا يوجد رصيد متاح لهذا العنصر في المخزن المحدد.',
-          );
+          throw StateError('لا يوجد رصيد متاح لهذا العنصر في المخزن المحدد.');
         }
         await txn.insert(
           'CurrentStock',
@@ -18957,7 +18947,8 @@ class SqlDatabase {
       actionType: actionType,
       entityType: 'order',
       entityId: commandeId.toString(),
-      entityTitle: 'طلبية #${header['order_code'] ?? header['display_number'] ?? commandeId}',
+      entityTitle:
+          'طلبية #${header['order_code'] ?? header['display_number'] ?? commandeId}',
       details: jsonEncode({
         'before': {
           'header': header,
@@ -20173,16 +20164,29 @@ class SqlDatabase {
     final myDb = await db;
     if (myDb == null) return [];
     await _ensureSeriesDesignTables(myDb);
+    await _ensureSectionSharingSchema(myDb);
     return myDb.rawQuery(
       '''
       SELECT r.*, s.code AS section_code, s.name AS section_name,
              s.type AS section_type, s.visible_width, s.thickness
       FROM SeriesDesignRoles r
-      LEFT JOIN Sections s ON s.id = r.section_id
+      INNER JOIN Sections s ON s.id = r.section_id
       WHERE r.series_id = ?
+        AND (
+          s.series_id = ?
+          OR EXISTS (
+            SELECT 1
+            FROM SectionSharingRules share
+            WHERE share.source_section_id = s.id
+              AND share.target_scope = 'series'
+              AND share.target_id = ?
+              AND share.role_key = r.role_key
+              AND share.is_active = 1
+          )
+        )
       ORDER BY r.sort_order ASC, r.is_default DESC, r.id ASC
     ''',
-      [seriesId],
+      [seriesId, seriesId, seriesId],
     );
   }
 
@@ -20197,6 +20201,26 @@ class SqlDatabase {
     final myDb = await db;
     if (myDb == null) return;
     await _ensureSeriesDesignTables(myDb);
+    await _ensureSectionSharingSchema(myDb);
+    final localSections = await readSectionsBySeries(seriesId);
+    final sharingRules = await readSectionSharingRules(
+      targetScope: 'series',
+      targetId: seriesId,
+    );
+    final localSectionIds = localSections
+        .map((section) => (section['id'] as num?)?.toInt())
+        .whereType<int>()
+        .toSet();
+    final sharedRolesBySection = <int, Set<String>>{};
+    for (final rule in sharingRules) {
+      final sectionId = (rule['source_section_id'] as num?)?.toInt();
+      final sharedRole = rule['role_key']?.toString().trim() ?? '';
+      if (sectionId != null && sharedRole.isNotEmpty) {
+        sharedRolesBySection
+            .putIfAbsent(sectionId, () => <String>{})
+            .add(sharedRole);
+      }
+    }
     final now = DateTime.now().toUtc().toIso8601String();
     await myDb.transaction((txn) async {
       await txn.delete(
@@ -20209,6 +20233,10 @@ class SqlDatabase {
         final sectionId = (role['section_id'] as num?)?.toInt();
         final roleKey = role['role_key']?.toString().trim() ?? '';
         if (sectionId == null || roleKey.isEmpty) continue;
+        final belongsToSeries = localSectionIds.contains(sectionId);
+        final explicitlySharedForRole =
+            sharedRolesBySection[sectionId]?.contains(roleKey) == true;
+        if (!belongsToSeries && !explicitlySharedForRole) continue;
         await txn.insert('SeriesDesignRoles', {
           'series_id': seriesId,
           'role_key': roleKey,
@@ -20988,6 +21016,7 @@ class SqlDatabase {
     final myDb = await db;
     if (myDb == null) return [];
     await _ensureSeriesDesignTables(myDb);
+    await _ensureSectionSharingSchema(myDb);
     final placeholders = List.filled(keys.length, '?').join(',');
     final surfaceFilters = <String>[
       if (requireVisible) 'r.is_visible = 1',
@@ -21026,12 +21055,30 @@ class SqlDatabase {
       FROM Sections s
       INNER JOIN SeriesDesignRoles r ON r.section_id = s.id
       WHERE r.series_id = ?
+        AND (
+          s.series_id = ?
+          OR EXISTS (
+            SELECT 1
+            FROM SectionSharingRules share
+            WHERE share.source_section_id = s.id
+              AND share.target_scope = 'series'
+              AND share.target_id = ?
+              AND share.role_key = r.role_key
+              AND share.is_active = 1
+          )
+        )
         $surfaceClause
         AND r.role_key IN ($placeholders)
         AND (s.is_active = 1 OR s.is_active IS NULL)
       ORDER BY r.is_default DESC, r.sort_order ASC, s.name ASC
     ''',
-      [seriesId, if (usageScope != null) usageScope, ...keys],
+      [
+        seriesId,
+        seriesId,
+        seriesId,
+        if (usageScope != null) usageScope,
+        ...keys,
+      ],
     );
   }
 
@@ -22557,25 +22604,25 @@ class SqlDatabase {
       return txn.insert(
         'MaterialSales',
         _withDistributedId({
-        'sale_code': visibleCode,
-        'client_id': clientId,
-        'client_name': clientName,
-        'client_phone': clientPhone,
-        'doc_type': docType,
-        'status': status,
-        'subtotal': subtotal,
-        'discount_amount': discountAmount,
-        'net_total': netTotal,
-        'paid_amount': paidAmount,
-        'remaining_amount': remainingAmount,
-        'location_id': locationId,
-        'stock_deducted': stockDeducted,
-        'notes': notes,
-        'sale_date': saleDate ?? now,
-        'created_at': now,
-        'updated_at': now,
-        'created_by': author,
-        'updated_by': author,
+          'sale_code': visibleCode,
+          'client_id': clientId,
+          'client_name': clientName,
+          'client_phone': clientPhone,
+          'doc_type': docType,
+          'status': status,
+          'subtotal': subtotal,
+          'discount_amount': discountAmount,
+          'net_total': netTotal,
+          'paid_amount': paidAmount,
+          'remaining_amount': remainingAmount,
+          'location_id': locationId,
+          'stock_deducted': stockDeducted,
+          'notes': notes,
+          'sale_date': saleDate ?? now,
+          'created_at': now,
+          'updated_at': now,
+          'created_by': author,
+          'updated_by': author,
         }),
       );
     });
@@ -22812,7 +22859,8 @@ class SqlDatabase {
     final cashboxScope = scope == 'store'
         ? "AND caisse_name = 'صندوق المحل'"
         : "AND COALESCE(caisse_name, '') <> 'صندوق المحل'";
-    final treasuryRows = await database.rawQuery('''
+    final treasuryRows = await database.rawQuery(
+      '''
       SELECT
         COALESCE(SUM(CASE
           WHEN LOWER(transaction_type) IN ('encaissement', 'income', 'receipt')
@@ -22823,23 +22871,33 @@ class SqlDatabase {
       FROM Treasury
       WHERE SUBSTR(created_at, 1, 10) = ?
         $cashboxScope
-    ''', [businessDate]);
-    final income = (treasuryRows.first['income_total'] as num?)?.toDouble() ?? 0;
-    final expense = (treasuryRows.first['expense_total'] as num?)?.toDouble() ?? 0;
+    ''',
+      [businessDate],
+    );
+    final income =
+        (treasuryRows.first['income_total'] as num?)?.toDouble() ?? 0;
+    final expense =
+        (treasuryRows.first['expense_total'] as num?)?.toDouble() ?? 0;
     final salesRows = scope == 'store'
-        ? await database.rawQuery('''
+        ? await database.rawQuery(
+            '''
             SELECT COALESCE(SUM(net_total), 0) AS total
             FROM MaterialSales
             WHERE SUBSTR(sale_date, 1, 10) = ?
               AND COALESCE(is_deleted, 0) = 0
               AND status NOT IN ('draft', 'cancelled')
-          ''', [businessDate])
-        : await database.rawQuery('''
+          ''',
+            [businessDate],
+          )
+        : await database.rawQuery(
+            '''
             SELECT COALESCE(SUM(COALESCE(net_payable, total, 0)), 0) AS total
             FROM Commandes
             WHERE SUBSTR(created_at, 1, 10) = ?
               AND COALESCE(is_deleted, 0) = 0
-          ''', [businessDate]);
+          ''',
+            [businessDate],
+          );
     return {
       'income': income,
       'expense': expense,
@@ -22876,11 +22934,10 @@ class SqlDatabase {
       'notes': notes,
       'updated_at': now,
     };
-    await database.insert(
-      'BusinessDayClosings',
-      {..._withDistributedId(values), 'created_at': now},
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await database.insert('BusinessDayClosings', {
+      ..._withDistributedId(values),
+      'created_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
     await logAuditAction(
       actionType: 'daily_close',
       entityType: scope == 'store' ? 'Store' : 'Workshop',
@@ -23063,14 +23120,17 @@ class SqlDatabase {
     dynamic executor,
     int saleId,
   ) async {
-    final items = List<Map<String, dynamic>>.from(await executor.query(
-      'MaterialSaleItems',
-      where: 'sale_id = ?',
-      whereArgs: [saleId],
-      orderBy: 'id ASC',
-    ));
-    final returnedRows = List<Map<String, dynamic>>.from(await executor.rawQuery(
-      '''
+    final items = List<Map<String, dynamic>>.from(
+      await executor.query(
+        'MaterialSaleItems',
+        where: 'sale_id = ?',
+        whereArgs: [saleId],
+        orderBy: 'id ASC',
+      ),
+    );
+    final returnedRows = List<Map<String, dynamic>>.from(
+      await executor.rawQuery(
+        '''
       SELECT ri.item_type, ri.item_id, ri.item_code, ri.color_id,
              SUM(ri.quantity) AS returned_quantity
       FROM MaterialSaleItems ri
@@ -23079,25 +23139,29 @@ class SqlDatabase {
         AND (r.is_deleted IS NULL OR r.is_deleted = 0)
       GROUP BY ri.item_type, ri.item_id, ri.item_code, ri.color_id
       ''',
-      [saleId],
-    ));
+        [saleId],
+      ),
+    );
     String key(Map<String, dynamic> row) =>
         '${row['item_type']}|${row['item_id']}|${row['item_code']}|${row['color_id']}';
     final returned = <String, double>{
       for (final row in returnedRows)
         key(row): (row['returned_quantity'] as num?)?.toDouble() ?? 0.0,
     };
-    return items.map((item) {
-      final sold = (item['quantity'] as num?)?.toDouble() ?? 0.0;
-      final alreadyReturned = returned[key(item)] ?? 0.0;
-      return {
-        ...item,
-        'returned_quantity': alreadyReturned,
-        'returnable_quantity': (sold - alreadyReturned)
-            .clamp(0.0, sold)
-            .toDouble(),
-      };
-    }).where((item) => (item['returnable_quantity'] as double) > 0).toList();
+    return items
+        .map((item) {
+          final sold = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+          final alreadyReturned = returned[key(item)] ?? 0.0;
+          return {
+            ...item,
+            'returned_quantity': alreadyReturned,
+            'returnable_quantity': (sold - alreadyReturned)
+                .clamp(0.0, sold)
+                .toDouble(),
+          };
+        })
+        .where((item) => (item['returnable_quantity'] as double) > 0)
+        .toList();
   }
 
   /// Creates an immutable customer return document and puts the selected
@@ -23118,12 +23182,16 @@ class SqlDatabase {
         whereArgs: [sourceSaleId],
         limit: 1,
       );
-      if (sourceRows.isEmpty) throw StateError('وثيقة البيع الأصلية غير موجودة.');
+      if (sourceRows.isEmpty)
+        throw StateError('وثيقة البيع الأصلية غير موجودة.');
       final source = sourceRows.first;
       if ((source['stock_deducted'] as num?)?.toInt() != 1) {
         throw StateError('لا يمكن إرجاع مواد لم تخرج من المخزون.');
       }
-      final available = await _readReturnableMaterialSaleItemsWith(txn, sourceSaleId);
+      final available = await _readReturnableMaterialSaleItemsWith(
+        txn,
+        sourceSaleId,
+      );
       String key(Map<String, dynamic> row) =>
           '${row['item_type']}|${row['item_id']}|${row['item_code']}|${row['color_id']}';
       final availableByKey = {for (final row in available) key(row): row};
@@ -23198,36 +23266,59 @@ class SqlDatabase {
         final args = colorId == null
             ? [original['item_id'], original['item_type'], locationId]
             : [original['item_id'], original['item_type'], colorId, locationId];
-        final stock = await txn.query('CurrentStock', where: where, whereArgs: args, limit: 1);
+        final stock = await txn.query(
+          'CurrentStock',
+          where: where,
+          whereArgs: args,
+          limit: 1,
+        );
         if (stock.isEmpty) {
-          await txn.insert('CurrentStock', _withDistributedId({
+          await txn.insert(
+            'CurrentStock',
+            _withDistributedId({
+              'item_id': original['item_id'],
+              'item_type': original['item_type'],
+              'color_id': colorId,
+              'location_id': locationId,
+              'quantity': qty,
+              'updated_at': now,
+            }),
+          );
+        } else {
+          final current = (stock.first['quantity'] as num?)?.toDouble() ?? 0.0;
+          await txn.update(
+            'CurrentStock',
+            {'quantity': current + qty, 'updated_at': now},
+            where: where,
+            whereArgs: args,
+          );
+        }
+        await txn.insert(
+          'InventoryTransactions',
+          _withDistributedId({
             'item_id': original['item_id'],
             'item_type': original['item_type'],
             'color_id': colorId,
             'location_id': locationId,
             'quantity': qty,
-            'updated_at': now,
-          }));
-        } else {
-          final current = (stock.first['quantity'] as num?)?.toDouble() ?? 0.0;
-          await txn.update('CurrentStock', {'quantity': current + qty, 'updated_at': now}, where: where, whereArgs: args);
-        }
-        await txn.insert('InventoryTransactions', _withDistributedId({
-          'item_id': original['item_id'],
-          'item_type': original['item_type'],
-          'color_id': colorId,
-          'location_id': locationId,
-          'quantity': qty,
-          'transaction_type': 'Material Sale Return',
-          'reference_id': id,
-          'created_at': now,
-        }));
+            'transaction_type': 'Material Sale Return',
+            'reference_id': id,
+            'created_at': now,
+          }),
+        );
       }
-      final remaining = await _readReturnableMaterialSaleItemsWith(txn, sourceSaleId);
+      final remaining = await _readReturnableMaterialSaleItemsWith(
+        txn,
+        sourceSaleId,
+      );
       final fullyReturned = remaining.isEmpty;
       await txn.update(
         'MaterialSales',
-        {'status': fullyReturned ? 'returned' : 'partially_returned', 'updated_at': now, 'updated_by': editor},
+        {
+          'status': fullyReturned ? 'returned' : 'partially_returned',
+          'updated_at': now,
+          'updated_by': editor,
+        },
         where: 'id = ?',
         whereArgs: [sourceSaleId],
       );
@@ -23442,8 +23533,11 @@ class SqlDatabase {
         final available = stock.isEmpty
             ? 0.0
             : (stock.first['quantity'] as num?)?.toDouble() ?? 0.0;
-        if (itemId <= 0 || requiredQty <= 0 || available + 0.000001 < requiredQty) {
-          final label = item['item_name']?.toString() ??
+        if (itemId <= 0 ||
+            requiredQty <= 0 ||
+            available + 0.000001 < requiredQty) {
+          final label =
+              item['item_name']?.toString() ??
               item['item_code']?.toString() ??
               'عنصر';
           throw StateError(
@@ -23615,9 +23709,7 @@ class SqlDatabase {
               whereArgs: storeStockArgs,
             );
           } else {
-            throw StateError(
-              'لا يوجد رصيد للعنصر $itemCode في مخزن المحل.',
-            );
+            throw StateError('لا يوجد رصيد للعنصر $itemCode في مخزن المحل.');
           }
 
           // 2. Add to workshop warehouse

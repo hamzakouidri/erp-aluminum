@@ -1,4 +1,5 @@
 import 'selling_price_calculator.dart';
+
 // ==========================================================================
 // ملف: MaterialConsumptionScreen
 // الوظيفة العامة: شاشة "الكمية والتكلفة" — تعرض جدول تفصيلي لكل مكونات النافذة
@@ -29,11 +30,13 @@ import 'package:shared_preferences/shared_preferences.dart'; // تخزين إع�
 class MaterialConsumptionScreen extends StatefulWidget {
   final WindowModel model; // نموذج النافذة الحالية اللي بنعرض تفاصيلها
   final bool autoCalculateAndSave;
+
   const MaterialConsumptionScreen({
     super.key,
     required this.model,
     this.autoCalculateAndSave = false,
   });
+
   @override
   State<MaterialConsumptionScreen> createState() =>
       _MaterialConsumptionScreenState();
@@ -65,6 +68,7 @@ class _BomSwapTarget {
 
 class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   bool _automaticCompletionStarted = false;
+
   // Keep the selected cap in memory while it is disabled.  Removing the
   // override is intentional: the cutting engine uses its presence to decide
   // whether the cap thickness must be deducted from every blade cut.
@@ -89,6 +93,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   final Map<String, double> _accessoryPriceCache = {};
   Map<String, double> _mainWarehouseStock = const {};
   Map<int, Map<String, dynamic>> _profileCalculationRules = {};
+
   // اختصار لجلب اللغة الحالية من الـ Provider بدون الاستماع لتغييراتها (listen:false)
   String get _lang {
     final language = Provider.of<AppSettingsProvider>(
@@ -1505,6 +1510,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   late TextEditingController _pricePerLinearMeterController;
   late TextEditingController _shutterSqmPriceController;
   late TextEditingController _torqueFactorController;
+
   // ==========================================================================
   // دالة: _findShutterComponent
   // الغرض: البحث في جدول ShutterComponents عن مكوّن حسب النوع والـ subtype
@@ -1784,6 +1790,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     'سيبور موتور (Support Moteur)': false,
     'أغطية الشفرات (Bouchons Lames)': false,
   };
+
   // ------------------ ثوابت أبعاد أعمدة الجدول (بالبكسل) ------------------
   static const double _rowMinHeight =
       56; // ارتفاع أدنى فقط — الصف يتمدّد حسب محتواه
@@ -1817,17 +1824,28 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
 
   double _columnWidth(String key, double fallback) =>
       _tableColumnWidths[key] ?? fallback;
+
   double get _wImg => _columnWidth(_colImg, _defaultWImg);
+
   double get _wName => _columnWidth(_colName, _defaultWName);
+
   double get _wColor => _columnWidth(_colColor, _defaultWColor);
+
   double get _wLen => _columnWidth(_colLen, _defaultWLen);
+
   double get _wQty => _columnWidth(_colQty, _defaultWQty);
+
   double get _wActualMeters =>
       _columnWidth(_colActualMeters, _defaultWActualMeters);
+
   double get _wPrice => _columnWidth(_colPrice, _defaultWPrice);
+
   double get _wEstimated => _columnWidth(_colEstimated, _defaultWEstimated);
+
   double get _wTotal => _columnWidth(_colTotal, _defaultWTotal);
+
   double get _wCheck => _columnWidth(_colCheck, _defaultWCheck);
+
   double get _minW =>
       _wImg +
       _wName +
@@ -1839,6 +1857,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       _wEstimated +
       _wTotal +
       _wCheck;
+
   double get _frozenWidth => _wName;
 
   double _columnMinWidth(String key) {
@@ -2095,10 +2114,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     );
   }
 
-  /// Safe local fallback while the catalogue database is opening or when a
-  /// legacy rule query fails. It keeps real resolved rows and non-catalogue
-  /// calculated materials (notably glass), but never restores the unresolved
-  /// warning placeholders that caused the original ghost-item problem.
+  /// Safe local fallback while the catalogue database is opening. Catalogue
+  /// products are intentionally withheld until their active-series rule has
+  /// been verified; only non-catalogue calculated materials may appear here.
   List<BomItem> _resolvedFallbackBomItems(Iterable<BomItem> items) {
     return items
         .where((item) {
@@ -2114,9 +2132,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             'other',
             'joint',
           }.contains(category);
-          if (!requiresCatalogueIdentity) return true;
-          return (item.catalogItemId ?? 0) > 0 ||
-              _bomItemHasResolvedSelection(item);
+          return !requiresCatalogueIdentity;
         })
         .toList(growable: false);
   }
@@ -3311,9 +3327,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          widget
-                              .model
-                              .shutterHeightWarning!, // نص التحذير القادم من النموذج
+                          widget.model.shutterHeightWarning!,
+                          // نص التحذير القادم من النموذج
                           style: TextStyle(
                             color: Colors.red.shade900,
                             fontSize: 14,
@@ -3667,7 +3682,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     ],
                   ),
                 );
-              })(), // استدعاء الدالة الفورية مباشرة
+              })(),
+              // استدعاء الدالة الفورية مباشرة
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 8.0,
@@ -3700,9 +3716,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   ],
                 ), // بناء الجدول الرئيسي بكل الأقسام
               ),
-              const SizedBox(
-                height: 100,
-              ), // مساحة فارغة أسفل الجدول حتى لا يغطيها الشريط السفلي
+              const SizedBox(height: 100),
+              // مساحة فارغة أسفل الجدول حتى لا يغطيها الشريط السفلي
             ],
           ),
         ),
@@ -4382,21 +4397,17 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       // إذا كان كيت موتور (أو كيت مفصول/معدل) نجمع أسعار العناصر المتبقية بداخله.
       // أما إذا كان كيت عادي كامل (مثل kit volant 155/185/205) وسعره الإجمالي مدخل > 0 نأخذ سعره،
       // وإن كان صفرًا نرجع لمجموع عناصره.
-      final double totalPrice = isMotorKit
-          ? (childTotalPrice > 0
-                ? childTotalPrice
-                : (officialKitUnitPrice > 0
-                      ? officialKitUnitPrice * kitQuantity
-                      : 0.0))
-          : (officialKitUnitPrice > 0
-                ? officialKitUnitPrice * kitQuantity
-                : childTotalPrice);
-      final double effectiveKitUnitPrice = isMotorKit
-          ? (kitQuantity > 0 ? childTotalPrice / kitQuantity : 0.0)
-          : (officialKitUnitPrice > 0
-                ? officialKitUnitPrice
-                : (kitQuantity > 0 ? childTotalPrice / kitQuantity : 0.0));
-      // هل المجموعة مفعّلة حاليًا؟ (تُحدد من activeVariants حسب نوعها)
+      // القاعدة: إذا وجد سعر للـ Kit (سواء حزام أو موتور أو مانيفر) نعتمد سعر الـ Kit
+      // إذا لم يوجد سعر للـ Kit (سعره 0) نعتمد مجموع أسعار عناصره وقطعه الفردية
+      final double totalPrice = officialKitUnitPrice > 0
+          ? (officialKitUnitPrice * kitQuantity)
+          : childTotalPrice;
+
+      final double effectiveKitUnitPrice = officialKitUnitPrice > 0
+          ? officialKitUnitPrice
+          : (kitQuantity > 0
+                ? childTotalPrice / kitQuantity
+                : 0.0); // هل المجموعة مفعّلة حاليًا؟ (تُحدد من activeVariants حسب نوعها)
       final isGroupActive = isSystemOb
           ? (activeVariants['System OB'] ?? false)
           : isDemiOb
@@ -4749,7 +4760,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _header(), // صف رأس الجدول (أسماء الأعمدة)
+                  _header(),
+                  // صف رأس الجدول (أسماء الأعمدة)
                   // قسم البروفيلات (يظهر فقط إذا كان فيه عناصر)
                   if (groups['profile']!.isNotEmpty) ...[
                     _sectionTitle(
@@ -4935,7 +4947,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           onTap: () => setState(() => _kitGroupExpanded[kitName] = !isExpanded),
           child: Container(
             constraints: const BoxConstraints(minHeight: _rowMinHeight),
-            width: 140, // Match the narrow width
+            width: 140,
+            // Match the narrow width
             decoration: BoxDecoration(
               color: isDark ? const Color(0xFF1E1E2C) : Colors.white,
               border: Border(
@@ -5119,7 +5132,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         item.name.contains('Renfort');
     return Container(
       constraints: const BoxConstraints(minHeight: _rowMinHeight),
-      width: 140, // Reduced width as requested
+      width: 140,
+      // Reduced width as requested
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       alignment: Alignment.centerLeft,
       decoration: BoxDecoration(
@@ -5453,7 +5467,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                             Text(
                               showCostPrice
                                   ? '${totalCostNoWaste.toStringAsFixed(2)} $currency'
-                                  : '*** $currency', // إخفاء الرقم بنجوم إذا showCostPrice == false
+                                  : '*** $currency',
+                              // إخفاء الرقم بنجوم إذا showCostPrice == false
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
@@ -5979,6 +5994,11 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                               final trimmed = subText.trim();
                               if (trimmed.isEmpty) return false;
                               final lower = trimmed.toLowerCase();
+                              if (trimmed.contains('المطلوب الفعلي') ||
+                                  lower.contains('besoin réel') ||
+                                  lower.contains('actual requirement')) {
+                                return false;
+                              }
                               // Don't show standalone redundant labels that match or repeat part of the title
                               if (lower == 'renforcé' ||
                                   lower == 'renforce' ||
@@ -6224,7 +6244,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                               v ?? false,
                             ),
                     )
-                  : const SizedBox.shrink(), // عنصر غير تفاعلي: لا يوجد Checkbox
+                  : const SizedBox.shrink(),
+              // عنصر غير تفاعلي: لا يوجد Checkbox
               _wCheck,
               isLast: true,
             ),
@@ -7311,7 +7332,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     if (db == null) return;
     // البحث عن معرف العنصر في جميع المصادر الممكنة
     Map<String, dynamic>? override = _componentOverrideForBom(item);
-    // إذا لم يُوجد في componentOverrides، ابحث في frameOverride/sashOverride وما إلى ذلك
     if (override == null) {
       final origLower = item.originalName.toLowerCase();
       if (origLower.contains('إطار') ||
@@ -7325,23 +7345,41 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         override =
             widget.model.sashOverride ?? widget.model.slidingSashOverride;
       } else if (origLower.contains('side_cover') ||
-          origLower.contains('تغطية')) {
+          origLower.contains('تغطية') ||
+          origLower.contains('الغطاء الجانبي')) {
         override = widget.model.sideCoverOverride;
       }
     }
+
+    // جلب المعرف الحقيقي سواء من catalogItemId أو من الـ override
     final int? dbId =
-        override?['id']
-            as int?; // معرّف السجل في قاعدة البيانات (إن كان مرتبطًا)
+        item.catalogItemId ??
+        (override?['id'] is num
+            ? (override!['id'] as num).toInt()
+            : int.tryParse('${override?['id'] ?? ''}'));
+
     final colorId = item.category == 'accessory'
         ? _selectedAccessoryColorId()
-        : widget.model.selectedDbColor?['id'];
-    String? errorMsg; // رسالة خطأ تُعرض للمستخدم إن فشلت العملية
+        : (widget.model.selectedDbColor?['id'] is num
+              ? (widget.model.selectedDbColor!['id'] as num).toInt()
+              : int.tryParse('${widget.model.selectedDbColor?['id'] ?? ''}'));
+
+    String? errorMsg;
     bool success = false;
     try {
       if (item.category == 'profile') {
-        // البروفيلات: يجب أن يكون العنصر مرتبطًا بقاعدة بيانات وأن يكون هناك لون محدد (السعر لوني دائمًا)
-        if (dbId != null && colorId != null) {
-          await SqlDatabase().setSectionColorPrice(dbId, colorId, newPrice);
+        if (dbId != null) {
+          if (colorId != null) {
+            await SqlDatabase().setSectionColorPrice(dbId, colorId, newPrice);
+          } else {
+            // إذا لم يكن هناك لون محدد للبروفيل، نحدث السعر الافتراضي في جدول Sections مباشرة
+            await db.update(
+              'Sections',
+              {'price': newPrice, 'price_dzd': newPrice},
+              where: 'id = ?',
+              whereArgs: [dbId],
+            );
+          }
           success = true;
         } else {
           errorMsg = 'العنصر غير مرتبط بقاعدة البيانات أو لم يتم تحديد لون';
@@ -7517,7 +7555,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       listen: false,
     ).language;
     final controller = TextEditingController(text: '${item.unitPrice}');
-    bool saveToDb = false; // هل نحفظ التعديل بشكل دائم في قاعدة البيانات
+    bool saveToDb = true; // ✅ تم جعله مفعلاً ومحدداً افتراضياً
+
     showDialog(
       context: context,
       builder: (dialogContext) {
@@ -7525,7 +7564,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           builder: (ctx, setStateDialog) {
             return AlertDialog(
               title: Text(
-                '${Localization.translate('تعديل سعر', lang)} ${Localization.translate(item.name, lang)}',
+                '${Localization.translate('تعديل سعر', lang)} ${item.getLocalizedName(_lang)}',
               ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -7555,7 +7594,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     value: saveToDb,
                     onChanged: (val) {
                       setStateDialog(() {
-                        saveToDb = val ?? false;
+                        saveToDb = val ?? true;
                       });
                     },
                     controlAffinity: ListTileControlAffinity.leading,
@@ -7572,31 +7611,35 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   onPressed: () async {
                     final newPrice = double.tryParse(controller.text);
                     if (newPrice != null) {
-                      setState(() {
-                        // إذا العنصر ليس له override أصلًا، أنشئ واحدًا جديدًا بأقل بيانات ضرورية
-                        final overrideKey =
-                            item.overrideKey ?? item.originalName;
-                        if (!widget.model.componentOverrides.containsKey(
-                          overrideKey,
-                        )) {
-                          widget.model.componentOverrides[overrideKey] = {
-                            'name': item.name,
-                            'price': newPrice,
-                            'calculated_price': newPrice,
-                          };
-                        } else {
-                          // وإلا، انسخ الـ override الحالي وحدّث السعر فيه فقط (بدون فقدان بقية بياناته)
-                          final Map<String, dynamic> clone = Map.from(
-                            widget.model.componentOverrides[overrideKey],
-                          );
-                          clone['price'] = newPrice;
-                          clone['calculated_price'] = newPrice;
-                          widget.model.componentOverrides[overrideKey] = clone;
-                        }
-                      });
-                      // إذا اختار المستخدم حفظه بشكل دائم، نفّذ التحديث الفعلي في قاعدة البيانات
+                      final overrideKey = item.overrideKey ?? item.originalName;
+                      final existing =
+                          widget.model.componentOverrides[overrideKey] is Map
+                          ? Map<String, dynamic>.from(
+                              widget.model.componentOverrides[overrideKey],
+                            )
+                          : <String, dynamic>{};
+
+                      existing['name'] = item.name;
+                      existing['price'] = newPrice;
+                      existing['calculated_price'] = newPrice;
+                      existing['price_dzd'] = newPrice;
+                      if (item.catalogItemId != null)
+                        existing['id'] = item.catalogItemId;
+                      if (item.profileCode != null)
+                        existing['code'] = item.profileCode;
+
+                      widget.model.componentOverrides[overrideKey] = existing;
+                      // أيضاً نسجل بنفس الاسم الأصلي لضمان التقاط createProfile له
+                      widget.model.componentOverrides[item.originalName] =
+                          existing;
+
                       if (saveToDb) {
                         await _updatePriceInDatabase(item, newPrice);
+                      }
+
+                      if (mounted) {
+                        setState(() {});
+                        await _refreshVisibleBomItems();
                       }
                     }
                     if (dialogContext.mounted) {
