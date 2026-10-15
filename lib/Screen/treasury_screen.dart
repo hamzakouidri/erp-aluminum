@@ -1012,6 +1012,88 @@ class TreasuryScreen extends StatefulWidget {
     );
   }
 
+  Future<void> _showTreasuryRowContextMenu(
+    BuildContext context,
+    Offset position,
+    Map<String, dynamic> item,
+    AppLanguage lang, {
+    required bool readOnly,
+    required bool canEditPayments,
+    required bool canDeletePayments,
+    required ValueChanged<Map<String, dynamic>> onEdit,
+    required ValueChanged<Map<String, dynamic>> onDelete,
+    required ValueChanged<Map<String, dynamic>> onOpen,
+  }) async {
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final local = overlay.globalToLocal(position);
+    final x = local.dx.clamp(8.0, overlay.size.width - 8.0).toDouble();
+    final y = local.dy.clamp(8.0, overlay.size.height - 8.0).toDouble();
+    final action = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        x,
+        y,
+        overlay.size.width - x,
+        overlay.size.height - y,
+      ),
+      items: [
+        _treasuryContextMenuItem('open', Icons.open_in_new_rounded,
+            Localization.translate('فتح', lang)),
+        if (!readOnly && canEditPayments)
+          _treasuryContextMenuItem('edit', Icons.edit_outlined,
+              Localization.translate('تعديل المعاملة', lang)),
+        _treasuryContextMenuItem('print', Icons.print_outlined,
+            Localization.translate('طباعة الوصل', lang)),
+        _treasuryContextMenuItem('share', Icons.share_outlined,
+            Localization.translate('مشاركة', lang)),
+        _treasuryContextMenuItem('save', Icons.download_outlined,
+            Localization.translate('حفظ الوصل', lang)),
+        if (!readOnly && canDeletePayments)
+          _treasuryContextMenuItem('delete', Icons.delete_outline,
+              Localization.translate('حذف المعاملة', lang),
+              color: Colors.red),
+      ],
+    );
+    if (!context.mounted || action == null) return;
+    switch (action) {
+      case 'open':
+        onOpen(item);
+        return;
+      case 'edit':
+        onEdit(item);
+        return;
+      case 'print':
+        await ReceiptPdfService.printReceiptWithFeedback(item, context);
+        return;
+      case 'share':
+        await ReceiptPdfService.shareReceiptWithFeedback(item, context);
+        return;
+      case 'save':
+        await ReceiptPdfService.saveReceiptWithFeedback(item, context);
+        return;
+      case 'delete':
+        onDelete(item);
+        return;
+    }
+  }
+
+  PopupMenuItem<String> _treasuryContextMenuItem(
+    String value,
+    IconData icon,
+    String label, {
+    Color? color,
+  }) {
+    return PopupMenuItem<String>(
+      value: value,
+      child: ListTile(
+        dense: true,
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(icon, size: 19, color: color),
+        title: Text(label, style: TextStyle(fontFamily: 'Cairo', color: color)),
+      ),
+    );
+  }
+
   Widget _buildDesktopTreasuryTable(
     BuildContext context,
     AppLanguage lang,
@@ -1301,9 +1383,9 @@ class TreasuryScreen extends StatefulWidget {
       ),
       ResizableTableColumn(
         id: 'actions',
-        label: const Text(
-          'Actions',
-          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+        label: Text(
+          Localization.translate('الإجراءات', lang),
+          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
         ),
         filter: hasActiveColumnFilters
             ? Center(
@@ -1373,6 +1455,18 @@ class TreasuryScreen extends StatefulWidget {
             onReceipt(item);
           }
         },
+        onSecondaryTapDown: (position) => _showTreasuryRowContextMenu(
+          context,
+          position,
+          item,
+          lang,
+          readOnly: readOnly,
+          canEditPayments: canEditPayments,
+          canDeletePayments: canDeletePayments,
+          onEdit: onEdit,
+          onDelete: onDelete,
+          onOpen: onReceipt,
+        ),
         cells: [
           // Date
           Text(
@@ -1412,7 +1506,7 @@ class TreasuryScreen extends StatefulWidget {
                 ? (isIncome
                       ? Localization.translate('دفع', lang)
                       : Localization.translate('سحب', lang))
-                : type,
+                : Localization.translate(type, lang),
             style: TextStyle(
               fontFamily: 'Cairo',
               fontSize: 12.5,
@@ -1434,7 +1528,7 @@ class TreasuryScreen extends StatefulWidget {
           Text(
             method.isEmpty
                 ? Localization.translate('نقداً / Espèce', lang)
-                : method,
+                : Localization.translate(method, lang),
             style: TextStyle(
               fontFamily: 'Cairo',
               fontSize: 12,
@@ -1478,7 +1572,7 @@ class TreasuryScreen extends StatefulWidget {
           Text(
             cashbox.isEmpty
                 ? Localization.translate('الصندوق الرئيسي', lang)
-                : cashbox,
+                : Localization.translate(cashbox, lang),
             style: TextStyle(
               fontFamily: 'Cairo',
               fontSize: 12,
@@ -1498,14 +1592,14 @@ class TreasuryScreen extends StatefulWidget {
             children: [
               if (!readOnly && canEditPayments)
                 IconButton(
-                  tooltip: 'Modifier',
+                  tooltip: Localization.translate('تعديل المعاملة', lang),
                   icon: const Icon(Icons.edit_outlined, size: 19),
                   color: Colors.blue,
                   onPressed: () => onEdit(item),
                 ),
               if (!readOnly && canDeletePayments)
                 IconButton(
-                  tooltip: 'Supprimer',
+                  tooltip: Localization.translate('حذف المعاملة', lang),
                   icon: const Icon(Icons.delete_outline, size: 19),
                   color: Colors.red,
                   onPressed: () => onDelete(item),
@@ -2225,18 +2319,47 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
     );
 
     if (confirm == true) {
-      final id = item['id'] as int;
-      await widget.db.deleteTreasury(id);
-      _loadData();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              Localization.translate('تم حذف المعاملة بنجاح', lang),
-              style: const TextStyle(fontFamily: 'Cairo'),
+      final id = (item['id'] as num?)?.toInt() ??
+          int.tryParse(item['id']?.toString() ?? '');
+      if (id == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('تعذر تحديد رقم المعاملة القديمة.'),
+              backgroundColor: Colors.red,
             ),
-          ),
-        );
+          );
+        }
+        return;
+      }
+      try {
+        final deleted = await widget.db.deleteTreasury(id);
+        if (deleted <= 0) {
+          throw StateError('لم تعد المعاملة موجودة في قاعدة البيانات المحلية.');
+        }
+        await _loadData();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                Localization.translate('تم حذف المعاملة بنجاح', lang),
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
+            ),
+          );
+        }
+      } catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'تعذر حذف المعاملة: $error',
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }
@@ -2519,7 +2642,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
               ListTile(
                 leading: const Icon(Icons.print, color: Colors.teal),
                 title: Text(
-                  '${Localization.translate('طباعة الوصل', lang)} / Imprimer',
+                  Localization.translate('طباعة الوصل', lang),
                   style: const TextStyle(
                     fontFamily: 'Cairo',
                     fontWeight: FontWeight.bold,
@@ -2536,7 +2659,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
               ListTile(
                 leading: const Icon(Icons.share, color: Colors.orange),
                 title: Text(
-                  '${Localization.translate('مشاركة', lang)} / Partager',
+                  Localization.translate('مشاركة', lang),
                   style: const TextStyle(
                     fontFamily: 'Cairo',
                     fontWeight: FontWeight.bold,
@@ -2553,7 +2676,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
               ListTile(
                 leading: const Icon(Icons.download, color: Colors.blue),
                 title: Text(
-                  '${Localization.translate('حفظ الوصل', lang)} / Enregistrer',
+                  Localization.translate('حفظ الوصل', lang),
                   style: const TextStyle(
                     fontFamily: 'Cairo',
                     fontWeight: FontWeight.bold,
@@ -2574,7 +2697,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                 ListTile(
                   leading: const Icon(Icons.edit, color: Colors.blueGrey),
                   title: Text(
-                    '${Localization.translate('تعديل المعاملة', lang)} / Modifier',
+                    Localization.translate('تعديل المعاملة', lang),
                     style: const TextStyle(
                       fontFamily: 'Cairo',
                       fontWeight: FontWeight.bold,
@@ -2593,7 +2716,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                 ListTile(
                   leading: const Icon(Icons.delete, color: Colors.red),
                   title: Text(
-                    '${Localization.translate('حذف المعاملة', lang)} / Supprimer',
+                    Localization.translate('حذف المعاملة', lang),
                     style: const TextStyle(
                       fontFamily: 'Cairo',
                       fontWeight: FontWeight.bold,

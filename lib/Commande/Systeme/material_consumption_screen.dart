@@ -2246,6 +2246,33 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     }
   }
 
+  void _updateRequestedQuantity(int quantity) {
+    if (quantity <= 0 || quantity == widget.model.quantity) return;
+
+    // Rebuild immediately so the quantity/cost rows and totals react in the
+    // same frame as the Parameters field. The async refresh below then
+    // reapplies strict catalogue selections, purchase prices and stock data.
+    widget.model.quantity = quantity;
+    final immediateItems = _resolvedFallbackBomItems(_generateRawBomItems());
+    setState(() {
+      _visibleBomItems = immediateItems;
+    });
+
+    _scheduleQuantityRefresh();
+  }
+
+  void _scheduleQuantityRefresh() {
+    _modelRefreshDebounce?.cancel();
+    _modelRefreshDebounce = Timer(const Duration(milliseconds: 120), () {
+      if (!mounted) return;
+      if (_isRefreshingVisibleBom || _isFetchingDefaults) {
+        _scheduleQuantityRefresh();
+        return;
+      }
+      unawaited(_refreshVisibleBomItems());
+    });
+  }
+
   String _bomItemsSignature(Iterable<BomItem> items) => items
       .map(
         (item) => [
@@ -4012,7 +4039,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                     onChanged: (val) {
                       final parsed = int.tryParse(val);
                       if (parsed != null && parsed > 0) {
-                        setState(() => widget.model.quantity = parsed);
+                        _updateRequestedQuantity(parsed);
                       }
                     },
                   ),

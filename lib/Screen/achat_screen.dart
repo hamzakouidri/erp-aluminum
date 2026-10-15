@@ -122,6 +122,21 @@ class _AchatScreenState extends State<AchatScreen>
     });
   }
 
+  void _openPurchaseReturns() {
+    final lang = context.read<AppSettingsProvider>().language;
+    openAdaptiveScreen(
+      context,
+      title: Localization.translate('مردودات المشتريات (Retours)', lang),
+      icon: Icons.assignment_return_rounded,
+      entryId: 'purchase_returns_${_effectiveIsWorkshop ? 'workshop' : 'store'}',
+      screen: AchatReturnScreen(
+        db: widget.db,
+        isWorkshop: _effectiveIsWorkshop,
+      ),
+    );
+    _refreshList();
+  }
+
   void _openAiScanner() async {
     final result = await Navigator.push(
       context,
@@ -568,6 +583,14 @@ class _AchatScreenState extends State<AchatScreen>
                 ? const BackButton(color: Colors.white)
                 : null),
       actions: [
+        IconButton(
+          icon: const Icon(Icons.assignment_return_rounded),
+          tooltip: Localization.translate(
+            'مردودات المشتريات (Retours)',
+            Provider.of<AppSettingsProvider>(context, listen: false).language,
+          ),
+          onPressed: _openPurchaseReturns,
+        ),
         IconButton(
           icon: const Icon(Icons.refresh_rounded),
           tooltip: Localization.translate(

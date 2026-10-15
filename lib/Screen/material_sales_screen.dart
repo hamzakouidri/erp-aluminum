@@ -9,6 +9,7 @@ import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../settings/document_status_localization.dart';
 import 'material_sale_editor_screen.dart';
+import 'material_sale_return_screen.dart';
 import '../services/material_sale_pdf_service.dart';
 import 'inventory_screen.dart';
 import 'app_workspace_shell.dart';
@@ -22,6 +23,7 @@ enum _SalesSection {
   deliveries,
   invoices,
   proformas,
+  returns,
   journal,
   stock,
 }
@@ -176,6 +178,9 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
       case _SalesSection.proformas:
         rows = rows.where((r) => r['doc_type'] == 'devis');
         break;
+      case _SalesSection.returns:
+        rows = rows.where((r) => r['doc_type'] == 'retour');
+        break;
       case _SalesSection.dashboard:
       case _SalesSection.journal:
       case _SalesSection.stock:
@@ -230,6 +235,8 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
         return 'facture';
       case _SalesSection.proformas:
         return 'devis';
+      case _SalesSection.returns:
+        return 'retour';
       default:
         return 'bon_commande';
     }
@@ -245,6 +252,17 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
       icon: Icons.description_rounded,
       entryId: 'material_sale_$saleId',
       screen: MaterialSaleEditorScreen(db: _db, saleId: saleId),
+    );
+    _refresh();
+  }
+
+  void _openCustomerReturns() {
+    openAdaptiveScreen(
+      context,
+      title: _t('إرجاع من الزبون إلى المخزون'),
+      icon: Icons.assignment_return_rounded,
+      entryId: 'material_sale_returns',
+      screen: MaterialSaleReturnScreen(db: _db),
     );
     _refresh();
   }
@@ -355,6 +373,8 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
         return _t('وصل مسار مواد');
       case 'devis':
         return _t('فاتورة أولية مواد');
+      case 'retour':
+        return _t('إرجاع إلى المخزون');
       default:
         return type ?? '—';
     }
@@ -372,6 +392,8 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
         return const Color(0xFF7C3AED);
       case 'devis':
         return Colors.teal;
+      case 'retour':
+        return Colors.deepOrange;
       default:
         return Colors.grey;
     }
@@ -447,8 +469,12 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
               ? null
               : FloatingActionButton(
                   backgroundColor: _cyan,
-                  onPressed: _createNew,
-                  tooltip: '${_t('إنشاء وثيقة')} (Insert)',
+                  onPressed: _section == _SalesSection.returns
+                      ? _openCustomerReturns
+                      : _createNew,
+                  tooltip: _section == _SalesSection.returns
+                      ? _t('إرجاع من الزبون إلى المخزون')
+                      : '${_t('إنشاء وثيقة')} (Insert)',
                   child: const Icon(Icons.add, color: Colors.white),
                 ),
         ),
@@ -470,6 +496,8 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
         return _t('الفواتير');
       case _SalesSection.proformas:
         return _t('عروض الأسعار');
+      case _SalesSection.returns:
+        return _t('الإرجاع');
       case _SalesSection.journal:
         return _t('سجل المبيعات');
       case _SalesSection.stock:
@@ -484,6 +512,7 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
     _SalesSection.deliveries: Icons.local_shipping_rounded,
     _SalesSection.invoices: Icons.receipt_long_rounded,
     _SalesSection.proformas: Icons.request_quote_rounded,
+    _SalesSection.returns: Icons.assignment_return_rounded,
     _SalesSection.journal: Icons.menu_book_rounded,
     _SalesSection.stock: Icons.inventory_2_rounded,
   };

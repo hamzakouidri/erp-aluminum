@@ -11775,14 +11775,21 @@ class SqlDatabase {
       readAchats(isWorkshop: false);
 
   Future<List<Map<String, dynamic>>> readAchatsBySupplierName(
-    String supplierName,
-  ) async {
+    String supplierName, {
+    bool? isWorkshop,
+  }) async {
     Database? myDb = await db;
     if (myDb == null) return [];
     await _ensureAchatTrashInfrastructure(myDb);
+    final clauses = <String>[
+      'supplier_name = ?',
+      '(is_deleted IS NULL OR is_deleted = 0)',
+      if (isWorkshop == true) '(is_workshop = 1 OR is_workshop IS NULL)',
+      if (isWorkshop == false) 'is_workshop = 0',
+    ];
     return await myDb.query(
       'Achats',
-      where: 'supplier_name = ? AND (is_deleted IS NULL OR is_deleted = 0)',
+      where: clauses.join(' AND '),
       whereArgs: [supplierName],
       orderBy: 'created_at DESC',
     );
@@ -14204,6 +14211,12 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return 0;
 
+    // Legacy databases restored from Firebase can predate the generic sync
+    // triggers. Ensure the infrastructure exists before deleting; otherwise
+    // Supabase still owns a live copy and restores the transaction on the
+    // next download.
+    await _ensureSyncTombstoneInfrastructure(myDb);
+
     final List<Map<String, dynamic>> records = await myDb.query(
       'Treasury',
       where: 'id = ?',
@@ -14223,6 +14236,24 @@ class SqlDatabase {
         where: 'id = ?',
         whereArgs: [id],
       );
+      if (deleted > 0) {
+        final deletedAt = DateTime.now().toUtc().toIso8601String();
+        // Write this explicitly as well as relying on the trigger. INSERT OR
+        // REPLACE keeps it idempotent and guarantees migrated rows receive a
+        // cloud deletion marker.
+        await txn.insert('SyncTombstones', {
+          'table_name': 'Treasury',
+          'row_id': id.toString(),
+          'deleted_at': deletedAt,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        await txn.insert('_sync_change_log', {
+          'table_name': 'Treasury',
+          'row_id': id.toString(),
+          'operation': 'delete',
+          'changed_at': deletedAt,
+          'revision': 1,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
       await txn.delete(
         'PaymentAllocations',
         where: 'treasury_id = ?',
@@ -23017,6 +23048,193 @@ class SqlDatabase {
       ''',
       [saleId],
     );
+  }
+
+  /// Remaining quantities that may still be returned by the customer.
+  Future<List<Map<String, dynamic>>> readReturnableMaterialSaleItems(
+    int saleId,
+  ) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    return _readReturnableMaterialSaleItemsWith(myDb, saleId);
+  }
+
+  Future<List<Map<String, dynamic>>> _readReturnableMaterialSaleItemsWith(
+    dynamic executor,
+    int saleId,
+  ) async {
+    final items = List<Map<String, dynamic>>.from(await executor.query(
+      'MaterialSaleItems',
+      where: 'sale_id = ?',
+      whereArgs: [saleId],
+      orderBy: 'id ASC',
+    ));
+    final returnedRows = List<Map<String, dynamic>>.from(await executor.rawQuery(
+      '''
+      SELECT ri.item_type, ri.item_id, ri.item_code, ri.color_id,
+             SUM(ri.quantity) AS returned_quantity
+      FROM MaterialSaleItems ri
+      JOIN MaterialSales r ON r.id = ri.sale_id
+      WHERE r.doc_type = 'retour' AND r.source_sale_id = ?
+        AND (r.is_deleted IS NULL OR r.is_deleted = 0)
+      GROUP BY ri.item_type, ri.item_id, ri.item_code, ri.color_id
+      ''',
+      [saleId],
+    ));
+    String key(Map<String, dynamic> row) =>
+        '${row['item_type']}|${row['item_id']}|${row['item_code']}|${row['color_id']}';
+    final returned = <String, double>{
+      for (final row in returnedRows)
+        key(row): (row['returned_quantity'] as num?)?.toDouble() ?? 0.0,
+    };
+    return items.map((item) {
+      final sold = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+      final alreadyReturned = returned[key(item)] ?? 0.0;
+      return {
+        ...item,
+        'returned_quantity': alreadyReturned,
+        'returnable_quantity': (sold - alreadyReturned)
+            .clamp(0.0, sold)
+            .toDouble(),
+      };
+    }).where((item) => (item['returnable_quantity'] as double) > 0).toList();
+  }
+
+  /// Creates an immutable customer return document and puts the selected
+  /// quantities back into the same stock location as the original sale.
+  Future<int> returnMaterialSaleItems(
+    int sourceSaleId,
+    List<Map<String, dynamic>> returnedItems,
+  ) async {
+    final myDb = await db;
+    if (myDb == null || returnedItems.isEmpty) return 0;
+    await _ensureRemnantInventorySchema(myDb);
+    final editor = await _currentOrderEditor();
+    final now = DateTime.now().toUtc().toIso8601String();
+    final returnId = await myDb.transaction<int>((txn) async {
+      final sourceRows = await txn.query(
+        'MaterialSales',
+        where: 'id = ? AND (is_deleted IS NULL OR is_deleted = 0)',
+        whereArgs: [sourceSaleId],
+        limit: 1,
+      );
+      if (sourceRows.isEmpty) throw StateError('وثيقة البيع الأصلية غير موجودة.');
+      final source = sourceRows.first;
+      if ((source['stock_deducted'] as num?)?.toInt() != 1) {
+        throw StateError('لا يمكن إرجاع مواد لم تخرج من المخزون.');
+      }
+      final available = await _readReturnableMaterialSaleItemsWith(txn, sourceSaleId);
+      String key(Map<String, dynamic> row) =>
+          '${row['item_type']}|${row['item_id']}|${row['item_code']}|${row['color_id']}';
+      final availableByKey = {for (final row in available) key(row): row};
+      var total = 0.0;
+      for (final request in returnedItems) {
+        final original = availableByKey[key(request)];
+        final qty = (request['quantity'] as num?)?.toDouble() ?? 0.0;
+        final maxQty =
+            (original?['returnable_quantity'] as num?)?.toDouble() ?? 0.0;
+        if (original == null || qty <= 0 || qty > maxQty + 0.000001) {
+          throw StateError('كمية الإرجاع غير صالحة أو أكبر من الكمية المباعة.');
+        }
+        total += qty * ((original['unit_price'] as num?)?.toDouble() ?? 0.0);
+      }
+      final code = await _uniqueMaterialSaleCode(
+        txn,
+        'RET-${DateFormat('yyyyMMdd-HHmmss').format(DateTime.now())}',
+      );
+      final id = await txn.insert(
+        'MaterialSales',
+        _withDistributedId({
+          'sale_code': code,
+          'client_id': source['client_id'],
+          'client_name': source['client_name'],
+          'client_phone': source['client_phone'],
+          'doc_type': 'retour',
+          'status': 'confirmed',
+          'subtotal': total,
+          'discount_amount': 0.0,
+          'net_total': total,
+          'paid_amount': total,
+          'remaining_amount': 0.0,
+          'location_id': source['location_id'],
+          'stock_deducted': 0,
+          'source_sale_id': sourceSaleId,
+          'notes': 'Customer return for ${source['sale_code']}',
+          'sale_date': now,
+          'created_at': now,
+          'updated_at': now,
+          'created_by': editor,
+          'updated_by': editor,
+        }),
+      );
+      final locationId = (source['location_id'] as num?)?.toInt() ?? 1;
+      for (final request in returnedItems) {
+        final original = availableByKey[key(request)]!;
+        final qty = (request['quantity'] as num).toDouble();
+        final unitPrice = (original['unit_price'] as num?)?.toDouble() ?? 0.0;
+        await txn.insert('MaterialSaleItems', {
+          'sale_id': id,
+          'item_type': original['item_type'],
+          'item_id': original['item_id'],
+          'item_code': original['item_code'] ?? '',
+          'item_name': original['item_name'] ?? '',
+          'system_name': original['system_name'] ?? '',
+          'series_name': original['series_name'] ?? '',
+          'color_id': original['color_id'],
+          'color_name': original['color_name'] ?? '',
+          'unit': original['unit'] ?? 'pcs',
+          'length_mm': original['length_mm'] ?? 0.0,
+          'width_mm': original['width_mm'] ?? 0.0,
+          'quantity': qty,
+          'unit_price': unitPrice,
+          'tax_rate': original['tax_rate'] ?? 0.0,
+          'total_price': qty * unitPrice,
+          'notes': 'Returned from sale ${source['sale_code']}',
+        });
+        final colorId = (original['color_id'] as num?)?.toInt();
+        final where = colorId == null
+            ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
+            : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
+        final args = colorId == null
+            ? [original['item_id'], original['item_type'], locationId]
+            : [original['item_id'], original['item_type'], colorId, locationId];
+        final stock = await txn.query('CurrentStock', where: where, whereArgs: args, limit: 1);
+        if (stock.isEmpty) {
+          await txn.insert('CurrentStock', _withDistributedId({
+            'item_id': original['item_id'],
+            'item_type': original['item_type'],
+            'color_id': colorId,
+            'location_id': locationId,
+            'quantity': qty,
+            'updated_at': now,
+          }));
+        } else {
+          final current = (stock.first['quantity'] as num?)?.toDouble() ?? 0.0;
+          await txn.update('CurrentStock', {'quantity': current + qty, 'updated_at': now}, where: where, whereArgs: args);
+        }
+        await txn.insert('InventoryTransactions', _withDistributedId({
+          'item_id': original['item_id'],
+          'item_type': original['item_type'],
+          'color_id': colorId,
+          'location_id': locationId,
+          'quantity': qty,
+          'transaction_type': 'Material Sale Return',
+          'reference_id': id,
+          'created_at': now,
+        }));
+      }
+      final remaining = await _readReturnableMaterialSaleItemsWith(txn, sourceSaleId);
+      final fullyReturned = remaining.isEmpty;
+      await txn.update(
+        'MaterialSales',
+        {'status': fullyReturned ? 'returned' : 'partially_returned', 'updated_at': now, 'updated_by': editor},
+        where: 'id = ?',
+        whereArgs: [sourceSaleId],
+      );
+      return id;
+    });
+    CloudSyncService().notifyChange();
+    return returnId;
   }
 
   /// Insert a single item line into a sale.

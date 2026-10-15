@@ -105,6 +105,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
   StreamSubscription<String>? _databaseUpdateSub;
   Timer? _statsDebounce; // debounce لمنع تكرار _loadStats خلال ms قصيرة
   int _statsLoadToken = 0;
+  Future<void>? _statsLoadInFlight;
+  bool _statsReloadQueued = false;
 
   // إحصائيات
   String _commandesCount = '—';
@@ -606,7 +608,28 @@ class _WelcomScreenState extends State<WelcomScreen> {
     );
   }
 
-  Future<void> _loadStats() async {
+  Future<void> _loadStats() {
+    final active = _statsLoadInFlight;
+    if (active != null) {
+      // Coalesce every update received while the current database snapshot is
+      // loading into one final refresh. The old token-only approach ignored
+      // stale results but still ran all 14 queries again in parallel.
+      _statsReloadQueued = true;
+      return active;
+    }
+
+    final load = _performStatsLoad();
+    _statsLoadInFlight = load;
+    return load.whenComplete(() {
+      _statsLoadInFlight = null;
+      if (_statsReloadQueued && mounted) {
+        _statsReloadQueued = false;
+        unawaited(_loadStats());
+      }
+    });
+  }
+
+  Future<void> _performStatsLoad() async {
     final loadToken = ++_statsLoadToken;
     try {
       await db.migrateAllPendingOrdersToNouveau();
@@ -977,10 +1000,10 @@ class _WelcomScreenState extends State<WelcomScreen> {
       setState(() {
         _userEmail = user.email ?? 'لا يوجد بريد';
       });
-      // Supabase owns the active account and workshop profile.
-      if (AppAuthService().usesSupabase) {
-        await _loadSupabaseWorkshopName();
-      } else {
+      // Supabase is loaded once below after the provider-specific user data.
+      // Calling it here as well caused two identical account/profile reads on
+      // every dashboard entry.
+      if (!AppAuthService().usesSupabase) {
         _userSub = FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
@@ -1272,8 +1295,17 @@ class _WelcomScreenState extends State<WelcomScreen> {
           children: [
             if (!_isWindowsDesktop)
               Positioned.fill(
-                child: _WaterWaveBackground(
-                  enabled: settings.enablePremiumAnimations,
+                child: RepaintBoundary(
+                  child: _WaterWaveBackground(
+                    // Three full-screen wave painters are expensive on small
+                    // phones and add no functional information. Keep the
+                    // premium motion on tablets while phones use the normal
+                    // static dashboard background.
+                    enabled:
+                        settings.enablePremiumAnimations &&
+                        MediaQuery.sizeOf(context).shortestSide >= 600 &&
+                        !MediaQuery.disableAnimationsOf(context),
+                  ),
                 ),
               ),
             RefreshIndicator(
@@ -1633,11 +1665,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
       children: [
         Container(
           height: 46,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
-            color: cardColor,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: mutedColor.withValues(alpha: 0.10)),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.035),
@@ -1659,7 +1688,27 @@ class _WelcomScreenState extends State<WelcomScreen> {
             ),
             decoration: InputDecoration(
               isDense: true,
-              border: InputBorder.none,
+              filled: true,
+              fillColor: cardColor,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(
+                  color: mutedColor.withValues(alpha: 0.10),
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(
+                  color: mutedColor.withValues(alpha: 0.10),
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(
+                  color: Color(0xFF4D67F0),
+                  width: 1.4,
+                ),
+              ),
               prefixIcon: const Icon(
                 Icons.search_rounded,
                 color: Color(0xFF4D67F0),

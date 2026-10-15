@@ -7,8 +7,9 @@ import 'package:provider/provider.dart';
 
 class AchatReturnScreen extends StatefulWidget {
   final SqlDatabase db;
+  final bool? isWorkshop;
 
-  const AchatReturnScreen({super.key, required this.db});
+  const AchatReturnScreen({super.key, required this.db, this.isWorkshop});
 
   @override
   State<AchatReturnScreen> createState() => _AchatReturnScreenState();
@@ -46,7 +47,10 @@ class _AchatReturnScreenState extends State<AchatReturnScreen> {
       )['name'];
     } catch (_) {}
 
-    final achats = await widget.db.readAchatsBySupplierName(supplierName);
+    final achats = await widget.db.readAchatsBySupplierName(
+      supplierName,
+      isWorkshop: widget.isWorkshop,
+    );
 
     List<Map<String, dynamic>> items = [];
     for (var achat in achats) {
@@ -180,7 +184,9 @@ class _AchatReturnScreenState extends State<AchatReturnScreen> {
     final currencyFormat = NumberFormat('#,##0.00', 'en_US');
 
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: lang == AppLanguage.arabic
+          ? TextDirection.rtl
+          : TextDirection.ltr,
       child: Scaffold(
         appBar: AppBar(
           title: Text(

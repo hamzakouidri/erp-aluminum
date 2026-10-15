@@ -126,6 +126,57 @@ class Localization {
       }
     }
 
+    // Intercept dynamic shutter moustiquaire dialog content:
+    // "تم العثور على X نافذة تحتوي على ستار. اختر إضافة الموستيكير إليها كلها أو حذفها منها."
+    final moustiquaireDialogMatch = RegExp(
+      r'^(?:تم العثور على|Trouvé)\s*(\d+)\s*(?:نافذة تحتوي على ستار\.\s*اختر إضافة الموستيكير إليها كلها أو حذفها منها\.|fenêtre\(s\)? avec store\..*)$',
+      caseSensitive: false,
+    ).firstMatch(trimmedKey);
+    if (moustiquaireDialogMatch != null) {
+      final count = moustiquaireDialogMatch.group(1)!;
+      switch (lang) {
+        case AppLanguage.french:
+          return '$count fenêtre(s) avec store trouvée(s). Choisissez d\'ajouter la moustiquaire à toutes ou de la supprimer.';
+        case AppLanguage.english:
+          return '$count window(s) with shutters found. Choose to add flyscreen to all or remove it.';
+        case AppLanguage.arabic:
+          return 'تم العثور على $count نافذة تحتوي على ستار. اختر إضافة الموستيكير إليها كلها أو حذفها منها.';
+      }
+    }
+
+    // Intercept dynamic shutter moustiquaire result message:
+    final moustiquaireAddedMatch = RegExp(
+      r'^(?:تمت إضافة الموستيكير إلى)\s*(\d+)\s*(?:نافذة وإعادة حساب أسعارها\.)$',
+      caseSensitive: false,
+    ).firstMatch(trimmedKey);
+    if (moustiquaireAddedMatch != null) {
+      final count = moustiquaireAddedMatch.group(1)!;
+      switch (lang) {
+        case AppLanguage.french:
+          return 'Moustiquaire ajoutée à $count fenêtre(s) et prix recalculés.';
+        case AppLanguage.english:
+          return 'Flyscreen added to $count window(s) and prices recalculated.';
+        case AppLanguage.arabic:
+          return 'تمت إضافة الموستيكير إلى $count نافذة وإعادة حساب أسعارها.';
+      }
+    }
+
+    final moustiquaireRemovedMatch = RegExp(
+      r'^(?:تم حذف الموستيكير من)\s*(\d+)\s*(?:نافذة وإعادة حساب أسعارها\.)$',
+      caseSensitive: false,
+    ).firstMatch(trimmedKey);
+    if (moustiquaireRemovedMatch != null) {
+      final count = moustiquaireRemovedMatch.group(1)!;
+      switch (lang) {
+        case AppLanguage.french:
+          return 'Moustiquaire supprimée de $count fenêtre(s) et prix recalculés.';
+        case AppLanguage.english:
+          return 'Flyscreen removed from $count window(s) and prices recalculated.';
+        case AppLanguage.arabic:
+          return 'تم حذف الموستيكير من $count نافذة وإعادة حساب أسعارها.';
+      }
+    }
+
     if (_dictionary.containsKey(trimmedKey) &&
         _dictionary[trimmedKey]!.containsKey(lang)) {
       final translated = _dictionary[trimmedKey]![lang]!;

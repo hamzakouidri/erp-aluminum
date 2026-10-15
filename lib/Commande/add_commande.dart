@@ -2974,8 +2974,8 @@ class _CommandePageState extends State<CommandePage> {
         .toList(growable: false);
     if (targets.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('لا توجد نوافذ تحتوي على ستار في هذه الطلبية.'),
+        SnackBar(
+          content: Text(t('لا توجد نوافذ تحتوي على ستار في هذه الطلبية.')),
         ),
       );
       return;
@@ -2984,25 +2984,25 @@ class _CommandePageState extends State<CommandePage> {
     final action = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('موستيكير للنوافذ ذات الستار'),
+        title: Text(t('موستيكير للنوافذ ذات الستار')),
         content: Text(
-          'تم العثور على ${targets.length} نافذة تحتوي على ستار. '
-          'اختر إضافة الموستيكير إليها كلها أو حذفها منها.',
+          t('تم العثور على ${targets.length} نافذة تحتوي على ستار. '
+          'اختر إضافة الموستيكير إليها كلها أو حذفها منها.'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('إلغاء'),
+            child: Text(t('إلغاء')),
           ),
           OutlinedButton.icon(
             onPressed: () => Navigator.pop(dialogContext, false),
             icon: const Icon(Icons.remove_circle_outline),
-            label: const Text('حذف من الكل'),
+            label: Text(t('حذف من الكل')),
           ),
           FilledButton.icon(
             onPressed: () => Navigator.pop(dialogContext, true),
             icon: const Icon(Icons.grid_on_rounded),
-            label: const Text('إضافة إلى الكل'),
+            label: Text(t('إضافة إلى الكل')),
           ),
         ],
       ),
@@ -3036,8 +3036,8 @@ class _CommandePageState extends State<CommandePage> {
         backgroundColor: Colors.green.shade700,
         content: Text(
           action
-              ? 'تمت إضافة الموستيكير إلى $changed نافذة وإعادة حساب أسعارها.'
-              : 'تم حذف الموستيكير من $changed نافذة وإعادة حساب أسعارها.',
+              ? t('تمت إضافة الموستيكير إلى $changed نافذة وإعادة حساب أسعارها.')
+              : t('تم حذف الموستيكير من $changed نافذة وإعادة حساب أسعارها.'),
         ),
       ),
     );
@@ -3102,9 +3102,12 @@ class _CommandePageState extends State<CommandePage> {
               ? null
               : _applyMoustiquaireToShutterWindows,
           icon: const Icon(Icons.grid_on_rounded, color: Colors.white),
-          label: const Text(
-            'موستيكير لكل النوافذ ذات الستار',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          label: Text(
+            t('موستيكير لكل النوافذ ذات الستار'),
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           height: 50,
         ),

@@ -316,4 +316,24 @@ final Map<String, Map<AppLanguage, String>> translationPhase12Keys = {
     AppLanguage.french: 'Patte de fixation',
     AppLanguage.english: 'Mounting fixing bracket',
   },
+  'موستيكير لكل النوافذ ذات الستار': {
+    AppLanguage.arabic: 'موستيكير لكل النوافذ ذات الستار',
+    AppLanguage.french: 'Moustiquaire pour fenêtres avec stores',
+    AppLanguage.english: 'Flyscreen for windows with shutters',
+  },
+  'موستيكير للنوافذ ذات الستار': {
+    AppLanguage.arabic: 'موستيكير للنوافذ ذات الستار',
+    AppLanguage.french: 'Moustiquaire pour fenêtres avec stores',
+    AppLanguage.english: 'Flyscreen for windows with shutters',
+  },
+  'حذف من الكل': {
+    AppLanguage.arabic: 'حذف من الكل',
+    AppLanguage.french: 'Supprimer de tous',
+    AppLanguage.english: 'Remove from all',
+  },
+  'لا توجد نوافذ تحتوي على ستار في هذه الطلبية.': {
+    AppLanguage.arabic: 'لا توجد نوافذ تحتوي على ستار في هذه الطلبية.',
+    AppLanguage.french: 'Aucune fenêtre avec store trouvée dans cette commande.',
+    AppLanguage.english: 'No windows with shutters found in this order.',
+  },
 };

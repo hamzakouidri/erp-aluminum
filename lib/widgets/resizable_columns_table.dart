@@ -679,6 +679,7 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
 
   @override
   Widget build(BuildContext context) {
+    final ambientTextDirection = Directionality.of(context);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     // Deliberately use one palette everywhere. The legacy color arguments are
@@ -800,10 +801,11 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
           ),
         );
 
-        // Column order is always visualized from left to right, independently
-        // from the language used by the surrounding screen.
+        // Keep the table geometry aligned with the active language. In RTL,
+        // resize handles live on the left edge and dragging left enlarges the
+        // column towards the pointer, instead of growing on the opposite side.
         return Directionality(
-          textDirection: TextDirection.ltr,
+          textDirection: ambientTextDirection,
           child: MouseRegion(
             onEnter: (_) {
               if (!_tableFocusNode.hasFocus) _tableFocusNode.requestFocus();
@@ -1219,8 +1221,12 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
             : Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  onTap: row.onTap,
-                  onDoubleTap: row.onDoubleTap,
+                  // Desktop table convention: one left click only selects
+                  // the row (the Listener above already does that). Opening
+                  // an item requires a double click. Secondary actions such
+                  // as edit/delete/print stay in the context/action menus.
+                  onTap: null,
+                  onDoubleTap: row.onTap ?? row.onDoubleTap,
                   child: rowBody,
                 ),
               ),
@@ -1251,6 +1257,17 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
     final local = overlay.globalToLocal(globalPosition);
     final x = local.dx.clamp(8.0, overlay.size.width - 8.0).toDouble();
     final y = local.dy.clamp(8.0, overlay.size.height - 8.0).toDouble();
+    final languageCode = Localizations.localeOf(context).languageCode;
+    final openLabel = switch (languageCode) {
+      'ar' => 'فتح',
+      'fr' => 'Ouvrir',
+      _ => 'Open',
+    };
+    final editLabel = switch (languageCode) {
+      'ar' => 'تعديل',
+      'fr' => 'Modifier',
+      _ => 'Edit',
+    };
     final selected = await showMenu<String>(
       context: context,
       position: RelativeRect.fromLTRB(
@@ -1261,21 +1278,21 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
       ),
       items: [
         if (row.onTap != null)
-          const PopupMenuItem<String>(
+          PopupMenuItem<String>(
             value: 'open',
             child: ListTile(
               dense: true,
               leading: Icon(Icons.open_in_new_rounded, size: 18),
-              title: Text('فتح'),
+              title: Text(openLabel),
             ),
           ),
         if (row.onDoubleTap != null)
-          const PopupMenuItem<String>(
+          PopupMenuItem<String>(
             value: 'edit',
             child: ListTile(
               dense: true,
               leading: Icon(Icons.edit_outlined, size: 18),
-              title: Text('تعديل'),
+              title: Text(editLabel),
             ),
           ),
       ],

@@ -8011,4 +8011,64 @@ This action cannot be undone!''',
     AppLanguage.french: 'Activer / désactiver le volet',
     AppLanguage.english: 'Toggle window shutter',
   },
+  'الإجراءات': {
+    AppLanguage.arabic: 'الإجراءات',
+    AppLanguage.french: 'Actions',
+    AppLanguage.english: 'Actions',
+  },
+  'التسوية اليومية': {
+    AppLanguage.arabic: 'التسوية اليومية',
+    AppLanguage.french: 'Règlement journalier',
+    AppLanguage.english: 'Daily reconciliation',
+  },
+  'المصروفات': {
+    AppLanguage.arabic: 'المصروفات',
+    AppLanguage.french: 'Dépenses',
+    AppLanguage.english: 'Expenses',
+  },
+  'المقبوضات': {
+    AppLanguage.arabic: 'المقبوضات',
+    AppLanguage.french: 'Encaissements',
+    AppLanguage.english: 'Receipts',
+  },
+  'الرصيد المتوقع': {
+    AppLanguage.arabic: 'الرصيد المتوقع',
+    AppLanguage.french: 'Solde attendu',
+    AppLanguage.english: 'Expected balance',
+  },
+  'النقد المحسوب فعلياً': {
+    AppLanguage.arabic: 'النقد المحسوب فعلياً',
+    AppLanguage.french: 'Espèces réellement comptées',
+    AppLanguage.english: 'Actual cash counted',
+  },
+  'إغلاق اليوم': {
+    AppLanguage.arabic: 'إغلاق اليوم',
+    AppLanguage.french: 'Clôturer la journée',
+    AppLanguage.english: 'Close business day',
+  },
+  'تم حفظ التسوية اليومية في السجل': {
+    AppLanguage.arabic: 'تم حفظ التسوية اليومية في السجل',
+    AppLanguage.french: 'Le règlement journalier a été enregistré',
+    AppLanguage.english: 'Daily reconciliation was saved to the log',
+  },
+  'الإرجاع': {
+    AppLanguage.arabic: 'الإرجاع',
+    AppLanguage.french: 'Retours',
+    AppLanguage.english: 'Returns',
+  },
+  'إرجاع إلى المخزون': {
+    AppLanguage.arabic: 'إرجاع إلى المخزون',
+    AppLanguage.french: 'Retour au stock',
+    AppLanguage.english: 'Return to stock',
+  },
+  'إرجاع من الزبون إلى المخزون': {
+    AppLanguage.arabic: 'إرجاع من الزبون إلى المخزون',
+    AppLanguage.french: 'Retour client vers le stock',
+    AppLanguage.english: 'Customer return to stock',
+  },
+  'اختر وثيقة البيع': {
+    AppLanguage.arabic: 'اختر وثيقة البيع',
+    AppLanguage.french: 'Choisir le document de vente',
+    AppLanguage.english: 'Select sales document',
+  },
 };

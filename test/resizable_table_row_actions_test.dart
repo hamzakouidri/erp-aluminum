@@ -44,7 +44,7 @@ void main() {
     );
   });
 
-  testWidgets('selected rows receive shortcuts and double clicks separately',
+  testWidgets('single click selects and double click opens the row',
       (tester) async {
     SharedPreferences.setMockInitialValues({});
     final actions = <String>[];
@@ -56,6 +56,7 @@ void main() {
           ],
           rows: List.generate(2, (index) => ResizableTableRow(
             cells: [Text('Order $index')],
+            onTap: () => actions.add('open $index'),
             onDoubleTap: () => actions.add('edit $index'),
             onKeyEvent: (event) {
               if (event is KeyDownEvent && HardwareKeyboard.instance.isControlPressed &&
@@ -87,7 +88,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
     await tester.tap(find.text('Order 1'));
     await tester.pumpAndSettle();
-    expect(actions, ['0 A', '1 F', 'edit 1']);
+    expect(actions, ['0 A', '1 F', 'open 1']);
     expect(tester.takeException(), isNull);
   });
 
@@ -130,9 +131,9 @@ void main() {
 
     await tester.tap(find.text('Window 42'), buttons: kSecondaryMouseButton);
     await tester.pumpAndSettle();
-    expect(find.text('فتح'), findsOneWidget);
-    expect(find.text('تعديل'), findsOneWidget);
-    await tester.tap(find.text('تعديل'));
+    expect(find.text('Open'), findsOneWidget);
+    expect(find.text('Edit'), findsOneWidget);
+    await tester.tap(find.text('Edit'));
     await tester.pumpAndSettle();
     expect(actions, ['edit']);
     expect(tester.takeException(), isNull);
