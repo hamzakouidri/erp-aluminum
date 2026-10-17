@@ -5939,6 +5939,100 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     };
   }
 
+  /// Lists holes that break tempered-glass limits and lets the user go back
+  /// to fix them. Returns true to continue to the manufacturing sheet.
+  Future<bool> _confirmHoleIssues() async {
+    final issues = findTemperedHoleIssues(
+      thicknessMm: _glassThicknessMm,
+      panels: [
+        for (final panel in _panels)
+          (
+            widthMm: panel.widthMm,
+            heightMm: panel.heightMm,
+            holes: [
+              for (final hole in panel.holes)
+                (
+                  xMm: hole.xMm,
+                  yMm: hole.yMm,
+                  diameterMm: hole.diameterMm,
+                  purpose: hole.purpose,
+                ),
+            ],
+          ),
+      ],
+    );
+    if (issues.isEmpty) return true;
+
+    String describe(TemperedHoleIssue issue) {
+      final panel = '${_tr('لوح', 'Panneau', 'Panel')} ${issue.panelIndex + 1}';
+      final value = issue.valueMm.toStringAsFixed(0);
+      final minimum = issue.minimumMm.toStringAsFixed(0);
+      final problem = switch (issue.kind) {
+        'diameter' => _tr(
+          'قطر الثقب $value مم أصغر من سماكة الزجاج ($minimum مم)',
+          'diamètre $value mm inférieur à l’épaisseur ($minimum mm)',
+          'hole diameter $value mm below the glass thickness ($minimum mm)',
+        ),
+        'edge' => _tr(
+          'المسافة إلى حافة الزجاج $value مم (الحد الأدنى $minimum مم)',
+          'distance au bord $value mm (minimum $minimum mm)',
+          'distance to the glass edge $value mm (minimum $minimum mm)',
+        ),
+        _ => _tr(
+          'المسافة بين الثقبين $value مم (الحد الأدنى $minimum مم)',
+          'distance entre trous $value mm (minimum $minimum mm)',
+          'distance between holes $value mm (minimum $minimum mm)',
+        ),
+      };
+      return '$panel – ${issue.purpose}: $problem';
+    }
+
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: Icon(Icons.warning_amber_rounded, color: Colors.orange.shade800),
+        title: Text(
+          _tr(
+            'ثقوب قد تكسر الزجاج عند التقسية',
+            'Trous risquant de casser le verre à la trempe',
+            'Holes that may break the glass when tempering',
+          ),
+        ),
+        content: SizedBox(
+          width: 520,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final issue in issues)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text('• ${describe(issue)}'),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(
+              _tr('متابعة رغم ذلك', 'Continuer quand même', 'Continue anyway'),
+            ),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(
+              _tr('رجوع للتعديل', 'Revenir corriger', 'Go back and fix'),
+            ),
+          ),
+        ],
+      ),
+    );
+    return proceed == true;
+  }
+
   Future<void> _showManufacturingSheet() async {
     if (_panels.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -5954,6 +6048,9 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
       );
       return;
     }
+
+    if (!await _confirmHoleIssues()) return;
+    if (!mounted) return;
 
     final payload = _buildManufacturingPayload();
     final result = await Navigator.push<Map<String, dynamic>>(
@@ -7669,6 +7766,110 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     );
   }
 
+  /// Price per m² of tempered glass of the drawing's thickness from the
+  /// Glass catalogue, or null when the catalogue has none.
+  Future<double?> _catalogTemperedGlassRatePerSqm() async {
+    try {
+      final rows = await _db.readGlass();
+      double? best;
+      var bestScore = -1;
+      for (final row in rows) {
+        final thickness = (row['thickness'] as num?)?.toDouble() ?? 0;
+        final price = (row['price_per_sqm'] as num?)?.toDouble() ?? 0;
+        if (price <= 0 || (thickness - _glassThicknessMm).abs() > 0.01) {
+          continue;
+        }
+        final text = '${row['name'] ?? ''} ${row['type'] ?? ''} '
+                '${row['subtype'] ?? ''}'
+            .toLowerCase();
+        final isTempered = const [
+          'trempé',
+          'trempe',
+          'tempered',
+          'securit',
+          'sécurit',
+          'مقسى',
+          'مقسّى',
+        ].any(text.contains);
+        if (_glassTempered && !isTempered) continue;
+        final score = text.contains(_glassType.toLowerCase()) ? 1 : 0;
+        if (score > bestScore) {
+          best = price;
+          bestScore = score;
+        }
+      }
+      return best;
+    } catch (error) {
+      debugPrint('Tempered glass catalogue price unavailable: $error');
+      return null;
+    }
+  }
+
+  Widget _buildEstimatedPricesWarning({
+    required bool glassRateEstimated,
+    required List<String> estimatedAccessories,
+  }) {
+    final details = <String>[
+      if (glassRateEstimated)
+        _tr(
+          'سعر الزجاج المقسّى لهذه السماكة غير موجود في كتالوج الزجاج',
+          'Prix du verre trempé de cette épaisseur absent du catalogue verre',
+          'No tempered glass of this thickness in the glass catalogue',
+        ),
+      _tr(
+        'أسعار شطب الحواف والسفع ثابتة وغير مرتبطة بالكتالوج',
+        'Tarifs de façonnage et de sablage fixes, hors catalogue',
+        'Edge finishing and frosting rates are fixed, not from the catalogue',
+      ),
+      if (estimatedAccessories.isNotEmpty)
+        '${_tr('إكسسوارات غير موجودة في الكتالوج', 'Accessoires absents du catalogue', 'Accessories missing from the catalogue')}: ${estimatedAccessories.join('، ')}',
+    ];
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        border: Border.all(color: Colors.orange.shade300),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.warning_amber_rounded, color: Colors.orange.shade800),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _tr(
+                    'تقدير غير نهائي: الأسعار المعلّمة بـ * تقديرية',
+                    'Estimation non définitive : les prix marqués * sont estimés',
+                    'Not final: prices marked * are estimates',
+                  ),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange.shade900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                for (final line in details)
+                  Text(
+                    '• $line',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.orange.shade900,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _showCostAndQuantityDialog() async {
     double totalAreaSqm = 0.0;
     double totalPerimeterM = 0.0;
@@ -7679,11 +7880,17 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
       totalPerimeterM += perim;
     }
 
+    // Catalogue price first; the built-in rates are only an estimate when
+    // the Glass table has no matching tempered glass, and are flagged so.
+    final catalogGlassRate = await _catalogTemperedGlassRatePerSqm();
+    final glassRateEstimated = catalogGlassRate == null;
     double glassRatePerSqm =
+        catalogGlassRate ??
         3500.0 +
-        (_glassThicknessMm >= 10
-            ? 1000.0
-            : (_glassThicknessMm >= 8 ? 500.0 : 0.0));
+            (_glassThicknessMm >= 10
+                ? 1000.0
+                : (_glassThicknessMm >= 8 ? 500.0 : 0.0));
+    if (!mounted) return;
     double chantRatePerM = _edgeFinish == 'extra_smooth' ? 600.0 : 350.0;
     double sablageRatePerSqm = 1200.0;
     double laborRatePercent = 15.0;
@@ -7730,6 +7937,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
             );
             final price = (handleItem['price'] as num?)?.toDouble() ?? 4500.0;
             appliedAccessories.add({
+              'estimated': handleItem['id'] == null,
               'name':
                   handleItem['name'] ??
                   _tr(
@@ -7762,6 +7970,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
             );
             final price = (towelItem['price'] as num?)?.toDouble() ?? 4800.0;
             appliedAccessories.add({
+              'estimated': towelItem['id'] == null,
               'name':
                   towelItem['name'] ??
                   _tr(
@@ -7794,6 +8003,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
             );
             final price = (railItem['price'] as num?)?.toDouble() ?? 16500.0;
             appliedAccessories.add({
+              'estimated': railItem['id'] == null,
               'name':
                   railItem['name'] ??
                   _tr(
@@ -7823,6 +8033,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
             );
             final price = (hingeItem['price'] as num?)?.toDouble() ?? 3800.0;
             appliedAccessories.add({
+              'estimated': hingeItem['id'] == null,
               'name':
                   hingeItem['name'] ??
                   _tr(
@@ -7853,6 +8064,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
             final mult = _workType == GlassWorkType.vitrineDoubleDoor ? 2 : 1;
             final price = (pivotItem['price'] as num?)?.toDouble() ?? 14000.0;
             appliedAccessories.add({
+              'estimated': pivotItem['id'] == null,
               'name':
                   pivotItem['name'] ??
                   _tr(
@@ -7906,6 +8118,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
               final jPrice =
                   (magnetJointItem['price'] as num?)?.toDouble() ?? 2000.0;
               appliedAccessories.add({
+                'estimated': magnetJointItem['id'] == null,
                 'name':
                     magnetJointItem['name'] ??
                     (is90DegCorner
@@ -7933,6 +8146,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
               final fPrice =
                   (fJointItem['price'] as num?)?.toDouble() ?? 1600.0;
               appliedAccessories.add({
+                'estimated': fJointItem['id'] == null,
                 'name': fJointItem['name'] ?? 'جوان حرف F مانع تسرب الماء',
                 'qty': 1,
                 'unit': 'piece',
@@ -7952,6 +8166,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
               final price = (item['price'] as num?)?.toDouble() ?? 0.0;
               final tot = price * entry.value;
               appliedAccessories.add({
+                'estimated': item['id'] == null,
                 'name': item['name'] ?? '',
                 'qty': entry.value,
                 'unit': item['unit'] ?? 'piece',
@@ -7962,6 +8177,15 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
             }
           }
 
+          final estimatedAccessories = appliedAccessories
+              .where((acc) => acc['estimated'] == true)
+              .map((acc) => acc['name'].toString())
+              .toList();
+          final hasEstimatedPrices =
+              glassRateEstimated ||
+              totalPerimeterM > 0 ||
+              sablageAreaSqm > 0 ||
+              estimatedAccessories.isNotEmpty;
           final totalMaterialsCost =
               glassCost + chantCost + sablageCost + accessoriesTotal;
           final laborAmount = totalMaterialsCost * (laborRatePercent / 100.0);
@@ -8010,6 +8234,11 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (hasEstimatedPrices)
+                      _buildEstimatedPricesWarning(
+                        glassRateEstimated: glassRateEstimated,
+                        estimatedAccessories: estimatedAccessories,
+                      ),
                     _buildCostSectionHeader(
                       _tr(
                         '1. تفاصيل ألواح الزجاج',
@@ -8063,7 +8292,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                               ),
                               _tableCell('${a.toStringAsFixed(2)} m²'),
                               _tableCell(
-                                '${glassRatePerSqm.toStringAsFixed(0)} DZD',
+                                '${glassRatePerSqm.toStringAsFixed(0)} DZD${glassRateEstimated ? ' *' : ''}',
                               ),
                               _tableCell(
                                 '${tot.toStringAsFixed(0)} DZD',
@@ -8114,7 +8343,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                               '${totalPerimeterM.toStringAsFixed(2)} m',
                             ),
                             _tableCell(
-                              '${chantRatePerM.toStringAsFixed(0)} DZD/m',
+                              '${chantRatePerM.toStringAsFixed(0)} DZD/m *',
                             ),
                             _tableCell(
                               '${chantCost.toStringAsFixed(0)} DZD',
@@ -8132,7 +8361,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                                 '${sablageAreaSqm.toStringAsFixed(2)} m²',
                               ),
                               _tableCell(
-                                '${sablageRatePerSqm.toStringAsFixed(0)} DZD/m²',
+                                '${sablageRatePerSqm.toStringAsFixed(0)} DZD/m² *',
                               ),
                               _tableCell(
                                 '${sablageCost.toStringAsFixed(0)} DZD',
@@ -8198,7 +8427,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                                   '${acc['qty']} ${acc['unit'] == 'meter' ? 'm' : 'pce'}',
                                 ),
                                 _tableCell(
-                                  '${(acc['price'] as double).toStringAsFixed(0)} DZD',
+                                  '${(acc['price'] as double).toStringAsFixed(0)} DZD${acc['estimated'] == true ? ' *' : ''}',
                                 ),
                                 _tableCell(
                                   '${(acc['total'] as double).toStringAsFixed(0)} DZD',
@@ -12169,3 +12398,98 @@ class _SystemDiagramPainter extends CustomPainter {
   bool shouldRepaint(covariant _SystemDiagramPainter oldDelegate) =>
       oldDelegate.systemCode != systemCode;
 }
+
+/// A hole that breaks a manufacturing limit of tempered glass.
+class TemperedHoleIssue {
+  const TemperedHoleIssue({
+    required this.panelIndex,
+    required this.purpose,
+    required this.kind,
+    required this.valueMm,
+    required this.minimumMm,
+  });
+
+  final int panelIndex;
+  final String purpose;
+
+  /// 'diameter', 'edge' (hole edge to glass edge) or 'spacing' (between two
+  /// holes).
+  final String kind;
+  final double valueMm;
+  final double minimumMm;
+}
+
+/// Checks holes against the usual tempered-glass limits (EN 12150 practice):
+/// diameter at least the glass thickness, and at least twice the thickness
+/// between a hole's edge and the glass edge or another hole. Dragging only
+/// keeps a hole inside the panel, so a hole touching the edge was accepted
+/// and the panel broke in the furnace or was refused by the supplier.
+List<TemperedHoleIssue> findTemperedHoleIssues({
+  required double thicknessMm,
+  required List<
+    ({
+      double widthMm,
+      double heightMm,
+      List<({double xMm, double yMm, double diameterMm, String purpose})> holes,
+    })
+  >
+  panels,
+}) {
+  final issues = <TemperedHoleIssue>[];
+  if (thicknessMm <= 0) return issues;
+  final minimumGap = 2 * thicknessMm;
+  for (var index = 0; index < panels.length; index++) {
+    final panel = panels[index];
+    final holes = panel.holes;
+    for (var i = 0; i < holes.length; i++) {
+      final hole = holes[i];
+      final radius = hole.diameterMm / 2;
+      if (hole.diameterMm + 0.01 < thicknessMm) {
+        issues.add(
+          TemperedHoleIssue(
+            panelIndex: index,
+            purpose: hole.purpose,
+            kind: 'diameter',
+            valueMm: hole.diameterMm,
+            minimumMm: thicknessMm,
+          ),
+        );
+      }
+      final edgeGap = math.min(
+        math.min(hole.xMm - radius, panel.widthMm - hole.xMm - radius),
+        math.min(hole.yMm - radius, panel.heightMm - hole.yMm - radius),
+      );
+      if (edgeGap + 0.01 < minimumGap) {
+        issues.add(
+          TemperedHoleIssue(
+            panelIndex: index,
+            purpose: hole.purpose,
+            kind: 'edge',
+            valueMm: math.max(0, edgeGap),
+            minimumMm: minimumGap,
+          ),
+        );
+      }
+      for (var j = i + 1; j < holes.length; j++) {
+        final other = holes[j];
+        final centres = math.sqrt(
+          math.pow(hole.xMm - other.xMm, 2) + math.pow(hole.yMm - other.yMm, 2),
+        );
+        final gap = centres - radius - other.diameterMm / 2;
+        if (gap + 0.01 < minimumGap) {
+          issues.add(
+            TemperedHoleIssue(
+              panelIndex: index,
+              purpose: '${hole.purpose} / ${other.purpose}',
+              kind: 'spacing',
+              valueMm: math.max(0, gap),
+              minimumMm: minimumGap,
+            ),
+          );
+        }
+      }
+    }
+  }
+  return issues;
+}
+

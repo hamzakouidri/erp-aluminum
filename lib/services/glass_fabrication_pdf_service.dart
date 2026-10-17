@@ -92,7 +92,9 @@ class GlassFabricationPdfService {
       final glassType = payload['glassTypeLabel']?.toString() ??
           payload['glassType']?.toString() ??
           (lang == AppLanguage.arabic ? 'شفاف' : 'Clair');
-      final thickness = ((payload['glassThicknessMm'] ?? payload['thicknessMm']) as num?)?.toDouble() ?? 10.0;
+      // A missing value is printed as missing: a default thickness on a
+      // factory sheet looks like real data and gets manufactured.
+      final thickness = ((payload['glassThicknessMm'] ?? payload['thicknessMm']) as num?)?.toDouble();
       final isTempered = payload['glassTempered'] != false;
       final edgeFinish = payload['edgeFinishLabel']?.toString() ??
           payload['edgeFinish']?.toString() ??
@@ -314,7 +316,7 @@ class GlassFabricationPdfService {
 
   static pw.Widget _buildSpecsBar({
     required String glassType,
-    required double thickness,
+    required double? thickness,
     required bool isTempered,
     required String edgeFinish,
     required double overallW,
@@ -336,7 +338,7 @@ class GlassFabricationPdfService {
         children: [
           _specItem(isAr ? 'نوع الزجاج' : 'Type', glassType, fonts),
           _specDivider(),
-          _specItem(isAr ? 'السمك' : 'Épaisseur', '${thickness.toStringAsFixed(0)} mm', fonts),
+          _specItem(isAr ? 'السمك' : 'Épaisseur', thickness == null ? '?' : '${thickness.toStringAsFixed(0)} mm', fonts),
           _specDivider(),
           _specItem(isAr ? 'مقسّى' : 'Trempé', isTempered ? (isAr ? 'نعم' : 'Oui') : (isAr ? 'لا' : 'Non'), fonts),
           _specDivider(),
@@ -611,9 +613,10 @@ class GlassFabricationPdfService {
                 itemCount: holesList.length,
                 itemBuilder: (context, hIdx) {
                   final h = holesList[hIdx];
-                  final dia = (h['diameterMm'] as num?)?.toDouble() ?? 20.0;
-                  final x = (h['xMm'] as num?)?.toDouble() ?? 0.0;
-                  final y = (h['yMm'] as num?)?.toDouble() ?? 0.0;
+                  final dia = (h['diameterMm'] as num?)?.toDouble();
+                  final x = (h['xMm'] as num?)?.toDouble();
+                  final y = (h['yMm'] as num?)?.toDouble();
+                  String mm(double? value) => value == null ? '?' : value.toStringAsFixed(0);
                   final isEven = hIdx % 2 == 0;
 
                   return pw.Container(
@@ -631,19 +634,19 @@ class GlassFabricationPdfService {
                         pw.SizedBox(
                           width: 32,
                           child: _pText(
-                            'Ø${dia.toStringAsFixed(0)}',
+                            'Ø${mm(dia)}',
                             style: pw.TextStyle(font: fonts.bold, fontSize: 6.5, color: _darkText),
                           ),
                         ),
                         pw.Expanded(
                           child: _pText(
-                            x.toStringAsFixed(0),
+                            mm(x),
                             style: pw.TextStyle(font: fonts.regular, fontSize: 6.5, color: _darkText),
                           ),
                         ),
                         pw.Expanded(
                           child: _pText(
-                            y.toStringAsFixed(0),
+                            mm(y),
                             style: pw.TextStyle(font: fonts.regular, fontSize: 6.5, color: _darkText),
                           ),
                         ),
