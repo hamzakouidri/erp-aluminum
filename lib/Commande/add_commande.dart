@@ -466,7 +466,7 @@ class _CommandePageState extends State<CommandePage> {
     // A panneau is a choice that belongs to one drawing/cell, not a reusable
     // glazing default.  Carry real glass forward for quick entry, but always
     // start the next item with ordinary glass after a panneau was used.
-    final previousGlass = WindowZone.globalDefaultGlass;
+    final previousGlass = m.defaultGlass;
     final glassSpec =
         (previousGlass.structure == GlassStructure.closed
                 ? const GlassSpecification()
@@ -503,31 +503,18 @@ class _CommandePageState extends State<CommandePage> {
       'primaryMullionAxis',
       'mullionProfiles',
       'groovedMullionCavityOnPositiveSide',
-      'mullionSectionOverrides',
-      'componentOverrides',
-      'frameOverride',
-      'sashOverride',
-      'internalSlidingSideCoverOverride',
-      'slidingFrameOverride',
-      'slidingSashOverride',
     };
     final drawingDefaults = <String, dynamic>{
       for (final key in defaultKeys)
         if (modelMap.containsKey(key)) key: modelMap[key],
       'glassSpec': glassSpec,
     };
+    // Series identity and profile choices (frame/sash overrides, component
+    // overrides, mullion sections) are never inherited by an independent new
+    // item: they made a new PVC drawing keep BS 90 parts in its drawer and
+    // BOM. A new item starts from the configured default series; copying a
+    // drawing with its profiles is done through "clone" only.
     _lastUsedSettings = {
-      'activeSeries': m.activeSeries,
-      'activeSlidingSeries': m.activeSlidingSeries,
-      'loadedSeriesId': m.activeFrameSeries?.id ?? m.loadedSeriesId,
-      'loadedSlidingSeriesId':
-          m.activeSlidingSeries?.id ?? m.loadedSlidingSeriesId,
-      'loadedSeriesName':
-          m.activeFrameSeries?.name ??
-          m.loadedSeriesName ??
-          m.manualNameOverride,
-      'loadedSlidingSeriesName':
-          m.activeSlidingSeries?.name ?? m.loadedSlidingSeriesName,
       'selectedDbColor': m.selectedDbColor != null
           ? Map<String, dynamic>.from(m.selectedDbColor!)
           : null,

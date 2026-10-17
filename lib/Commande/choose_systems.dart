@@ -568,15 +568,10 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         final inheritedGlass = glassSpecificationFromMap(
           Map<String, dynamic>.from(glassSpec),
         );
-        WindowZone.globalDefaultGlass =
-            inheritedGlass.structure == GlassStructure.closed
+        m.defaultGlass = inheritedGlass.structure == GlassStructure.closed
             ? const GlassSpecification()
             : inheritedGlass;
-      } else {
-        WindowZone.globalDefaultGlass = const GlassSpecification();
       }
-    } else {
-      WindowZone.globalDefaultGlass = const GlassSpecification();
     }
 
     if (m.selectedDbColor == null) {
