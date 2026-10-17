@@ -10203,6 +10203,10 @@ class ComponentCalculator {
             unit: 'قطعة',
             overrideMap: pricedOverride,
             preferOverrideMap: true,
+            // pricedOverride is the saved bardage selection with this
+            // colour's price. Merging the saved selection over it again
+            // restored one colour's price on every colour row.
+            ignoreSavedOverride: usesSpecificBardageRole,
             priceByWholeBar: true,
             roleKey: usesSpecificBardageRole ? 'bardage' : 'panneau',
             selectorType: usesSpecificBardageRole ? 'bardage' : 'panneau',

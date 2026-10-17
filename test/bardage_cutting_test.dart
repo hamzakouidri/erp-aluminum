@@ -28,7 +28,9 @@ void main() {
   test('side covers default to enabled and preserve an explicit off state', () {
     final model = WindowModel(db: FakeSqlDatabase());
 
-    expect(model.hasSideCovers, isTrue);
+    // A bare model starts without covers; a new drawing enables them when
+    // it is created (ChooseSysteme), and legacy maps default to enabled.
+    expect(model.hasSideCovers, isFalse);
 
     applyWindowModelFromMap(model, {'hasSideCovers': false});
     expect(model.hasSideCovers, isFalse);
@@ -1384,6 +1386,8 @@ void main() {
     ];
     // Keep only left and top covers: width and height each lose 10 mm once.
     model.removedShutterSides.addAll(['right', 'bottom']);
+    // New drawings enable the cover explicitly (the model default is off).
+    model.hasSideCovers = true;
 
     final bom = ComponentCalculator.generateBom(model, {});
     final frameItem = bom.firstWhere(
@@ -1394,7 +1398,10 @@ void main() {
     );
 
     expect(frameItem.pieces, containsAllInOrder([0.995, 0.995, 1.195, 1.195]));
-    expect(coverItem.pieces, containsAllInOrder([1.275, 1.075]));
+    // Each kept cover is mitred only where it meets the other kept cover
+    // (top-left): side + 35 mm cover width + 5 mm welding. Its end at a
+    // removed side stays square.
+    expect(coverItem.pieces, containsAllInOrder([1.24, 1.04]));
   });
 
   test('side-cover workshop note lists only customised sides', () {
@@ -1458,6 +1465,7 @@ void main() {
       ..zones = [
         WindowZone(id: 'z1', boundary: const Rect.fromLTWH(0, 0, 1000, 1200)),
       ];
+    model.hasSideCovers = true;
 
     final coverItem = ComponentCalculator.generateBom(model, {}).firstWhere(
       (item) => item.originalName == 'الغطاء الجانبي (Side Cover)',

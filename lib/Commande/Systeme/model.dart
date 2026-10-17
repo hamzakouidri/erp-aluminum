@@ -1218,6 +1218,11 @@ class GlassSpecification {
 
   // 🟢 استرجاع سماكة البانو الفعلية من قاعدة البيانات
   double getPanelThickness(List<Map<String, dynamic>> allGlassCache) {
+    // The thickness stored on the panel is used when the catalogue row is
+    // not available (catalogue not loaded, product removed). Returning 0
+    // chose the thinnest glazing bead for an 18 mm panel.
+    final savedThickness =
+        thicknessOuter != null && thicknessOuter! > 0 ? thicknessOuter! : 0.0;
     int? resolvedId = panneauProductId;
     if (resolvedId == null) {
       if (panneauSubtype != null && panneauSubtype!.isNotEmpty) {
@@ -1273,7 +1278,7 @@ class GlassSpecification {
         if (thick != null && thick > 0) return thick;
       }
 
-      return 0.0;
+      return savedThickness;
     }
 
     final match = allGlassCache.firstWhere(
@@ -1285,7 +1290,7 @@ class GlassSpecification {
       if (thick != null && thick > 0) return thick;
     }
 
-    return 0.0;
+    return savedThickness;
   }
 
   double totalThickness(List<Map<String, dynamic>> allGlassCache) {
@@ -18709,7 +18714,10 @@ class WindowModel extends ChangeNotifier {
     return rect == null ? effectiveHasBottomFrame : hasBottomFrameForRect(rect);
   }
 
-  bool get canUseBottomSideCover => canSideUseSideCover('bottom');
+  // With the bottom wall hidden there is nothing below the frame for a
+  // cover to close; this condition was lost when the rule became per side.
+  bool get canUseBottomSideCover =>
+      showBottomWall && canSideUseSideCover('bottom');
 
   bool get canEditSelectedBottomFrame {
     if (!canDisableBottomFrame) return false;
