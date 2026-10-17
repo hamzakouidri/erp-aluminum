@@ -106,4 +106,29 @@ final Map<String, Map<AppLanguage, String>> glazingFitKeys = {
     AppLanguage.english:
         'You can change the spacer manually; a warning appears if it does not fit.',
   },
+  'معاينة ثلاثية الأبعاد': {
+    AppLanguage.arabic: 'معاينة ثلاثية الأبعاد',
+    AppLanguage.french: 'Aperçu 3D',
+    AppLanguage.english: '3D preview',
+  },
+  'إعادة ضبط المنظور': {
+    AppLanguage.arabic: 'إعادة ضبط المنظور',
+    AppLanguage.french: 'Réinitialiser la vue',
+    AppLanguage.english: 'Reset view',
+  },
+  'إيقاف الحركة': {
+    AppLanguage.arabic: 'إيقاف الحركة',
+    AppLanguage.french: 'Arrêter l\'animation',
+    AppLanguage.english: 'Stop animation',
+  },
+  'إغلاق النافذة': {
+    AppLanguage.arabic: 'إغلاق النافذة',
+    AppLanguage.french: 'Fermer la fenêtre',
+    AppLanguage.english: 'Close the window',
+  },
+  'فتح النافذة': {
+    AppLanguage.arabic: 'فتح النافذة',
+    AppLanguage.french: 'Ouvrir la fenêtre',
+    AppLanguage.english: 'Open the window',
+  },
 };
