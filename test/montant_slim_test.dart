@@ -106,14 +106,15 @@ void main() {
         }
         expect(cleatItem.roleKey, equals('complement_haut_base'));
 
-        // 3. The sash keeps its two widths. Slim replaces only one vertical
-        // montant and must never move those widths to the complement row.
+        // 3. Each sash keeps its two widths (2 sashes => 4). Slim replaces
+        // only one vertical montant and must never move those widths to the
+        // complement row.
         final sashItem = bom.firstWhere(
           (item) => item.originalName.contains('Sliding Sash'),
         );
         expect(
           sashItem.pieces!.where((piece) => piece < 1.0).length,
-          equals(2),
+          equals(4),
         );
         expect(
           bom.where((item) => item.roleKey == 'sash_traverse'),

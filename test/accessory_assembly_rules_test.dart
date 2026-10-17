@@ -69,6 +69,7 @@ class RuleDatabase extends SqlDatabase {
   @override
   Future<Database?> get db async => MemoryDatabase();
 
+  /// Filters like the real query: by role and item when they are given.
   @override
   Future<List<Map<String, dynamic>>> getCatalogItemRules({
     String? itemTable,
@@ -77,7 +78,15 @@ class RuleDatabase extends SqlDatabase {
     Iterable<String> roleKeys = const [],
     bool exactSeriesOnly = false,
     bool includeInactive = false,
-  }) async => rules;
+  }) async {
+    final roles = roleKeys.map((role) => role.trim()).toSet();
+    return [
+      for (final rule in rules)
+        if ((roles.isEmpty || roles.contains('${rule['role_key']}'.trim())) &&
+            (itemId == null || rule['item_id'] == itemId))
+          rule,
+    ];
+  }
 }
 
 class LegacyAssignedAccessoryDatabase implements Database {

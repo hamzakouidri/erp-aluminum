@@ -30,8 +30,10 @@ void main() {
   );
 
   test(
-    'mixed sliding-only drawing keeps sliding profiles with fixed glass',
+    'mixed drawing with fixed glass beside a sliding sash uses the opening frame',
     () {
+      // In a mixed drawing the fixed glass is framed by the opening series;
+      // only a drawing made of sliding sashes alone keeps sliding profiles.
       final model = WindowModel(
         db: SqlDatabase(),
         width: 1000,
@@ -53,11 +55,14 @@ void main() {
         ),
       ];
 
+      expect(model.usesSlidingPrimaryProfiles, isFalse);
+
+      model.zones.removeAt(0);
       expect(model.usesSlidingPrimaryProfiles, isTrue);
       expect(
         model.frameUsesSlidingSeries(const Rect.fromLTWH(0, 0, 1000, 600)),
         isTrue,
-        reason: 'fixed glass must keep the surrounding TPR frame on 67000',
+        reason: 'a sliding-only drawing keeps the TPR frame on 67000',
       );
 
       model.zones.add(

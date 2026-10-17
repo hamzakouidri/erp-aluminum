@@ -1420,9 +1420,9 @@ class WindowZone {
     this.innerVPositions = const [],
     this.rightInnerHPositions = const [],
     this.rightInnerVPositions = const [],
-    this.cellIsPanel = const {},
-    this.cellIsSash = const {},
-    this.cellIsDoubleSash = const {},
+    Map<String, bool>? cellIsPanel,
+    Map<String, bool>? cellIsSash,
+    Map<String, bool>? cellIsDoubleSash,
     this.cellSashOverrides = const {},
     this.lockType = LockType.none,
     Map<String, bool>? slidingMontantReinforced,
@@ -1461,6 +1461,11 @@ class WindowZone {
                  sashCount: slidingSashesCount,
                )),
        glass = glass ?? const GlassSpecification(),
+       // Cell flags are edited in place (paintZoneContent clears them), so a
+       // zone must never hold an unmodifiable const map.
+       cellIsPanel = Map<String, bool>.from(cellIsPanel ?? const {}),
+       cellIsSash = Map<String, bool>.from(cellIsSash ?? const {}),
+       cellIsDoubleSash = Map<String, bool>.from(cellIsDoubleSash ?? const {}),
        cellGlassSpec = cellGlassSpec ?? const {},
        slidingMontantReinforced = Map<String, bool>.from(
          slidingMontantReinforced ??
@@ -18678,11 +18683,17 @@ class WindowModel extends ChangeNotifier {
   bool hasBottomFrameForRect(Rect frameRect) {
     final sliding = frameUsesSlidingSeries(frameRect);
     if (usesFrameRole('seuil', sliding: sliding)) return false;
-    if (sliding) return hasBottomFrame;
-    if (hasFramePlintheBottom) return false;
     final frameZones = zones
         .where((z) => frameRect.contains(z.boundary.center))
         .toList();
+    // A plinthe replaces the lower frame of opening/fixed sashes only. A
+    // neighbouring frame made of sliding sashes keeps its real lower frame.
+    final plintheSparesFrame =
+        hasFramePlintheBottom &&
+        frameZones.isNotEmpty &&
+        frameZones.every((z) => z.content == ZoneContent.slidingSash);
+    if (sliding) return hasBottomFrame || plintheSparesFrame;
+    if (hasFramePlintheBottom) return plintheSparesFrame;
     if (frameZones.any((z) => z.hasSashPlintheBottom)) return false;
     if (frameZones.isNotEmpty &&
         frameZones.every(
