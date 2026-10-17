@@ -2756,6 +2756,18 @@ class WindowModel extends ChangeNotifier {
   /// copied into a new drawing once, by the caller that creates it.
   GlassSpecification defaultGlass = const GlassSpecification();
 
+  /// Catalogue reads that failed while resolving this drawing. Each one
+  /// means a price or a component may have fallen back to a default, so the
+  /// quantity table shows them instead of presenting the result as exact.
+  final List<String> catalogIssues = [];
+
+  void reportCatalogIssue(String source, Object error) {
+    debugPrint('Catalogue read failed ($source): $error');
+    if (catalogIssues.contains(source)) return;
+    if (catalogIssues.length >= 20) catalogIssues.removeAt(0);
+    catalogIssues.add(source);
+  }
+
   /// Optional shutter parts the user switched on or off in the quantity
   /// table (kits, tandem, embout, supports), stored as differences from
   /// [ComponentCalculator.standardActiveVariants]. They used to live only in
@@ -7680,7 +7692,9 @@ class WindowModel extends ChangeNotifier {
       List<Map<String, dynamic>> colorPrices = [];
       try {
         colorPrices = await dbInstance!.query('GlassColorPrices');
-      } catch (_) {}
+      } catch (error) {
+        reportCatalogIssue('GlassColorPrices', error);
+      }
 
       allGlassCache = [];
       for (var g in list) {
@@ -8529,6 +8543,8 @@ class WindowModel extends ChangeNotifier {
   }
 
   Future<void> _loadCatalogData([String systemMode = '']) async {
+    // A fresh catalogue load replaces the data earlier failures affected.
+    catalogIssues.clear();
     colorsLoading = true;
     notifyListeners();
     try {
@@ -8571,7 +8587,9 @@ class WindowModel extends ChangeNotifier {
             }
           }
         }
-      } catch (_) {}
+      } catch (error) {
+        reportCatalogIssue('KitBundles', error);
+      }
 
       final profilesData = await db.readProfile();
       // Keep the early palette visible while the remaining catalogue tables
@@ -10959,7 +10977,9 @@ class WindowModel extends ChangeNotifier {
                       "($whereClause) AND (is_active = 1 OR is_active IS NULL)",
                   whereArgs: args,
                 );
-              } catch (_) {}
+              } catch (error) {
+                reportCatalogIssue('ShutterComponents (blade)', error);
+              }
             }
             if (overrideName == 'الشرائح (Lames)') {
               res = res.where(isShutterBladeComponent).toList();
@@ -12009,7 +12029,9 @@ class WindowModel extends ChangeNotifier {
               where: "($whereClause) AND (is_active = 1 OR is_active IS NULL)",
               whereArgs: args,
             );
-          } catch (_) {}
+          } catch (error) {
+            reportCatalogIssue('ShutterComponents', error);
+          }
         }
         try {
           if (overrideName == 'الشرائح (Lames)') {
@@ -12108,7 +12130,9 @@ class WindowModel extends ChangeNotifier {
               if (price > 0) return price;
             }
           }
-        } catch (_) {}
+        } catch (error) {
+          reportCatalogIssue('AccessoryColorPrices (shutter accessory price)', error);
+        }
         final rawPrice = accessory['price_dzd'] ?? accessory['price'];
         return rawPrice is num
             ? rawPrice.toDouble()
@@ -12203,7 +12227,9 @@ class WindowModel extends ChangeNotifier {
             );
             selected['catalog_source'] = 'Accessories';
             componentOverrides[overrideName] = selected;
-          } catch (_) {}
+          } catch (error) {
+            reportCatalogIssue('Accessories (shutter screws)', error);
+          }
         }
       }
 
@@ -22046,7 +22072,9 @@ class WindowModel extends ChangeNotifier {
               .toDouble();
           componentOverrides['المانيفال (Manivelle)'] = m;
         }
-      } catch (_) {}
+      } catch (error) {
+        reportCatalogIssue('ShutterComponents (Ekar)', error);
+      }
     }
 
     // Migration for backward compatibility
@@ -22116,7 +22144,9 @@ class WindowModel extends ChangeNotifier {
             m['calculated_price'] = (m['price_per_meter'] ?? 0.0).toDouble();
             componentOverrides[key] = m;
           }
-        } catch (_) {}
+        } catch (error) {
+          reportCatalogIssue('Joints (brush seal)', error);
+        }
       }
     }
 
@@ -22186,7 +22216,9 @@ class WindowModel extends ChangeNotifier {
           componentOverrides['جوان البوراج (Joint Bourrage)'] = bestGeneral;
         }
       }
-    } catch (_) {}
+    } catch (error) {
+      reportCatalogIssue('Joints (bourrage)', error);
+    }
     await _enrichAccessoryRelations(d);
   }
 
@@ -22717,7 +22749,9 @@ class WindowModel extends ChangeNotifier {
           LIMIT 1
         ''', keywordArgs);
         if (fallbackRows.isNotEmpty) return fallbackRows.first;
-      } catch (_) {}
+      } catch (error) {
+        reportCatalogIssue('Accessories (door lock)', error);
+      }
       return null;
     }
 

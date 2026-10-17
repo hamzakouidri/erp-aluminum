@@ -3204,6 +3204,37 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   // ==========================================================================
   // build: الدالة الرئيسية لبناء واجهة الشاشة كاملة
   // ==========================================================================
+  /// Catalogue reads that failed while resolving this drawing: some prices
+  /// or components below may be defaults rather than catalogue values.
+  Widget _buildCatalogIssuesWarning(AppLanguage lang) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        border: Border.all(color: Colors.orange.shade300),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.storage_rounded, color: Colors.orange.shade800, size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              '${Localization.translate('تعذرت قراءة بعض بيانات الكتالوج؛ قد تكون بعض الأسعار أو المكونات ناقصة', lang)}: ${widget.model.catalogIssues.join('، ')}',
+              style: TextStyle(
+                color: Colors.orange.shade900,
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// A profile kept from another series (for example BS 90 in a PVC
   /// drawing) makes every quantity and cost below unreliable.
   Widget _buildForeignSeriesWarning(AppLanguage lang, int count) {
@@ -3300,6 +3331,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                 _buildFetchProgress(lang),
               if (foreignSeriesOverrides.isNotEmpty)
                 _buildForeignSeriesWarning(lang, foreignSeriesOverrides.length),
+              if (widget.model.catalogIssues.isNotEmpty)
+                _buildCatalogIssuesWarning(lang),
               // تحذير ارتفاع الستار (إن وُجد) — يظهر فقط إذا كان هناك تحذير في النموذج
               if (widget.model.shutterHeightWarning != null) ...[
                 Container(

@@ -161,6 +161,14 @@ void main() {
     expect(model.sashOverride?['code'], 'BS90-SASH');
   });
 
+  test('failed catalogue reads are recorded once each', () {
+    final model = _model();
+    model.reportCatalogIssue('GlassColorPrices', StateError('locked'));
+    model.reportCatalogIssue('GlassColorPrices', StateError('locked'));
+    model.reportCatalogIssue('Joints (brush seal)', StateError('missing'));
+    expect(model.catalogIssues, ['GlassColorPrices', 'Joints (brush seal)']);
+  });
+
   test('undo and redo keep the item quantity', () {
     final model = _model();
     model.quantity = 5;
