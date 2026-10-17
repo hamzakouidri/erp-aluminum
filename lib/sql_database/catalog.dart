@@ -868,7 +868,7 @@ extension SqlDatabaseCatalog on SqlDatabase {
         {'name': 'أسود', 'hex_code': '#000000', 'type': 'Global'},
         {'name': 'بيج', 'hex_code': '#F5F5DC', 'type': 'Global'},
         {'name': 'خام', 'hex_code': '#E0E0E0', 'type': 'Global'},
-        {'name': 'Faux Bois Marron', 'hex_code': '#8D5B4C', 'type': 'Global'},
+        {'name': 'Faux Bois Marron', 'hex_code': '#A9774E', 'type': 'Global'},
       ];
       for (var c in defaults) {
         await myDb.insert('Colors', c);

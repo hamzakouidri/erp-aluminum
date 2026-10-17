@@ -195,7 +195,8 @@ class SqlDatabase {
         normalized.contains('marron faux bois') ||
         (normalized.contains('marron') && normalized.contains('bois')) ||
         (normalized.contains('بني') && normalized.contains('خشب'))) {
-      return '#8D5B4C';
+      // A light faux-bois brown, not the dark antique.
+      return '#A9774E';
     }
     final isGold =
         normalized.contains('gold') ||
@@ -205,6 +206,39 @@ class SqlDatabase {
         RegExp(r'(^|[\s/(_-])or($|[\s/)_-])').hasMatch(normalized);
     if (isGold) return '#D4AF37';
     return fallback;
+  }
+
+  /// Identity of a colour name for duplicate detection: case, spacing and
+  /// Arabic letter variants are ignored, and the spellings of one colour
+  /// (Champagne / شامبانيا / شمبانيا ...) share one key.
+  static String colorIdentityKey(Object? name) {
+    final normalized = (name ?? '')
+        .toString()
+        .toLowerCase()
+        .trim()
+        .replaceAll(RegExp('[أإآ]'), 'ا')
+        .replaceAll('ى', 'ي')
+        .replaceAll('ة', 'ه')
+        .replaceAll(RegExp(r'[\s_\-]+'), ' ');
+    const champagne = [
+      'champagne',
+      'chompagne',
+      'شامبانيا',
+      'شمبانيا',
+      'شومبانيا',
+      'شامبان',
+      'شمبان',
+    ];
+    // Only a name made of champagne spellings alone (e.g. "شمبانيا
+    // (Champagne)"); "Champagne mat" stays a colour of its own.
+    var rest = normalized;
+    for (final spelling in champagne) {
+      rest = rest.replaceAll(spelling, ' ');
+    }
+    if (rest != normalized && rest.replaceAll(RegExp(r'[\s()/]+'), '').isEmpty) {
+      return 'champagne';
+    }
+    return normalized;
   }
 
   static String _canonicalLegacyColorName(String value) {

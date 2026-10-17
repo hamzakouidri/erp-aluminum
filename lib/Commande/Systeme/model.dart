@@ -2054,10 +2054,11 @@ extension FrameColorExtension on FrameColor {
           const Color(0xFF7A5828),
         ];
       case FrameColor.fauxBoisMarron:
+        // Light faux-bois brown (not the dark antique).
         return [
-          const Color(0xFFA86F44),
-          const Color(0xFF8D5B4C),
-          const Color(0xFF6E4032),
+          const Color(0xFFC79566),
+          const Color(0xFFA9774E),
+          const Color(0xFF85593A),
         ];
     }
   }

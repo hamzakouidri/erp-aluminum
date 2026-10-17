@@ -4222,18 +4222,94 @@ extension SqlDatabaseSchema on SqlDatabase {
       if (!hasFauxBoisMarron) {
         await myDb.insert('Colors', {
           'name': 'Faux Bois Marron',
-          'hex_code': '#8D5B4C',
+          'hex_code': '#A9774E',
           'type': 'Global',
           'price': 0.0,
           'is_glass_color': 0,
         });
         changed = true;
       }
+      if (await _mergeDuplicateColorRows(myDb)) changed = true;
     } catch (_) {
       SqlDatabase._knownColorsRepaired = false;
       return;
     }
     if (changed) CloudSyncService().notifyCatalogChange();
+  }
+
+  /// One colour can exist several times under spellings of the same name
+  /// (Champagne / شامبانيا / شمبانيا, or the same name twice). The copy used
+  /// most keeps the prices and profile links of the others, which are then
+  /// deactivated the way the colour screen deletes a colour (synced, and
+  /// still readable by saved orders and stock rows that point to them).
+  Future<bool> _mergeDuplicateColorRows(Database myDb) async {
+    final rows = await myDb.query(
+      'Colors',
+      where: 'is_active = 1 OR is_active IS NULL',
+      orderBy: 'id ASC',
+    );
+    final groups = <String, List<Map<String, dynamic>>>{};
+    for (final row in rows) {
+      final key = SqlDatabase.colorIdentityKey(row['name']);
+      if (key.isEmpty) continue;
+      final glass = '${row['is_glass_color'] ?? 0}';
+      (groups['$glass|$key'] ??= []).add(row);
+    }
+    // Pricing and configuration rows follow the kept colour; stock, purchase
+    // and remnant rows keep their original colour id.
+    const tables = [
+      'ProfileColors',
+      'SeriesColorPrices',
+      'SectionColorPrices',
+      'AccessoryColorPrices',
+      'ShutterColorPrices',
+      'ShutterComponentColors',
+    ];
+    var changed = false;
+    for (final group in groups.values) {
+      if (group.length < 2) continue;
+      final usage = <int, int>{};
+      for (final row in group) {
+        final id = (row['id'] as num).toInt();
+        var count = 0;
+        for (final table in tables) {
+          try {
+            final result = await myDb.rawQuery(
+              'SELECT COUNT(*) AS c FROM $table WHERE color_id = ?',
+              [id],
+            );
+            count += (result.first['c'] as num?)?.toInt() ?? 0;
+          } catch (_) {}
+        }
+        usage[id] = count;
+      }
+      final ids = usage.keys.toList()
+        ..sort((a, b) {
+          final byUse = usage[b]!.compareTo(usage[a]!);
+          return byUse != 0 ? byUse : a.compareTo(b);
+        });
+      final keep = ids.first;
+      await myDb.transaction((txn) async {
+        for (final old in ids.skip(1)) {
+          for (final table in tables) {
+            try {
+              await txn.rawUpdate(
+                'UPDATE OR IGNORE $table SET color_id = ? WHERE color_id = ?',
+                [keep, old],
+              );
+            } catch (_) {}
+          }
+          await txn.update(
+            'Colors',
+            {'is_active': 0},
+            where: 'id = ?',
+            whereArgs: [old],
+          );
+        }
+      });
+      changed = true;
+    }
+    return changed;
   }
 
   Future<void> cleanDuplicateColors() async {
