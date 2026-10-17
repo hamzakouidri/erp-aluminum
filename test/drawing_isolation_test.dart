@@ -161,6 +161,21 @@ void main() {
     expect(model.sashOverride?['code'], 'BS90-SASH');
   });
 
+  test('undo and redo keep the item quantity', () {
+    final model = _model();
+    model.quantity = 5;
+    model.saveSnapshotOutside();
+    model.width = 1500;
+
+    model.undo();
+    expect(model.width, 1200);
+    expect(model.quantity, 5);
+
+    model.redo();
+    expect(model.width, 1500);
+    expect(model.quantity, 5);
+  });
+
   group('profiles from another series are rejected', () {
     test('BS 90 profiles are removed after switching to PVC', () {
       final model = _model();

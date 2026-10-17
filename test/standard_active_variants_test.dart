@@ -1,5 +1,6 @@
 import 'package:database_data/Commande/Systeme/calculate_component.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
+import 'package:database_data/Commande/Systeme/model_serialization.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -86,6 +87,72 @@ void main() {
           model,
         )['أغطية الشفرات (Bouchons Lames)'],
         isTrue,
+      );
+    });
+  });
+
+  group('user variant choices', () {
+    test('choices made in the quantity table are applied everywhere', () {
+      final model = _shutterWindow('محرك');
+      model.shutterVariantChoices = {'طانديم (Tandem)': true};
+      model.shutterVariantChoicesContext =
+          ComponentCalculator.shutterVariantContext(model);
+
+      expect(
+        ComponentCalculator.standardActiveVariants(model)['طانديم (Tandem)'],
+        isTrue,
+      );
+      expect(
+        ComponentCalculator.standardActiveVariants(
+          model,
+          includeUserChoices: false,
+        )['طانديم (Tandem)'],
+        isFalse,
+      );
+    });
+
+    test('choices made for another mechanism are ignored', () {
+      final model = _shutterWindow('محرك');
+      model.shutterVariantChoices = {'الامبو (Embout)': false};
+      model.shutterVariantChoicesContext =
+          ComponentCalculator.shutterVariantContext(model);
+      model.shutterMechanism = 'حزام';
+
+      expect(
+        ComponentCalculator.standardActiveVariants(model)['الامبو (Embout)'],
+        isFalse,
+      );
+      expect(
+        ComponentCalculator.standardActiveVariants(
+          model,
+        )['كيت فولي (Kit Volet)'],
+        isTrue,
+      );
+    });
+
+    test('model-backed switches are never overridden by choices', () {
+      final model = _shutterWindow('حزام');
+      model.shutterVariantChoices = {'Verrou Central': true};
+      model.shutterVariantChoicesContext =
+          ComponentCalculator.shutterVariantContext(model);
+      expect(
+        ComponentCalculator.standardActiveVariants(model)['Verrou Central'],
+        isFalse,
+      );
+    });
+
+    test('choices survive save and reopen', () {
+      final model = _shutterWindow('محرك');
+      model.shutterVariantChoices = {'طانديم (Tandem)': true};
+      model.shutterVariantChoicesContext =
+          ComponentCalculator.shutterVariantContext(model);
+
+      final restored = WindowModel(db: SqlDatabase());
+      applyWindowModelFromMap(restored, model.toMap());
+      expect(restored.shutterVariantChoices, {'طانديم (Tandem)': true});
+      expect(
+        restored.shutterVariantChoicesContext,
+        model.shutterVariantChoicesContext,
       );
     });
   });

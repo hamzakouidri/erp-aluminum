@@ -877,7 +877,41 @@ class ComponentCalculator {
     );
   }
 
-  static Map<String, bool> standardActiveVariants(WindowModel window) {
+  /// Switches kept on the model itself or derived from a selected component;
+  /// they are never stored as user variant choices.
+  static const Set<String> modelBackedVariantKeys = {
+    'Verrou Central',
+    'System OB',
+    'Demi System OB',
+    'أغطية الشفرات (Bouchons Lames)',
+  };
+
+  /// Identifies the shutter mechanism and box a set of user variant choices
+  /// was made for.
+  static String shutterVariantContext(WindowModel window) =>
+      '${window.shutterMechanism}|${window.isCaissonTunnel}';
+
+  /// The rule-based switches, with the user's choices from the quantity
+  /// table applied on top when they were made for the current mechanism.
+  /// [includeUserChoices] false returns the rules alone.
+  static Map<String, bool> standardActiveVariants(
+    WindowModel window, {
+    bool includeUserChoices = true,
+  }) {
+    final variants = _ruleActiveVariants(window);
+    if (includeUserChoices &&
+        window.shutterVariantChoicesContext == shutterVariantContext(window)) {
+      window.shutterVariantChoices.forEach((key, value) {
+        if (variants.containsKey(key) &&
+            !modelBackedVariantKeys.contains(key)) {
+          variants[key] = value;
+        }
+      });
+    }
+    return variants;
+  }
+
+  static Map<String, bool> _ruleActiveVariants(WindowModel window) {
     final isTunnel = window.isCaissonTunnel;
     final mechanism = window.shutterMechanism;
     final isMotor = mechanism == 'محرك';

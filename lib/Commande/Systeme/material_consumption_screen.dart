@@ -3178,8 +3178,27 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           widget.model.useVerrouCentral;
       activeVariants['System OB'] = widget.model.effectiveUseSystemOB;
       activeVariants['Demi System OB'] = widget.model.effectiveUseDemiOB;
+      _rememberVariantChoices();
     });
     unawaited(_refreshVisibleBomItems());
+  }
+
+  /// Stores the switches that differ from the rules on the drawing, so the
+  /// cutting sheet, required goods and a reopened table use the same parts.
+  void _rememberVariantChoices() {
+    final rules = ComponentCalculator.standardActiveVariants(
+      widget.model,
+      includeUserChoices: false,
+    );
+    widget.model.shutterVariantChoices = {
+      for (final entry in activeVariants.entries)
+        if (!ComponentCalculator.modelBackedVariantKeys.contains(entry.key) &&
+            rules.containsKey(entry.key) &&
+            rules[entry.key] != entry.value)
+          entry.key: entry.value,
+    };
+    widget.model.shutterVariantChoicesContext =
+        ComponentCalculator.shutterVariantContext(widget.model);
   }
 
   // ==========================================================================

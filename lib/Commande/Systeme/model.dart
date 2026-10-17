@@ -2756,6 +2756,17 @@ class WindowModel extends ChangeNotifier {
   /// copied into a new drawing once, by the caller that creates it.
   GlassSpecification defaultGlass = const GlassSpecification();
 
+  /// Optional shutter parts the user switched on or off in the quantity
+  /// table (kits, tandem, embout, supports), stored as differences from
+  /// [ComponentCalculator.standardActiveVariants]. They used to live only in
+  /// that screen, so the cutting sheet and required goods counted the
+  /// default parts instead.
+  Map<String, bool> shutterVariantChoices = {};
+
+  /// The shutter mechanism/box the choices were made for; choices made for
+  /// another mechanism are ignored.
+  String? shutterVariantChoicesContext;
+
   bool _isX3dShutterComponent(Map<String, dynamic> component) {
     final text =
         '${component['name'] ?? ''} ${component['shutter_subtype'] ?? ''}'
@@ -13828,7 +13839,8 @@ class WindowModel extends ChangeNotifier {
     selection = SelectionInfo.none;
     activeSubZone = null;
     showZoneMenu = false;
-    quantity = 1;
+    // The item quantity is not part of the drawing history: undoing a
+    // geometry edit used to reset an order line of 5 windows to 1.
     notifyListeners();
   }
 
@@ -13992,7 +14004,8 @@ class WindowModel extends ChangeNotifier {
     selection = SelectionInfo.none;
     activeSubZone = null;
     showZoneMenu = false;
-    quantity = 1;
+    // The item quantity is not part of the drawing history: undoing a
+    // geometry edit used to reset an order line of 5 windows to 1.
     notifyListeners();
   }
 

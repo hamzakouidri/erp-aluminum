@@ -644,6 +644,8 @@ extension WindowModelSerialization on WindowModel {
       'mullionSectionOverrides': mullionSectionOverrides,
       'componentOverrides': componentOverrides,
       'defaultGlass': defaultGlass.toMap(),
+      'shutterVariantChoices': shutterVariantChoices,
+      'shutterVariantChoicesContext': shutterVariantChoicesContext,
       'isReplaced': isReplaced,
       'replacementReason': replacementReason,
       'frameOverride': frameOverride,
@@ -1004,6 +1006,13 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> savedMap) {
           Map<String, dynamic>.from(map['defaultGlass'] as Map),
         )
       : const GlassSpecification();
+  model.shutterVariantChoices = map['shutterVariantChoices'] is Map
+      ? (map['shutterVariantChoices'] as Map).map(
+          (key, value) => MapEntry(key.toString(), value == true),
+        )
+      : <String, bool>{};
+  model.shutterVariantChoicesContext = map['shutterVariantChoicesContext']
+      ?.toString();
 
   if (map['componentOverrides'] != null) {
     final raw = map['componentOverrides'] as Map;
