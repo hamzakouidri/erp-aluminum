@@ -7396,6 +7396,8 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
         .toSet();
 
     final filtered = _catalogAccessories.where((item) {
+      // Services are priced by the cost table, not added as hardware.
+      if (item['category'] == 'faconnage') return false;
       if (kitItemIds.isNotEmpty && !kitItemIds.contains(item['id'])) {
         return false;
       }
@@ -7807,6 +7809,8 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
 
   Widget _buildEstimatedPricesWarning({
     required bool glassRateEstimated,
+    required bool chantEstimated,
+    required bool sablageEstimated,
     required List<String> estimatedAccessories,
   }) {
     final details = <String>[
@@ -7816,11 +7820,18 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
           'Prix du verre trempé de cette épaisseur absent du catalogue verre',
           'No tempered glass of this thickness in the glass catalogue',
         ),
-      _tr(
-        'أسعار شطب الحواف والسفع ثابتة وغير مرتبطة بالكتالوج',
-        'Tarifs de façonnage et de sablage fixes, hors catalogue',
-        'Edge finishing and frosting rates are fixed, not from the catalogue',
-      ),
+      if (chantEstimated)
+        _tr(
+          'سعر شطب الحواف غير موجود في كتالوج الزجاج المقسّى (الخدمات والتشطيب)',
+          'Prix du façonnage absent du catalogue verre trempé (Façonnage & Sablage)',
+          'Edge finishing price missing from the tempered glass catalogue (Finishing services)',
+        ),
+      if (sablageEstimated)
+        _tr(
+          'سعر السفع غير موجود في كتالوج الزجاج المقسّى (الخدمات والتشطيب)',
+          'Prix du sablage absent du catalogue verre trempé (Façonnage & Sablage)',
+          'Frosting price missing from the tempered glass catalogue (Finishing services)',
+        ),
       if (estimatedAccessories.isNotEmpty)
         '${_tr('إكسسوارات غير موجودة في الكتالوج', 'Accessoires absents du catalogue', 'Accessories missing from the catalogue')}: ${estimatedAccessories.join('، ')}',
     ];
@@ -7891,8 +7902,28 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                 ? 1000.0
                 : (_glassThicknessMm >= 8 ? 500.0 : 0.0));
     if (!mounted) return;
-    double chantRatePerM = _edgeFinish == 'extra_smooth' ? 600.0 : 350.0;
-    double sablageRatePerSqm = 1200.0;
+    double? serviceRate(String code) {
+      for (final item in _catalogAccessories) {
+        if (item['service_code']?.toString() != code) continue;
+        final price = (item['price'] as num?)?.toDouble() ?? 0;
+        return price > 0 ? price : null;
+      }
+      return null;
+    }
+
+    final catalogChantRate = serviceRate(
+      _edgeFinish == 'extra_smooth'
+          ? SqlDatabase.temperedGlassEdgeExtraSmoothService
+          : SqlDatabase.temperedGlassEdgeSmoothService,
+    );
+    final catalogSablageRate = serviceRate(
+      SqlDatabase.temperedGlassFrostingService,
+    );
+    final chantRateEstimated = catalogChantRate == null;
+    final sablageRateEstimated = catalogSablageRate == null;
+    double chantRatePerM =
+        catalogChantRate ?? (_edgeFinish == 'extra_smooth' ? 600.0 : 350.0);
+    double sablageRatePerSqm = catalogSablageRate ?? 1200.0;
     double laborRatePercent = 15.0;
     double marginPercent = 25.0;
 
@@ -8181,10 +8212,12 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
               .where((acc) => acc['estimated'] == true)
               .map((acc) => acc['name'].toString())
               .toList();
+          final chantEstimated = chantRateEstimated && totalPerimeterM > 0;
+          final sablageEstimated = sablageRateEstimated && sablageAreaSqm > 0;
           final hasEstimatedPrices =
               glassRateEstimated ||
-              totalPerimeterM > 0 ||
-              sablageAreaSqm > 0 ||
+              chantEstimated ||
+              sablageEstimated ||
               estimatedAccessories.isNotEmpty;
           final totalMaterialsCost =
               glassCost + chantCost + sablageCost + accessoriesTotal;
@@ -8237,6 +8270,8 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                     if (hasEstimatedPrices)
                       _buildEstimatedPricesWarning(
                         glassRateEstimated: glassRateEstimated,
+                        chantEstimated: chantEstimated,
+                        sablageEstimated: sablageEstimated,
                         estimatedAccessories: estimatedAccessories,
                       ),
                     _buildCostSectionHeader(
@@ -8343,7 +8378,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                               '${totalPerimeterM.toStringAsFixed(2)} m',
                             ),
                             _tableCell(
-                              '${chantRatePerM.toStringAsFixed(0)} DZD/m *',
+                              '${chantRatePerM.toStringAsFixed(0)} DZD/m${chantEstimated ? ' *' : ''}',
                             ),
                             _tableCell(
                               '${chantCost.toStringAsFixed(0)} DZD',
@@ -8361,7 +8396,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                                 '${sablageAreaSqm.toStringAsFixed(2)} m²',
                               ),
                               _tableCell(
-                                '${sablageRatePerSqm.toStringAsFixed(0)} DZD/m² *',
+                                '${sablageRatePerSqm.toStringAsFixed(0)} DZD/m²${sablageEstimated ? ' *' : ''}',
                               ),
                               _tableCell(
                                 '${sablageCost.toStringAsFixed(0)} DZD',
