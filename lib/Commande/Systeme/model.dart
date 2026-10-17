@@ -7678,7 +7678,9 @@ class WindowModel extends ChangeNotifier {
     required this.db,
     this.width = 0,
     this.height = 0,
-    this.profileThickness = 10.0,
+    // 40 mm is the fallback frame width used everywhere else; the old 10 mm
+    // was only overwritten because a missing catalogue forced 40 mm.
+    this.profileThickness = 40.0,
     this.systemMode,
   });
 
@@ -19745,9 +19747,10 @@ class WindowModel extends ChangeNotifier {
       } else {
         profileThickness = isFrame140 ? 70.0 : 40.0;
       }
-    } else {
-      profileThickness = isFrame140 ? 70.0 : 40.0;
     }
+    // Without any frame data (no series yet, e.g. while the catalogue is
+    // loading) the current thickness is kept. Forcing 40 mm here moved the
+    // zones of a drawing on every undo made before the catalogue was ready.
 
     if (oldThickness != profileThickness) {
       double topOffset = (hasShutter && !hasArchOrSlant && !isCaissonTunnel)

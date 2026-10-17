@@ -383,8 +383,12 @@ class BomItem {
       return 'الضلفة (Ouvrant)';
     }
 
+    // 'الظلفة المنزلقة (Sliding Sash)' is the BOM key itself; it reached the
+    // generic replacement below and was shown as "Sliding Ouvrant".
     if (original == 'الظلفة المنزلقة' ||
         original == 'الضلفة المنزلقة' ||
+        original == 'الظلفة المنزلقة (Sliding Sash)' ||
+        original == 'الضلفة المنزلقة (Sliding Sash)' ||
         original.toLowerCase() == 'sliding sash') {
       if (lang == 'fr') return 'Ouvrant Coulissant';
       if (lang == 'en') return 'Sliding Sash';

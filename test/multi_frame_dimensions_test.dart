@@ -231,7 +231,10 @@ void main() {
       expect(model.zones.map((zone) => zone.boundary).toList(), before);
     });
 
-    test('angle gap does not get bridged by one side-cover edge', () {
+    // Coupled frames are closed onto one shared seam (the profile-angle tube
+    // sits behind the corner, not between the frames), so their top edge is
+    // one continuous segment.
+    test('coupled frames close the gap into one top edge', () {
       final model = WindowModel(
         db: SqlDatabase(),
         width: 2460,
@@ -255,9 +258,10 @@ void main() {
           .where((edge) => edge.side == 'top')
           .toList();
 
-      expect(model.getFrameRects(), hasLength(2));
-      expect(topEdges, hasLength(2));
-      expect(topEdges.first.end, lessThan(topEdges.last.start));
+      final rects = model.getFrameRects();
+      expect(rects, hasLength(2));
+      expect(rects.first.right, rects.last.left);
+      expect(topEdges, hasLength(1));
     });
 
     test('undo restores profile-angle state exactly', () {
@@ -279,6 +283,7 @@ void main() {
       ];
       model.coupleFrames = true;
       expect(model.usesProfileAngle, isFalse);
+      final cornerViewBefore = model.viewAs90DegreeCorner;
 
       model.setAllProfileAngleJunctions(true);
       expect(model.usesProfileAngle, isTrue);
@@ -288,7 +293,7 @@ void main() {
       expect(model.profileAngleMode, 0);
       expect(model.profileAngleJunctions, isEmpty);
       expect(model.usesProfileAngle, isFalse);
-      expect(model.viewAs90DegreeCorner, isFalse);
+      expect(model.viewAs90DegreeCorner, cornerViewBefore);
     });
   });
 }
