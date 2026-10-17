@@ -593,6 +593,24 @@ void main() {
           materialType: 'aluminium',
           overrideKey: 'linked-accessory:test-profile',
         ),
+        // The drawing's sash row identifies the sash section (12), so the
+        // rule linked to the plinthe section is not applied to its corners.
+        BomItem(
+          category: 'profile',
+          originalName: 'الظلفة (Sash)',
+          name: 'Sash S12',
+          quantity: 1,
+          unit: 'متر',
+          unitPrice: 10,
+          pieces: const [1.0, 1.0, 0.4, 0.4, 1.0, 1.0, 0.4, 0.4],
+          catalogItemId: 12,
+          selectorCategory: 'profile',
+          selectorType: 'sash',
+          roleKey: 'sash',
+          sourceSeriesId: 1,
+          materialType: 'aluminium',
+          overrideKey: 'linked-accessory:test-sash',
+        ),
       ];
 
       final items = await BomEngineV2(
