@@ -358,7 +358,10 @@ class SupabaseWorkshopSyncService {
     await _upsertRows(rows, preserveNewerRemote: true);
 
     await _acknowledgeSyncedChanges(pendingBeforeUpload);
-    await _saveLastSyncAt(DateTime.now().toUtc().toIso8601String());
+    // The download cursor is not moved here: jumping it to this device's
+    // clock skipped every row other devices uploaded since the last
+    // download. Reading this device's own rows back only re-applies
+    // identical data.
 
     lastUploadSummary =
         'تم دمج ${rows.length} سجل بأمان في Supabase: '
