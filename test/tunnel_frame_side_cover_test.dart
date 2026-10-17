@@ -26,6 +26,16 @@ class _FrameDatabase extends SqlDatabase {
   Future<Database?> get db async => _UnusedDatabase();
 
   @override
+  Future<List<Map<String, dynamic>>> getCatalogItemRules({
+    String? itemTable,
+    int? itemId,
+    int? seriesId,
+    Iterable<String> roleKeys = const [],
+    bool exactSeriesOnly = false,
+    bool includeInactive = false,
+  }) async => const [];
+
+  @override
   Future<double> getSectionPrice(dynamic nameOrId, [int? colorId]) async =>
       pendingPrice == null ? 100 : await pendingPrice!.future;
 
@@ -289,7 +299,9 @@ void main() {
           );
           model.refreshUI();
           expect(model.activeFrameOverride?['code'], 'NO-COVER');
-          expect(model.hasSideCovers, isFalse);
+          // A manually chosen plain frame keeps an enabled cover as a
+          // separate profile (see multi_frame_side_cover_test).
+          expect(model.hasSideCovers, isTrue);
           expect(model.getFrameRects(), hasLength(1));
 
           for (var repeat = 0; repeat < 2; repeat++) {
@@ -324,8 +336,10 @@ void main() {
       );
       database.pendingFrames!.complete([_frame(10, integrated: true).toMap()]);
       await enabling;
-      expect(model.hasSideCovers, isFalse);
+      // The late catalogue answer must not swap the manually chosen frame;
+      // the plain frame keeps the enabled cover as a separate profile.
       expect(model.activeFrameOverride?['code'], 'PLAIN');
+      expect(model.hasSideCovers, isTrue);
     },
   );
 

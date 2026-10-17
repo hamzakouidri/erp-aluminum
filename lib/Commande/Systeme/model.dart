@@ -19260,6 +19260,13 @@ class WindowModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Whether a side cover is a separate profile here: coupled frames, or a
+  /// regular (non-tunnel) shutter box on an aluminium frame. Otherwise the
+  /// cover is part of an integrated-cover frame.
+  bool get _usesStandaloneSideCover =>
+      getFrameRects().length > 1 ||
+      (hasShutter && !isCaissonTunnel && !isFramePVC);
+
   Future<void> toggleSideCovers(bool value) async {
     final revision = ++_sideCoverSelectionRevision;
     final isMultiFrame = getFrameRects().length > 1;
@@ -19299,8 +19306,7 @@ class WindowModel extends ChangeNotifier {
     final hadShutter = hasShutter;
     final hadTunnel = isCaissonTunnel;
     final multiFrame = getFrameRects().length > 1;
-    final needsStandalone =
-        multiFrame || (hasShutter && !isCaissonTunnel && !isFramePVC);
+    final needsStandalone = _usesStandaloneSideCover;
     final current = activeFrameOverride ?? getSectionByType('frame')?.toMap();
     final integrated = _overrideHasIntegratedSideCover(current);
     if (!enabled && !integrated) return;
