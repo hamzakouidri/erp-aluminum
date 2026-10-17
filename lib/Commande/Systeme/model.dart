@@ -2703,6 +2703,8 @@ class WindowModel extends ChangeNotifier {
       final price = readPrice(row['price_per_sqm']);
       if (price <= 0) continue;
       final candidate = (row['blade_type'] ?? '').toString();
+      // Mosquito-net prices share this table; they are never blade prices.
+      if (candidate.toLowerCase().startsWith('moustiquaire_')) continue;
       final score = _shutterBladeNameScore(bladeName, candidate);
       if (score >= 0 && isSelectedColor && score > selectedColorScore) {
         selectedColorScore = score;

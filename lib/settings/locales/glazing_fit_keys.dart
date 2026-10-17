@@ -131,4 +131,52 @@ final Map<String, Map<AppLanguage, String>> glazingFitKeys = {
     AppLanguage.french: 'Ouvrir la fenêtre',
     AppLanguage.english: 'Open the window',
   },
+  'الموستيكير (Moustiquaire)': {
+    AppLanguage.arabic: 'الموستيكير (Moustiquaire)',
+    AppLanguage.french: 'Moustiquaire',
+    AppLanguage.english: 'Mosquito net',
+  },
+  'موستيكير مضافة إلى النافذة': {
+    AppLanguage.arabic: 'موستيكير مضافة إلى النافذة',
+    AppLanguage.french: 'Moustiquaire ajoutée à la fenêtre',
+    AppLanguage.english: 'Mosquito net added to a window',
+  },
+  'موستيكير مستقلة — سعر المتر المربع حسب النوع': {
+    AppLanguage.arabic: 'موستيكير مستقلة — سعر المتر المربع حسب النوع',
+    AppLanguage.french: 'Moustiquaire seule — prix au m² par type',
+    AppLanguage.english: 'Standalone mosquito net — price per m² by type',
+  },
+  'السعر الرسمي للمتر المربع': {
+    AppLanguage.arabic: 'السعر الرسمي للمتر المربع',
+    AppLanguage.french: 'Prix officiel au m²',
+    AppLanguage.english: 'Official price per m²',
+  },
+  'يُطبق تلقائياً عند إضافتها إلى النافذة': {
+    AppLanguage.arabic: 'يُطبق تلقائياً عند إضافتها إلى النافذة',
+    AppLanguage.french: 'Appliqué automatiquement à l\'ajout sur la fenêtre',
+    AppLanguage.english: 'Applied automatically when added to the window',
+  },
+  'يُقترح تلقائياً في شاشة الموستيكير ويمكن تعديله في الطلبية': {
+    AppLanguage.arabic:
+        'يُقترح تلقائياً في شاشة الموستيكير ويمكن تعديله في الطلبية',
+    AppLanguage.french:
+        'Proposé automatiquement dans l\'écran moustiquaire, modifiable dans la commande',
+    AppLanguage.english:
+        'Suggested automatically in the mosquito-net screen, editable in the order',
+  },
+  'سعر إدارة الأسعار': {
+    AppLanguage.arabic: 'سعر إدارة الأسعار',
+    AppLanguage.french: 'Prix du catalogue',
+    AppLanguage.english: 'Catalogue price',
+  },
+  'لا يوجد سعر لهذا النوع في إدارة الأسعار': {
+    AppLanguage.arabic: 'لا يوجد سعر لهذا النوع في إدارة الأسعار',
+    AppLanguage.french: 'Aucun prix pour ce type dans la gestion des prix',
+    AppLanguage.english: 'No price for this type in price management',
+  },
+  'استعمال سعر إدارة الأسعار': {
+    AppLanguage.arabic: 'استعمال سعر إدارة الأسعار',
+    AppLanguage.french: 'Utiliser le prix du catalogue',
+    AppLanguage.english: 'Use the catalogue price',
+  },
 };
