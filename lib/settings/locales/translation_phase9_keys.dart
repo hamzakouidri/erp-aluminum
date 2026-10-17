@@ -39,11 +39,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase9Keys = {
     AppLanguage.french: 'Joints',
     AppLanguage.english: 'Gaskets',
   },
-  'زجاج': {
-    AppLanguage.arabic: 'زجاج',
-    AppLanguage.french: 'Verre',
-    AppLanguage.english: 'Glass',
-  },
   'ستار': {
     AppLanguage.arabic: 'ستار',
     AppLanguage.french: 'Volet',
@@ -53,11 +48,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase9Keys = {
     AppLanguage.arabic: 'الإطار',
     AppLanguage.french: 'Cadre',
     AppLanguage.english: 'Frame',
-  },
-  'الضلفة': {
-    AppLanguage.arabic: 'الضلفة',
-    AppLanguage.french: 'Vantail',
-    AppLanguage.english: 'Sash',
   },
   'السكك المضافة': {
     AppLanguage.arabic: 'السكك المضافة',
@@ -153,11 +143,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase9Keys = {
     AppLanguage.arabic: 'إضافة سكة (كلاسيك أو غيره)',
     AppLanguage.french: 'Ajouter un rail (Classic ou autre)',
     AppLanguage.english: 'Add a rail (Classic or other)',
-  },
-  'تلقائي': {
-    AppLanguage.arabic: 'تلقائي',
-    AppLanguage.french: 'Automatique',
-    AppLanguage.english: 'Automatic',
   },
   'افتراضي': {
     AppLanguage.arabic: 'افتراضي',
@@ -969,56 +954,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase9Keys = {
     AppLanguage.french: 'Utilisation des vis :',
     AppLanguage.english: 'Screw usage:',
   },
-  'براغي المحرك': {
-    AppLanguage.arabic: 'براغي المحرك',
-    AppLanguage.french: 'Vis du moteur',
-    AppLanguage.english: 'Motor screws',
-  },
-  'براغي الصندوق': {
-    AppLanguage.arabic: 'براغي الصندوق',
-    AppLanguage.french: 'Vis du caisson',
-    AppLanguage.english: 'Box screws',
-  },
-  'براغي الباتمو': {
-    AppLanguage.arabic: 'براغي الباتمو',
-    AppLanguage.french: 'Vis de battement',
-    AppLanguage.english: 'Meeting-stile screws',
-  },
-  'براغي بوشون باتمو': {
-    AppLanguage.arabic: 'براغي بوشون باتمو',
-    AppLanguage.french: 'Vis de bouchon de battement',
-    AppLanguage.english: 'Meeting-stile cap screws',
-  },
-  'براغي حديد الدعم (Renfort)': {
-    AppLanguage.arabic: 'براغي حديد الدعم',
-    AppLanguage.french: 'Vis de renfort',
-    AppLanguage.english: 'Reinforcement screws',
-  },
-  'براغي المانيفال': {
-    AppLanguage.arabic: 'براغي المانيفال',
-    AppLanguage.french: 'Vis de manivelle',
-    AppLanguage.english: 'Crank screws',
-  },
-  'براغي التجميع': {
-    AppLanguage.arabic: 'براغي التجميع',
-    AppLanguage.french: 'Vis d’assemblage',
-    AppLanguage.english: 'Assembly screws',
-  },
-  'براغي الإكسسوارات': {
-    AppLanguage.arabic: 'براغي الإكسسوارات',
-    AppLanguage.french: 'Vis des accessoires',
-    AppLanguage.english: 'Accessory screws',
-  },
-  'براغي التركيب': {
-    AppLanguage.arabic: 'براغي التركيب',
-    AppLanguage.french: 'Vis de pose',
-    AppLanguage.english: 'Installation screws',
-  },
-  'براغي الكيت': {
-    AppLanguage.arabic: 'براغي الكيت',
-    AppLanguage.french: 'Vis du kit',
-    AppLanguage.english: 'Kit screws',
-  },
   'نوع اللاش:': {
     AppLanguage.arabic: 'نوع اللاش:',
     AppLanguage.french: 'Type de gâche :',
@@ -1028,16 +963,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase9Keys = {
     AppLanguage.arabic: 'نوع القفل:',
     AppLanguage.french: 'Type de serrure :',
     AppLanguage.english: 'Lock type:',
-  },
-  'قفل بمفتاح (Clef)': {
-    AppLanguage.arabic: 'قفل بمفتاح',
-    AppLanguage.french: 'Serrure à clé',
-    AppLanguage.english: 'Key lock',
-  },
-  'قفل Condamnation': {
-    AppLanguage.arabic: 'قفل إغلاق',
-    AppLanguage.french: 'Serrure de condamnation',
-    AppLanguage.english: 'Privacy lock',
   },
   'Gache Simple Ouvrant': {
     AppLanguage.arabic: 'قاش ضلفة مفرد',

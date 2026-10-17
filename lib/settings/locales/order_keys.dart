@@ -1,11 +1,6 @@
 import '../app_settings.dart';
 
 const Map<String, Map<AppLanguage, String>> orderKeys = {
-  'commandes': {
-    AppLanguage.arabic: 'الطلبيات',
-    AppLanguage.french: 'Commandes',
-    AppLanguage.english: 'Orders',
-  },
   'Commande': {
     AppLanguage.arabic: 'طلب',
     AppLanguage.french: 'Commande',
@@ -20,16 +15,6 @@ const Map<String, Map<AppLanguage, String>> orderKeys = {
     AppLanguage.arabic: 'خصم',
     AppLanguage.french: 'Remise',
     AppLanguage.english: 'Discount',
-  },
-  'clients': {
-    AppLanguage.arabic: 'الزبائن',
-    AppLanguage.french: 'Clients',
-    AppLanguage.english: 'Customers',
-  },
-  'caisse': {
-    AppLanguage.arabic: 'الصندوق',
-    AppLanguage.french: 'Caisse',
-    AppLanguage.english: 'Cash Register',
   },
   'vente': {
     AppLanguage.arabic: 'مبيعات',
@@ -209,16 +194,6 @@ const Map<String, Map<AppLanguage, String>> orderKeys = {
     AppLanguage.french: 'Importer la facture par IA',
     AppLanguage.english: 'Import Invoice by AI',
   },
-  'اضغط هنا للتصوير بالكاميرا أو اختيار الفاتورة': {
-    AppLanguage.arabic: 'اضغط هنا للتصوير بالكاميرا أو اختيار الفاتورة',
-    AppLanguage.french: '',
-    AppLanguage.english: 'Click here to take a photo or choose an invoice',
-  },
-  'انقر على "فاتورة جديدة" لإضافة فاتورة واردة.': {
-    AppLanguage.arabic: 'انقر على "فاتورة جديدة" لإضافة فاتورة واردة.',
-    AppLanguage.french: '',
-    AppLanguage.english: 'Click on "New invoice" to add an incoming invoice.',
-  },
   'تأكيد إلغاء الشراء': {
     AppLanguage.arabic: 'تأكيد إلغاء الشراء',
     AppLanguage.french: 'Confirmer l\'annulation de l\'achat',
@@ -284,16 +259,6 @@ const Map<String, Map<AppLanguage, String>> orderKeys = {
     AppLanguage.french: 'Aucune facture d\'achat enregistrée',
     AppLanguage.english: 'No registered purchase invoices',
   },
-  'سعر المتر': {
-    AppLanguage.arabic: 'سعر المتر',
-    AppLanguage.french: 'Prix par mètre',
-    AppLanguage.english: 'Price per meter',
-  },
-  'سعر المتر المربع': {
-    AppLanguage.arabic: 'سعر المتر المربع',
-    AppLanguage.french: 'Prix par m²',
-    AppLanguage.english: 'Price per SQM',
-  },
   'سعر المتر الطولي': {
     AppLanguage.arabic: 'سعر المتر الطولي',
     AppLanguage.french: 'Prix au mètre linéaire',
@@ -319,35 +284,15 @@ const Map<String, Map<AppLanguage, String>> orderKeys = {
     AppLanguage.french: 'Ajouter un versement pour la commande #\$orderId',
     AppLanguage.english: 'Add payment for order #\$orderId',
   },
-  'إضافة معاملة للصندوق': {
-    AppLanguage.arabic: 'إضافة معاملة للصندوق',
-    AppLanguage.french: 'Ajouter une transaction à la caisse',
-    AppLanguage.english: 'Add transaction to cash register',
-  },
-  'الإجمالي: \$orderTotal د.ج\\nالمدفوع: \$orderAdvance د.ج': {
-    AppLanguage.arabic: '',
-    AppLanguage.french: '',
-    AppLanguage.english: '',
-  },
   'البحث برقم الفاتورة أو اسم المورد...': {
     AppLanguage.arabic: 'البحث برقم الفاتورة أو اسم المورد...',
     AppLanguage.french: 'Rechercher par N° facture ou fournisseur...',
     AppLanguage.english: 'Search by invoice number or supplier name...',
   },
-  'التكلفة الإجمالية': {
-    AppLanguage.arabic: 'التكلفة الإجمالية',
-    AppLanguage.french: 'Coût total',
-    AppLanguage.english: 'Total Cost',
-  },
   'الزبائن والدفعات': {
     AppLanguage.arabic: 'الزبائن والدفعات',
     AppLanguage.french: 'Clients & Paiements',
     AppLanguage.english: 'Clients & Payments',
-  },
-  'السعر': {
-    AppLanguage.arabic: 'السعر',
-    AppLanguage.french: 'Prix',
-    AppLanguage.english: 'Price',
   },
   'الصندوق المالي': {
     AppLanguage.arabic: 'الصندوق المالي',
@@ -359,20 +304,10 @@ const Map<String, Map<AppLanguage, String>> orderKeys = {
     AppLanguage.french: 'Commandes',
     AppLanguage.english: 'Orders',
   },
-  'المبلغ': {
-    AppLanguage.arabic: 'المبلغ',
-    AppLanguage.french: 'Montant',
-    AppLanguage.english: 'Amount',
-  },
   'المبلغ (سيُخصم من الصندوق)': {
     AppLanguage.arabic: 'المبلغ (سيُخصم من الصندوق)',
     AppLanguage.french: 'Montant (sera déduit de la caisse)',
     AppLanguage.english: 'Amount (will be deducted from cash)',
-  },
-  'المبلغ المدفوع': {
-    AppLanguage.arabic: 'المبلغ المدفوع',
-    AppLanguage.french: 'Montant payé',
-    AppLanguage.english: 'Amount paid',
   },
   'المتبقي: \$remaining د.ج': {
     AppLanguage.arabic: 'المتبقي: \$remaining د.ج',
@@ -393,11 +328,6 @@ const Map<String, Map<AppLanguage, String>> orderKeys = {
     AppLanguage.arabic: 'تم بنجاح إنشاء الزبون',
     AppLanguage.french: 'Client créé avec succès',
     AppLanguage.english: 'Customer created successfully',
-  },
-  'تم تسجيل العملية بنجاح وخصمها من الصندوق': {
-    AppLanguage.arabic: 'تم تسجيل العملية بنجاح وخصمها من الصندوق',
-    AppLanguage.french: '',
-    AppLanguage.english: '',
   },
   'جاري تحليل الطلب والبيانات...': {
     AppLanguage.arabic: 'جاري تحليل الطلب والبيانات...',
@@ -445,11 +375,6 @@ const Map<String, Map<AppLanguage, String>> orderKeys = {
     AppLanguage.french: 'N° Facture ici',
     AppLanguage.english: 'Invoice number here',
   },
-  'زبون جديد': {
-    AppLanguage.arabic: 'زبون جديد',
-    AppLanguage.french: 'Client Nouveau',
-    AppLanguage.english: 'Client New',
-  },
   'طلبيات الزبون': {
     AppLanguage.arabic: 'طلبيات الزبون',
     AppLanguage.french: 'Commandes du client',
@@ -465,30 +390,11 @@ const Map<String, Map<AppLanguage, String>> orderKeys = {
     AppLanguage.french: 'Facture Numéro: \$invoiceNumber',
     AppLanguage.english: 'Invoice Number: \$invoiceNumber',
   },
-  'للتجديد، يرجى الدفع عبر بريدي موب (BaridiMob) ثم إرسال الوصل عبر واتساب.': {
-    AppLanguage.arabic: '',
-    AppLanguage.french: '',
-    AppLanguage.english: '',
-  },
   'لم أتمكن من فهم الطلب.': {
     AppLanguage.arabic: 'لم أتمكن من فهم الطلب.',
     AppLanguage.french: 'Je n\'ai pas pu comprendre la commande.',
     AppLanguage.english: 'I could not understand the order.',
   },
-  'مسح الفاتورة بالذكاء الاصطناعي': {
-    AppLanguage.arabic: 'مسح الفاتورة بالذكاء الاصطناعي',
-    AppLanguage.french: 'Numériser la facture par IA',
-    AppLanguage.english: 'Scan invoice using AI',
-  },
-  'معلومات الدفع (BaridiMob)': {
-    AppLanguage.arabic: 'معلومات الدفع (BaridiMob)',
-    AppLanguage.french: 'Infos de paiement (BaridiMob)',
-    AppLanguage.english: 'Payment info (BaridiMob)',
-  },
-  'هل أنت متأكد من رغبتك في إلغاء عملية الشراء للفاتورة رقم: \$invoiceNumber؟ \\nسيؤدي هذا إلى تجميد الفاتورة واستبعاد قيمتها من إجمالي الإحصائيات.':
-      {AppLanguage.arabic: '', AppLanguage.french: '', AppLanguage.english: ''},
-  'هل أنت متأكد من رغبتك في حذف الفاتورة رقم: \$invoiceNumber نهائياً من قاعدة البيانات؟ لا يمكن التراجع عن هذا الإجراء.':
-      {AppLanguage.arabic: '', AppLanguage.french: '', AppLanguage.english: ''},
   'يرجى إدخال رقم الفاتورة': {
     AppLanguage.arabic: 'يرجى إدخال رقم الفاتورة',
     AppLanguage.french: 'Veuillez saisir le numéro de facture',
@@ -544,11 +450,6 @@ const Map<String, Map<AppLanguage, String>> orderKeys = {
     AppLanguage.french: 'CLIENT',
     AppLanguage.english: 'CLIENT',
   },
-  'Prix Unit.': {
-    AppLanguage.arabic: 'سعر الوحدة',
-    AppLanguage.french: 'Prix Unit.',
-    AppLanguage.english: 'Unit Price',
-  },
   'Total après remise': {
     AppLanguage.arabic: 'المجموع بعد الخصم',
     AppLanguage.french: 'Total après remise',
@@ -590,36 +491,6 @@ const Map<String, Map<AppLanguage, String>> orderKeys = {
     AppLanguage.arabic: 'سعر الوحدة (دج)',
     AppLanguage.french: 'Prix unitaire (D.A)',
     AppLanguage.english: 'Unit price (DZD)',
-  },
-  'السعر الإجمالي': {
-    AppLanguage.arabic: 'السعر الإجمالي',
-    AppLanguage.french: 'Prix total',
-    AppLanguage.english: 'Total price',
-  },
-  r'''المشتريات''': {
-    AppLanguage.arabic: r'''المشتريات''',
-    AppLanguage.french: r'''Les Achats''',
-    AppLanguage.english: r'''Purchases''',
-  },
-  r'''المخزون''': {
-    AppLanguage.arabic: r'''المخزون''',
-    AppLanguage.french: r'''Stock''',
-    AppLanguage.english: r'''Inventory''',
-  },
-  r'''الموردين''': {
-    AppLanguage.arabic: r'''الموردين''',
-    AppLanguage.french: r'''Fournisseurs''',
-    AppLanguage.english: r'''Suppliers''',
-  },
-  r'''الخزينة''': {
-    AppLanguage.arabic: r'''الخزينة''',
-    AppLanguage.french: r'''Caisse''',
-    AppLanguage.english: r'''Treasury''',
-  },
-  r'''الخزينة (Caisse)''': {
-    AppLanguage.arabic: r'''الخزينة (Caisse)''',
-    AppLanguage.french: r'''Caisse''',
-    AppLanguage.english: r'''Treasury''',
   },
   'Edit Order': {
     AppLanguage.arabic: 'تعديل الطلبية',
@@ -681,20 +552,10 @@ const Map<String, Map<AppLanguage, String>> orderKeys = {
     AppLanguage.french: 'Préparation du PDF des photos...',
     AppLanguage.english: 'Preparing picture PDF...',
   },
-  'إعادة المحاولة': {
-    AppLanguage.arabic: 'إعادة المحاولة',
-    AppLanguage.french: 'Réessayer',
-    AppLanguage.english: 'Retry',
-  },
   'تم حفظ ملف الصور بنجاح': {
     AppLanguage.arabic: 'تم حفظ ملف الصور بنجاح',
     AppLanguage.french: 'Le fichier des photos a été enregistré avec succès',
     AppLanguage.english: 'Picture file saved successfully',
-  },
-  'خطأ أثناء توليد ملف الصور: ': {
-    AppLanguage.arabic: 'خطأ أثناء توليد ملف الصور: ',
-    AppLanguage.french: 'Erreur lors de la génération du fichier photos : ',
-    AppLanguage.english: 'Error generating picture file: ',
   },
   'trash': {
     AppLanguage.arabic: 'سلة المحذوفات',

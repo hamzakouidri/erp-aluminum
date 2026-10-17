@@ -151,11 +151,6 @@ final Map<String, Map<AppLanguage, String>> translationPhase12Keys = {
     AppLanguage.french: 'Surface = Largeur × Hauteur × Qté. Modification de prix depuis la gestion des prix.',
     AppLanguage.english: 'Area = Width × Height × Qty. Price modifications done via Price Management only.',
   },
-  'الموستيكير (Moustiquaire)': {
-    AppLanguage.arabic: 'الموستيكير (Moustiquaire)',
-    AppLanguage.french: 'Moustiquaire',
-    AppLanguage.english: 'Mosquito net',
-  },
   'اليسرى:': {
     AppLanguage.arabic: 'اليسرى:',
     AppLanguage.french: 'Gauche :',
@@ -265,11 +260,6 @@ final Map<String, Map<AppLanguage, String>> translationPhase12Keys = {
     AppLanguage.arabic: 'طلبات الانضمام المعلقة',
     AppLanguage.french: 'Demandes d\'adhésion en attente',
     AppLanguage.english: 'Pending join requests',
-  },
-  'إعدادات بوابات الدفع الإلكتروني': {
-    AppLanguage.arabic: 'إعدادات بوابات الدفع الإلكتروني',
-    AppLanguage.french: 'Paramètres des passerelles de paiement électronique',
-    AppLanguage.english: 'E-Payment Gateways Settings',
   },
   'دفع إلكتروني': {
     AppLanguage.arabic: 'دفع إلكتروني',

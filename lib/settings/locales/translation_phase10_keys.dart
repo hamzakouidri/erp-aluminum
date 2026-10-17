@@ -233,11 +233,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
     AppLanguage.french: 'Suppression impossible',
     AppLanguage.english: 'Cannot delete',
   },
-  'موافق': {
-    AppLanguage.arabic: 'موافق',
-    AppLanguage.french: 'OK',
-    AppLanguage.english: 'OK',
-  },
   'غير مصرح': {
     AppLanguage.arabic: 'غير مصرح',
     AppLanguage.french: 'Non autorisé',
@@ -780,26 +775,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
     AppLanguage.french: 'Confirmer le mot de passe',
     AppLanguage.english: 'Confirm password',
   },
-  'تاريخ بداية الاشتراك:': {
-    AppLanguage.arabic: 'تاريخ بداية الاشتراك:',
-    AppLanguage.french: 'Date de début de l’abonnement :',
-    AppLanguage.english: 'Subscription start date:',
-  },
-  'تاريخ نهاية الاشتراك:': {
-    AppLanguage.arabic: 'تاريخ نهاية الاشتراك:',
-    AppLanguage.french: 'Date de fin de l’abonnement :',
-    AppLanguage.english: 'Subscription end date:',
-  },
-  'كود الورشة:': {
-    AppLanguage.arabic: 'كود الورشة:',
-    AppLanguage.french: 'Code de l’atelier :',
-    AppLanguage.english: 'Workshop code:',
-  },
-  'نسخ رقم RIP': {
-    AppLanguage.arabic: 'نسخ رقم RIP',
-    AppLanguage.french: 'Copier le numéro RIP',
-    AppLanguage.english: 'Copy RIP number',
-  },
   'اكتب ملاحظتك، شكواك، أو اقتراحك هنا وسنتابعها مباشرة معك...': {
     AppLanguage.arabic:
         'اكتب ملاحظتك، شكواك، أو اقتراحك هنا وسنتابعها مباشرة معك...',
@@ -1227,11 +1202,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
     AppLanguage.french: 'Accessoires et joints',
     AppLanguage.english: 'Accessories and gaskets',
   },
-  'الطلبات': {
-    AppLanguage.arabic: 'الطلبات',
-    AppLanguage.french: 'Commandes',
-    AppLanguage.english: 'Orders',
-  },
   'القطاعات': {
     AppLanguage.arabic: 'القطاعات',
     AppLanguage.french: 'Profilés',
@@ -1514,11 +1484,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
     AppLanguage.french: 'Informations de paiement (BaridiMob)',
     AppLanguage.english: 'Payment information (BaridiMob)',
   },
-  'لم يتم تحديد الرقم بعد': {
-    AppLanguage.arabic: 'لم يتم تحديد الرقم بعد',
-    AppLanguage.french: 'Numéro non défini',
-    AppLanguage.english: 'Number not set yet',
-  },
   'تواصل لتجديد الاشتراك (WhatsApp)': {
     AppLanguage.arabic: 'تواصل لتجديد الاشتراك (WhatsApp)',
     AppLanguage.french: 'Contacter pour renouveler l’abonnement (WhatsApp)',
@@ -1609,11 +1574,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
     AppLanguage.arabic: 'أحمر',
     AppLanguage.french: 'Rouge',
     AppLanguage.english: 'Red',
-  },
-  'مم': {
-    AppLanguage.arabic: 'مم',
-    AppLanguage.french: 'mm',
-    AppLanguage.english: 'mm',
   },
   'ث': {
     AppLanguage.arabic: 'ث',
@@ -1718,14 +1678,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase10Keys = {
     AppLanguage.arabic: 'مظهر القسم المحدد:',
     AppLanguage.french: 'Aspect du profilé sélectionné :',
     AppLanguage.english: 'Selected profile appearance:',
-  },
-  'هل أنت متأكد أنك تريد مسح الرسم بالكامل والبدء من جديد؟': {
-    AppLanguage.arabic:
-        'هل أنت متأكد أنك تريد مسح الرسم بالكامل والبدء من جديد؟',
-    AppLanguage.french:
-        'Voulez-vous vraiment effacer tout le dessin et recommencer ?',
-    AppLanguage.english:
-        'Are you sure you want to clear the entire drawing and start over?',
   },
   'يُحسب بالمتر الطولي كبروفيل': {
     AppLanguage.arabic: 'يُحسب بالمتر الطولي كبروفيل',
