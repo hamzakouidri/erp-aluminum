@@ -167,7 +167,36 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
       debugPrint('Unable to load Supabase workshop members: $error');
       return localWorkers;
     }
-    if (members.isEmpty) return localWorkers;
+    // The signed-in account manages this list and is never one of its
+    // workers, whatever its role in the workshop: listing it let the owner
+    // edit, block or delete their own access. The first filter in
+    // [_loadWorkers] used local uids only, so the Supabase rows brought the
+    // account back.
+    final currentUser = AppAuthService().currentUser;
+    final currentEmail = currentUser?.email?.trim().toLowerCase() ?? '';
+    final currentUid = currentUser?.uid.trim() ?? '';
+    bool isCurrentAccount(String uid, String email) =>
+        (currentEmail.isNotEmpty && email == currentEmail) ||
+        (currentUid.isNotEmpty &&
+            (uid == currentUid || uid == 'supabase_$currentUid'));
+    members = members
+        .where((member) {
+          final email =
+              member['email']?.toString().trim().toLowerCase() ?? '';
+          final userId = member['user_id']?.toString().trim() ?? '';
+          return !isCurrentAccount(userId, email);
+        })
+        .toList(growable: false);
+    if (members.isEmpty) {
+      return localWorkers
+          .where(
+            (worker) => !isCurrentAccount(
+              worker['uid']?.toString() ?? '',
+              worker['email']?.toString().trim().toLowerCase() ?? '',
+            ),
+          )
+          .toList(growable: false);
+    }
 
     await _upsertSupabaseMembersIntoLocal(members, localWorkers);
     final refreshed = List<Map<String, dynamic>>.from(
@@ -193,6 +222,7 @@ class _WorkersManagementScreenState extends State<WorkersManagementScreen> {
           email.isEmpty ||
           email == 'no email' ||
           email == 'no_email' ||
+          isCurrentAccount(uid, email) ||
           (!allowedEmails.contains(email) &&
               !allowedGeneratedUids.contains(uid));
     });
