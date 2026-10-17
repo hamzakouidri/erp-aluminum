@@ -184,7 +184,14 @@ void main() {
       };
       model.sideCoverOverride = _section(101, 10, 'BS90-FRAME').toMap();
 
+      final found = model.overridesFromForeignSeries;
+      expect(found, contains('bs90 component'));
+      expect(model.componentOverrides.keys, contains('bs90 component'));
+      expect(model.zones.first.sashOverride, isNotNull);
+
       final removed = model.removeOverridesFromForeignSeries();
+      expect(removed, found);
+      expect(model.overridesFromForeignSeries, isEmpty);
 
       expect(model.componentOverrides.keys, isNot(contains('bs90 component')));
       expect(

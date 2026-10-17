@@ -20878,62 +20878,71 @@ class WindowModel extends ChangeNotifier {
         contextSeries.any((series) => series.profileId == ownerProfileId);
   }
 
+  /// Stored profile choices that belong to a series outside this drawing's
+  /// context. The BOM must not be trusted while this list is not empty.
+  List<String> get overridesFromForeignSeries =>
+      _overridesFromForeignSeries(remove: false);
+
   /// Removes every stored profile choice that belongs to a series outside
   /// this drawing's context. Removing overrides by their (translated) key
   /// name missed every role added later; this check uses catalogue identity.
   /// Returns the removed component keys.
   List<String> removeOverridesFromForeignSeries() {
-    final removed = <String>[];
-    for (final key in componentOverrides.keys.toList()) {
-      final value = componentOverrides[key];
-      if (value is! Map || !value.containsKey('code')) continue;
-      if (!isSectionOverrideInDrawingContext(value)) {
-        componentOverrides.remove(key);
-        removed.add(key);
-      }
-    }
-    for (final key in mullionSectionOverrides.keys.toList()) {
-      if (!isSectionOverrideInDrawingContext(mullionSectionOverrides[key]!)) {
-        mullionSectionOverrides.remove(key);
-        removed.add('mullionSectionOverrides:$key');
-      }
-    }
-    if (sideCoverOverride != null &&
-        !isSectionOverrideInDrawingContext(sideCoverOverride!)) {
-      sideCoverOverride = null;
-      removed.add('sideCoverOverride');
-    }
-    if (internalSlidingSideCoverOverride != null &&
-        !isSectionOverrideInDrawingContext(internalSlidingSideCoverOverride!)) {
-      internalSlidingSideCoverOverride = null;
-      removed.add('internalSlidingSideCoverOverride');
-    }
-    for (final zone in zones) {
-      if (zone.sashOverride != null &&
-          !isSectionOverrideInDrawingContext(zone.sashOverride!)) {
-        zone.sashOverride = null;
-        removed.add('zone:${zone.id}:sashOverride');
-      }
-      if (zone.slidingSashOverride != null &&
-          !isSectionOverrideInDrawingContext(zone.slidingSashOverride!)) {
-        zone.slidingSashOverride = null;
-        removed.add('zone:${zone.id}:slidingSashOverride');
-      }
-      final foreignCells = zone.cellSashOverrides.entries
-          .where((entry) => !isSectionOverrideInDrawingContext(entry.value))
-          .map((entry) => entry.key)
-          .toList();
-      if (foreignCells.isNotEmpty) {
-        zone.cellSashOverrides = Map<String, Map<String, dynamic>>.from(
-          zone.cellSashOverrides,
-        )..removeWhere((key, _) => foreignCells.contains(key));
-        removed.addAll(foreignCells.map((key) => 'zone:${zone.id}:$key'));
-      }
-    }
+    final removed = _overridesFromForeignSeries(remove: true);
     if (removed.isNotEmpty) {
       debugPrint('Removed profiles from another series: ${removed.join(', ')}');
     }
     return removed;
+  }
+
+  List<String> _overridesFromForeignSeries({required bool remove}) {
+    final found = <String>[];
+    bool foreign(Map<dynamic, dynamic>? section) =>
+        section != null && !isSectionOverrideInDrawingContext(section);
+
+    for (final key in componentOverrides.keys.toList()) {
+      final value = componentOverrides[key];
+      if (value is! Map || !value.containsKey('code') || !foreign(value)) {
+        continue;
+      }
+      found.add(key);
+      if (remove) componentOverrides.remove(key);
+    }
+    for (final key in mullionSectionOverrides.keys.toList()) {
+      if (!foreign(mullionSectionOverrides[key])) continue;
+      found.add('mullionSectionOverrides:$key');
+      if (remove) mullionSectionOverrides.remove(key);
+    }
+    if (foreign(sideCoverOverride)) {
+      found.add('sideCoverOverride');
+      if (remove) sideCoverOverride = null;
+    }
+    if (foreign(internalSlidingSideCoverOverride)) {
+      found.add('internalSlidingSideCoverOverride');
+      if (remove) internalSlidingSideCoverOverride = null;
+    }
+    for (final zone in zones) {
+      if (foreign(zone.sashOverride)) {
+        found.add('zone:${zone.id}:sashOverride');
+        if (remove) zone.sashOverride = null;
+      }
+      if (foreign(zone.slidingSashOverride)) {
+        found.add('zone:${zone.id}:slidingSashOverride');
+        if (remove) zone.slidingSashOverride = null;
+      }
+      final foreignCells = zone.cellSashOverrides.entries
+          .where((entry) => foreign(entry.value))
+          .map((entry) => entry.key)
+          .toList();
+      if (foreignCells.isEmpty) continue;
+      found.addAll(foreignCells.map((key) => 'zone:${zone.id}:$key'));
+      if (remove) {
+        zone.cellSashOverrides = Map<String, Map<String, dynamic>>.from(
+          zone.cellSashOverrides,
+        )..removeWhere((key, _) => foreignCells.contains(key));
+      }
+    }
+    return found;
   }
 
   void _clearAccessoryOverrides() {

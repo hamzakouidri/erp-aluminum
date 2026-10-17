@@ -3254,6 +3254,53 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   // ==========================================================================
   // build: الدالة الرئيسية لبناء واجهة الشاشة كاملة
   // ==========================================================================
+  /// A profile kept from another series (for example BS 90 in a PVC
+  /// drawing) makes every quantity and cost below unreliable.
+  Widget _buildForeignSeriesWarning(AppLanguage lang, int count) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        border: Border.all(color: Colors.red.shade300),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, color: Colors.red.shade700, size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              '${Localization.translate('يحتوي الرسم على مقاطع من سلسلة أخرى؛ الكميات والتكلفة غير موثوقة', lang)} ($count)',
+              style: TextStyle(
+                color: Colors.red.shade900,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade700,
+              foregroundColor: Colors.white,
+            ),
+            icon: const Icon(Icons.cleaning_services_outlined, size: 18),
+            label: Text(
+              Localization.translate('إزالة المقاطع غير المتوافقة', lang),
+            ),
+            onPressed: () async {
+              widget.model.removeOverridesFromForeignSeries();
+              await _fetchDefaults();
+              if (mounted) setState(() {});
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
@@ -3282,6 +3329,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           return hasPieces || qty > 0;
         })
         .toList(growable: false);
+    final foreignSeriesOverrides = widget.model.overridesFromForeignSeries;
     return Scaffold(
       appBar: AppBar(
         title: Text(Localization.translate('الالكمية والتكلفة', lang)),
@@ -3300,6 +3348,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               // The progress panel is only useful for the initial empty load.
               if (_isFetchingDefaults && _visibleBomItems.isEmpty)
                 _buildFetchProgress(lang),
+              if (foreignSeriesOverrides.isNotEmpty)
+                _buildForeignSeriesWarning(lang, foreignSeriesOverrides.length),
               // تحذير ارتفاع الستار (إن وُجد) — يظهر فقط إذا كان هناك تحذير في النموذج
               if (widget.model.shutterHeightWarning != null) ...[
                 Container(
