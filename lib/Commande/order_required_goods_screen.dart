@@ -2570,35 +2570,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   // ─────────────────────────────────────────────────────────────────
   // بناء activeVariants من الـ model (مطابق لـ _fetchDefaults في material_consumption_screen)
   // ─────────────────────────────────────────────────────────────────
-  Map<String, bool> _buildActiveVariants(WindowModel model) {
-    final isTunnel = model.isCaissonTunnel;
-    final isMotor = model.shutterMechanism == 'محرك';
-    final isCrank =
-        model.shutterMechanism == 'منايفال' ||
-        model.shutterMechanism == 'مانيفال' ||
-        model.shutterMechanism == 'مانيفر';
-
-    return {
-      'Verrou Central':
-          model.canUseOpeningOnlyOptions && model.useVerrouCentral,
-      'System OB': model.effectiveUseSystemOB,
-      'Demi System OB': model.effectiveUseDemiOB,
-      'كيت (Kit)': false,
-      'طانديم (Tandem)': isTunnel,
-      'الامبو (Embout)': isMotor,
-      'سيبور رولمو (Support Roulement)': isMotor,
-      'سيبور موتور (Support Moteur)': isMotor || isTunnel,
-      'أغطية الشفرات (Bouchons Lames)': model.componentOverrides.containsKey(
-        'أغطية الشفرات (Bouchons Lames)',
-      ),
-      'كيت صندوق النفق (Kit Caisson Tunnel)': isTunnel,
-      'كيت فولي موتور (Kit Volet Moteur)': !isTunnel && isMotor,
-      'كيت فولي مانيفر (Kit Volet Manivelle)': !isTunnel && isCrank,
-      'كيت مانيفر (Kit Manivelle)': !isTunnel && isCrank,
-      'كيت فولي (Kit Volet)': !isTunnel && !isMotor && !isCrank,
-      'كيت حزام (Kit Sangle)': false,
-    };
-  }
+  Map<String, bool> _buildActiveVariants(WindowModel model) =>
+      ComponentCalculator.standardActiveVariants(model);
 
   // ─────────────────────────────────────────────────────────────────
   // حساب مجموع التكاليف الكلية

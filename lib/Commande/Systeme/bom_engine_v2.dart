@@ -56,6 +56,34 @@ class BomEngineV2 {
       );
   }
 
+  /// The one resolution path for a drawing's manufacturing BOM: generate,
+  /// stabilise the catalogue selections twice (the second pass sees the
+  /// sections chosen by the first), then keep only rows with a catalogue
+  /// candidate. Every document derived from a drawing must use it so the
+  /// cutting sheet, required goods and consumption report count the same
+  /// pieces. [activeVariants] defaults to
+  /// [ComponentCalculator.standardActiveVariants].
+  Future<List<BomItem>> resolveManufacturingBom(
+    WindowModel window, {
+    Map<String, bool>? activeVariants,
+    Map<String, List<Map<String, dynamic>>> kitBundleData = const {},
+    Map<String, bool> kitPerLeafMap = const {},
+    Map<String, double> kitBundlePrices = const {},
+    Map<String, Map<String, dynamic>> kitBundleMetadata = const {},
+  }) async {
+    List<BomItem> generate() => ComponentCalculator.generateBom(
+      window,
+      activeVariants ?? ComponentCalculator.standardActiveVariants(window),
+      kitBundleData: kitBundleData,
+      kitPerLeafMap: kitPerLeafMap,
+      kitBundlePrices: kitBundlePrices,
+      kitBundleMetadata: kitBundleMetadata,
+    );
+    await stabilizeSelections(window: window, items: generate());
+    await stabilizeSelections(window: window, items: generate());
+    return filterItemsByAvailableCandidates(window: window, items: generate());
+  }
+
   Future<void> stabilizeSelections({
     required WindowModel window,
     required List<BomItem> items,

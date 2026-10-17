@@ -1644,18 +1644,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         text.contains('اكسترودي');
   }
 
-  bool _motorHasEmergencyCrank(Map<String, dynamic>? motor) {
-    final raw = motor?['motor_has_emergency_crank'];
-    if (raw is bool) return raw;
-    if (raw is num) return raw != 0;
-    final value = raw?.toString().trim().toLowerCase() ?? '';
-    return value == '1' ||
-        value == 'true' ||
-        value == 'yes' ||
-        value == 'oui' ||
-        value == 'نعم';
-  }
-
   /// Finds a shutter axis after applying the same compatibility rules used by
   /// the selector: blade relation first, then motor diameter.  Keeping this
   /// here prevents an automatic replacement from bypassing the dialog rules.
@@ -2001,40 +1989,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   void _refreshStrictActiveVariants() {
     final isTunnel = widget.model.isCaissonTunnel;
     final isMotor = widget.model.shutterMechanism == 'محرك';
-    final isCrank =
-        widget.model.shutterMechanism == 'منايفال' ||
-        widget.model.shutterMechanism == 'مانيفال' ||
-        widget.model.shutterMechanism == 'مانيفر';
-    final isX3dPvc =
-        !isTunnel &&
-        widget.model.isPVC &&
-        _isX3dBlade(widget.model.componentOverrides['الشرائح (Lames)']);
-
-    activeVariants['كيت (Kit)'] = false;
-    activeVariants['كيت فولي موتور (Kit Volet Moteur)'] = !isTunnel && isMotor;
-    activeVariants['كيت فولي مانيفر (Kit Volet Manivelle)'] =
-        !isTunnel && isCrank;
-    activeVariants['كيت مانيفر (Kit Manivelle)'] = !isTunnel && isCrank;
-    activeVariants['كيت صندوق النفق (Kit Caisson Tunnel)'] = isTunnel;
-    activeVariants['كيت فولي (Kit Volet)'] = !isTunnel && !isMotor && !isCrank;
-    activeVariants['كيت حزام (Kit Sangle)'] = false;
-    activeVariants['طانديم (Tandem)'] = isTunnel;
-    activeVariants['الامبو (Embout)'] = isMotor;
-    activeVariants['سيبور رولمو (Support Roulement)'] = isMotor;
-    activeVariants['سيبور موتور (Support Moteur)'] = isMotor
-        ? (!isX3dPvc ||
-              !_motorHasEmergencyCrank(
-                widget.model.componentOverrides['المحرك (Moteur)'],
-              ))
-        : isTunnel;
-    activeVariants['أغطية الشفرات (Bouchons Lames)'] = widget
-        .model
-        .componentOverrides
-        .containsKey('أغطية الشفرات (Bouchons Lames)');
-
-    activeVariants['Verrou Central'] = widget.model.useVerrouCentral;
-    activeVariants['System OB'] = widget.model.effectiveUseSystemOB;
-    activeVariants['Demi System OB'] = widget.model.effectiveUseDemiOB;
+    activeVariants.addAll(
+      ComponentCalculator.standardActiveVariants(widget.model),
+    );
 
     if (!isMotor) {
       widget.model.componentOverrides.remove('الامبو (Embout)');
@@ -2622,33 +2579,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     // Cost settings and database prices must not load concurrently. The
     // settings loader initializes the linear-price field to zero, so if it
     // finishes after the database query it can overwrite the valid price.
-    // تحديد الحالة الابتدائية للآلية (محرك/مانيفيل/حزام) والتونيل
-    final isTunnel = widget.model.isCaissonTunnel;
-    final isMotor = widget.model.shutterMechanism == 'محرك';
-    final isCrankInit =
-        widget.model.shutterMechanism == 'منايفال' ||
-        widget.model.shutterMechanism == 'مانيفال' ||
-        widget.model.shutterMechanism == 'مانيفر';
-    // بناء الحالة الابتدائية لكل عناصر activeVariants دفعة واحدة
-    activeVariants = {
-      'Verrou Central':
-          widget.model.canUseOpeningOnlyOptions &&
-          widget.model.useVerrouCentral,
-      'System OB': widget.model.effectiveUseSystemOB,
-      'Demi System OB': widget.model.effectiveUseDemiOB,
-      'كيت (Kit)': false,
-      'كيت فولي موتور (Kit Volet Moteur)': isTunnel ? false : isMotor,
-      'كيت فولي مانيفر (Kit Volet Manivelle)': isTunnel ? false : isCrankInit,
-      'كيت مانيفر (Kit Manivelle)': isTunnel ? false : isCrankInit,
-      'كيت فولي (Kit Volet)': isTunnel ? false : (!isMotor && !isCrankInit),
-      'كيت حزام (Kit Sangle)': false,
-      'طانديم (Tandem)': isTunnel,
-      'الامبو (Embout)': false,
-      'سيبور رولمو (Support Roulement)': false,
-      'سيبور موتور (Support Moteur)': isTunnel || isMotor,
-      'أغطية الشفرات (Bouchons Lames)': widget.model.componentOverrides
-          .containsKey('أغطية الشفرات (Bouchons Lames)'),
-    };
+    activeVariants = ComponentCalculator.standardActiveVariants(widget.model);
     // لا تعرض نسخة BOM أولية؛ انشر فقط النتيجة بعد اكتمال الفحص الصارم.
     _visibleBomItems = const <BomItem>[];
     _hasFetchedDefaults = false;

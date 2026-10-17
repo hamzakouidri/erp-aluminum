@@ -9,7 +9,7 @@ import 'package:database_data/settings/localization.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/model_serialization.dart';
-import 'package:database_data/Commande/Systeme/calculate_component.dart';
+import 'package:database_data/Commande/Systeme/bom_engine_v2.dart';
 import 'package:database_data/Commande/Systeme/cutting_settings.dart';
 import 'package:database_data/services/cutting_optimizer_engine.dart';
 import 'package:pdf/pdf.dart';
@@ -153,7 +153,7 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
             final orderName = _getOrderName(_selectedOrderId!);
             for (final d in details) {
               pieces.addAll(
-                _extractPiecesFromDetail(
+                await _extractPiecesFromDetail(
                   d,
                   _selectedOrderId!,
                   orderName,
@@ -171,7 +171,7 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
             final orderName = _getOrderName(oId);
             for (final d in details) {
               pieces.addAll(
-                _extractPiecesFromDetail(
+                await _extractPiecesFromDetail(
                   d,
                   oId,
                   orderName,
@@ -195,7 +195,7 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
             for (int i = start; i < end; i++) {
               if (i >= 0 && i < details.length) {
                 pieces.addAll(
-                  _extractPiecesFromDetail(
+                  await _extractPiecesFromDetail(
                     details[i],
                     _rangeOrderId!,
                     orderName,
@@ -217,7 +217,7 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
               final dId = (d['id'] as num?)?.toInt() ?? 0;
               if (_selectedDetailIds.contains(dId)) {
                 pieces.addAll(
-                  _extractPiecesFromDetail(
+                  await _extractPiecesFromDetail(
                     d,
                     oId,
                     orderName,
@@ -282,12 +282,12 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
     return 'طلب #$code - $clientName';
   }
 
-  List<CuttingPiece> _extractPiecesFromDetail(
+  Future<List<CuttingPiece>> _extractPiecesFromDetail(
     Map<String, dynamic> detail,
     int orderId,
     String orderName, {
     int? quantityOverride,
-  }) {
+  }) async {
     final pieces = <CuttingPiece>[];
     final rawJson = detail['partitions_json'];
     if (rawJson == null || rawJson.toString().trim().isEmpty) return pieces;
@@ -311,11 +311,24 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
         detail,
         quantityLimit: quantity,
       );
+      // Same preparation as the cutting sheet (fiche de coupe): the catalogue
+      // is loaded once for the item, then copied into each measured instance,
+      // so both documents list the same pieces.
+      final drawing = Map<String, dynamic>.from(data);
+      final catalogModel = WindowModel(db: widget.db);
+      await applyWindowModelAndLoadCatalog(catalogModel, drawing);
+      applyStoredOrderDetailColorToWindowModel(catalogModel, detail);
+      await catalogModel.updateShutterDefaultsIfNeeded();
+      final engine = BomEngineV2(database: widget.db);
       var measurementIndex = 0;
       for (final measurement in measurements) {
         measurementIndex++;
         final window = WindowModel(db: widget.db);
-        applyWindowModelFromMap(window, Map<String, dynamic>.from(data));
+        applyWindowModelFromMap(window, drawing);
+        window.copyCatalogRuntimeFrom(
+          catalogModel,
+          preserveCurrentSelections: false,
+        );
         final measuredWidth = (measurement['width'] as num).toDouble();
         final measuredHeight = (measurement['height'] as num).toDouble();
         final measuredQty = (measurement['qty'] as num).toInt();
@@ -336,7 +349,7 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
         // confirmed quantity. This avoids multiplying an already-expanded
         // pieces list a second time.
         window.quantity = 1;
-        final bom = ComponentCalculator.generateBom(window, const {});
+        final bom = await engine.resolveManufacturingBom(window);
 
         for (final item in bom) {
           if (!item.isActive || item.category != 'profile') continue;

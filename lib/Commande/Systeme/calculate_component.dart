@@ -839,6 +839,66 @@ class BomItem {
 }
 
 class ComponentCalculator {
+  /// The optional-part switches (kits, tandem, embout, supports...) every
+  /// consumer of [generateBom] must use unless the user changed them in the
+  /// quantity table. The table, cutting sheet, required goods, consumption
+  /// report and cutting optimisers used to build their own maps with
+  /// different values, so one drawing could count a tandem in one document
+  /// and an embout in another.
+  static Map<String, bool> standardActiveVariants(WindowModel window) {
+    final isTunnel = window.isCaissonTunnel;
+    final mechanism = window.shutterMechanism;
+    final isMotor = mechanism == 'محرك';
+    final isCrank =
+        mechanism == 'منايفال' || mechanism == 'مانيفال' || mechanism == 'مانيفر';
+    final blade = window.componentOverrides['الشرائح (Lames)'];
+    final bladeText = blade is Map
+        ? '${blade['name'] ?? ''} ${blade['shutter_subtype'] ?? ''}'
+              .toLowerCase()
+        : '';
+    final isX3dBlade =
+        bladeText.contains('x3d') ||
+        bladeText.contains('extrud') ||
+        bladeText.contains('إكسترودي') ||
+        bladeText.contains('اكسترودي');
+    final isX3dPvc = !isTunnel && window.isPVC && isX3dBlade;
+    final motor = window.componentOverrides['المحرك (Moteur)'];
+    final rawCrank = motor is Map ? motor['motor_has_emergency_crank'] : null;
+    final motorHasEmergencyCrank = rawCrank is bool
+        ? rawCrank
+        : rawCrank is num
+        ? rawCrank != 0
+        : const [
+            '1',
+            'true',
+            'yes',
+            'oui',
+            'نعم',
+          ].contains(rawCrank?.toString().trim().toLowerCase());
+
+    return {
+      'Verrou Central': window.useVerrouCentral,
+      'System OB': window.effectiveUseSystemOB,
+      'Demi System OB': window.effectiveUseDemiOB,
+      'كيت (Kit)': false,
+      'كيت فولي موتور (Kit Volet Moteur)': !isTunnel && isMotor,
+      'كيت فولي مانيفر (Kit Volet Manivelle)': !isTunnel && isCrank,
+      'كيت مانيفر (Kit Manivelle)': !isTunnel && isCrank,
+      'كيت صندوق النفق (Kit Caisson Tunnel)': isTunnel,
+      'كيت فولي (Kit Volet)': !isTunnel && !isMotor && !isCrank,
+      'كيت حزام (Kit Sangle)': false,
+      'طانديم (Tandem)': isTunnel,
+      'الامبو (Embout)': isMotor,
+      'سيبور رولمو (Support Roulement)': isMotor,
+      'سيبور موتور (Support Moteur)': isMotor
+          ? (!isX3dPvc || !motorHasEmergencyCrank)
+          : isTunnel,
+      'أغطية الشفرات (Bouchons Lames)': window.componentOverrides.containsKey(
+        'أغطية الشفرات (Bouchons Lames)',
+      ),
+    };
+  }
+
   /// Returns the lower and upper Tringle cuts driven by one Cremone.
   ///
   /// The deduction is applied to the total usable length. The handle's
