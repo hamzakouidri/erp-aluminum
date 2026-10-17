@@ -845,6 +845,35 @@ class ComponentCalculator {
   /// report and cutting optimisers used to build their own maps with
   /// different values, so one drawing could count a tandem in one document
   /// and an embout in another.
+  /// The kit the user selected, matched by its KitBundles id so a renamed
+  /// kit stays selected. The saved name is used only for selections stored
+  /// without an id (older orders). Returns null when the selection is not in
+  /// [pool].
+  static Map<String, dynamic>? selectedKitBundle(
+    Object? savedSelection,
+    Iterable<Map<String, dynamic>> pool,
+  ) {
+    if (savedSelection is! Map ||
+        savedSelection['catalog_source'] != 'KitBundles') {
+      return null;
+    }
+    int? readId(Object? raw) =>
+        raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}'.trim());
+    final savedId = readId(savedSelection['id']);
+    if (savedId != null) {
+      for (final kit in pool) {
+        if (readId(kit['id']) == savedId) return kit;
+      }
+      return null;
+    }
+    final savedName = savedSelection['name']?.toString() ?? '';
+    if (savedName.isEmpty) return null;
+    for (final kit in pool) {
+      if ((kit['name'] ?? '').toString() == savedName) return kit;
+    }
+    return null;
+  }
+
   /// Whether [value] falls in a kit range. Ranges are half-open
   /// `[min_mm, max_mm)`, as the overlap check uses when they are saved, so
   /// touching ranges such as 10–20 kg and 20–30 kg give 20 kg to the second
@@ -7063,15 +7092,23 @@ class ComponentCalculator {
         List<String> requiredKitTokens = const [],
       }) {
         String? matchedKitName;
-        String? actualKitName;
-        if (window.componentOverrides.containsKey(uiKey)) {
-          final overrideItem = window.componentOverrides[uiKey];
-          // Ignore legacy values that were incorrectly saved from
-          // ShutterComponents.  Only a KitBundles selection is allowed to
-          // override the actual bundle chosen below.
-          if (overrideItem['catalog_source'] == 'KitBundles') {
-            actualKitName = overrideItem['name']?.toString();
-          }
+        // Only a KitBundles selection may override the bundle chosen below;
+        // legacy values saved from ShutterComponents are ignored.
+        final savedKitSelection = window.componentOverrides[uiKey];
+        final selectedInCatalogue = selectedKitBundle(
+          savedKitSelection,
+          kitBundleMetadata.values,
+        );
+        if (savedKitSelection is Map &&
+            savedKitSelection['catalog_source'] == 'KitBundles' &&
+            selectedInCatalogue == null &&
+            kitBundleMetadata.isNotEmpty) {
+          // The chosen kit was deleted or deactivated: say so instead of
+          // silently pricing another kit as if it had been chosen.
+          window.reportCatalogIssue(
+            'Kit "${savedKitSelection['name'] ?? ''}" not in catalogue',
+            StateError('selected kit missing'),
+          );
         }
 
         final candidates = compatibleKitBundles(
@@ -7122,13 +7159,10 @@ class ComponentCalculator {
         final orderedCandidates = preferredCandidates.isNotEmpty
             ? preferredCandidates
             : candidatePool;
-        if (actualKitName != null && actualKitName.isNotEmpty) {
-          final manual = candidatePool.where(
-            (kit) => (kit['name'] ?? '').toString() == actualKitName,
-          );
-          if (manual.isNotEmpty) {
-            matchedKitName = actualKitName;
-          }
+        final manual = selectedKitBundle(savedKitSelection, candidatePool);
+        if (manual != null) {
+          // The current catalogue name, which also keys the kit's items.
+          matchedKitName = (manual['name'] ?? '').toString();
         }
         matchedKitName ??= orderedCandidates.isEmpty
             ? null
