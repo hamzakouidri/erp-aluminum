@@ -845,6 +845,38 @@ class ComponentCalculator {
   /// report and cutting optimisers used to build their own maps with
   /// different values, so one drawing could count a tandem in one document
   /// and an embout in another.
+  /// Whether [value] falls in a kit range. Ranges are half-open
+  /// `[min_mm, max_mm)`, as the overlap check uses when they are saved, so
+  /// touching ranges such as 10–20 kg and 20–30 kg give 20 kg to the second
+  /// one only. The upper bound still counts when no range of the same
+  /// compatibility group starts there (the last range). Matching both ends
+  /// made a weight on a boundary select two ranges and count the part twice.
+  static bool kitRangeContains(
+    Map<String, dynamic> range,
+    double value,
+    Iterable<Map<String, dynamic>> siblings,
+  ) {
+    double? read(Map<String, dynamic> row, String key) {
+      final raw = row[key];
+      return raw is num ? raw.toDouble() : double.tryParse('${raw ?? ''}');
+    }
+
+    int group(Map<String, dynamic> row) =>
+        ((row['compatibility_group'] as num?)?.toInt() ?? 0).clamp(0, 2);
+
+    final min = read(range, 'min_mm') ?? 0;
+    final max = read(range, 'max_mm') ?? double.infinity;
+    if (value < min || value > max) return false;
+    if (value < max) return true;
+    final rangeGroup = group(range);
+    return !siblings.any(
+      (other) =>
+          !identical(other, range) &&
+          group(other) == rangeGroup &&
+          (read(other, 'min_mm') ?? 0) == max,
+    );
+  }
+
   static Map<String, bool> standardActiveVariants(WindowModel window) {
     final isTunnel = window.isCaissonTunnel;
     final mechanism = window.shutterMechanism;
@@ -1865,11 +1897,8 @@ class ComponentCalculator {
                 0,
                 2,
               );
-          final min = (range['min_mm'] as num?)?.toDouble() ?? 0;
-          final max = (range['max_mm'] as num?)?.toDouble() ?? double.infinity;
           return (rangeGroup == 0 || rangeGroup == group) &&
-              shutterWeightKg >= min &&
-              shutterWeightKg <= max;
+              kitRangeContains(range, shutterWeightKg, ranges);
         }).toList();
         if (matches.isEmpty) {
           missingItems++;
@@ -3497,16 +3526,14 @@ class ComponentCalculator {
 
           final matchedRanges = <Map<String, dynamic>>[];
           for (final r in sortedRanges) {
-            final mn = (r['min_mm'] as num?)?.toDouble() ?? 0;
-            final mx = (r['max_mm'] as num?)?.toDouble() ?? double.infinity;
             final rangeGroup =
                 ((r['compatibility_group'] as num?)?.toInt() ?? 0).clamp(0, 2);
             final groupMatches =
                 !isWeight ||
                 selectedCompatibilityGroup == null ||
                 ((rangeGroup == 0 || rangeGroup == selectedCompatibilityGroup));
-            // The range matches if dimValue falls within [mn, mx)
-            if (groupMatches && dimValue >= mn && dimValue <= mx) {
+            if (groupMatches &&
+                kitRangeContains(r, dimValue, sortedRanges)) {
               matchedRanges.add(r);
               if (!isWeight) break;
             }

@@ -3,6 +3,13 @@ import '../app_settings.dart';
 /// User-facing text introduced by the recent kit, decorated-panel, cutting
 /// and required-goods developments.
 const Map<String, Map<AppLanguage, String>> recentDevelopmentKeys = {
+  'تعذر تحميل مكونات وعائلات الكت. أعد فتح الصفحة.': {
+    AppLanguage.arabic: 'تعذر تحميل مكونات وعائلات الكت. أعد فتح الصفحة.',
+    AppLanguage.french:
+        'Impossible de charger les composants et familles du kit. Rouvrez la page.',
+    AppLanguage.english:
+        'Could not load the kit components and families. Reopen the page.',
+  },
   'يحتوي الرسم على مقاطع من سلسلة أخرى؛ الكميات والتكلفة غير موثوقة': {
     AppLanguage.arabic:
         'يحتوي الرسم على مقاطع من سلسلة أخرى؛ الكميات والتكلفة غير موثوقة',
