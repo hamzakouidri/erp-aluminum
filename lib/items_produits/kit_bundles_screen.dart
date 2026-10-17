@@ -423,7 +423,9 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
           _suggestedNames = names.where((n) => n.isNotEmpty).toList();
         });
       }
-    } catch (_) {}
+    } catch (error) {
+      debugPrint('Kit name suggestions unavailable: $error');
+    }
   }
 
   Future<void> _loadItems() async {
@@ -1395,7 +1397,27 @@ class _KitItemRangesScreenState extends State<KitItemRangesScreen> {
               .toList();
         });
       }
-    } catch (_) {}
+    } catch (error) {
+      // An empty list here looks like a kit without components or families;
+      // say that the data could not be read instead.
+      debugPrint('Kit components/families load failed: $error');
+      if (mounted) {
+        final lang = Provider.of<AppSettingsProvider>(
+          context,
+          listen: false,
+        ).language;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              Localization.translate(
+                'تعذر تحميل مكونات وعائلات الكت. أعد فتح الصفحة.',
+                lang,
+              ),
+            ),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _loadRanges() async {
@@ -1943,7 +1965,9 @@ class _KitItemVariantsScreenState extends State<KitItemVariantsScreen> {
           _suggestedNames = names.where((n) => n.isNotEmpty).toList();
         });
       }
-    } catch (_) {}
+    } catch (error) {
+      debugPrint('Kit name suggestions unavailable: $error');
+    }
   }
 
   Future<void> _loadVariants() async {

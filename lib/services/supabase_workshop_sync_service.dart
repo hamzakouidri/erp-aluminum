@@ -358,7 +358,10 @@ class SupabaseWorkshopSyncService {
     await _upsertRows(rows, preserveNewerRemote: true);
 
     await _acknowledgeSyncedChanges(pendingBeforeUpload);
-    await _saveLastSyncAt(DateTime.now().toUtc().toIso8601String());
+    // The download cursor is not moved here: jumping it to this device's
+    // clock skipped every row other devices uploaded since the last
+    // download. Reading this device's own rows back only re-applies
+    // identical data.
 
     lastUploadSummary =
         'تم دمج ${rows.length} سجل بأمان في Supabase: '
@@ -1165,6 +1168,14 @@ class SupabaseWorkshopSyncService {
     await _ensureReady();
     final workshopUuid = _workshopUuid!;
     final since = full ? null : await _readLastSyncAt();
+    final serverCursor = full ? null : await _readServerCursor();
+    // Taken before reading anything, so rows written during this download
+    // are fetched again by the next incremental pass.
+    final serverHighWater = full || serverCursor == null
+        ? await _fetchServerHighWater(workshopUuid)
+        : null;
+    String? nextServerCursor;
+    Map<String, String>? nextAppliedRows;
     final data = <String, dynamic>{};
     final tombstones = <Map<String, dynamic>>[];
     Map<String, dynamic>? catalogConfiguration;
@@ -1352,22 +1363,73 @@ class SupabaseWorkshopSyncService {
       }
     } else {
       const incrementalBatchSize = 10;
-      while (true) {
-        final rows = await _client
-            .from('workshop_sync_rows')
-            .select('table_name,row_id,payload,updated_at,deleted_at,device_id')
-            .eq('workshop_id', workshopUuid)
-            .gt('updated_at', since!)
-            .order('updated_at', ascending: true)
-            .range(start, start + incrementalBatchSize - 1);
-        if (rows.isEmpty) break;
+      var usedServerCursor = false;
+      if (serverCursor != null && _serverCursorSupported != false) {
+        try {
+          final applied = await _readRecentlyAppliedRows();
+          final from = withServerCursorOverlap(serverCursor);
+          var newest = serverCursor;
+          while (true) {
+            final rows = await _client
+                .from('workshop_sync_rows')
+                .select(
+                  'table_name,row_id,payload,updated_at,deleted_at,device_id,'
+                  'revision,server_updated_at',
+                )
+                .eq('workshop_id', workshopUuid)
+                .gte('server_updated_at', from)
+                .order('server_updated_at', ascending: true)
+                .order('table_name', ascending: true)
+                .order('row_id', ascending: true)
+                .range(start, start + incrementalBatchSize - 1);
+            if (rows.isEmpty) break;
 
-        for (final rawRow in rows) {
-          processRow(Map<String, dynamic>.from(rawRow as Map));
+            for (final rawRow in rows) {
+              final row = Map<String, dynamic>.from(rawRow as Map);
+              final serverTime = row['server_updated_at']?.toString() ?? '';
+              // The overlap window returns rows already applied by the
+              // previous pass; applying them again would repeat order
+              // notifications.
+              final marker = _appliedRowMarker(row);
+              if (applied.containsKey(marker)) continue;
+              applied[marker] = serverTime;
+              processRow(row);
+              if (isLaterSyncTimestamp(serverTime, newest)) newest = serverTime;
+            }
+
+            if (rows.length < incrementalBatchSize) break;
+            start += incrementalBatchSize;
+          }
+          nextServerCursor = newest;
+          nextAppliedRows = applied;
+          usedServerCursor = true;
+        } on PostgrestException catch (error) {
+          if (!_isMissingServerCursorColumn(error)) rethrow;
+          _serverCursorSupported = false;
+          start = 0;
         }
+      }
 
-        if (rows.length < incrementalBatchSize) break;
-        start += incrementalBatchSize;
+      if (!usedServerCursor) {
+        while (true) {
+          final rows = await _client
+              .from('workshop_sync_rows')
+              .select(
+                'table_name,row_id,payload,updated_at,deleted_at,device_id',
+              )
+              .eq('workshop_id', workshopUuid)
+              .gt('updated_at', since!)
+              .order('updated_at', ascending: true)
+              .range(start, start + incrementalBatchSize - 1);
+          if (rows.isEmpty) break;
+
+          for (final rawRow in rows) {
+            processRow(Map<String, dynamic>.from(rawRow as Map));
+          }
+
+          if (rows.length < incrementalBatchSize) break;
+          start += incrementalBatchSize;
+        }
       }
     }
 
@@ -1488,6 +1550,14 @@ class SupabaseWorkshopSyncService {
     if (newestUpdate != null && (!full || downloadedBusinessRows > 0)) {
       await _saveLastSyncAt(newestUpdate!);
     }
+    final serverCursorToSave = nextServerCursor ?? serverHighWater;
+    if (serverCursorToSave != null && (!full || downloadedBusinessRows > 0)) {
+      await _saveServerCursor(
+        serverCursorToSave,
+        appliedRows: nextAppliedRows ?? const {},
+      );
+    }
+
 
     lastDownloadSummary = downloadedRows == 0
         ? 'لا توجد تغييرات جديدة في Supabase.'
@@ -1970,6 +2040,124 @@ class SupabaseWorkshopSyncService {
     if (acknowledgements.isNotEmpty) {
       await _db.acknowledgePendingCloudChanges(acknowledgements);
     }
+  }
+
+  // ── Server-time download cursor (supabase/sync_server_cursor.sql) ──
+  //
+  // `updated_at` is the device's modification time: a row edited offline or
+  // on a device with a late clock is uploaded "in the past" and an
+  // `updated_at > cursor` query never returns it. The cursor below uses the
+  // database time of the write instead. Until the migration is applied the
+  // column is missing and the legacy cursor keeps working.
+
+  /// Rows committed slightly out of order around the cursor are fetched again
+  /// within this window and skipped through [_readRecentlyAppliedRows].
+  static const Duration _serverCursorOverlap = Duration(minutes: 2);
+  bool? _serverCursorSupported;
+
+  String? _serverCursorKey() {
+    final code = _workshopCode;
+    return code == null || code.isEmpty
+        ? null
+        : 'supabase_workshop_server_cursor_$code';
+  }
+
+  String? _appliedRowsKey() {
+    final code = _workshopCode;
+    return code == null || code.isEmpty
+        ? null
+        : 'supabase_workshop_applied_rows_$code';
+  }
+
+  Future<String?> _readServerCursor() async {
+    final key = _serverCursorKey();
+    if (key == null) return null;
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(key);
+  }
+
+  Future<Map<String, String>> _readRecentlyAppliedRows() async {
+    final key = _appliedRowsKey();
+    if (key == null) return <String, String>{};
+    final prefs = await SharedPreferences.getInstance();
+    try {
+      final decoded = jsonDecode(prefs.getString(key) ?? '{}');
+      if (decoded is Map) {
+        return decoded.map(
+          (marker, time) => MapEntry(marker.toString(), time.toString()),
+        );
+      }
+    } catch (_) {
+      // A damaged list only costs one repeated application of a few rows.
+    }
+    return <String, String>{};
+  }
+
+  Future<void> _saveServerCursor(
+    String cursor, {
+    required Map<String, String> appliedRows,
+  }) async {
+    final cursorKey = _serverCursorKey();
+    final appliedKey = _appliedRowsKey();
+    if (cursorKey == null || appliedKey == null) return;
+    final from = withServerCursorOverlap(cursor);
+    final kept = <String, String>{
+      for (final entry in appliedRows.entries)
+        if (!isLaterSyncTimestamp(from, entry.value)) entry.key: entry.value,
+    };
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(appliedKey, jsonEncode(kept));
+    await prefs.setString(cursorKey, cursor);
+  }
+
+  /// Latest server write time of the workshop, or null when the server has
+  /// no `server_updated_at` column yet.
+  Future<String?> _fetchServerHighWater(String workshopUuid) async {
+    if (_serverCursorSupported == false) return null;
+    try {
+      final row = await _client
+          .from('workshop_sync_rows')
+          .select('server_updated_at')
+          .eq('workshop_id', workshopUuid)
+          .order('server_updated_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+      _serverCursorSupported = true;
+      // An empty workshop has no server time yet; never fall back to this
+      // device's clock, which may be ahead of the server.
+      return row?['server_updated_at']?.toString();
+    } on PostgrestException catch (error) {
+      if (_isMissingServerCursorColumn(error)) {
+        _serverCursorSupported = false;
+        return null;
+      }
+      rethrow;
+    }
+  }
+
+  static bool _isMissingServerCursorColumn(PostgrestException error) =>
+      error.code == '42703' || error.message.contains('server_updated_at');
+
+  static String _appliedRowMarker(Map<String, dynamic> row) =>
+      '${row['table_name']}\x1f${row['row_id']}\x1f${row['revision']}'
+      '\x1f${row['deleted_at'] ?? ''}';
+
+  @visibleForTesting
+  static String withServerCursorOverlap(String cursor) {
+    final parsed = DateTime.tryParse(cursor);
+    if (parsed == null) return cursor;
+    return parsed.toUtc().subtract(_serverCursorOverlap).toIso8601String();
+  }
+
+  /// Whether [candidate] is strictly after [reference]; unparsable values
+  /// never win.
+  @visibleForTesting
+  static bool isLaterSyncTimestamp(String candidate, String reference) {
+    final a = DateTime.tryParse(candidate);
+    final b = DateTime.tryParse(reference);
+    if (a == null) return false;
+    if (b == null) return true;
+    return a.isAfter(b);
   }
 
   Future<String?> _readLastSyncAt() async {

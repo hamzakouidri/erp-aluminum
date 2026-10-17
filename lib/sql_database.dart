@@ -807,6 +807,7 @@ class SqlDatabase {
     await _ensureTemperedGlassItemsTable(db);
     await _ensureTemperedGlassSystemsAndRulesTables(db);
     await _ensureVROHandlesAndColorsSeeded(db);
+    await _ensureTemperedGlassServicesSeeded(db);
     await _backfillClientCodes(db);
     await _backfillOrderCodes(db);
 
@@ -21209,6 +21210,66 @@ class SqlDatabase {
         "ALTER TABLE TemperedGlassItems ADD COLUMN handle_design_code TEXT DEFAULT ''",
       );
     } catch (_) {}
+    // Stable identity of a workshop service (edge finishing, frosting); the
+    // cost table looks services up by this code, never by their name.
+    try {
+      await dbInstance.execute(
+        "ALTER TABLE TemperedGlassItems ADD COLUMN service_code TEXT DEFAULT ''",
+      );
+    } catch (_) {}
+  }
+
+  /// Codes of the tempered-glass services priced from the catalogue.
+  static const temperedGlassEdgeSmoothService = 'edge_smooth';
+  static const temperedGlassEdgeExtraSmoothService = 'edge_extra_smooth';
+  static const temperedGlassFrostingService = 'sablage';
+
+  /// Adds the edge-finishing and frosting services at the rates the cost
+  /// table used to hard-code, so the workshop can set its own prices. A
+  /// service is added again when its code is missing (a catalogue download
+  /// replaces this table); to stop using one, deactivate it instead.
+  Future<void> _ensureTemperedGlassServicesSeeded(
+    DatabaseExecutor myDb,
+  ) async {
+    const services = [
+      {
+        'service_code': temperedGlassEdgeSmoothService,
+        'name': 'شطب الحواف - ناعم (Façonnage poli)',
+        'unit': 'meter',
+        'price': 350.0,
+      },
+      {
+        'service_code': temperedGlassEdgeExtraSmoothService,
+        'name': 'شطب الحواف - ناعم جدًا (Façonnage extra poli)',
+        'unit': 'meter',
+        'price': 600.0,
+      },
+      {
+        'service_code': temperedGlassFrostingService,
+        'name': 'السفع الرملي (Sablage)',
+        'unit': 'sqm',
+        'price': 1200.0,
+      },
+    ];
+    for (final service in services) {
+      final existing = await myDb.query(
+        'TemperedGlassItems',
+        columns: const ['id'],
+        where: 'service_code = ?',
+        whereArgs: [service['service_code']],
+        limit: 1,
+      );
+      if (existing.isNotEmpty) continue;
+      await myDb.insert('TemperedGlassItems', {
+        ...service,
+        'category': 'faconnage',
+        'category_name': 'الخدمات والتشطيب',
+        'type': 'service',
+        'cost_price': 0.0,
+        'default_qty': 1,
+        'is_active': 1,
+      });
+    }
   }
 
   Future<void> ensureTemperedGlassItemsTable() async {
@@ -21609,6 +21670,7 @@ class SqlDatabase {
     await _ensureTemperedGlassItemsTable(myDb);
     await seedDefaultTemperedGlassItems();
     await _ensureVROHandlesAndColorsSeeded(myDb);
+    await _ensureTemperedGlassServicesSeeded(myDb);
 
     String where = 'is_active = 1';
     List<dynamic> args = [];

@@ -3,6 +3,34 @@ import '../app_settings.dart';
 /// User-facing text introduced by the recent kit, decorated-panel, cutting
 /// and required-goods developments.
 const Map<String, Map<AppLanguage, String>> recentDevelopmentKeys = {
+  'تعذرت قراءة بعض بيانات الكتالوج؛ قد تكون بعض الأسعار أو المكونات ناقصة': {
+    AppLanguage.arabic:
+        'تعذرت قراءة بعض بيانات الكتالوج؛ قد تكون بعض الأسعار أو المكونات ناقصة',
+    AppLanguage.french:
+        'Certaines données du catalogue n’ont pas pu être lues ; des prix ou composants peuvent manquer',
+    AppLanguage.english:
+        'Some catalogue data could not be read; some prices or components may be missing',
+  },
+  'تعذر تحميل مكونات وعائلات الكت. أعد فتح الصفحة.': {
+    AppLanguage.arabic: 'تعذر تحميل مكونات وعائلات الكت. أعد فتح الصفحة.',
+    AppLanguage.french:
+        'Impossible de charger les composants et familles du kit. Rouvrez la page.',
+    AppLanguage.english:
+        'Could not load the kit components and families. Reopen the page.',
+  },
+  'يحتوي الرسم على مقاطع من سلسلة أخرى؛ الكميات والتكلفة غير موثوقة': {
+    AppLanguage.arabic:
+        'يحتوي الرسم على مقاطع من سلسلة أخرى؛ الكميات والتكلفة غير موثوقة',
+    AppLanguage.french:
+        "Le dessin contient des profilés d'une autre série ; quantités et coûts non fiables",
+    AppLanguage.english:
+        'The drawing contains profiles from another series; quantities and cost are unreliable',
+  },
+  'إزالة المقاطع غير المتوافقة': {
+    AppLanguage.arabic: 'إزالة المقاطع غير المتوافقة',
+    AppLanguage.french: 'Retirer les profilés incompatibles',
+    AppLanguage.english: 'Remove incompatible profiles',
+  },
   'أدخل رقمًا صالحًا أكبر من أو يساوي صفرًا': {
     AppLanguage.arabic: 'أدخل رقمًا صالحًا أكبر من أو يساوي صفرًا',
     AppLanguage.french: 'Saisissez un nombre valide supérieur ou égal à zéro',

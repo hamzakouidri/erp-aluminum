@@ -1644,18 +1644,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         text.contains('اكسترودي');
   }
 
-  bool _motorHasEmergencyCrank(Map<String, dynamic>? motor) {
-    final raw = motor?['motor_has_emergency_crank'];
-    if (raw is bool) return raw;
-    if (raw is num) return raw != 0;
-    final value = raw?.toString().trim().toLowerCase() ?? '';
-    return value == '1' ||
-        value == 'true' ||
-        value == 'yes' ||
-        value == 'oui' ||
-        value == 'نعم';
-  }
-
   /// Finds a shutter axis after applying the same compatibility rules used by
   /// the selector: blade relation first, then motor diameter.  Keeping this
   /// here prevents an automatic replacement from bypassing the dialog rules.
@@ -2001,40 +1989,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   void _refreshStrictActiveVariants() {
     final isTunnel = widget.model.isCaissonTunnel;
     final isMotor = widget.model.shutterMechanism == 'محرك';
-    final isCrank =
-        widget.model.shutterMechanism == 'منايفال' ||
-        widget.model.shutterMechanism == 'مانيفال' ||
-        widget.model.shutterMechanism == 'مانيفر';
-    final isX3dPvc =
-        !isTunnel &&
-        widget.model.isPVC &&
-        _isX3dBlade(widget.model.componentOverrides['الشرائح (Lames)']);
-
-    activeVariants['كيت (Kit)'] = false;
-    activeVariants['كيت فولي موتور (Kit Volet Moteur)'] = !isTunnel && isMotor;
-    activeVariants['كيت فولي مانيفر (Kit Volet Manivelle)'] =
-        !isTunnel && isCrank;
-    activeVariants['كيت مانيفر (Kit Manivelle)'] = !isTunnel && isCrank;
-    activeVariants['كيت صندوق النفق (Kit Caisson Tunnel)'] = isTunnel;
-    activeVariants['كيت فولي (Kit Volet)'] = !isTunnel && !isMotor && !isCrank;
-    activeVariants['كيت حزام (Kit Sangle)'] = false;
-    activeVariants['طانديم (Tandem)'] = isTunnel;
-    activeVariants['الامبو (Embout)'] = isMotor;
-    activeVariants['سيبور رولمو (Support Roulement)'] = isMotor;
-    activeVariants['سيبور موتور (Support Moteur)'] = isMotor
-        ? (!isX3dPvc ||
-              !_motorHasEmergencyCrank(
-                widget.model.componentOverrides['المحرك (Moteur)'],
-              ))
-        : isTunnel;
-    activeVariants['أغطية الشفرات (Bouchons Lames)'] = widget
-        .model
-        .componentOverrides
-        .containsKey('أغطية الشفرات (Bouchons Lames)');
-
-    activeVariants['Verrou Central'] = widget.model.useVerrouCentral;
-    activeVariants['System OB'] = widget.model.effectiveUseSystemOB;
-    activeVariants['Demi System OB'] = widget.model.effectiveUseDemiOB;
+    activeVariants.addAll(
+      ComponentCalculator.standardActiveVariants(widget.model),
+    );
 
     if (!isMotor) {
       widget.model.componentOverrides.remove('الامبو (Embout)');
@@ -2622,33 +2579,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     // Cost settings and database prices must not load concurrently. The
     // settings loader initializes the linear-price field to zero, so if it
     // finishes after the database query it can overwrite the valid price.
-    // تحديد الحالة الابتدائية للآلية (محرك/مانيفيل/حزام) والتونيل
-    final isTunnel = widget.model.isCaissonTunnel;
-    final isMotor = widget.model.shutterMechanism == 'محرك';
-    final isCrankInit =
-        widget.model.shutterMechanism == 'منايفال' ||
-        widget.model.shutterMechanism == 'مانيفال' ||
-        widget.model.shutterMechanism == 'مانيفر';
-    // بناء الحالة الابتدائية لكل عناصر activeVariants دفعة واحدة
-    activeVariants = {
-      'Verrou Central':
-          widget.model.canUseOpeningOnlyOptions &&
-          widget.model.useVerrouCentral,
-      'System OB': widget.model.effectiveUseSystemOB,
-      'Demi System OB': widget.model.effectiveUseDemiOB,
-      'كيت (Kit)': false,
-      'كيت فولي موتور (Kit Volet Moteur)': isTunnel ? false : isMotor,
-      'كيت فولي مانيفر (Kit Volet Manivelle)': isTunnel ? false : isCrankInit,
-      'كيت مانيفر (Kit Manivelle)': isTunnel ? false : isCrankInit,
-      'كيت فولي (Kit Volet)': isTunnel ? false : (!isMotor && !isCrankInit),
-      'كيت حزام (Kit Sangle)': false,
-      'طانديم (Tandem)': isTunnel,
-      'الامبو (Embout)': false,
-      'سيبور رولمو (Support Roulement)': false,
-      'سيبور موتور (Support Moteur)': isTunnel || isMotor,
-      'أغطية الشفرات (Bouchons Lames)': widget.model.componentOverrides
-          .containsKey('أغطية الشفرات (Bouchons Lames)'),
-    };
+    activeVariants = ComponentCalculator.standardActiveVariants(widget.model);
     // لا تعرض نسخة BOM أولية؛ انشر فقط النتيجة بعد اكتمال الفحص الصارم.
     _visibleBomItems = const <BomItem>[];
     _hasFetchedDefaults = false;
@@ -3247,13 +3178,110 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           widget.model.useVerrouCentral;
       activeVariants['System OB'] = widget.model.effectiveUseSystemOB;
       activeVariants['Demi System OB'] = widget.model.effectiveUseDemiOB;
+      _rememberVariantChoices();
     });
     unawaited(_refreshVisibleBomItems());
+  }
+
+  /// Stores the switches that differ from the rules on the drawing, so the
+  /// cutting sheet, required goods and a reopened table use the same parts.
+  void _rememberVariantChoices() {
+    final rules = ComponentCalculator.standardActiveVariants(
+      widget.model,
+      includeUserChoices: false,
+    );
+    widget.model.shutterVariantChoices = {
+      for (final entry in activeVariants.entries)
+        if (!ComponentCalculator.modelBackedVariantKeys.contains(entry.key) &&
+            rules.containsKey(entry.key) &&
+            rules[entry.key] != entry.value)
+          entry.key: entry.value,
+    };
+    widget.model.shutterVariantChoicesContext =
+        ComponentCalculator.shutterVariantContext(widget.model);
   }
 
   // ==========================================================================
   // build: الدالة الرئيسية لبناء واجهة الشاشة كاملة
   // ==========================================================================
+  /// Catalogue reads that failed while resolving this drawing: some prices
+  /// or components below may be defaults rather than catalogue values.
+  Widget _buildCatalogIssuesWarning(AppLanguage lang) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        border: Border.all(color: Colors.orange.shade300),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.storage_rounded, color: Colors.orange.shade800, size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              '${Localization.translate('تعذرت قراءة بعض بيانات الكتالوج؛ قد تكون بعض الأسعار أو المكونات ناقصة', lang)}: ${widget.model.catalogIssues.join('، ')}',
+              style: TextStyle(
+                color: Colors.orange.shade900,
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// A profile kept from another series (for example BS 90 in a PVC
+  /// drawing) makes every quantity and cost below unreliable.
+  Widget _buildForeignSeriesWarning(AppLanguage lang, int count) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        border: Border.all(color: Colors.red.shade300),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, color: Colors.red.shade700, size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              '${Localization.translate('يحتوي الرسم على مقاطع من سلسلة أخرى؛ الكميات والتكلفة غير موثوقة', lang)} ($count)',
+              style: TextStyle(
+                color: Colors.red.shade900,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade700,
+              foregroundColor: Colors.white,
+            ),
+            icon: const Icon(Icons.cleaning_services_outlined, size: 18),
+            label: Text(
+              Localization.translate('إزالة المقاطع غير المتوافقة', lang),
+            ),
+            onPressed: () async {
+              widget.model.removeOverridesFromForeignSeries();
+              await _fetchDefaults();
+              if (mounted) setState(() {});
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
@@ -3282,6 +3310,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           return hasPieces || qty > 0;
         })
         .toList(growable: false);
+    final foreignSeriesOverrides = widget.model.overridesFromForeignSeries;
     return Scaffold(
       appBar: AppBar(
         title: Text(Localization.translate('الالكمية والتكلفة', lang)),
@@ -3300,6 +3329,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               // The progress panel is only useful for the initial empty load.
               if (_isFetchingDefaults && _visibleBomItems.isEmpty)
                 _buildFetchProgress(lang),
+              if (foreignSeriesOverrides.isNotEmpty)
+                _buildForeignSeriesWarning(lang, foreignSeriesOverrides.length),
+              if (widget.model.catalogIssues.isNotEmpty)
+                _buildCatalogIssuesWarning(lang),
               // تحذير ارتفاع الستار (إن وُجد) — يظهر فقط إذا كان هناك تحذير في النموذج
               if (widget.model.shutterHeightWarning != null) ...[
                 Container(

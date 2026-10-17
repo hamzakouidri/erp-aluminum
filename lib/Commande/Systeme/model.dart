@@ -1360,8 +1360,6 @@ class WindowZone {
   /// Per-cell glass overrides — key is cellKey like 'main_cell_0_0'
   Map<String, GlassSpecification> cellGlassSpec;
 
-  static GlassSpecification globalDefaultGlass = const GlassSpecification();
-
   /// Returns the glass specification for a given cell, falling back to zone.glass
   GlassSpecification getGlassForCell(String? cellKey) {
     if (cellKey != null) {
@@ -1450,7 +1448,7 @@ class WindowZone {
                  trackCount: slidingTrackCount,
                  sashCount: slidingSashesCount,
                )),
-       glass = glass ?? globalDefaultGlass,
+       glass = glass ?? const GlassSpecification(),
        cellGlassSpec = cellGlassSpec ?? const {},
        slidingMontantReinforced = Map<String, bool>.from(
          slidingMontantReinforced ??
@@ -1936,6 +1934,43 @@ class WindowSnapshot {
     this.frameSwitchedForProfileAngle = false,
     this.profileAngleFrameSwitchNotice,
   ]);
+
+  /// Set right after construction by every snapshot site.
+  DrawingCatalogSelection? catalogSelection;
+}
+
+/// The catalogue choices of one drawing. Undo/redo restores them together
+/// with the geometry, so a profile set is never restored without the series
+/// it belongs to (undoing a series switch used to bring back the old
+/// profiles while the new series stayed active).
+class DrawingCatalogSelection {
+  final AluminumSeries? activeSeries;
+  final AluminumSeries? activeSlidingSeries;
+  final int? loadedSeriesId;
+  final String? loadedSeriesName;
+  final int? loadedSlidingSeriesId;
+  final String? loadedSlidingSeriesName;
+  final Map<String, dynamic>? sashOverride;
+  final Map<String, dynamic>? slidingSashOverride;
+  final Map<String, dynamic>? seriesDesignConfig;
+  final Map<String, dynamic>? seriesTableConfig;
+  final Map<String, dynamic>? slidingSeriesTableConfig;
+  final GlassSpecification defaultGlass;
+
+  const DrawingCatalogSelection({
+    this.activeSeries,
+    this.activeSlidingSeries,
+    this.loadedSeriesId,
+    this.loadedSeriesName,
+    this.loadedSlidingSeriesId,
+    this.loadedSlidingSeriesName,
+    this.sashOverride,
+    this.slidingSashOverride,
+    this.seriesDesignConfig,
+    this.seriesTableConfig,
+    this.slidingSeriesTableConfig,
+    this.defaultGlass = const GlassSpecification(),
+  });
 }
 
 extension FrameColorExtension on FrameColor {
@@ -2714,6 +2749,35 @@ class WindowModel extends ChangeNotifier {
   PlacedFrame? selectedFrame;
   String? selectedFrameCode;
   Map<String, dynamic> componentOverrides = {};
+
+  /// Glazing used for new zones of this drawing only. It used to be a static
+  /// on [WindowZone], which let one drawing change the glass of another one
+  /// opened later in the same process. Order-level "last used glass" is
+  /// copied into a new drawing once, by the caller that creates it.
+  GlassSpecification defaultGlass = const GlassSpecification();
+
+  /// Catalogue reads that failed while resolving this drawing. Each one
+  /// means a price or a component may have fallen back to a default, so the
+  /// quantity table shows them instead of presenting the result as exact.
+  final List<String> catalogIssues = [];
+
+  void reportCatalogIssue(String source, Object error) {
+    debugPrint('Catalogue read failed ($source): $error');
+    if (catalogIssues.contains(source)) return;
+    if (catalogIssues.length >= 20) catalogIssues.removeAt(0);
+    catalogIssues.add(source);
+  }
+
+  /// Optional shutter parts the user switched on or off in the quantity
+  /// table (kits, tandem, embout, supports), stored as differences from
+  /// [ComponentCalculator.standardActiveVariants]. They used to live only in
+  /// that screen, so the cutting sheet and required goods counted the
+  /// default parts instead.
+  Map<String, bool> shutterVariantChoices = {};
+
+  /// The shutter mechanism/box the choices were made for; choices made for
+  /// another mechanism are ignored.
+  String? shutterVariantChoicesContext;
 
   bool _isX3dShutterComponent(Map<String, dynamic> component) {
     final text =
@@ -4954,7 +5018,7 @@ class WindowModel extends ChangeNotifier {
 
   bool get hasSimpleGlassForReducer {
     if (zones.isEmpty) {
-      return WindowZone.globalDefaultGlass.structure == GlassStructure.simple;
+      return defaultGlass.structure == GlassStructure.simple;
     }
     for (final zone in zones) {
       for (final spec in _effectiveGlassSpecificationsForZone(zone)) {
@@ -4966,7 +5030,7 @@ class WindowModel extends ChangeNotifier {
 
   bool get hasDoubleGlassForRules {
     if (zones.isEmpty) {
-      return WindowZone.globalDefaultGlass.structure == GlassStructure.double;
+      return defaultGlass.structure == GlassStructure.double;
     }
     for (final zone in zones) {
       for (final spec in _effectiveGlassSpecificationsForZone(zone)) {
@@ -7628,7 +7692,9 @@ class WindowModel extends ChangeNotifier {
       List<Map<String, dynamic>> colorPrices = [];
       try {
         colorPrices = await dbInstance!.query('GlassColorPrices');
-      } catch (_) {}
+      } catch (error) {
+        reportCatalogIssue('GlassColorPrices', error);
+      }
 
       allGlassCache = [];
       for (var g in list) {
@@ -8477,6 +8543,8 @@ class WindowModel extends ChangeNotifier {
   }
 
   Future<void> _loadCatalogData([String systemMode = '']) async {
+    // A fresh catalogue load replaces the data earlier failures affected.
+    catalogIssues.clear();
     colorsLoading = true;
     notifyListeners();
     try {
@@ -8519,7 +8587,9 @@ class WindowModel extends ChangeNotifier {
             }
           }
         }
-      } catch (_) {}
+      } catch (error) {
+        reportCatalogIssue('KitBundles', error);
+      }
 
       final profilesData = await db.readProfile();
       // Keep the early palette visible while the remaining catalogue tables
@@ -10270,6 +10340,7 @@ class WindowModel extends ChangeNotifier {
       componentOverrides.remove('البارداج (Bardage)');
       componentOverrides.remove('البانو (Panneau)');
       _clearAccessoryOverrides();
+      removeOverridesFromForeignSeries();
 
       // Section identifiers from another series (for example TPR) cannot be
       // reused safely. Preserve the user's mullion type, then resolve its
@@ -10906,7 +10977,9 @@ class WindowModel extends ChangeNotifier {
                       "($whereClause) AND (is_active = 1 OR is_active IS NULL)",
                   whereArgs: args,
                 );
-              } catch (_) {}
+              } catch (error) {
+                reportCatalogIssue('ShutterComponents (blade)', error);
+              }
             }
             if (overrideName == 'الشرائح (Lames)') {
               res = res.where(isShutterBladeComponent).toList();
@@ -11298,6 +11371,7 @@ class WindowModel extends ChangeNotifier {
       _clearAccessoryOverrides();
       componentOverrides.remove('البارداج (Bardage)');
       componentOverrides.remove('البانو (Panneau)');
+      removeOverridesFromForeignSeries();
 
       if (affectsVisibleDivisions) {
         mullionProfiles.clear();
@@ -11955,7 +12029,9 @@ class WindowModel extends ChangeNotifier {
               where: "($whereClause) AND (is_active = 1 OR is_active IS NULL)",
               whereArgs: args,
             );
-          } catch (_) {}
+          } catch (error) {
+            reportCatalogIssue('ShutterComponents', error);
+          }
         }
         try {
           if (overrideName == 'الشرائح (Lames)') {
@@ -12054,7 +12130,9 @@ class WindowModel extends ChangeNotifier {
               if (price > 0) return price;
             }
           }
-        } catch (_) {}
+        } catch (error) {
+          reportCatalogIssue('AccessoryColorPrices (shutter accessory price)', error);
+        }
         final rawPrice = accessory['price_dzd'] ?? accessory['price'];
         return rawPrice is num
             ? rawPrice.toDouble()
@@ -12149,7 +12227,9 @@ class WindowModel extends ChangeNotifier {
             );
             selected['catalog_source'] = 'Accessories';
             componentOverrides[overrideName] = selected;
-          } catch (_) {}
+          } catch (error) {
+            reportCatalogIssue('Accessories (shutter screws)', error);
+          }
         }
       }
 
@@ -13067,6 +13147,7 @@ class WindowModel extends ChangeNotifier {
         _profileAngleFrameSwitchNotice,
       ),
     );
+    _history.last.catalogSelection = _captureCatalogSelection();
     if (_history.length > 20) _history.removeAt(0);
     _redoHistory.clear();
     // Saving undo history does not change anything that is visible.  Notifying
@@ -13075,6 +13156,43 @@ class WindowModel extends ChangeNotifier {
     // drawings that duplicate paint/validation pass was noticeable while
     // entering dimensions and could make the text field appear unresponsive.
     // The editing operation itself notifies after its mutation is complete.
+  }
+
+  DrawingCatalogSelection _captureCatalogSelection() {
+    Map<String, dynamic>? copy(Map<String, dynamic>? value) =>
+        value == null ? null : Map<String, dynamic>.from(value);
+    return DrawingCatalogSelection(
+      activeSeries: activeSeries,
+      activeSlidingSeries: activeSlidingSeries,
+      loadedSeriesId: loadedSeriesId,
+      loadedSeriesName: loadedSeriesName,
+      loadedSlidingSeriesId: loadedSlidingSeriesId,
+      loadedSlidingSeriesName: loadedSlidingSeriesName,
+      sashOverride: copy(sashOverride),
+      slidingSashOverride: copy(slidingSashOverride),
+      seriesDesignConfig: copy(seriesDesignConfig),
+      seriesTableConfig: copy(seriesTableConfig),
+      slidingSeriesTableConfig: copy(slidingSeriesTableConfig),
+      defaultGlass: defaultGlass,
+    );
+  }
+
+  void _restoreCatalogSelection(DrawingCatalogSelection? selection) {
+    if (selection == null) return;
+    Map<String, dynamic>? copy(Map<String, dynamic>? value) =>
+        value == null ? null : Map<String, dynamic>.from(value);
+    activeSeries = selection.activeSeries;
+    activeSlidingSeries = selection.activeSlidingSeries;
+    loadedSeriesId = selection.loadedSeriesId;
+    loadedSeriesName = selection.loadedSeriesName;
+    loadedSlidingSeriesId = selection.loadedSlidingSeriesId;
+    loadedSlidingSeriesName = selection.loadedSlidingSeriesName;
+    sashOverride = copy(selection.sashOverride);
+    slidingSashOverride = copy(selection.slidingSashOverride);
+    seriesDesignConfig = copy(selection.seriesDesignConfig);
+    seriesTableConfig = copy(selection.seriesTableConfig);
+    slidingSeriesTableConfig = copy(selection.slidingSeriesTableConfig);
+    defaultGlass = selection.defaultGlass;
   }
 
   void saveSnapshotOutside() {
@@ -13326,6 +13444,7 @@ class WindowModel extends ChangeNotifier {
       zones.add(
         WindowZone(
           id: UniqueKey().toString(),
+          glass: defaultGlass.clone(),
           boundary: Rect.fromLTRB(
             profileThickness,
             newTopOffset + profileThickness,
@@ -13656,9 +13775,11 @@ class WindowModel extends ChangeNotifier {
       ),
     );
 
+    _redoHistory.last.catalogSelection = _captureCatalogSelection();
     if (_redoHistory.length > 20) _redoHistory.removeAt(0);
 
     final snap = _history.removeLast();
+    _restoreCatalogSelection(snap.catalogSelection);
     width = snap.width;
     height = snap.height;
     hasBottomFrame = snap.hasBottomFrame;
@@ -13744,7 +13865,8 @@ class WindowModel extends ChangeNotifier {
     selection = SelectionInfo.none;
     activeSubZone = null;
     showZoneMenu = false;
-    quantity = 1;
+    // The item quantity is not part of the drawing history: undoing a
+    // geometry edit used to reset an order line of 5 windows to 1.
     notifyListeners();
   }
 
@@ -13822,9 +13944,11 @@ class WindowModel extends ChangeNotifier {
         _profileAngleFrameSwitchNotice,
       ),
     );
+    _history.last.catalogSelection = _captureCatalogSelection();
     if (_history.length > 20) _history.removeAt(0);
 
     final snap = _redoHistory.removeLast();
+    _restoreCatalogSelection(snap.catalogSelection);
     width = snap.width;
     height = snap.height;
     hasBottomFrame = snap.hasBottomFrame;
@@ -13906,7 +14030,8 @@ class WindowModel extends ChangeNotifier {
     selection = SelectionInfo.none;
     activeSubZone = null;
     showZoneMenu = false;
-    quantity = 1;
+    // The item quantity is not part of the drawing history: undoing a
+    // geometry edit used to reset an order line of 5 windows to 1.
     notifyListeners();
   }
 
@@ -14919,7 +15044,7 @@ class WindowModel extends ChangeNotifier {
     _saveSnapshot();
     // The last glazing choice in the current order becomes the default for
     // the next drawing added to that order, including a cell-level choice.
-    WindowZone.globalDefaultGlass = spec;
+    defaultGlass = spec;
     try {
       final zone = zones.firstWhere((z) => z.id == zoneId);
 
@@ -14955,7 +15080,7 @@ class WindowModel extends ChangeNotifier {
         // لا توجد خلية محددة → تطبيق على الزون كلها
         zone.glass = spec.clone();
         zone.cellGlassSpec = {};
-        WindowZone.globalDefaultGlass = zone.glass;
+        defaultGlass = zone.glass;
 
         if (spec.structure == GlassStructure.closed) {
           // تحويل الزون إلى زجاج ثابت (fixedGlass) حتى يظهر البانو
@@ -15013,7 +15138,7 @@ class WindowModel extends ChangeNotifier {
         z.cellIsSash = updatedSashes;
       }
     }
-    WindowZone.globalDefaultGlass = spec;
+    defaultGlass = spec;
     updateGlassGasket();
     notifyListeners();
   }
@@ -15064,7 +15189,7 @@ class WindowModel extends ChangeNotifier {
         colorOuter: resolvedColor,
         colorInner: resolvedColor,
       );
-      WindowZone.globalDefaultGlass = zone.glass;
+      defaultGlass = zone.glass;
 
       if (cellId != null && cellId.contains('cell_')) {
         if (structure == GlassStructure.closed) {
@@ -20318,7 +20443,7 @@ class WindowModel extends ChangeNotifier {
         });
         zone.cellGlassSpec = updatedCellGlass;
       }
-      WindowZone.globalDefaultGlass = zone.glass;
+      defaultGlass = zone.glass;
     }
     if (!hasSimpleGlassForReducer) {
       clearReducerOverride();
@@ -20736,6 +20861,127 @@ class WindowModel extends ChangeNotifier {
     for (final key in keys) {
       componentOverrides.remove(key);
     }
+  }
+
+  /// Series whose catalogue profiles this drawing may currently use.
+  Set<AluminumSeries> get _seriesInDrawingContext {
+    final usesSliding =
+        systemMode == 'sliding' ||
+        systemMode == 'mixed' ||
+        zones.any((zone) => zone.content == ZoneContent.slidingSash);
+    return {
+      if (activeSeries != null) activeSeries!,
+      if (usesSliding && activeSlidingSeries != null) activeSlidingSeries!,
+    };
+  }
+
+  /// Whether a stored profile row (a section map with a `code`) may be used
+  /// by the series of this drawing. Sections shared into the series, and
+  /// sibling series of the same profile system, stay valid; a profile from
+  /// another system (for example BS 90 kept after switching to PVC) does not.
+  bool isSectionOverrideInDrawingContext(Map<dynamic, dynamic> section) {
+    final contextSeries = _seriesInDrawingContext;
+    if (contextSeries.isEmpty) return true;
+    int? readId(Object? raw) =>
+        raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}'.trim());
+
+    final sectionId = readId(section['id']);
+    if (sectionId != null &&
+        contextSeries.any(
+          (series) => series.sections.any((s) => s.id == sectionId),
+        )) {
+      return true;
+    }
+    final ownerSeriesId =
+        readId(section['series_id']) ?? readId(section['source_series_id']);
+    // Rows without a catalogue owner (manual or legacy data) cannot be
+    // checked here and are left to the existing per-role resolution.
+    if (ownerSeriesId == null || ownerSeriesId == 0) return true;
+    if (contextSeries.any((series) => series.id == ownerSeriesId)) return true;
+    final sharedTarget = readId(section['sharing_target_id']);
+    if (sharedTarget != null &&
+        contextSeries.any((series) => series.id == sharedTarget)) {
+      return true;
+    }
+
+    int? ownerProfileId = readId(section['source_profile_id']);
+    if (ownerProfileId == null) {
+      for (final system in availableSystems) {
+        if (system.series.any((series) => series.id == ownerSeriesId)) {
+          ownerProfileId = system.id;
+          break;
+        }
+      }
+    }
+    return ownerProfileId != null &&
+        contextSeries.any((series) => series.profileId == ownerProfileId);
+  }
+
+  /// Stored profile choices that belong to a series outside this drawing's
+  /// context. The BOM must not be trusted while this list is not empty.
+  List<String> get overridesFromForeignSeries =>
+      _overridesFromForeignSeries(remove: false);
+
+  /// Removes every stored profile choice that belongs to a series outside
+  /// this drawing's context. Removing overrides by their (translated) key
+  /// name missed every role added later; this check uses catalogue identity.
+  /// Returns the removed component keys.
+  List<String> removeOverridesFromForeignSeries() {
+    final removed = _overridesFromForeignSeries(remove: true);
+    if (removed.isNotEmpty) {
+      debugPrint('Removed profiles from another series: ${removed.join(', ')}');
+    }
+    return removed;
+  }
+
+  List<String> _overridesFromForeignSeries({required bool remove}) {
+    final found = <String>[];
+    bool foreign(Map<dynamic, dynamic>? section) =>
+        section != null && !isSectionOverrideInDrawingContext(section);
+
+    for (final key in componentOverrides.keys.toList()) {
+      final value = componentOverrides[key];
+      if (value is! Map || !value.containsKey('code') || !foreign(value)) {
+        continue;
+      }
+      found.add(key);
+      if (remove) componentOverrides.remove(key);
+    }
+    for (final key in mullionSectionOverrides.keys.toList()) {
+      if (!foreign(mullionSectionOverrides[key])) continue;
+      found.add('mullionSectionOverrides:$key');
+      if (remove) mullionSectionOverrides.remove(key);
+    }
+    if (foreign(sideCoverOverride)) {
+      found.add('sideCoverOverride');
+      if (remove) sideCoverOverride = null;
+    }
+    if (foreign(internalSlidingSideCoverOverride)) {
+      found.add('internalSlidingSideCoverOverride');
+      if (remove) internalSlidingSideCoverOverride = null;
+    }
+    for (final zone in zones) {
+      if (foreign(zone.sashOverride)) {
+        found.add('zone:${zone.id}:sashOverride');
+        if (remove) zone.sashOverride = null;
+      }
+      if (foreign(zone.slidingSashOverride)) {
+        found.add('zone:${zone.id}:slidingSashOverride');
+        if (remove) zone.slidingSashOverride = null;
+      }
+      final foreignCells = zone.cellSashOverrides.entries
+          .where((entry) => foreign(entry.value))
+          .map((entry) => entry.key)
+          .toList();
+      if (foreignCells.isEmpty) continue;
+      found.addAll(foreignCells.map((key) => 'zone:${zone.id}:$key'));
+      if (remove) {
+        zone.cellSashOverrides = Map<String, Map<String, dynamic>>.from(
+          zone.cellSashOverrides,
+        )..removeWhere((key, _) => foreignCells.contains(key));
+      }
+    }
+    return found;
   }
 
   void _clearAccessoryOverrides() {
@@ -21826,7 +22072,9 @@ class WindowModel extends ChangeNotifier {
               .toDouble();
           componentOverrides['المانيفال (Manivelle)'] = m;
         }
-      } catch (_) {}
+      } catch (error) {
+        reportCatalogIssue('ShutterComponents (Ekar)', error);
+      }
     }
 
     // Migration for backward compatibility
@@ -21896,7 +22144,9 @@ class WindowModel extends ChangeNotifier {
             m['calculated_price'] = (m['price_per_meter'] ?? 0.0).toDouble();
             componentOverrides[key] = m;
           }
-        } catch (_) {}
+        } catch (error) {
+          reportCatalogIssue('Joints (brush seal)', error);
+        }
       }
     }
 
@@ -21966,7 +22216,9 @@ class WindowModel extends ChangeNotifier {
           componentOverrides['جوان البوراج (Joint Bourrage)'] = bestGeneral;
         }
       }
-    } catch (_) {}
+    } catch (error) {
+      reportCatalogIssue('Joints (bourrage)', error);
+    }
     await _enrichAccessoryRelations(d);
   }
 
@@ -22497,7 +22749,9 @@ class WindowModel extends ChangeNotifier {
           LIMIT 1
         ''', keywordArgs);
         if (fallbackRows.isNotEmpty) return fallbackRows.first;
-      } catch (_) {}
+      } catch (error) {
+        reportCatalogIssue('Accessories (door lock)', error);
+      }
       return null;
     }
 
@@ -22615,6 +22869,7 @@ class WindowModel extends ChangeNotifier {
 
     final zone = WindowZone(
       id: UniqueKey().toString(),
+      glass: defaultGlass.clone(),
       boundary: initialRect,
       sashThickness: _calculateSashThickness(isDoor),
       sashColor: FrameColor.white,
@@ -22907,6 +23162,7 @@ class WindowModel extends ChangeNotifier {
         zones.add(
           WindowZone(
             id: UniqueKey().toString(),
+            glass: defaultGlass.clone(),
             boundary: Rect.fromLTRB(
               profileThickness,
               topOffset + profileThickness,
@@ -22974,6 +23230,7 @@ class WindowModel extends ChangeNotifier {
             zones.add(
               WindowZone(
                 id: UniqueKey().toString(),
+                glass: defaultGlass.clone(),
                 boundary: inner,
                 sashThickness: _calculateSashThickness(false),
                 sashColor: FrameColor.white,
@@ -23149,6 +23406,7 @@ class WindowModel extends ChangeNotifier {
           newZones.add(
             WindowZone(
               id: UniqueKey().toString(),
+              glass: defaultGlass.clone(),
               boundary: Rect.fromLTRB(
                 oldW + tThickness / 2,
                 spanTop +
@@ -23188,6 +23446,7 @@ class WindowModel extends ChangeNotifier {
           newZones.add(
             WindowZone(
               id: UniqueKey().toString(),
+              glass: defaultGlass.clone(),
               boundary: Rect.fromLTRB(
                 profileThickness,
                 spanTop +
@@ -23227,6 +23486,7 @@ class WindowModel extends ChangeNotifier {
           newZones.add(
             WindowZone(
               id: UniqueKey().toString(),
+              glass: defaultGlass.clone(),
               boundary: Rect.fromLTRB(
                 spanLeft +
                     (spanLeft <= 1.0 ? profileThickness : tThickness / 2),
@@ -23264,6 +23524,7 @@ class WindowModel extends ChangeNotifier {
           newZones.add(
             WindowZone(
               id: UniqueKey().toString(),
+              glass: defaultGlass.clone(),
               boundary: Rect.fromLTRB(
                 spanLeft +
                     (spanLeft <= 1.0 ? profileThickness : tThickness / 2),

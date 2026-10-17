@@ -140,9 +140,24 @@ Deno.serve(async (req) => {
       return { ok: true, token };
     }));
     const failed = results.filter((result) => !result.ok);
+    // FCM answers 404 UNREGISTERED (or 400 for a malformed token) once an
+    // app is uninstalled or its token rotated. Such a token never works
+    // again; keeping it made every later event retry it and count it as a
+    // failure.
+    const deadTokens = failed
+      .filter(({ status, error }) =>
+        status === 404 || /UNREGISTERED|registration-token-not-registered/i
+          .test(String(error ?? "")) ||
+        (status === 400 && /INVALID_ARGUMENT/.test(String(error ?? "")) &&
+          /registration token/i.test(String(error ?? ""))))
+      .map(({ token }) => token);
+    if (deadTokens.length > 0) {
+      await admin.from("device_push_tokens").delete().in("token", deadTokens);
+    }
     return json({
       sent: results.length - failed.length,
       failed: failed.length,
+      removed_tokens: deadTokens.length,
       errors: failed.slice(0, 5).map(({ status, error }) => ({ status, error })),
     }, failed.length === results.length && results.length > 0 ? 502 : 200);
   } catch (error) {

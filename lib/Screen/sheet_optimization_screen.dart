@@ -46,7 +46,7 @@ class _SheetOptimizationScreenState extends State<SheetOptimizationScreen> {
 
     if ((pieces.isEmpty || _includeGlass) && widget.orderId > 0) {
       final details = await _db.readCommandeDetails(widget.orderId);
-      pieces = SheetCuttingOptimizerEngine.extractPiecesFromOrderDetails(
+      pieces = await SheetCuttingOptimizerEngine.extractPiecesFromOrderDetails(
         orderDetails: details,
         db: _db,
         includeGlass: _includeGlass,

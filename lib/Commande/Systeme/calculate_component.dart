@@ -839,6 +839,161 @@ class BomItem {
 }
 
 class ComponentCalculator {
+  /// The optional-part switches (kits, tandem, embout, supports...) every
+  /// consumer of [generateBom] must use unless the user changed them in the
+  /// quantity table. The table, cutting sheet, required goods, consumption
+  /// report and cutting optimisers used to build their own maps with
+  /// different values, so one drawing could count a tandem in one document
+  /// and an embout in another.
+  /// The kit the user selected, matched by its KitBundles id so a renamed
+  /// kit stays selected. The saved name is used only for selections stored
+  /// without an id (older orders). Returns null when the selection is not in
+  /// [pool].
+  static Map<String, dynamic>? selectedKitBundle(
+    Object? savedSelection,
+    Iterable<Map<String, dynamic>> pool,
+  ) {
+    if (savedSelection is! Map ||
+        savedSelection['catalog_source'] != 'KitBundles') {
+      return null;
+    }
+    int? readId(Object? raw) =>
+        raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}'.trim());
+    final savedId = readId(savedSelection['id']);
+    if (savedId != null) {
+      for (final kit in pool) {
+        if (readId(kit['id']) == savedId) return kit;
+      }
+      return null;
+    }
+    final savedName = savedSelection['name']?.toString() ?? '';
+    if (savedName.isEmpty) return null;
+    for (final kit in pool) {
+      if ((kit['name'] ?? '').toString() == savedName) return kit;
+    }
+    return null;
+  }
+
+  /// Whether [value] falls in a kit range. Ranges are half-open
+  /// `[min_mm, max_mm)`, as the overlap check uses when they are saved, so
+  /// touching ranges such as 10–20 kg and 20–30 kg give 20 kg to the second
+  /// one only. The upper bound still counts when no range of the same
+  /// compatibility group starts there (the last range). Matching both ends
+  /// made a weight on a boundary select two ranges and count the part twice.
+  static bool kitRangeContains(
+    Map<String, dynamic> range,
+    double value,
+    Iterable<Map<String, dynamic>> siblings,
+  ) {
+    double? read(Map<String, dynamic> row, String key) {
+      final raw = row[key];
+      return raw is num ? raw.toDouble() : double.tryParse('${raw ?? ''}');
+    }
+
+    int group(Map<String, dynamic> row) =>
+        ((row['compatibility_group'] as num?)?.toInt() ?? 0).clamp(0, 2);
+
+    final min = read(range, 'min_mm') ?? 0;
+    final max = read(range, 'max_mm') ?? double.infinity;
+    if (value < min || value > max) return false;
+    if (value < max) return true;
+    final rangeGroup = group(range);
+    return !siblings.any(
+      (other) =>
+          !identical(other, range) &&
+          group(other) == rangeGroup &&
+          (read(other, 'min_mm') ?? 0) == max,
+    );
+  }
+
+  /// Switches kept on the model itself or derived from a selected component;
+  /// they are never stored as user variant choices.
+  static const Set<String> modelBackedVariantKeys = {
+    'Verrou Central',
+    'System OB',
+    'Demi System OB',
+    'أغطية الشفرات (Bouchons Lames)',
+  };
+
+  /// Identifies the shutter mechanism and box a set of user variant choices
+  /// was made for.
+  static String shutterVariantContext(WindowModel window) =>
+      '${window.shutterMechanism}|${window.isCaissonTunnel}';
+
+  /// The rule-based switches, with the user's choices from the quantity
+  /// table applied on top when they were made for the current mechanism.
+  /// [includeUserChoices] false returns the rules alone.
+  static Map<String, bool> standardActiveVariants(
+    WindowModel window, {
+    bool includeUserChoices = true,
+  }) {
+    final variants = _ruleActiveVariants(window);
+    if (includeUserChoices &&
+        window.shutterVariantChoicesContext == shutterVariantContext(window)) {
+      window.shutterVariantChoices.forEach((key, value) {
+        if (variants.containsKey(key) &&
+            !modelBackedVariantKeys.contains(key)) {
+          variants[key] = value;
+        }
+      });
+    }
+    return variants;
+  }
+
+  static Map<String, bool> _ruleActiveVariants(WindowModel window) {
+    final isTunnel = window.isCaissonTunnel;
+    final mechanism = window.shutterMechanism;
+    final isMotor = mechanism == 'محرك';
+    final isCrank =
+        mechanism == 'منايفال' || mechanism == 'مانيفال' || mechanism == 'مانيفر';
+    final blade = window.componentOverrides['الشرائح (Lames)'];
+    final bladeText = blade is Map
+        ? '${blade['name'] ?? ''} ${blade['shutter_subtype'] ?? ''}'
+              .toLowerCase()
+        : '';
+    final isX3dBlade =
+        bladeText.contains('x3d') ||
+        bladeText.contains('extrud') ||
+        bladeText.contains('إكسترودي') ||
+        bladeText.contains('اكسترودي');
+    final isX3dPvc = !isTunnel && window.isPVC && isX3dBlade;
+    final motor = window.componentOverrides['المحرك (Moteur)'];
+    final rawCrank = motor is Map ? motor['motor_has_emergency_crank'] : null;
+    final motorHasEmergencyCrank = rawCrank is bool
+        ? rawCrank
+        : rawCrank is num
+        ? rawCrank != 0
+        : const [
+            '1',
+            'true',
+            'yes',
+            'oui',
+            'نعم',
+          ].contains(rawCrank?.toString().trim().toLowerCase());
+
+    return {
+      'Verrou Central': window.useVerrouCentral,
+      'System OB': window.effectiveUseSystemOB,
+      'Demi System OB': window.effectiveUseDemiOB,
+      'كيت (Kit)': false,
+      'كيت فولي موتور (Kit Volet Moteur)': !isTunnel && isMotor,
+      'كيت فولي مانيفر (Kit Volet Manivelle)': !isTunnel && isCrank,
+      'كيت مانيفر (Kit Manivelle)': !isTunnel && isCrank,
+      'كيت صندوق النفق (Kit Caisson Tunnel)': isTunnel,
+      'كيت فولي (Kit Volet)': !isTunnel && !isMotor && !isCrank,
+      'كيت حزام (Kit Sangle)': false,
+      'طانديم (Tandem)': isTunnel,
+      'الامبو (Embout)': isMotor,
+      'سيبور رولمو (Support Roulement)': isMotor,
+      'سيبور موتور (Support Moteur)': isMotor
+          ? (!isX3dPvc || !motorHasEmergencyCrank)
+          : isTunnel,
+      'أغطية الشفرات (Bouchons Lames)': window.componentOverrides.containsKey(
+        'أغطية الشفرات (Bouchons Lames)',
+      ),
+    };
+  }
+
   /// Returns the lower and upper Tringle cuts driven by one Cremone.
   ///
   /// The deduction is applied to the total usable length. The handle's
@@ -1805,11 +1960,8 @@ class ComponentCalculator {
                 0,
                 2,
               );
-          final min = (range['min_mm'] as num?)?.toDouble() ?? 0;
-          final max = (range['max_mm'] as num?)?.toDouble() ?? double.infinity;
           return (rangeGroup == 0 || rangeGroup == group) &&
-              shutterWeightKg >= min &&
-              shutterWeightKg <= max;
+              kitRangeContains(range, shutterWeightKg, ranges);
         }).toList();
         if (matches.isEmpty) {
           missingItems++;
@@ -3437,16 +3589,14 @@ class ComponentCalculator {
 
           final matchedRanges = <Map<String, dynamic>>[];
           for (final r in sortedRanges) {
-            final mn = (r['min_mm'] as num?)?.toDouble() ?? 0;
-            final mx = (r['max_mm'] as num?)?.toDouble() ?? double.infinity;
             final rangeGroup =
                 ((r['compatibility_group'] as num?)?.toInt() ?? 0).clamp(0, 2);
             final groupMatches =
                 !isWeight ||
                 selectedCompatibilityGroup == null ||
                 ((rangeGroup == 0 || rangeGroup == selectedCompatibilityGroup));
-            // The range matches if dimValue falls within [mn, mx)
-            if (groupMatches && dimValue >= mn && dimValue <= mx) {
+            if (groupMatches &&
+                kitRangeContains(r, dimValue, sortedRanges)) {
               matchedRanges.add(r);
               if (!isWeight) break;
             }
@@ -6942,15 +7092,23 @@ class ComponentCalculator {
         List<String> requiredKitTokens = const [],
       }) {
         String? matchedKitName;
-        String? actualKitName;
-        if (window.componentOverrides.containsKey(uiKey)) {
-          final overrideItem = window.componentOverrides[uiKey];
-          // Ignore legacy values that were incorrectly saved from
-          // ShutterComponents.  Only a KitBundles selection is allowed to
-          // override the actual bundle chosen below.
-          if (overrideItem['catalog_source'] == 'KitBundles') {
-            actualKitName = overrideItem['name']?.toString();
-          }
+        // Only a KitBundles selection may override the bundle chosen below;
+        // legacy values saved from ShutterComponents are ignored.
+        final savedKitSelection = window.componentOverrides[uiKey];
+        final selectedInCatalogue = selectedKitBundle(
+          savedKitSelection,
+          kitBundleMetadata.values,
+        );
+        if (savedKitSelection is Map &&
+            savedKitSelection['catalog_source'] == 'KitBundles' &&
+            selectedInCatalogue == null &&
+            kitBundleMetadata.isNotEmpty) {
+          // The chosen kit was deleted or deactivated: say so instead of
+          // silently pricing another kit as if it had been chosen.
+          window.reportCatalogIssue(
+            'Kit "${savedKitSelection['name'] ?? ''}" not in catalogue',
+            StateError('selected kit missing'),
+          );
         }
 
         final candidates = compatibleKitBundles(
@@ -7001,13 +7159,10 @@ class ComponentCalculator {
         final orderedCandidates = preferredCandidates.isNotEmpty
             ? preferredCandidates
             : candidatePool;
-        if (actualKitName != null && actualKitName.isNotEmpty) {
-          final manual = candidatePool.where(
-            (kit) => (kit['name'] ?? '').toString() == actualKitName,
-          );
-          if (manual.isNotEmpty) {
-            matchedKitName = actualKitName;
-          }
+        final manual = selectedKitBundle(savedKitSelection, candidatePool);
+        if (manual != null) {
+          // The current catalogue name, which also keys the kit's items.
+          matchedKitName = (manual['name'] ?? '').toString();
         }
         matchedKitName ??= orderedCandidates.isEmpty
             ? null

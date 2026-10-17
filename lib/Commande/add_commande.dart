@@ -461,12 +461,48 @@ class _CommandePageState extends State<CommandePage> {
   // حفظ آخر خصائص مستخدمة داخل نفس الطلبية
   Map<String, dynamic>? _lastUsedSettings;
 
+  // Last series used per drawing kind in this order. Kept apart so a sliding
+  // drawing never inherits an opening series (or the reverse), and so an
+  // item without profiles (moustiquaire, caisson...) does not forget them.
+  int? _lastOpeningSeriesId;
+  String? _lastOpeningSeriesName;
+  int? _lastSlidingSeriesId;
+  String? _lastSlidingSeriesName;
+
+  void _rememberLastSeries(WindowModel m) {
+    final mode = m.systemMode;
+    if (mode == null || mode.isEmpty || mode == 'rolling') return;
+    if (mode == 'sliding') {
+      final sliding = m.activeSlidingSeries ?? m.activeSeries;
+      final id = sliding?.id ?? m.loadedSlidingSeriesId ?? m.loadedSeriesId;
+      if (id == null) return;
+      _lastSlidingSeriesId = id;
+      _lastSlidingSeriesName =
+          sliding?.name ?? m.loadedSlidingSeriesName ?? m.loadedSeriesName;
+      return;
+    }
+    final openingId = m.activeSeries?.id ?? m.loadedSeriesId;
+    if (openingId != null) {
+      _lastOpeningSeriesId = openingId;
+      _lastOpeningSeriesName = m.activeSeries?.name ?? m.loadedSeriesName;
+    }
+    // In a french drawing the sliding slot can hold a stale value that the
+    // drawing never used.
+    if (mode != 'mixed') return;
+    final slidingId = m.activeSlidingSeries?.id ?? m.loadedSlidingSeriesId;
+    if (slidingId != null) {
+      _lastSlidingSeriesId = slidingId;
+      _lastSlidingSeriesName =
+          m.activeSlidingSeries?.name ?? m.loadedSlidingSeriesName;
+    }
+  }
+
   /// تحديث حفظ الخصائص من نموذج نافذة
   void _saveLastSettings(WindowModel m) {
     // A panneau is a choice that belongs to one drawing/cell, not a reusable
     // glazing default.  Carry real glass forward for quick entry, but always
     // start the next item with ordinary glass after a panneau was used.
-    final previousGlass = WindowZone.globalDefaultGlass;
+    final previousGlass = m.defaultGlass;
     final glassSpec =
         (previousGlass.structure == GlassStructure.closed
                 ? const GlassSpecification()
@@ -503,31 +539,23 @@ class _CommandePageState extends State<CommandePage> {
       'primaryMullionAxis',
       'mullionProfiles',
       'groovedMullionCavityOnPositiveSide',
-      'mullionSectionOverrides',
-      'componentOverrides',
-      'frameOverride',
-      'sashOverride',
-      'internalSlidingSideCoverOverride',
-      'slidingFrameOverride',
-      'slidingSashOverride',
     };
     final drawingDefaults = <String, dynamic>{
       for (final key in defaultKeys)
         if (modelMap.containsKey(key)) key: modelMap[key],
       'glassSpec': glassSpec,
     };
+    // Only the series identity is inherited, so consecutive items of the same
+    // series stay quick to enter. Profile choices (frame/sash overrides,
+    // component overrides, mullion sections) are not: the new drawing
+    // resolves them from the catalogue of its own series. Copying a drawing
+    // with its profiles is done through "clone" only.
+    _rememberLastSeries(m);
     _lastUsedSettings = {
-      'activeSeries': m.activeSeries,
-      'activeSlidingSeries': m.activeSlidingSeries,
-      'loadedSeriesId': m.activeFrameSeries?.id ?? m.loadedSeriesId,
-      'loadedSlidingSeriesId':
-          m.activeSlidingSeries?.id ?? m.loadedSlidingSeriesId,
-      'loadedSeriesName':
-          m.activeFrameSeries?.name ??
-          m.loadedSeriesName ??
-          m.manualNameOverride,
-      'loadedSlidingSeriesName':
-          m.activeSlidingSeries?.name ?? m.loadedSlidingSeriesName,
+      'lastOpeningSeriesId': _lastOpeningSeriesId,
+      'lastOpeningSeriesName': _lastOpeningSeriesName,
+      'lastSlidingSeriesId': _lastSlidingSeriesId,
+      'lastSlidingSeriesName': _lastSlidingSeriesName,
       'selectedDbColor': m.selectedDbColor != null
           ? Map<String, dynamic>.from(m.selectedDbColor!)
           : null,

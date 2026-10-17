@@ -1402,7 +1402,8 @@ class _WindowViewState extends State<WindowView> {
       return;
     }
     final cacheKey =
-        '$seriesId|$openingSeriesId|$slidingSeriesId|${widget.systemMode}';
+        '${CloudSyncService().catalogRevision}|$seriesId|$openingSeriesId|'
+        '$slidingSeriesId|${widget.systemMode}';
     if (_profilesMemoryCache.containsKey(cacheKey)) {
       final cached = _profilesMemoryCache[cacheKey]!;
       setState(() {
@@ -3075,6 +3076,9 @@ class _WindowViewState extends State<WindowView> {
       _catalogReloadDebounce = Timer(const Duration(milliseconds: 250), () {
         if (!mounted) return;
         unawaited(widget.model.loadCatalogData(widget.systemMode));
+        // The cache is shared by every drawing; profiles edited or
+        // downloaded keep their id, so the old entries must not be reused.
+        _profilesMemoryCache.clear();
         _loadedSeriesId = null;
         unawaited(_loadAvailableProfiles());
         _loadShutterOptions();

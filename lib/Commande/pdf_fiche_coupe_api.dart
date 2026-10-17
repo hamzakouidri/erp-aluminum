@@ -1420,23 +1420,13 @@ class PdfFicheCoupeApi {
         }
         instanceModel.quantity = measuredQty;
 
-        List<BomItem> generateBom() => ComponentCalculator.generateBom(
+        final bom = await BomEngineV2(database: db).resolveManufacturingBom(
           instanceModel,
-          _activeVariants(instanceModel),
+          activeVariants: _activeVariants(instanceModel),
           kitBundleData: kitBundleData,
           kitPerLeafMap: kitPerLeafMap,
           kitBundleMetadata: kitBundleMetadata,
           kitBundlePrices: kitBundlePrices,
-        );
-
-        var bom = generateBom();
-        final engine = BomEngineV2(database: db);
-        await engine.stabilizeSelections(window: instanceModel, items: bom);
-        bom = generateBom();
-        await engine.stabilizeSelections(window: instanceModel, items: bom);
-        bom = await engine.filterItemsByAvailableCandidates(
-          window: instanceModel,
-          items: generateBom(),
         );
         final windowNumbers = [
           for (var offset = 0; offset < measuredQty; offset++)
@@ -2254,34 +2244,8 @@ class PdfFicheCoupeApi {
 
   static String anglesFor(BomItem item) => _anglesFor(item);
 
-  static Map<String, bool> _activeVariants(WindowModel model) {
-    final isTunnel = model.isCaissonTunnel;
-    final isMotor = model.shutterMechanism == 'محرك';
-    final isCrank =
-        model.shutterMechanism == 'منايفال' ||
-        model.shutterMechanism == 'مانيفال' ||
-        model.shutterMechanism == 'مانيفر';
-    final isBelt = !isMotor && !isCrank;
-    return {
-      'Verrou Central':
-          model.canUseOpeningOnlyOptions && model.useVerrouCentral,
-      'System OB': model.effectiveUseSystemOB,
-      'Demi System OB': model.effectiveUseDemiOB,
-      'كيت (Kit)': true,
-      'طانديم (Tandem)': isTunnel,
-      'الامبو (Embout)': isMotor,
-      'سيبور رولمو (Support Roulement)': isMotor,
-      'سيبور موتور (Support Moteur)': isMotor || isTunnel,
-      'أغطية الشفرات (Bouchons Lames)': model.componentOverrides.containsKey(
-        'أغطية الشفرات (Bouchons Lames)',
-      ),
-      'كيت فولي موتور (Kit Volet Moteur)': !isTunnel && isMotor,
-      'كيت فولي مانيفر (Kit Volet Manivelle)': !isTunnel && isCrank,
-      'كيت مانيفر (Kit Manivelle)': !isTunnel && isCrank,
-      'كيت فولي (Kit Volet)': !isTunnel && isBelt,
-      'كيت حزام (Kit Sangle)': !isTunnel && isBelt,
-    };
-  }
+  static Map<String, bool> _activeVariants(WindowModel model) =>
+      ComponentCalculator.standardActiveVariants(model);
 
   static String _unit(String unit, AppLanguage lang) {
     final u = unit.trim().toLowerCase();

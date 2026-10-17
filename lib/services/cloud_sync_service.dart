@@ -93,7 +93,23 @@ class CloudSyncService {
 
   factory CloudSyncService() => _instance;
 
-  CloudSyncService._internal();
+  CloudSyncService._internal() {
+    _dbUpdateController.stream.listen((event) {
+      if (!_nonCatalogUpdates.contains(event)) _catalogRevision++;
+    });
+  }
+
+  /// Events that are known not to touch catalogue rows.
+  static const Set<String> _nonCatalogUpdates = {
+    'workshop_profile_updated',
+    'permissions_updated',
+  };
+  int _catalogRevision = 0;
+
+  /// Increases after every database update that may have changed catalogue
+  /// rows. Data cached across screens must include it in its cache key so an
+  /// edited or downloaded profile never keeps its previous values.
+  int get catalogRevision => _catalogRevision;
 
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
 

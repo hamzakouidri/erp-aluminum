@@ -70,15 +70,9 @@ class ConsumptionManager {
     WindowModel window,
     int quantity,
   ) async {
-    final engine = BomEngineV2(database: db);
-    var bom = ComponentCalculator.generateBom(window, const {});
-    await engine.stabilizeSelections(window: window, items: bom);
-    bom = ComponentCalculator.generateBom(window, const {});
-    await engine.stabilizeSelections(window: window, items: bom);
-    bom = await engine.filterItemsByAvailableCandidates(
-      window: window,
-      items: ComponentCalculator.generateBom(window, const {}),
-    );
+    final bom = await BomEngineV2(
+      database: db,
+    ).resolveManufacturingBom(window);
 
     final items = <CuttingItem>[];
     var exactCost = 0.0;
