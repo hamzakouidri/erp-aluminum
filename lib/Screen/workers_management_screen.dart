@@ -1171,8 +1171,12 @@ class _WorkerCardState extends State<WorkerCard> {
       'close_business_day': false,
       'internal_sales': true,
     };
+    // A full co-manager already has every permission in the app. A key added
+    // to the application after that grant must not show up as disabled.
+    final fullManager = _hasFullManagerPermissions;
     defaults.forEach((key, value) {
-      if (!perms.containsKey(key)) perms[key] = value;
+      if (perms.containsKey(key)) return;
+      perms[key] = fullManager && key != 'isBlocked' ? true : value;
     });
   }
 
