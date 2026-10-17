@@ -658,12 +658,19 @@ class AluminumSection {
       return readBool(value, fallback: false);
     }
 
+    // Saved overrides (older orders, manual choices) can lack catalogue
+    // columns; reading them must not stop the whole BOM with a type error.
+    int readInt(Object? value) => value is num
+        ? value.toInt()
+        : int.tryParse(value?.toString() ?? '') ?? 0;
+    String readText(Object? value) => value?.toString() ?? '';
+
     return AluminumSection(
-      id: map['id'],
-      seriesId: map['series_id'],
-      code: map['code'],
-      name: map['name'],
-      type: map['type'],
+      id: readInt(map['id']),
+      seriesId: readInt(map['series_id'] ?? map['source_series_id']),
+      code: readText(map['code']),
+      name: readText(map['name']),
+      type: readText(map['type']),
       thickness: (map['thickness'] as num?)?.toDouble() ?? 0.0,
       glassDeduction: (map['glass_deduction'] as num?)?.toDouble() ?? 0.0,
       weightPerMeter: (map['weight_per_meter'] as num?)?.toDouble() ?? 0.0,
