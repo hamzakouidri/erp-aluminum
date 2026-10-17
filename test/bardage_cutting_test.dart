@@ -1100,7 +1100,10 @@ void main() {
       ];
       model.selection = SelectionInfo.zone('z1');
 
-      expect(model.parcloseCapacityForStructure(GlassStructure.double), 18);
+      // An aluminium bead holds the vitrage and bourrage gaskets beside the
+      // panes: 5 + 6 (thinnest spacer) + 5 + 2 + 2 needs more than the 18 mm
+      // bead, so the 22 mm one is used and leaves an 8 mm spacer.
+      expect(model.parcloseCapacityForStructure(GlassStructure.double), 22);
       expect(
         model.suggestedIntercallThicknessForDoubleGlass(
           thicknessOuter: 5,

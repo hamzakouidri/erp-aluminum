@@ -29,6 +29,7 @@ import 'package:database_data/Commande/Systeme/calculate_component.dart';
 import 'package:database_data/Commande/Systeme/profile_selector_dialog.dart'
     hide getComponentSize;
 import 'package:database_data/Commande/Systeme/glass_joint_fit.dart';
+import 'package:database_data/Commande/Systeme/glazing_fit_message.dart';
 import 'package:database_data/widgets/section_image.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:provider/provider.dart';
@@ -7608,12 +7609,45 @@ class _WindowViewState extends State<WindowView> {
           }
 
           Widget? buildParcloseThicknessInfo() {
-            if (widget.model.glazingFitMessage != null) {
-              return Padding(
+            final fitReport = widget.model.glazingFitReport;
+            if (fitReport != null && fitReport.describes(spec)) {
+              final fitColor = fitReport.valid
+                  ? Colors.green.shade700
+                  : Colors.red.shade700;
+              return Container(
+                margin: const EdgeInsets.only(top: 8),
                 padding: const EdgeInsets.all(8),
-                child: Text(
-                  widget.model.glazingFitMessage!,
-                  style: const TextStyle(fontSize: 11),
+                decoration: BoxDecoration(
+                  color: fitColor.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: fitColor.withValues(alpha: 0.35)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Icon(
+                        fitReport.valid
+                            ? Icons.check_circle_outline_rounded
+                            : Icons.warning_amber_rounded,
+                        color: fitColor,
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 7),
+                    Expanded(
+                      child: Text(
+                        describeGlazingFit(fitReport, lang),
+                        style: TextStyle(
+                          color: fitColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               );
             }
@@ -9881,7 +9915,13 @@ class _WindowViewState extends State<WindowView> {
                         spec.thicknessOuter ?? kDefaultGlassPaneThickness;
                     final double tInner =
                         spec.thicknessInner ?? kDefaultGlassPaneThickness;
-                    final double jointAllowance = isSliding
+                    final bool pvcBead = isSliding
+                        ? widget.model.isSlidingPVC
+                        : widget.model.isPVC;
+                    // A PVC bead holds the panes without separate gaskets.
+                    final double jointAllowance = pvcBead
+                        ? 0.0
+                        : isSliding
                         ? (widget.model.selectedVitrageJointThickness(
                                 fallback: 2.0,
                               ) *
@@ -9897,13 +9937,14 @@ class _WindowViewState extends State<WindowView> {
                         .glazingCapacityForStructure(
                           GlassStructure.double,
                           sliding: isSliding,
+                          glass: spec,
                         );
                     final totalWithJoint =
                         tOuter + val + tInner + jointAllowance;
+                    // The pack may exceed the capacity by 1 mm at most.
                     final bool exceedsCapacity =
-                        maxCapacity != null && totalWithJoint > maxCapacity;
-                    final bool hasGlazingBead = widget.model
-                        .hasGlazingBeadForContext(sliding: isSliding);
+                        maxCapacity != null &&
+                        totalWithJoint > maxCapacity + 1.000001;
 
                     return _IntercallButton(
                       thickness: val,
@@ -9911,51 +9952,47 @@ class _WindowViewState extends State<WindowView> {
                       exceedsCapacity: exceedsCapacity,
                       showWarning:
                           widget.model.getPriceForIntercall(val) == 0.0,
-                      onPressed: () {
-                        if (exceedsCapacity) {
-                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'لا يمكن استقبال فاصل (Intercal) $val مم:\n'
-                                'السماكة الإجمالية مع الجوان (${totalWithJoint.toStringAsFixed(1)} مم) تتجاوز سعة ${hasGlazingBead ? "الـ Parclose" : "الضلفة"} القصوى (${maxCapacity.toStringAsFixed(1)} مم).\n'
-                                'يجب تغيير سماكة الزجاج أولاً ثم اختيار الـ Intercal.',
-                              ),
-                              backgroundColor: Colors.red.shade800,
-                              duration: const Duration(seconds: 4),
-                            ),
-                          );
-                          return;
-                        }
-
-                        String? warning;
-                        if (requiredIntercall == null) {
-                          warning =
-                              'تنبيه: لا توجد Parclose مطابقة تلقائياً لسماكة لوحي الزجاج. تحقق من الطلب قبل اعتماده.';
-                        } else if (val != requiredIntercall) {
-                          warning =
-                              'تنبيه: السماكة المقترحة مع Parclose هي $requiredIntercall مم، وتم اختيار $val مم يدوياً.';
-                        }
-                        final newSpec = spec.copyWith(intercallThickness: val);
-                        if (zone != null) {
-                          widget.model.updateSelectedZoneGlass(
-                            intercallThickness: val,
-                          );
-                        } else {
+                      onPressed: () async {
+                        // The user may pick any spacer; an incompatible one
+                        // is kept and reported (with a suggestion) instead
+                        // of being refused or replaced silently.
+                        final newSpec = spec.copyWith(
+                          intercallThickness: val,
+                          manualIntercall: true,
+                        );
+                        _startPaintbrushMode(glassSpec: newSpec);
+                        if (zone == null) {
                           setState(() {
                             _tempGlassSpec = newSpec;
                           });
+                          return;
                         }
-                        _startPaintbrushMode(glassSpec: newSpec);
-                        if (warning != null) {
-                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(warning),
-                              backgroundColor: Colors.orange.shade800,
+                        await widget.model.updateSelectedZoneGlass(
+                          intercallThickness: val,
+                          manualIntercall: true,
+                        );
+                        final report = widget.model.glazingFitReport;
+                        if (!context.mounted ||
+                            report == null ||
+                            report.valid) {
+                          return;
+                        }
+                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              describeGlazingFit(
+                                report,
+                                Provider.of<AppSettingsProvider>(
+                                  context,
+                                  listen: false,
+                                ).language,
+                              ),
                             ),
-                          );
-                        }
+                            backgroundColor: Colors.orange.shade800,
+                            duration: const Duration(seconds: 5),
+                          ),
+                        );
                       },
                     );
                   }).toList(),

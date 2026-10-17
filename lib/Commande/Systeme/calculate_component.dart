@@ -9670,7 +9670,19 @@ class ComponentCalculator {
                 name.contains('باكيت'));
       }
 
+      final bool beadSliding = window.activeSlidingSeries?.id == series.id;
       AluminumSection? findSimpleParclose() {
+        // The bead the drawer shows: the smallest one holding the pack.
+        final fitted = window.glazingBeadForGlass(
+          const GlassSpecification(structure: GlassStructure.simple),
+          sliding: beadSliding,
+          glassThickness: beadSliding
+              ? null
+              : (maxOpeningSimpleGlassPackThickness > 0
+                    ? maxOpeningSimpleGlassPackThickness
+                    : null),
+        );
+        if (fitted != null) return fitted;
         final allowedIds = configuredSimpleSections
             .map((section) => section.id)
             .toSet();
@@ -9695,6 +9707,14 @@ class ComponentCalculator {
       }
 
       AluminumSection? findDoubleParclose() {
+        final fitted = window.glazingBeadForGlass(
+          const GlassSpecification(structure: GlassStructure.double),
+          sliding: beadSliding,
+          glassThickness: requiredDoubleThickness > 0
+              ? requiredDoubleThickness
+              : null,
+        );
+        if (fitted != null) return fitted;
         final minimumCapacity = math.max(10.0, requiredDoubleThickness);
         final allowedIds = configuredDoubleSections
             .map((section) => section.id)
@@ -9764,7 +9784,12 @@ class ComponentCalculator {
         final double maxG =
             (chosenParclose['max_glass_thickness'] as num?)?.toDouble() ?? 0.0;
         if (maxG > 10.0 && maxG >= requiredDoubleThickness) {
-          doubled = pricedOverride(chosenParclose);
+          // A saved bead is used for double glazing only when it is the bead
+          // that holds the double pack; a large simple bead is not a double.
+          final doubleSection = findDoubleParclose();
+          doubled = doubleSection == null
+              ? pricedOverride(chosenParclose)
+              : pricedMap(doubleSection);
           final simpleSection = findSimpleParclose();
           simple = simpleSection == null
               ? pricedOverride(chosenParclose)

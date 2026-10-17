@@ -1003,6 +1003,10 @@ class GlassSpecification {
   final List<Map<String, dynamic>> fittedJoints;
   final bool? glazingFitValid;
 
+  /// The user picked this spacer explicitly. Automatic fitting then keeps it
+  /// (and only reports an incompatibility) until the panes change.
+  final bool manualIntercall;
+
   const GlassSpecification({
     this.structure = GlassStructure.simple,
     this.finishOuter = GlassFinish.clair,
@@ -1039,6 +1043,7 @@ class GlassSpecification {
     this.jointTwoSides = true,
     this.fittedJoints = const [],
     this.glazingFitValid,
+    this.manualIntercall = false,
   });
 
   GlassSpecification clone() => GlassSpecification(
@@ -1077,6 +1082,7 @@ class GlassSpecification {
     jointTwoSides: jointTwoSides,
     fittedJoints: fittedJoints,
     glazingFitValid: glazingFitValid,
+    manualIntercall: manualIntercall,
   );
 
   GlassSpecification copyWith({
@@ -1115,6 +1121,7 @@ class GlassSpecification {
     bool? jointTwoSides,
     List<Map<String, dynamic>>? fittedJoints,
     bool? glazingFitValid,
+    bool? manualIntercall,
   }) => GlassSpecification(
     structure: structure ?? this.structure,
     finishOuter: finishOuter ?? this.finishOuter,
@@ -1151,6 +1158,7 @@ class GlassSpecification {
     jointTwoSides: jointTwoSides ?? this.jointTwoSides,
     fittedJoints: fittedJoints ?? this.fittedJoints,
     glazingFitValid: glazingFitValid ?? this.glazingFitValid,
+    manualIntercall: manualIntercall ?? this.manualIntercall,
   );
 
   /// Compares all visible choices from the glass drawer, including panel and
@@ -3392,22 +3400,6 @@ class WindowModel extends ChangeNotifier {
           ..sort();
     if (values.isNotEmpty) return values;
     return const [6, 8, 10, 12, 14, 16, 18, 20, 22, 24];
-  }
-
-  int? _nearestIntercallThickness(double target) {
-    if (target <= 0) return null;
-    final choices = _availableIntercallThicknesses();
-    if (choices.isEmpty) return null;
-    int best = choices.first;
-    double bestDiff = double.infinity;
-    for (final thickness in choices) {
-      final diff = (thickness.toDouble() - target).abs();
-      if (diff < bestDiff) {
-        best = thickness;
-        bestDiff = diff;
-      }
-    }
-    return bestDiff <= 2.5 ? best : null;
   }
 
   double width;
@@ -12406,150 +12398,168 @@ class WindowModel extends ChangeNotifier {
   double? glazingCapacityForStructure(
     GlassStructure structure, {
     bool? sliding,
+    GlassSpecification? glass,
   }) {
     final useSliding =
         sliding ??
         (systemMode == 'sliding' ||
             (selectedZone?.content == ZoneContent.slidingSash));
     if (hasGlazingBeadForContext(sliding: useSliding)) {
-      return parcloseCapacityForStructure(structure, sliding: useSliding);
+      return parcloseCapacityForStructure(
+        structure,
+        sliding: useSliding,
+        glass: glass,
+      );
     }
     return sashGlassCapacityForContext(sliding: useSliding);
+  }
+
+  /// The thinnest pack this glass can be glazed with: its panes (double
+  /// glazing with the thinnest spacer, since the spacer adapts to the bead)
+  /// plus the vitrage/bourrage gaskets for aluminium. A PVC bead holds the
+  /// glass without separate gaskets.
+  ///
+  /// [glassThickness], when given, is the measured glass (or panel) thickness
+  /// of a drawn pane and replaces the estimate from [spec].
+  double minimumGlazingPack(
+    GlassSpecification spec, {
+    required bool sliding,
+    double? glassThickness,
+  }) {
+    final double glass = glassThickness != null && glassThickness > 0
+        ? glassThickness
+        : spec.structure == GlassStructure.double
+        ? _glassPaneThicknessOrDefault(spec.thicknessOuter) +
+              _glassPaneThicknessOrDefault(spec.thicknessInner) +
+              _availableIntercallThicknesses().first
+        : spec.totalThickness(allGlassCache);
+    final pvc = sliding ? isSlidingPVC : isPVC;
+    if (pvc) return glass;
+    final joint = selectedVitrageJointThickness(fallback: 2.0);
+    return glass + joint * (spec.jointTwoSides ? 2 : 1);
+  }
+
+  /// The thickest pack this glass can be glazed with: the largest spacer for
+  /// double glazing and the thickest gaskets. A bead beyond it cannot be
+  /// filled (a simple pane in a double bead).
+  double maximumGlazingPack(
+    GlassSpecification spec, {
+    required bool sliding,
+    double? glassThickness,
+  }) {
+    final measured = glassThickness != null && glassThickness > 0
+        ? glassThickness
+        : 0.0;
+    final double glass = spec.structure == GlassStructure.double
+        ? math.max(
+            measured,
+            _glassPaneThicknessOrDefault(spec.thicknessOuter) +
+                _glassPaneThicknessOrDefault(spec.thicknessInner) +
+                _availableIntercallThicknesses().last,
+          )
+        : (measured > 0 ? measured : spec.totalThickness(allGlassCache));
+    // The gasket allowance also bounds PVC: a bead slightly larger than the
+    // pane is reported with a pane suggestion, a double bead is never used
+    // for a simple pane.
+    return glass + kMaxGlazingGasketMm * (spec.jointTwoSides ? 2 : 1);
+  }
+
+  /// The parclose (glazing bead) that holds [spec]: a bead the user chose for
+  /// this glass type while the pack fits it, otherwise the smallest bead of
+  /// the series that can hold the pack. Simple and double beads are told apart
+  /// by their catalogue rule and their capacity, never by a fixed threshold,
+  /// so a simple bead that also counts its gaskets is not taken for a double.
+  AluminumSection? glazingBeadForGlass(
+    GlassSpecification spec, {
+    required bool sliding,
+    double? glassThickness,
+  }) {
+    final series = sliding ? activeSlidingSeries : activeSeries;
+    if (series == null || !hasGlazingBeadForContext(sliding: sliding)) {
+      return null;
+    }
+    final glassRule = switch (spec.structure) {
+      GlassStructure.double => 'double',
+      GlassStructure.simple => 'simple',
+      GlassStructure.closed => null,
+    };
+    var beads = getConfiguredSectionsForRole(
+      'glazing_bead',
+      useSlidingSeries: sliding,
+      showWhenGlass: glassRule,
+    );
+    if (beads.isEmpty && !seriesHasConfiguredRoles(series)) {
+      beads = series.sections.where(_isParcloseSection).toList();
+    }
+    beads = beads.where((bead) => bead.maxGlassThickness > 0).toList();
+    if (beads.isEmpty) return null;
+    final requiredPack = minimumGlazingPack(
+      spec,
+      sliding: sliding,
+      glassThickness: glassThickness,
+    );
+    bool holds(AluminumSection bead) =>
+        bead.maxGlassThickness + 1.000001 >= requiredPack;
+    int? idOf(dynamic row) =>
+        row is Map ? int.tryParse('${row['id'] ?? ''}') : null;
+    AluminumSection? beadWithId(int? id) {
+      if (id == null) return null;
+      for (final bead in beads) {
+        if (bead.id == id) return bead;
+      }
+      return null;
+    }
+
+    final specificKey = switch ((spec.structure, sliding)) {
+      (GlassStructure.double, false) => 'باكيت زجاج مزدوج (Parclose Double)',
+      (GlassStructure.double, true) =>
+        'باكيت زجاج منزلق مزدوج (Parclose Double Coulissant)',
+      (GlassStructure.simple, false) => 'باكيت زجاج مفرد (Parclose Simple)',
+      (GlassStructure.simple, true) =>
+        'باكيت زجاج منزلق مفرد (Parclose Simple Coulissant)',
+      _ => null,
+    };
+    final chosen = beadWithId(
+      specificKey == null ? null : idOf(componentOverrides[specificKey]),
+    );
+    if (chosen != null && holds(chosen)) return chosen;
+
+    final generic = componentOverrides['باكيت الزجاج (Parclose)'];
+    if (spec.structure == GlassStructure.double && generic is Map) {
+      final linked = beadWithId(
+        int.tryParse('${generic['linked_parclose_double_id'] ?? ''}'),
+      );
+      if (linked != null && holds(linked)) return linked;
+    }
+    final genericId = idOf(generic);
+    return smallestFittingGlazingBead(
+      beads,
+      (bead) => bead.maxGlassThickness,
+      requiredPack: requiredPack,
+      maximumPack: maximumGlazingPack(
+        spec,
+        sliding: sliding,
+        glassThickness: glassThickness,
+      ),
+      preferred: (bead) => bead.id == genericId,
+    );
   }
 
   double? parcloseCapacityForStructure(
     GlassStructure structure, {
     bool? sliding,
+    GlassSpecification? glass,
   }) {
-    double? capacityOf(dynamic parclose) {
-      if (parclose is! Map) return null;
-      final rawValue = parclose['max_glass_thickness'];
-      final maximum = rawValue is num
-          ? rawValue.toDouble()
-          : double.tryParse(rawValue?.toString() ?? '');
-      return maximum != null && maximum > 0 ? maximum : null;
-    }
-
     final useSliding =
         sliding ??
         (systemMode == 'sliding' ||
             (selectedZone?.content == ZoneContent.slidingSash));
-    final series = useSliding ? activeSlidingSeries : activeSeries;
-    if (!hasGlazingBeadForContext(sliding: useSliding)) return null;
-
-    if (structure == GlassStructure.simple) {
-      final specificSimple =
-          componentOverrides['باكيت زجاج مفرد (Parclose Simple)'];
-      final cap = capacityOf(specificSimple);
-      if (cap != null && cap <= 14.0) return cap;
-
-      final generic = componentOverrides['باكيت الزجاج (Parclose)'];
-      final genericCap = capacityOf(generic);
-      if (genericCap != null && genericCap <= 14.0) return genericCap;
-
-      if (series != null) {
-        final activeGlass = selectedZone?.glass;
-        final double requiredThick = activeGlass != null
-            ? activeGlass.totalThickness(allGlassCache)
-            : 5.0;
-
-        final parcloses =
-            series.sections
-                .where((s) => _isParcloseSection(s) && s.maxGlassThickness > 0)
-                .toList()
-              ..sort(
-                (a, b) => a.maxGlassThickness.compareTo(b.maxGlassThickness),
-              );
-
-        for (final s in parcloses) {
-          if (s.maxGlassThickness >= requiredThick &&
-              s.maxGlassThickness <= 14.0) {
-            return s.maxGlassThickness;
-          }
-        }
-        for (final s in parcloses) {
-          if (s.maxGlassThickness <= 14.0) {
-            return s.maxGlassThickness;
-          }
-        }
-      }
-      return null;
-    } else if (structure == GlassStructure.closed) {
-      final activeGlass = selectedZone?.glass;
-      final requiredThickness = activeGlass != null
-          ? activeGlass.totalThickness(allGlassCache)
-          : 5.0;
-      final generic = componentOverrides['باكيت الزجاج (Parclose)'];
-      final genericCapacity = capacityOf(generic);
-      if (genericCapacity != null && genericCapacity >= requiredThickness) {
-        return genericCapacity;
-      }
-      if (series == null) return null;
-      final parcloses =
-          series.sections
-              .where(
-                (section) =>
-                    _isParcloseSection(section) &&
-                    section.maxGlassThickness > 0,
-              )
-              .toList()
-            ..sort(
-              (a, b) => a.maxGlassThickness.compareTo(b.maxGlassThickness),
-            );
-      for (final section in parcloses) {
-        if (section.maxGlassThickness >= requiredThickness) {
-          return section.maxGlassThickness;
-        }
-      }
-      return parcloses.isEmpty ? null : parcloses.last.maxGlassThickness;
-    } else if (structure == GlassStructure.double) {
-      final specificDouble =
-          componentOverrides['باكيت زجاج مزدوج (Parclose Double)'];
-      final cap = capacityOf(specificDouble);
-      if (cap != null && cap > 16.0) return cap;
-
-      if (series != null) {
-        final activeGlass = selectedZone?.glass;
-        final paneThickness = activeGlass?.structure == GlassStructure.double
-            ? _glassPaneThicknessOrDefault(activeGlass?.thicknessOuter) +
-                  _glassPaneThicknessOrDefault(activeGlass?.thicknessInner)
-            : 10.0;
-        final minimumIntercall = _availableIntercallThicknesses().first;
-        final requiredThickness = paneThickness + minimumIntercall;
-        final generic = componentOverrides['باكيت الزجاج (Parclose)'];
-        if (generic is Map) {
-          final rawLinkedId = generic['linked_parclose_double_id'];
-          final linkedId = rawLinkedId is num
-              ? rawLinkedId.toInt()
-              : int.tryParse(rawLinkedId?.toString() ?? '');
-          if (linkedId != null && linkedId > 0) {
-            for (final s in series.sections) {
-              if (s.id == linkedId &&
-                  s.maxGlassThickness >= requiredThickness) {
-                return s.maxGlassThickness;
-              }
-            }
-          }
-        }
-
-        final parcloses =
-            series.sections
-                .where(
-                  (section) =>
-                      _isParcloseSection(section) &&
-                      section.maxGlassThickness >= requiredThickness,
-                )
-                .toList()
-              ..sort(
-                (a, b) => a.maxGlassThickness.compareTo(b.maxGlassThickness),
-              );
-        if (parcloses.isNotEmpty) {
-          return parcloses.first.maxGlassThickness;
-        }
-      }
-      return null;
-    }
-    return selectedParcloseMaxGlassThickness;
+    final current =
+        glass ?? selectedZone?.getGlassForCell(activeSubZone);
+    final spec = current != null && current.structure == structure
+        ? current
+        : GlassSpecification(structure: structure);
+    return glazingBeadForGlass(spec, sliding: useSliding)?.maxGlassThickness;
   }
 
   /// The selected parclose defines the usable thickness of the glazing pack.
@@ -12691,11 +12701,37 @@ class WindowModel extends ChangeNotifier {
       sliding: selectedUsesSliding,
     );
     if (maximum == null) return null;
-    // The parclose capacity describes the sealed glass unit itself. Gaskets
-    // hold that unit in the sash but are not part of its glass thickness.
-    final remaining = maximum - thicknessOuter - thicknessInner;
+    // The capacity holds the whole pack: in aluminium the vitrage and
+    // bourrage gaskets sit in it beside the panes; a PVC bead has none.
+    final pvc = selectedUsesSliding ? isSlidingPVC : isPVC;
+    final joints = pvc
+        ? 0.0
+        : (jointThickness ?? selectedVitrageJointThickness(fallback: 2.0)) *
+              (jointTwoSides ? 2 : 1);
+    return _spacerFillingGap(
+      maximum - thicknessOuter - thicknessInner - joints,
+    );
+  }
+
+  /// The spacer for the [remaining] gap of a glazing pack. The pack may exceed
+  /// the capacity by 1 mm at most, never fall short: the thinnest spacer in
+  /// that window wins (18 mm with 5+5 => 8, not the nearest 12). Without one,
+  /// the largest spacer that does not overflow is the closest option and the
+  /// fit is reported as incompatible.
+  int? _spacerFillingGap(double remaining) {
     if (remaining <= 0) return null;
-    return _nearestIntercallThickness(remaining);
+    final choices = _availableIntercallThicknesses();
+    for (final thickness in choices) {
+      if (thickness >= remaining - 0.000001 &&
+          thickness <= remaining + 1.000001) {
+        return thickness;
+      }
+    }
+    int? best;
+    for (final thickness in choices) {
+      if (thickness <= remaining + 1.000001) best = thickness;
+    }
+    return best;
   }
 
   /// Recalculates each double-glazing spacer after the user selects another
@@ -12708,7 +12744,8 @@ class WindowModel extends ChangeNotifier {
       GlassSpecification specification, {
       required bool sliding,
     }) {
-      if (specification.structure != GlassStructure.double) {
+      if (specification.structure != GlassStructure.double ||
+          specification.manualIntercall) {
         return specification;
       }
       final suggested = suggestedIntercallThicknessForDoubleGlass(
@@ -15123,7 +15160,30 @@ class WindowModel extends ChangeNotifier {
         }
       }
       notifyListeners();
+      unawaited(_refitPaintedGlass(zone, cellId));
     } catch (_) {}
+  }
+
+  /// A painted glass keeps its panes but its spacer and gaskets follow the
+  /// bead of the zone it lands on (a 5/12/5 brush on an 18 mm bead => 5/8/5).
+  Future<void> _refitPaintedGlass(WindowZone zone, String? cellId) async {
+    try {
+      final sliding = zone.content == ZoneContent.slidingSash;
+      final cell = cellId != null && cellId.contains('cell_') ? cellId : null;
+      final current = cell == null ? zone.glass : zone.getGlassForCell(cell);
+      final fitted = await fitGlazingByRules(current, sliding: sliding);
+      if (!zones.contains(zone)) return;
+      if (cell == null) {
+        if (!identical(zone.glass, current)) return;
+        zone.glass = fitted;
+      } else {
+        if (!identical(zone.cellGlassSpec[cell], current)) return;
+        zone.cellGlassSpec = {...zone.cellGlassSpec, cell: fitted};
+      }
+      notifyListeners();
+    } catch (_) {
+      // The catalogue may be unavailable; the painted glass stays as drawn.
+    }
   }
 
   void paintAllZonesSpec(GlassSpecification spec) {
@@ -20260,6 +20320,7 @@ class WindowModel extends ChangeNotifier {
     String? laminatedColorInner,
     bool? temperedOuter,
     bool? temperedInner,
+    bool manualIntercall = false,
   }) async {
     // Keep a stable target while selecting a compatible parclose performs its
     // asynchronous catalogue lookup.  The drawer may rebuild during that
@@ -20331,6 +20392,16 @@ class WindowModel extends ChangeNotifier {
             ? true
             : null);
     int? resolvedIntercallThickness = intercallThickness;
+    // A spacer picked by the user stays (with a warning when it does not
+    // fit); new panes or another glass type hand it back to the automatic
+    // choice.
+    final bool? resolvedManualIntercall = manualIntercall
+        ? true
+        : (structure != null ||
+                  thicknessOuter != null ||
+                  thicknessInner != null
+              ? false
+              : null);
     if (resolvedIntercallThickness == null &&
         targetStructure == GlassStructure.double) {
       final isSliding =
@@ -20342,8 +20413,12 @@ class WindowModel extends ChangeNotifier {
       final tOuter = effectiveThicknessOuter ?? kDefaultGlassPaneThickness;
       final tInner = effectiveThicknessInner;
       final currentTotal = tOuter + baseSpec.intercallThickness + tInner;
-      if (baseSpec.structure != GlassStructure.double ||
-          (maxCap != null && currentTotal > maxCap)) {
+      final keepsManualSpacer =
+          resolvedManualIntercall ?? baseSpec.manualIntercall;
+      if (!keepsManualSpacer &&
+          (baseSpec.structure != GlassStructure.double ||
+              resolvedManualIntercall == false ||
+              (maxCap != null && currentTotal > maxCap))) {
         final suggested = suggestedIntercallThicknessForDoubleGlass(
           thicknessOuter: tOuter,
           thicknessInner: tInner,
@@ -20375,6 +20450,7 @@ class WindowModel extends ChangeNotifier {
         colorP: colorP,
         hasGas: resolvedHasGas,
         intercallThickness: resolvedIntercallThickness,
+        manualIntercall: resolvedManualIntercall,
         panneauSubtype: panneauSubtype,
         panneauColor: panneauColor,
         isVerticalBardage: isVerticalBardage,
@@ -20410,6 +20486,7 @@ class WindowModel extends ChangeNotifier {
         colorP: colorP,
         hasGas: resolvedHasGas,
         intercallThickness: resolvedIntercallThickness,
+        manualIntercall: resolvedManualIntercall,
         panneauSubtype: panneauSubtype,
         panneauColor: panneauColor,
         isVerticalBardage: isVerticalBardage,
@@ -20459,6 +20536,7 @@ class WindowModel extends ChangeNotifier {
             colorP: colorP,
             hasGas: resolvedHasGas,
             intercallThickness: resolvedIntercallThickness,
+            manualIntercall: resolvedManualIntercall,
             panneauSubtype: panneauSubtype,
             panneauColor: panneauColor,
             isVerticalBardage: isVerticalBardage,
@@ -20509,19 +20587,42 @@ class WindowModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  String? glazingFitMessage;
+  /// Result of the last automatic glazing fit, shown in the glass drawer.
+  GlazingFitReport? glazingFitReport;
 
+  /// Fits a glazing pack to its bead (or sash) capacity. The capacity holds
+  /// the whole pack: in aluminium the vitrage gasket, the panes and spacer,
+  /// then the bourrage gasket; a PVC bead holds the panes alone. The pack may
+  /// exceed the capacity by 1 mm at most and never fall short of it.
+  ///
+  /// The panes are what the user asked for and are never changed silently.
+  /// The gaskets adapt first, then the spacer (unless the user picked it);
+  /// when no combination fits, the report suggests another spacer or panes.
   Future<GlassSpecification> fitGlazingByRules(
     GlassSpecification spec, {
     required bool sliding,
   }) async {
+    final usesBead = hasGlazingBeadForContext(sliding: sliding);
+    final bead = usesBead ? glazingBeadForGlass(spec, sliding: sliding) : null;
     final capacity = glazingCapacityForStructure(
       spec.structure,
       sliding: sliding,
+      glass: spec,
     );
+    final outer = spec.thicknessOuter ?? kDefaultGlassPaneThickness;
+    final inner = spec.thicknessInner ?? kDefaultGlassPaneThickness;
+    final doubleGlass = spec.structure == GlassStructure.double;
     if (capacity == null) {
-      glazingFitMessage =
-          'تعذر الحساب: سعة الزجاج غير محددة للباركلوز أو الضلفة.';
+      glazingFitReport = GlazingFitReport(
+        structure: spec.structure,
+        usesBead: usesBead,
+        sliding: sliding,
+        capacity: null,
+        outer: outer,
+        inner: inner,
+        spacer: spec.intercallThickness.toDouble(),
+        valid: false,
+      );
       return spec;
     }
     final pvc = sliding ? isSlidingPVC : isPVC;
@@ -20543,7 +20644,7 @@ class WindowModel extends ChangeNotifier {
             hasSimpleGlassForReducer:
                 spec.structure == GlassStructure.simple ||
                 spec.structure == GlassStructure.closed,
-            hasDoubleGlassForRules: spec.structure == GlassStructure.double,
+            hasDoubleGlassForRules: doubleGlass,
           ),
         );
     final vitrage = pvc
@@ -20558,6 +20659,7 @@ class WindowModel extends ChangeNotifier {
     } else if (!spec.jointTwoSides) {
       choices.addAll((vitrage.isNotEmpty ? vitrage : bourrage).map((r) => [r]));
     } else {
+      // Vitrage goes in before the glass, bourrage closes the pack after it.
       final firstSide = vitrage.isNotEmpty ? vitrage : bourrage;
       final secondSide = bourrage.isNotEmpty ? bourrage : vitrage;
       for (final first in firstSide) {
@@ -20566,43 +20668,68 @@ class WindowModel extends ChangeNotifier {
         }
       }
     }
-    final result = fitGlassPack(
-      capacity: capacity,
-      outer: spec.thicknessOuter ?? kDefaultGlassPaneThickness,
-      inner: spec.thicknessInner ?? kDefaultGlassPaneThickness,
-      spacer: spec.intercallThickness.toDouble(),
-      doubleGlass: spec.structure == GlassStructure.double,
-      jointChoices: choices,
-      spacers: spec.structure == GlassStructure.closed
-          ? const [0.0]
-          : availableIntercalls
-                .map((r) => _readPositiveDouble(r['thickness']))
-                .where((v) => v > 0)
-                .toList(),
-      outerPanes: spec.structure == GlassStructure.closed
-          ? [spec.thicknessOuter ?? kDefaultGlassPaneThickness]
-          : getAvailableThicknesses(spec.finishOuter, spec.colorOuter),
-      innerPanes: spec.structure == GlassStructure.closed
-          ? const [0.0]
-          : getAvailableThicknesses(spec.finishInner, spec.colorInner),
-    );
+    final spacers = spec.structure == GlassStructure.closed
+        ? const [0.0]
+        : _availableIntercallThicknesses().map((v) => v.toDouble()).toList();
+    final lockSpacer = doubleGlass && spec.manualIntercall;
+    GlassPackFit? solve({required bool fixedPanes, required bool lock}) =>
+        fitGlassPack(
+          capacity: capacity,
+          outer: outer,
+          inner: inner,
+          spacer: spec.intercallThickness.toDouble(),
+          doubleGlass: doubleGlass,
+          jointChoices: choices,
+          spacers: spacers,
+          outerPanes: fixedPanes || spec.structure == GlassStructure.closed
+              ? [outer]
+              : getAvailableThicknesses(spec.finishOuter, spec.colorOuter),
+          innerPanes: fixedPanes || !doubleGlass
+              ? [doubleGlass ? inner : 0.0]
+              : getAvailableThicknesses(spec.finishInner, spec.colorInner),
+          lockSpacer: lock,
+        );
+
+    final result = solve(fixedPanes: true, lock: lockSpacer);
     if (result == null) {
-      glazingFitMessage =
-          'تركيب غير متوافق مع السعة $capacity مم. لا توجد تركيبة مسموحة من القواعد؛ النقص ممنوع والزيادة القصوى 1 مم.';
+      // Suggest what would fit: another spacer first, then other panes.
+      final suggestion =
+          solve(fixedPanes: true, lock: false) ??
+          solve(fixedPanes: false, lock: false);
+      glazingFitReport = GlazingFitReport(
+        structure: spec.structure,
+        usesBead: usesBead,
+        sliding: sliding,
+        beadName: bead?.name,
+        capacity: capacity,
+        outer: outer,
+        inner: inner,
+        spacer: spec.intercallThickness.toDouble(),
+        valid: false,
+        manualSpacer: lockSpacer,
+        suggestion: suggestion,
+      );
       return spec.copyWith(fittedJoints: const [], glazingFitValid: false);
     }
-    final glazingDescription = spec.structure == GlassStructure.closed
-        ? 'البانو: ${result.outer} مم. '
-        : 'الاختيار: ${spec.thicknessOuter ?? 5} / ${spec.intercallThickness} / ${spec.thicknessInner ?? 5} مم. '
-              'التركيب المعتمد: ${result.outer}${spec.structure == GlassStructure.double ? ' + ${result.spacer} + ${result.inner}' : ''} مم؛ ';
-    glazingFitMessage =
-        glazingDescription +
-        '${result.joints.map((r) => '${r['name']} (${r['thickness']} مم)').join(' + ')}. '
-            'المجموع ${result.total} مم / السعة $capacity مم. أولوية التعديل: الجوانات ثم الأنتركال ثم الزجاج.';
+    glazingFitReport = GlazingFitReport(
+      structure: spec.structure,
+      usesBead: usesBead,
+      sliding: sliding,
+      beadName: bead?.name,
+      capacity: capacity,
+      outer: result.outer,
+      inner: result.inner,
+      spacer: result.spacer,
+      valid: true,
+      manualSpacer: lockSpacer,
+      fit: result,
+    );
     return spec.copyWith(
       thicknessOuter: result.outer,
       thicknessInner: result.inner,
-      intercallThickness: result.spacer.round(),
+      intercallThickness: doubleGlass
+          ? result.spacer.round()
+          : spec.intercallThickness,
       fittedJoints: result.joints,
       glazingFitValid: true,
     );
@@ -20747,24 +20874,21 @@ class WindowModel extends ChangeNotifier {
       final paneThickness =
           _glassPaneThicknessOrDefault(activeGlass.thicknessOuter) +
           _glassPaneThicknessOrDefault(activeGlass.thicknessInner);
-      final availableGap = maxGlass - paneThickness;
-      if (availableGap <= 0) {
+      // The double-glazing bead, not whichever parclose was saved last.
+      final doubleCapacity =
+          glazingCapacityForStructure(
+            GlassStructure.double,
+            sliding: useSliding,
+            glass: activeGlass,
+          ) ??
+          maxGlass;
+      if (doubleCapacity - paneThickness <= 0) {
         componentOverrides.remove('جوان الزجاج (Joint Vitrage)');
         notifyListeners();
         return;
       }
-
-      // The intercall completes the sealed glass unit up to the parclose
-      // capacity. Vitrage and bourrage gaskets retain that unit and must not
-      // be deducted from the intercall size.
-      bestIntercall = recalculateIntercall
-          ? _nearestIntercallThickness(availableGap)
-          : activeGlass.intercallThickness;
-      if (bestIntercall == null) {
-        componentOverrides.remove('جوان الزجاج (Joint Vitrage)');
-        notifyListeners();
-        return;
-      }
+      // The spacer is chosen once the gaskets are known (below).
+      bestIntercall = activeGlass.intercallThickness;
 
       if (useSliding) {
         // Sliding uses the same glazing gasket on one or two sides. Keep the
@@ -20817,25 +20941,45 @@ class WindowModel extends ChangeNotifier {
           }
         }
       }
-      if (bestJoint == null || bestIntercall == null) {
+      if (bestJoint == null) {
         componentOverrides.remove('جوان الزجاج (Joint Vitrage)');
         notifyListeners();
         return;
       }
 
+      // Order of a glazing pack: vitrage gasket, panes and spacer, then the
+      // bourrage gasket. The capacity holds all of them, so the spacer gets
+      // what remains after both gaskets.
+      final vitrage = _readPositiveDouble(bestJoint['thickness']);
+      final secondSide = !activeGlass.jointTwoSides
+          ? 0.0
+          : (!useSliding && bestBourrageJoint != null
+                ? _readPositiveDouble(bestBourrageJoint['thickness'])
+                : vitrage);
+      final recalculate = recalculateIntercall && !activeGlass.manualIntercall;
+      if (recalculate) {
+        bestIntercall =
+            _spacerFillingGap(doubleCapacity - paneThickness - vitrage - secondSide) ??
+            bestIntercall;
+      }
+
       final targetZone = selectedZone;
-      if (recalculateIntercall && targetZone != null) {
+      if (recalculate && targetZone != null) {
         final targetCellKey = activeSubZone;
         if (targetCellKey != null && targetCellKey.isNotEmpty) {
           final current = targetZone.getGlassForCell(targetCellKey);
+          // Refit so the stored gaskets follow the new spacer.
+          final fitted = await fitGlazingByRules(
+            current.copyWith(intercallThickness: bestIntercall),
+            sliding: useSliding,
+          );
           targetZone.cellGlassSpec =
               Map<String, GlassSpecification>.from(targetZone.cellGlassSpec)
-                ..[targetCellKey] = current.copyWith(
-                  intercallThickness: bestIntercall,
-                );
+                ..[targetCellKey] = fitted;
         } else {
-          targetZone.glass = targetZone.glass.copyWith(
-            intercallThickness: bestIntercall,
+          targetZone.glass = await fitGlazingByRules(
+            targetZone.glass.copyWith(intercallThickness: bestIntercall),
+            sliding: useSliding,
           );
         }
       }
@@ -25747,4 +25891,49 @@ List<String> slidingCentralEdgeKeys({
     }
   }
   return keys;
+}
+
+/// What the automatic glazing fit decided for one glass, for the drawer
+/// message. [fit] is set when the pack fits; otherwise [suggestion] holds a
+/// combination that would fit (another spacer, or other panes).
+class GlazingFitReport {
+  const GlazingFitReport({
+    required this.structure,
+    required this.usesBead,
+    required this.sliding,
+    required this.capacity,
+    required this.outer,
+    required this.inner,
+    required this.spacer,
+    required this.valid,
+    this.beadName,
+    this.manualSpacer = false,
+    this.fit,
+    this.suggestion,
+  });
+
+  final GlassStructure structure;
+  final bool usesBead;
+  final bool sliding;
+  final String? beadName;
+  final double? capacity;
+  final double outer;
+  final double inner;
+  final double spacer;
+  final bool valid;
+  final bool manualSpacer;
+  final GlassPackFit? fit;
+  final GlassPackFit? suggestion;
+
+  /// Whether this report describes [spec] (the drawer shows the report of
+  /// the glass that is selected, not of another pane).
+  bool describes(GlassSpecification spec) {
+    if (spec.structure != structure) return false;
+    final specOuter = spec.thicknessOuter ?? kDefaultGlassPaneThickness;
+    if ((specOuter - outer).abs() > 0.01) return false;
+    if (structure != GlassStructure.double) return true;
+    final specInner = spec.thicknessInner ?? kDefaultGlassPaneThickness;
+    return (specInner - inner).abs() <= 0.01 &&
+        (spec.intercallThickness - spacer).abs() <= 0.01;
+  }
 }

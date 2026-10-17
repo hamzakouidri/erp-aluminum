@@ -234,6 +234,7 @@ extension GlassSpecificationSerialization on GlassSpecification {
       'jointTwoSides': jointTwoSides,
       'fittedJoints': fittedJoints,
       'glazingFitValid': glazingFitValid,
+      if (manualIntercall) 'manualIntercall': true,
       'temperedOuter': temperedOuter,
       'temperedInner': temperedInner,
     };
@@ -308,6 +309,7 @@ GlassSpecification glassSpecificationFromMap(Map<String, dynamic> map) {
     rosetteShape: (map['rosetteShape'] as num?)?.toInt() ?? 1,
     jointTwoSides: map['jointTwoSides'] as bool? ?? true,
     glazingFitValid: map['glazingFitValid'] as bool?,
+    manualIntercall: map['manualIntercall'] as bool? ?? false,
     fittedJoints: (map['fittedJoints'] as List? ?? const [])
         .whereType<Map>()
         .map((row) => Map<String, dynamic>.from(row))
