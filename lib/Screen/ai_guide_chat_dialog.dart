@@ -9,8 +9,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:file_picker/file_picker.dart';
 import '../settings/app_settings.dart';
+import '../services/ai_agent_service.dart';
 import '../services/ai_controller_service.dart';
 import '../services/tts_service.dart';
+import '../settings/localization.dart';
 
 class ChatMessage {
   String text;
@@ -18,11 +20,15 @@ class ChatMessage {
   final String? actionType;
   final bool isWarning;
 
+  /// The tools the assistant used for this answer.
+  final List<String> steps;
+
   ChatMessage({
     required this.text,
     required this.isUser,
     this.actionType,
     this.isWarning = false,
+    this.steps = const [],
   });
 }
 
@@ -58,6 +64,11 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
   bool _isVoiceMuted = false;
   String? _recordingPath;
 
+  /// The model chosen by the user, null for the strongest available, and
+  /// the one that answered last.
+  String? _model;
+  String? _activeModel;
+
   StreamSubscription<Amplitude>? _amplitudeSub;
   double _currentAmplitudeDb = -160.0;
 
@@ -83,27 +94,27 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
     final lang = context.read<AppSettingsProvider>().language;
     return switch (lang) {
       AppLanguage.french => [
+          'Quelles commandes sont en attente et que reste-t-il à encaisser ?',
           'Résumé des caisses d\'aujourd\'hui',
-          'Caisse atelier aujourd\'hui',
-          'Caisse magasin aujourd\'hui',
-          'Disponibilité profilé tube 40 en stock ?',
-          'Comment utiliser l\'optimisation de coupe ?',
+          'Combien reste-t-il de tube 40 et pour quelles commandes est-il réservé ?',
+          'D\'où vient le dernier achat de joint et à quel prix ?',
+          'Vue d\'ensemble de l\'atelier',
           'Ouvrir les commandes',
         ],
       AppLanguage.english => [
+          'Which orders are pending and how much is left to collect?',
           'Today\'s cashbox summary',
-          'Today\'s workshop cashbox',
-          'Today\'s store cashbox',
-          'Check profile tube 40 availability',
-          'How to use cutting optimizer?',
+          'How much tube 40 is left and which orders is it reserved for?',
+          'Where did the last joint purchase come from, and at what price?',
+          'Workshop overview',
           'Open orders screen',
         ],
       _ => [
+          'ما الطلبيات المتوقفة في الانتظار وكم بقي لنا عند زبائنها؟',
           'ملخص الصناديق لليوم (الورشة والمحل)',
-          'لخص لي صندوق الورشة لليوم',
-          'لخص لي صندوق المحل لليوم',
-          'هل بروفيل تيوب 40 متوفر في المخزون؟',
-          'كيف أستخدم تحسين قص الألمنيوم؟',
+          'كم بقي من تيوب 40 ولأي طلبيات هو محجوز؟',
+          'من أين جاء آخر شراء للجوان وبأي سعر؟',
+          'أعطني نظرة عامة على الورشة',
           'افتح شاشة الطلبيات',
         ],
     };
@@ -113,6 +124,9 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
   void initState() {
     super.initState();
     _ttsService.init();
+    AiAgentService.savedModel().then((model) {
+      if (mounted) setState(() => _model = model);
+    });
 
     // Check if native streaming STT is available (Android, iOS, Web)
     _speechToText.initialize(
@@ -135,9 +149,9 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final welcome = _t(
-        ar: 'مرحباً بك! أنا مساعدك الذكي لتطبيق الألمنيوم والزجاج. يمكنك التحدث بالميكروفون وسأكتب ما تقوله لحظياً وأنفذ أوامرك بدقة متناهية، أو الاستفسار عن الصناديق والمخزون.',
-        fr: 'Bienvenue ! Je suis votre assistant IA pour l’atelier d’aluminium et verre. Parlez dans le microphone pour dicter vos ordres en temps réel ou interroger les caisses et le stock.',
-        en: 'Welcome! I am your AI assistant for the aluminum & glass workshop. Speak into the microphone to dictate commands in real time or inquire about cashboxes and inventory.',
+        ar: 'مرحباً! أعمل معك كأحد عمال الورشة: أبحث في الطلبيات والزبائن والمخزون وحركة المواد والصندوق مباشرة من بيانات التطبيق، وأنفذ ما تطلبه من تعديلات بعد موافقتك. اكتب أو تحدث بالميكروفون.',
+        fr: 'Bonjour ! Je travaille avec vous comme un employé de l’atelier : je consulte directement les commandes, clients, stock, mouvements et caisses de l’application, et j’effectue les modifications demandées après votre accord. Écrivez ou parlez.',
+        en: 'Hello! I work with you like one of the workshop staff: I look up orders, clients, stock, material movements and cashboxes straight from the app, and make the changes you ask for once you approve them. Type or speak.',
       );
       if (_messages.isEmpty) {
         setState(() {
@@ -356,14 +370,15 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
       final transcribed = response.transcribedQuery?.trim() ?? '';
       if (transcribed.isNotEmpty) {
         userBubble.text = '🗣️ $transcribed';
-        _textController.text = transcribed;
-      } else {
-        userBubble.text = _t(
-          ar: '🗣️ أمر صوتي',
-          fr: '🗣️ Commande vocale',
-          en: '🗣️ Voice command',
-        );
+        // The transcription is answered by the agent like typed text.
+        await _runAgent(transcribed);
+        return;
       }
+      userBubble.text = _t(
+        ar: '🗣️ أمر صوتي',
+        fr: '🗣️ Commande vocale',
+        en: '🗣️ Voice command',
+      );
 
       await _processAiResponse(aiService, response);
     } catch (e) {
@@ -446,27 +461,152 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
     });
     _scrollToBottom();
 
-    final lang = context.read<AppSettingsProvider>().language;
-    final apiKey = await _getEffectiveApiKey();
-    final aiService = AiControllerService(apiKey: apiKey);
+    await _runAgent(text);
+  }
 
+  /// Answers [text] with the workshop agent: it reads the app's data through
+  /// its tools, under this user's permissions, and asks before any change.
+  Future<void> _runAgent(String text) async {
+    final settings = context.read<AppSettingsProvider>();
+    final lang = settings.language;
+    final permissions = AiAgentPermissions.fromSettings(settings);
+    final apiKey = await _getEffectiveApiKey();
+    if (!mounted) return;
     final history = _messages
         .take(_messages.length - 1)
         .where((m) => !m.text.startsWith('🎤 ['))
         .map((m) => {
               'role': m.isUser ? 'user' : 'model',
-              'content': m.text,
+              'content': m.text.replaceFirst('🗣️ ', ''),
             })
         .toList();
 
-    final response = await aiService.processQuery(
-      query: text,
-      chatHistory: history,
+    final result = await AiAgentService(
+      apiKey: apiKey,
+      preferredModel: _model,
+    ).run(
+      userText: text,
+      history: history,
       language: lang,
+      permissions: permissions,
+      confirm: _confirmAction,
     );
-
     if (!mounted) return;
-    await _processAiResponse(aiService, response);
+
+    setState(() {
+      _isLoading = false;
+      _activeModel = result.model ?? _activeModel;
+      _messages.add(ChatMessage(
+        text: result.text,
+        isUser: false,
+        steps: result.steps,
+      ));
+    });
+    _scrollToBottom();
+
+    final target = result.navigateTo;
+    if (target != null && widget.onNavigateRequested != null) {
+      widget.onNavigateRequested!(target);
+      return;
+    }
+    if (!_isVoiceMuted && !result.isError) {
+      await _ttsService.speak(result.text, languageCode: _currentLangCode);
+    }
+  }
+
+  static const _toolLabels = {
+    'search_orders': 'بحث في الطلبيات',
+    'get_order': 'تفاصيل طلبية',
+    'search_clients': 'بحث في الزبائن',
+    'search_stock': 'بحث في المخزون',
+    'get_product_history': 'حركة المنتج',
+    'cashbox_summary': 'ملخص الصندوق',
+    'list_suppliers': 'الموردون',
+    'workshop_overview': 'نظرة عامة على الورشة',
+    'create_client': 'إضافة زبون جديد',
+    'update_order_status': 'تغيير حالة طلبية',
+    'record_client_payment': 'تسجيل دفعة زبون',
+    'open_screen': 'فتح شاشة',
+  };
+
+  /// "🔎 search_orders" shown as "🔎 بحث في الطلبيات" in the user's language.
+  String _stepLabel(String step) {
+    final lang = context.read<AppSettingsProvider>().language;
+    final space = step.indexOf(' ');
+    if (space < 0) return step;
+    final name = step.substring(space + 1);
+    final label = _toolLabels[name];
+    return label == null
+        ? step
+        : '${step.substring(0, space)} ${Localization.translate(label, lang)}';
+  }
+
+  Future<bool> _confirmAction(String title, String details) async {
+    if (!mounted) return false;
+    final lang = context.read<AppSettingsProvider>().language;
+    String tr(String key) => Localization.translate(key, lang);
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.verified_user_outlined, color: Colors.blueAccent),
+        title: Text(tr(title)),
+        content: Text(
+          '$details\n\n${tr('المساعد يطلب موافقتك قبل التنفيذ.')}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(tr('إلغاء')),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            icon: const Icon(Icons.check_rounded),
+            label: Text(tr('موافقة وتنفيذ')),
+          ),
+        ],
+      ),
+    );
+    return approved == true;
+  }
+
+  Future<void> _pickModel() async {
+    final apiKey = await _getEffectiveApiKey();
+    if (!mounted) return;
+    final lang = context.read<AppSettingsProvider>().language;
+    String tr(String key) => Localization.translate(key, lang);
+    final models = await AiAgentService(apiKey: apiKey).availableModels();
+    if (!mounted) return;
+    final chosen = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: Text(tr('نموذج الذكاء الاصطناعي')),
+        children: [
+          for (final model in ['', ...models])
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(dialogContext, model),
+              child: Row(
+                children: [
+                  Icon(
+                    (model.isEmpty ? _model == null : _model == model)
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      model.isEmpty ? tr('تلقائي (أقوى نموذج متاح)') : model,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    if (chosen == null) return;
+    await AiAgentService.saveModel(chosen);
+    if (mounted) setState(() => _model = chosen.isEmpty ? null : chosen);
   }
 
   Future<void> _processAiResponse(AiControllerService aiService, AiAction response) async {
@@ -596,11 +736,13 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                       ),
                       Text(
-                        _t(
-                          ar: 'كتابة صوتية لحظية • تنفيذ دقيق للأوامر • ناطق فصيح',
-                          fr: 'Transcription en direct • Exécution précise • Synthèse vocale',
-                          en: 'Real-time dictation • Precision execution • Voice speech',
-                        ),
+                        _model ??
+                            _activeModel ??
+                            _t(
+                              ar: 'يعمل على بيانات التطبيق • ينفذ بعد موافقتك',
+                              fr: 'Travaille sur les données • Agit après accord',
+                              en: 'Works on the app data • Acts after approval',
+                            ),
                         style: TextStyle(
                           fontSize: 12,
                           color: isDark ? Colors.white70 : Colors.black54,
@@ -608,6 +750,15 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
                       ),
                     ],
                   ),
+                ),
+                IconButton(
+                  tooltip: _t(
+                    ar: 'نموذج الذكاء الاصطناعي',
+                    fr: 'Modèle d’IA',
+                    en: 'AI model',
+                  ),
+                  icon: const Icon(Icons.tune_rounded),
+                  onPressed: _pickModel,
                 ),
                 // Speaker Mute/Unmute
                 IconButton(
@@ -689,7 +840,7 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
                                 ],
                               ),
                             ),
-                          Text(
+                          SelectableText(
                             msg.text,
                             style: TextStyle(
                               color: msg.isUser
@@ -699,6 +850,33 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
                               height: 1.4,
                             ),
                           ),
+                          if (msg.steps.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Wrap(
+                                spacing: 4,
+                                runSpacing: 4,
+                                children: [
+                                  for (final step in msg.steps)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blueAccent.withValues(
+                                          alpha: 0.1,
+                                        ),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        _stepLabel(step),
+                                        style: const TextStyle(fontSize: 11),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
                           if (!msg.isUser)
                             Padding(
                               padding: const EdgeInsets.only(top: 6),
