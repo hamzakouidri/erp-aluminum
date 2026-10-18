@@ -44,6 +44,10 @@ bool isWoodColorName(Object? value) {
   final name = normalizeColorName(value);
   return name.contains('خشب') ||
       name.contains('خشبي') ||
+      // Names saved with a broken encoding (UTF-8 read as CP437).
+      name.contains('╪«╪┤╪¿') ||
+      name.contains('╪»┘è╪▓╪▒') ||
+      name.contains('╪º┘å╪¬┘è┘â') ||
       name.contains('wood') ||
       name.contains('bois') ||
       name.contains('faux') ||
@@ -92,7 +96,8 @@ DecorationImage? realColorTextureImage(Map<String, dynamic>? colorData) {
       name.contains('di zero') ||
       name.contains('desert') ||
       name.contains('ديزر') ||
-      name.contains('ديزير')) {
+      name.contains('ديزير') ||
+      name.contains('╪»┘è╪▓╪▒')) {
     assetPath = 'assets/images/wood_texture_d0.png';
   } else if (_isFauxBoisMarron(name)) {
     // The faux-bois grain, lighter: not the aged grey antique.
@@ -103,18 +108,9 @@ DecorationImage? realColorTextureImage(Map<String, dynamic>? colorData) {
     );
   } else if (name.contains('antique') ||
       name.contains('انتيك') ||
-      name.contains('onteak')) {
+      name.contains('onteak') ||
+      name.contains('╪º┘å╪¬┘è┘â')) {
     assetPath = 'assets/images/wood_texture_antique.png';
-  } else if (name.contains('grey') ||
-      name.contains('gray') ||
-      name.contains('gris') ||
-      name.contains('رمادي')) {
-    assetPath = 'assets/images/wood_texture_grey.png';
-  } else if (name.contains('dark') ||
-      name.contains('داكن') ||
-      name.contains('fonce') ||
-      name.contains('foncé')) {
-    assetPath = 'assets/images/wood_texture_dark.png';
   }
 
   return DecorationImage(image: AssetImage(assetPath), fit: BoxFit.cover);

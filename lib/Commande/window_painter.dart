@@ -79,8 +79,15 @@ class WindowPainter extends CustomPainter {
       return;
     }
 
-    // Determine texture and shader to use (No color filters applied to preserve raw look)
-    _woodColorFilter = null;
+    // Raw textures, except Faux Bois Marron: the faux-bois grain lightened.
+    final bool isFauxBoisMarron =
+        cleanName.contains('faux bois marron') ||
+        cleanName.contains('marron faux bois') ||
+        (cleanName.contains('marron') && cleanName.contains('bois')) ||
+        (cleanName.contains('بني') && cleanName.contains('خشب'));
+    _woodColorFilter = isFauxBoisMarron
+        ? const ColorFilter.mode(Color(0x5CFFD9B0), BlendMode.screen)
+        : null;
 
     final bool isOakTexture =
         cleanName.contains('d0') ||
@@ -92,26 +99,15 @@ class WindowPainter extends CustomPainter {
         cleanName.contains('antique') ||
         cleanName.contains('انتيك') ||
         cleanName.contains('onteak') ||
-        cleanName.contains('faux bois marron') ||
-        cleanName.contains('marron faux bois') ||
-        (cleanName.contains('marron') && cleanName.contains('bois')) ||
-        (cleanName.contains('بني') && cleanName.contains('خشب')) ||
         cleanName.contains('╪º┘å╪¬┘è┘â');
-
-    final bool isGreyTexture =
-        cleanName.contains('grey') ||
-        cleanName.contains('gray') ||
-        cleanName.contains('رمادي') ||
-        cleanName.contains('Gris 7024');
 
     if (isOakTexture) {
       _woodShader = TextureCache.getShaderD0();
     } else if (isAntiqueTexture) {
       _woodShader = TextureCache.getShaderAntique();
-    } else if (isGreyTexture) {
-      _woodShader = TextureCache.getShaderGrey();
     } else {
-      // Default wood (الخشبي) and dark wood use the raw mahogany texture (wood_texture.png)
+      // Default wood (الخشبي), dark wood and Faux Bois Marron use the
+      // mahogany faux-bois texture (wood_texture.png).
       _woodShader = TextureCache.getShaderMahogany();
     }
   }
@@ -918,20 +914,11 @@ class WindowPainter extends CustomPainter {
             cleanName.contains('onteak') ||
             cleanName.contains('╪º┘å╪¬┘è┘â');
 
-        final bool isGreyTexture =
-            cleanName.contains('grey') ||
-            cleanName.contains('gray') ||
-            cleanName.contains('رمادي') ||
-            cleanName.contains('gris');
-
         final ui.Image? texture = isOakTexture
             ? TextureCache.woodTextureD0
             : (isAntiqueTexture
                   ? TextureCache.woodTextureAntique
-                  : (isGreyTexture
-                        ? TextureCache.woodTextureGrey
-                        : (TextureCache.woodTexture ??
-                              TextureCache.woodTextureD0)));
+                  : (TextureCache.woodTexture ?? TextureCache.woodTextureD0));
 
         if (texture != null) {
           return ui.ImageShader(

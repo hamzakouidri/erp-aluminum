@@ -552,85 +552,9 @@ extension _WindowViewFrame on _WindowViewState {
     return false;
   }
 
-  DecorationImage? _getWoodTextureImage(Map<String, dynamic> dbColor) {
-    final name = dbColor['name'].toString().toLowerCase();
-    final cleanName = name
-        .replaceAll('أ', 'ا')
-        .replaceAll('إ', 'ا')
-        .replaceAll('آ', 'ا')
-        .replaceAll('ى', 'ي')
-        .replaceAll('ة', 'ه');
-
-    final isWood =
-        cleanName.contains('خشب') ||
-        cleanName.contains('wood') ||
-        cleanName.contains('bois') ||
-        cleanName.contains('╪«╪┤╪¿') ||
-        cleanName.contains('desert') ||
-        cleanName.contains('ديزر') ||
-        cleanName.contains('ديزير') ||
-        cleanName.contains('oak') ||
-        cleanName.contains('اوك') ||
-        cleanName.contains('chene') ||
-        cleanName.contains('chêne') ||
-        cleanName.contains('noyer') ||
-        cleanName.contains('acajou') ||
-        cleanName.contains('شين') ||
-        cleanName.contains('نويا') ||
-        cleanName.contains('اكاجو') ||
-        cleanName.contains('بوا') ||
-        cleanName.contains('faux') ||
-        cleanName.contains('فو') ||
-        cleanName.contains('antique') ||
-        cleanName.contains('انتيك') ||
-        cleanName.contains('onteak') ||
-        cleanName.contains('╪º┘å╪¬┘è┘â') ||
-        cleanName.contains('╪»┘è╪▓╪▒') ||
-        cleanName.contains('d0') ||
-        cleanName.contains('دي زيرو') ||
-        cleanName.contains('بلوط') ||
-        cleanName.contains('di zero');
-
-    if (!isWood) return null;
-
-    String assetPath = 'assets/images/wood_texture.png';
-    if (cleanName.contains('d0') ||
-        cleanName.contains('oak') ||
-        cleanName.contains('اوك') ||
-        cleanName.contains('شين') ||
-        cleanName.contains('chene') ||
-        cleanName.contains('chêne') ||
-        cleanName.contains('بلوط') ||
-        cleanName.contains('دي زيرو') ||
-        cleanName.contains('di zero') ||
-        cleanName.contains('desert') ||
-        cleanName.contains('ديزر') ||
-        cleanName.contains('ديزير') ||
-        cleanName.contains('╪»┘è╪▓╪▒')) {
-      assetPath = 'assets/images/wood_texture_d0.png';
-    } else if (cleanName.contains('antique') ||
-        cleanName.contains('انتيك') ||
-        cleanName.contains('onteak') ||
-        cleanName.contains('faux bois marron') ||
-        cleanName.contains('marron faux bois') ||
-        (cleanName.contains('marron') && cleanName.contains('bois')) ||
-        (cleanName.contains('بني') && cleanName.contains('خشب')) ||
-        cleanName.contains('╪º┘å╪¬┘è┘â')) {
-      assetPath = 'assets/images/wood_texture_antique.png';
-    } else if (cleanName.contains('grey') ||
-        cleanName.contains('gray') ||
-        cleanName.contains('gris') ||
-        cleanName.contains('رمادي')) {
-      assetPath = 'assets/images/wood_texture_grey.png';
-    } else if (cleanName.contains('dark') ||
-        cleanName.contains('daكن') ||
-        cleanName.contains('fonce') ||
-        cleanName.contains('foncé')) {
-      assetPath = 'assets/images/wood_texture_dark.png';
-    }
-
-    return DecorationImage(image: AssetImage(assetPath), fit: BoxFit.cover);
-  }
+  /// The wood grain of a catalogue colour (one rule for every screen).
+  DecorationImage? _getWoodTextureImage(Map<String, dynamic> dbColor) =>
+      realColorTextureImage(dbColor);
 
   double _catalogNumber(Map<String, dynamic> row, String key) {
     final value = row[key];

@@ -30,6 +30,7 @@ import 'package:database_data/Commande/Systeme/profile_selector_dialog.dart'
     hide getComponentSize;
 import 'package:database_data/Commande/Systeme/glass_joint_fit.dart';
 import 'package:database_data/Commande/Systeme/glazing_fit_message.dart';
+import 'package:database_data/utils/real_color_resolver.dart';
 import 'package:database_data/widgets/section_image.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:provider/provider.dart';
