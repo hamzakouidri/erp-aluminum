@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../settings/localization.dart';
 import '../settings/app_settings.dart';
 import 'order_date_utils.dart';
+import 'order_status_order.dart';
 import 'Systeme/sliding_montant_counts.dart';
 import 'Systeme/model_serialization.dart';
 import 'package:database_data/sql_database.dart';
@@ -114,6 +115,10 @@ class DevisData {
   final int sequenceNumber;
   final int priorConfirmedWindowsCount;
 
+  final String orderStatus;
+  final bool isConfirmed;
+  final bool isDiscountApplicable;
+
   // Raw inputs for dynamic rebuilding
   final Map<String, dynamic>? rawOrder;
   final List<Map<String, dynamic>>? rawItems;
@@ -149,6 +154,9 @@ class DevisData {
     this.clientId = 0,
     this.sequenceNumber = 0,
     this.priorConfirmedWindowsCount = 0,
+    this.orderStatus = '',
+    this.isConfirmed = false,
+    this.isDiscountApplicable = true,
     this.rawOrder,
     this.rawItems,
   });
@@ -252,16 +260,38 @@ class DevisBuilder {
       (acc, item) =>
           acc + (item.isReplaced ? 0.0 : item.unitPrice * item.quantity),
     );
-    final remise = isOfficialInvoice
+    final rawStatus = order['status']?.toString() ?? '';
+    final statusWeight = orderStatusWeight(rawStatus);
+    // An order is confirmed if it has reached or passed 'Confirmed' status (weight >= 20 and not cancelled).
+    final bool isOrderConfirmed =
+        statusWeight >= 20 && statusWeight != 999;
+    // Discount is applicable if the order is confirmed, or if it is an official invoice / partial delivery
+    final bool isDiscountApplicable =
+        isOrderConfirmed || isOfficialInvoice || isPartial;
+
+    final rawRemise = isOfficialInvoice
         ? (_toDouble(order['remise']) / 1.19)
         : _toDouble(order['remise']);
+    final remise = isDiscountApplicable ? rawRemise : 0.0;
     final tvaPercent = isOfficialInvoice ? 19.0 : _toDouble(order['tva']);
     final totalBrutValue = totalBrut;
     final totalBeforeTax = totalBrutValue - remise;
     final tvaAmount = (totalBeforeTax * tvaPercent) / 100;
     final totalTTC = totalBeforeTax + tvaAmount;
     final amountPaid = _toDouble(order['advance_payment']);
-    final invoiceNote = _readInvoiceNote(order);
+
+    var invoiceNote = _readInvoiceNote(order);
+    if (isOrderConfirmed) {
+      final confirmedNote = Localization.translate('تم تأكيد هذه الطلبية', _currentLang);
+      if (invoiceNote.isEmpty) {
+        invoiceNote = confirmedNote;
+      } else if (!invoiceNote.contains(confirmedNote) &&
+          !invoiceNote.contains('تم تأكيد هذه الطلبية') &&
+          !invoiceNote.toLowerCase().contains('confirmée')) {
+        invoiceNote = '$confirmedNote — $invoiceNote';
+      }
+    }
+    invoiceNote = invoiceNote.replaceAll(pricingNotePattern, '').trim();
 
     var firstName = order['firstname']?.toString() ?? '';
     var lastName = order['lastname']?.toString() ?? '';
@@ -379,6 +409,9 @@ class DevisBuilder {
       clientId: clientId ?? 0,
       sequenceNumber: sequenceNumber,
       priorConfirmedWindowsCount: priorConfirmedWindowsCount,
+      orderStatus: rawStatus,
+      isConfirmed: isOrderConfirmed,
+      isDiscountApplicable: isDiscountApplicable,
       rawOrder: order,
       rawItems: items,
     );
@@ -400,6 +433,38 @@ class DevisBuilder {
       if (value.isNotEmpty) return value;
     }
     return '';
+  }
+
+  static final RegExp pricingNotePattern = RegExp(
+    r'^(?:السعر:|Prix:|Price:)\s*.*?\|\s*(?:الخصم:|Remise:|Discount:)\s*.*?\|\s*(?:نسبة الضريبة:|Taux TVA:|Taux:|Tax Rate:)\s*.*$',
+    multiLine: true,
+  );
+
+  static String formatMoney(double value) {
+    if (value == value.roundToDouble()) {
+      return value.toStringAsFixed(0);
+    }
+    return value.toStringAsFixed(2);
+  }
+
+  static String formatPricingNote({
+    required double totalBrut,
+    required double remise,
+    required double tvaPercent,
+    required AppLanguage lang,
+  }) {
+    final formattedTotal = formatMoney(totalBrut);
+    final formattedRemise = formatMoney(remise);
+    final formattedTaux =
+        '${tvaPercent == tvaPercent.roundToDouble() ? tvaPercent.toStringAsFixed(0) : tvaPercent.toStringAsFixed(2)}%';
+
+    if (lang == AppLanguage.french) {
+      return 'Prix: $formattedTotal D.A | Remise: $formattedRemise D.A | Taux TVA: $formattedTaux';
+    } else if (lang == AppLanguage.english) {
+      return 'Price: $formattedTotal DZD | Discount: $formattedRemise DZD | Tax Rate: $formattedTaux';
+    } else {
+      return 'السعر: $formattedTotal دج | الخصم: $formattedRemise دج | نسبة الضريبة: $formattedTaux';
+    }
   }
 
   static DevisLineItem buildLineItemFromDetail(
@@ -893,18 +958,29 @@ class DevisBuilder {
         (displaySeries.toLowerCase().contains('moustiquaire')) ||
         (displaySeries.contains('موستيكير')) ||
         (displaySeries.contains('ناموسية'));
+    final bool isCustomProduct =
+        map['isCustomProduct'] == true ||
+        item['isCustomProduct'] == 1 ||
+        item['isCustomProduct'] == true ||
+        (item['window_type']?.toString().toLowerCase() == 'custom_product');
     final bool isGlassWork =
-        map['isGlassWork'] == true ||
-        (item['game']?.toString().contains('Verre Trempé') == true) ||
-        (item['game']?.toString().contains('فير ترومبي') == true) ||
-        displaySeries.toLowerCase().contains('verre trempé') ||
-        displaySeries.toLowerCase().contains('verre trempe') ||
-        displaySeries.contains('فير ترومبي') ||
-        displaySeries.contains('عمل زجاجي');
+        !isCustomProduct &&
+        (map['isGlassWork'] == true ||
+            (item['game']?.toString().contains('Verre Trempé') == true) ||
+            (item['game']?.toString().contains('فير ترومبي') == true) ||
+            displaySeries.toLowerCase().contains('verre trempé') ||
+            displaySeries.toLowerCase().contains('verre trempe') ||
+            displaySeries.contains('فير ترومبي') ||
+            displaySeries.contains('عمل زجاجي'));
 
     // Build DevisLineItem Title
     String title;
-    if (isStandaloneCaisson) {
+    if (isCustomProduct) {
+      final customName = map['manualNameOverride']?.toString().trim() ??
+          item['game']?.toString().trim() ??
+          '';
+      title = customName.isNotEmpty ? customName : 'منتج خاص';
+    } else if (isStandaloneCaisson) {
       title = 'Caisson Tunnel';
     } else if (isMoustiquaire) {
       title = 'Moustiquaire (موستيكير)';
@@ -994,6 +1070,40 @@ class DevisBuilder {
         width: width,
         height: height,
         color: itemProfColor,
+        detailId: detailId,
+      );
+    }
+
+    // ── Custom Product (منتج خاص): only show custom title, optional color, and manual note ──
+    if (isCustomProduct) {
+      details.clear();
+      final customColor = itemColor.isNotEmpty
+          ? itemColor
+          : (map['selectedDbColor']?['name']?.toString() ??
+              map['selectedColorName']?.toString() ??
+              '');
+      final desc = manualDesc?.trim() ?? '';
+      if (desc.isNotEmpty) {
+        for (final line in desc.split('\n')) {
+          final trimmed = line.trim();
+          if (trimmed.isNotEmpty) {
+            details.add(trimmed);
+          }
+        }
+      }
+
+      return DevisLineItem(
+        imagePath: item['drawing_image_path']?.toString(),
+        imageBase64: item['drawing_image_base64']?.toString(),
+        title: title,
+        details: details,
+        unitPrice: unitPrice,
+        quantity: (item['quantity'] as num?)?.toInt() ?? 1,
+        isReplaced: isReplaced,
+        replacementReason: replacementReason,
+        width: 0,
+        height: 0,
+        color: customColor,
         detailId: detailId,
       );
     }
@@ -3566,6 +3676,10 @@ class DevisBuilder {
         case 'gris':
         case 'رمادي':
           return 'Gris';
+        case 'faux bois marron clair':
+        case 'خشبي بني فاتح':
+        case 'light brown wood grain':
+          return 'Faux bois marron clair';
         case 'faux bois marron':
         case 'marron faux bois':
         case 'خشبي بني':
@@ -3597,6 +3711,10 @@ class DevisBuilder {
         case 'gris':
         case 'رمادي':
           return 'Grey';
+        case 'faux bois marron clair':
+        case 'خشبي بني فاتح':
+        case 'light brown wood grain':
+          return 'Light brown wood grain';
         case 'faux bois marron':
         case 'marron faux bois':
         case 'خشبي بني':
@@ -3627,6 +3745,10 @@ class DevisBuilder {
         case 'gris':
         case 'رمادي':
           return 'رمادي';
+        case 'faux bois marron clair':
+        case 'خشبي بني فاتح':
+        case 'light brown wood grain':
+          return 'خشبي بني فاتح';
         case 'faux bois marron':
         case 'marron faux bois':
         case 'خشبي بني':

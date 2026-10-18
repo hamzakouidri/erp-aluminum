@@ -80,6 +80,10 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
   double _discountAmount = 0.0;
   double _paidAmount = 0.0;
 
+  /// Paid amount stored for this document when it was loaded or last saved.
+  /// Raising «المبلغ المسدد» records the difference in the shop cash box.
+  double _storedPaidAmount = 0.0;
+
   // ── Items ─────────────────────────────────────────────────────────────────
   final List<Map<String, dynamic>> _items = [];
 
@@ -181,6 +185,7 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
           _discountAmount =
               (sale['discount_amount'] as num?)?.toDouble() ?? 0.0;
           _paidAmount = (sale['paid_amount'] as num?)?.toDouble() ?? 0.0;
+          _storedPaidAmount = _paidAmount;
           _locationId = (sale['location_id'] as num?)?.toInt() ?? _locationId;
           _destLocationId =
               (sale['dest_location_id'] as num?)?.toInt() ?? _destLocationId;
@@ -234,6 +239,45 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
     return _docType == 'bon_livraison' ||
         _docType == 'bon_route' ||
         _docType == 'facture';
+  }
+
+  /// The paid amount may not go below what the cash box already received
+  /// for this document: that money would vanish from the document only.
+  Future<bool> _paidAmountCanBeSaved() async {
+    final saleId = widget.saleId;
+    if (saleId == null || _paidAmount >= _storedPaidAmount - 0.01) return true;
+    final receipts = await widget.db.materialSaleReceiptsTotal(saleId);
+    if (_paidAmount >= receipts - 0.01) return true;
+    _showSnack(
+      _trans(
+        'لا يمكن خفض المبلغ المسدد تحت مجموع الدفعات المسجلة في الصندوق (${_fmt.format(receipts)} DA). احذف الدفعة من الخزينة أولاً.',
+        'Le montant payé ne peut pas être inférieur aux paiements déjà encaissés (${_fmt.format(receipts)} DA). Supprimez d’abord le paiement dans la trésorerie.',
+        'The paid amount cannot be lower than the payments already received (${_fmt.format(receipts)} DA). Delete the payment in the treasury first.',
+      ),
+      isError: true,
+    );
+    return false;
+  }
+
+  /// Records in the shop cash box the amount the user added to «المبلغ
+  /// المسدد» since the document was loaded, so the document and the cash box
+  /// agree. Internal workshop transfers involve no cash.
+  Future<void> _recordPaidIncrease(
+    int saleId, {
+    required double previousPaid,
+  }) async {
+    if (!_isInternalClient) {
+      await widget.db.recordMaterialSalePaidIncrease(
+        saleId: saleId,
+        previousPaid: previousPaid,
+        newPaid: _paidAmount,
+        saleCode: _saleCode,
+        clientId: _clientId,
+        clientName: _clientName,
+        clientPhone: _clientPhone,
+      );
+    }
+    _storedPaidAmount = _paidAmount;
   }
 
   void _recalc() => setState(() {
@@ -378,6 +422,7 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
     if (deductsStock && !(_isInternalClient && _destLocationId != null)) {
       await widget.db.updateMaterialSale(saleId, status: status);
     }
+    await _recordPaidIncrease(saleId, previousPaid: 0.0);
     CloudSyncService().notifyChange();
     return saleId;
   }
@@ -404,6 +449,7 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
         );
       } else {
         if (!_validateBeforePersist()) return;
+        if (!await _paidAmountCanBeSaved()) return;
         await widget.db.snapshotMaterialSale(
           widget.saleId!,
           actionType: 'before_confirm',
@@ -455,6 +501,10 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
             status: nextStatus,
           );
         }
+        await _recordPaidIncrease(
+          widget.saleId!,
+          previousPaid: _storedPaidAmount,
+        );
         if (!mounted) return;
         setState(() => _status = nextStatus);
         _showSnack('${_t('تم تأكيد الوثيقة')} ✔', isError: false);
@@ -779,11 +829,13 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
         phone: _clientPhone,
         caisseName: 'صندوق المحل',
         paymentMethod: selectedMethod,
+        documentType: SqlDatabase.materialSaleDocumentType,
       );
 
       final newPaid = _paidAmount + payAmount;
       final newRemaining = (_netTotal - newPaid).clamp(0.0, double.infinity);
       _paidAmount = newPaid;
+      _storedPaidAmount = newPaid;
       _paidCtrl.text = _paidAmount.toStringAsFixed(2);
 
       await widget.db.updateMaterialSale(
@@ -921,9 +973,11 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
               locationId: _locationId ?? 1,
             );
           }
+          await _recordPaidIncrease(newId, previousPaid: 0.0);
         }
       } else {
         // Update existing
+        if (!await _paidAmountCanBeSaved()) return;
         await widget.db.snapshotMaterialSale(
           widget.saleId!,
           actionType: 'before_update',
@@ -977,6 +1031,10 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
             locationId: _locationId ?? 1,
           );
         }
+        await _recordPaidIncrease(
+          widget.saleId!,
+          previousPaid: _storedPaidAmount,
+        );
       }
 
       CloudSyncService().notifyChange();

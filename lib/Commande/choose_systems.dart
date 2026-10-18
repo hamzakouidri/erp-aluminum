@@ -829,7 +829,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
       addSystem(
         mode: 'mixed',
         title: 'التصميم',
-        iconPath: 'Icon/french.png',
+        iconPath: 'assets/Icon/french.png',
         size: 70,
       );
     }
@@ -838,7 +838,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
       addSystem(
         mode: 'sliding',
         title: 'System Sliding (جرار)',
-        iconPath: 'Icon/sli.png',
+        iconPath: 'assets/Icon/sli.png',
       );
     }
 
@@ -846,7 +846,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
       addSystem(
         mode: 'french',
         title: 'System Beating (فرنسي)',
-        iconPath: 'Icon/french.png',
+        iconPath: 'assets/Icon/french.png',
         size: 70,
       );
     }
@@ -855,7 +855,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
       addSystem(
         mode: 'rolling',
         title: 'System Roling',
-        iconPath: 'Icon/roling.png',
+        iconPath: 'assets/Icon/roling.png',
       );
     }
 
@@ -863,7 +863,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
       addSystem(
         mode: 'caisson_tunnel',
         title: 'Caisson Tunnel',
-        iconPath: 'Icon/caisson_tunnel.jpg',
+        iconPath: 'assets/Icon/caisson_tunnel.jpg',
       );
     }
 
@@ -871,7 +871,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
       addSystem(
         mode: 'moustiquaire',
         title: 'Moustiquaire (موستيكير)',
-        iconPath: 'Icon/media.webp',
+        iconPath: 'assets/Icon/media.webp',
       );
     }
 
@@ -879,7 +879,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
       addSystem(
         mode: 'precadre',
         title: 'Pre-cadre',
-        iconPath: 'Icon/french.png',
+        iconPath: 'assets/Icon/french.png',
       );
     }
 
@@ -887,7 +887,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
       addSystem(
         mode: 'verre',
         title: 'Verre Trempé (أعمال الزجاج)',
-        iconPath: 'Icon/verre.png',
+        iconPath: 'assets/Icon/verre.png',
       );
     }
 
@@ -1294,7 +1294,7 @@ class _ItemBuildSystemState extends State<ItemBuildSystem> {
                         bottom: 0,
                         width: (widget.width ?? 60) * 0.65,
                         child: _buildSystemIcon(
-                          iconPath: 'Icon/french.png',
+                          iconPath: 'assets/Icon/french.png',
                           fit: BoxFit.contain,
                         ),
                       ),
@@ -1304,7 +1304,7 @@ class _ItemBuildSystemState extends State<ItemBuildSystem> {
                         bottom: 0,
                         width: (widget.width ?? 60) * 0.65,
                         child: _buildSystemIcon(
-                          iconPath: 'Icon/sli.png',
+                          iconPath: 'assets/Icon/sli.png',
                           fit: BoxFit.contain,
                         ),
                       ),

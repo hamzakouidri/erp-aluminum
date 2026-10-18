@@ -8,7 +8,7 @@ import 'package:sqflite_sqlcipher/sqflite.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' as sqflite_common;
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
@@ -22,6 +22,7 @@ import 'package:database_data/Commande/order_status_order.dart';
 import 'package:database_data/services/auth_service.dart';
 import 'package:database_data/services/order_notification_service.dart';
 import 'package:database_data/services/worker_push_notification_service.dart';
+import 'package:database_data/services/price_sync_service.dart';
 
 class DuplicateClientException implements Exception {
   final String field;
@@ -333,6 +334,8 @@ class SqlDatabase {
     'SeriesColorPrices',
     'SectionColorPrices',
     'AccessoryColorPrices',
+    // The workshop's own catalogue base prices and price-origin markers.
+    'WorkshopPriceOverrides',
     'MaterialSales',
     'MaterialSaleItems',
     'AuditLogs',
@@ -369,6 +372,83 @@ class SqlDatabase {
     _accessoryLinksSchemaTask = null;
     _remnantInventorySchemaOwner = null;
     _remnantInventorySchemaTask = null;
+    _syncInfrastructureSignature = null;
+    _lastHealthyCheckAt = null;
+    _readySchemas.clear();
+    // A reopened or restored database file may lack these columns again.
+    _decorPanelDesignSchemaReady = false;
+    _orderCodeInfrastructureReady = false;
+    _orderTrashInfrastructureReady = false;
+    _orderPinningInfrastructureReady = false;
+    _achatTrashInfrastructureReady = false;
+    _auditLogsInfrastructureReady = false;
+    _dashboardActivitiesInfrastructureReady = false;
+  }
+
+  /// Indexes on the most-read workshop tables. Without them every order,
+  /// ledger, stock and worker screen scanned whole tables. Each index is only
+  /// created when its columns exist on this (possibly old) database.
+  static const List<(String, String, List<String>)> _performanceIndexes = [
+    ('idx_commandes_client', 'Commandes', ['client_id']),
+    ('idx_commandes_details_order', 'Commandes_details', ['id_commandes']),
+    ('idx_commandes_deliveries_order', 'Commandes_deliveries', [
+      'id_commandes',
+    ]),
+    ('idx_treasury_entity', 'Treasury', ['entity_type', 'entity_id']),
+    ('idx_treasury_reference', 'Treasury', ['reference_id']),
+    ('idx_inventory_tx_item', 'InventoryTransactions', [
+      'item_id',
+      'item_type',
+      'color_id',
+    ]),
+    ('idx_inventory_tx_reference', 'InventoryTransactions', [
+      'reference_id',
+      'transaction_type',
+    ]),
+    ('idx_worker_allocations_worker', 'WorkerAllocations', [
+      'worker_uid',
+      'is_settled',
+    ]),
+    ('idx_worker_transactions_worker', 'WorkerTransactions', [
+      'worker_uid',
+      'is_settled',
+    ]),
+    ('idx_achat_items_achat', 'Achat_items', ['achat_id']),
+    ('idx_achat_items_item', 'Achat_items', ['item_id', 'item_type']),
+    ('idx_achats_supplier', 'Achats', ['supplier_id']),
+    ('idx_material_sale_items_sale', 'MaterialSaleItems', ['sale_id']),
+  ];
+
+  Future<void> _ensurePerformanceIndexes(DatabaseExecutor db) async {
+    for (final (name, table, columns) in _performanceIndexes) {
+      try {
+        final existing = await _tableColumns(db, table);
+        if (!columns.every(existing.contains)) continue;
+        await db.execute(
+          'CREATE INDEX IF NOT EXISTS $name ON $table (${columns.join(', ')})',
+        );
+      } catch (error) {
+        debugPrint('Index $name skipped: $error');
+      }
+    }
+  }
+
+  /// Schema checks already done on the open database. They run ALTER/CREATE
+  /// statements that fail harmlessly when the column exists, yet every failing
+  /// statement still parses the schema and takes a write lock, and several of
+  /// them ran on every list read (accessories, stock, orders, clients...).
+  static final Set<String> _readySchemas = <String>{};
+
+  Future<void> _ensureSchemaOnce(
+    DatabaseExecutor executor,
+    String key,
+    Future<void> Function() ensure,
+  ) async {
+    if (_readySchemas.contains(key)) return;
+    await ensure();
+    // A transaction may still roll back its schema change: only a check run
+    // directly on the database is remembered.
+    if (executor is Database) _readySchemas.add(key);
   }
 
   /// Clears only the workshop-specific transactional rows (orders, customers, stock, finances),
@@ -557,6 +637,18 @@ class SqlDatabase {
         "ALTER TABLE Commandes_details ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;",
       );
     } catch (_) {}
+    try {
+      // Glass sizes corrected at glass reception. They used to overwrite
+      // confirmed_mesures_json, which holds the window measurements.
+      await db.execute(
+        "ALTER TABLE Commandes_details ADD COLUMN glass_override_json TEXT;",
+      );
+    } catch (_) {}
+    try {
+      await _moveLegacyGlassOverrides(db);
+    } catch (error) {
+      debugPrint('Legacy glass override migration skipped: $error');
+    }
     try {
       await db.execute("ALTER TABLE Commandes ADD COLUMN updated_by TEXT;");
     } catch (_) {}
@@ -803,12 +895,14 @@ class SqlDatabase {
     await _ensureAdvancedKitCompatibilitySchema(db);
     await _ensureDecorPanelDesignSchema(db);
     await _ensurePaymentAllocationSchema(db);
+    await _ensureTreasuryDocumentType(db);
     await _ensureSyncTombstoneInfrastructure(db);
     await _ensureTemperedGlassItemsTable(db);
     await _ensureTemperedGlassSystemsAndRulesTables(db);
     await _ensureVROHandlesAndColorsSeeded(db);
     await _backfillClientCodes(db);
     await _backfillOrderCodes(db);
+    await _ensurePerformanceIndexes(db);
 
     // Automatically link section and profile images based on their codes
     try {
@@ -1890,7 +1984,10 @@ class SqlDatabase {
     } catch (_) {}
   }
 
-  Future<void> _ensureShutterColorTables(DatabaseExecutor db) async {
+  Future<void> _ensureShutterColorTables(DatabaseExecutor db) =>
+      _ensureSchemaOnce(db, '_ensureShutterColorTables', () => _ensureShutterColorTablesUncached(db));
+
+  Future<void> _ensureShutterColorTablesUncached(DatabaseExecutor db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS ShutterColorPrices (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2137,7 +2234,10 @@ class SqlDatabase {
 
   /// Allows one catalogue section to be assigned to another series or to an
   /// entire profile system without duplicating the section row.
-  Future<void> _ensureSectionSharingSchema(DatabaseExecutor db) async {
+  Future<void> _ensureSectionSharingSchema(DatabaseExecutor db) =>
+      _ensureSchemaOnce(db, '_ensureSectionSharingSchema', () => _ensureSectionSharingSchemaUncached(db));
+
+  Future<void> _ensureSectionSharingSchemaUncached(DatabaseExecutor db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS SectionSharingRules (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2491,17 +2591,32 @@ class SqlDatabase {
     }
   }
 
-  Future<bool> isDatabaseHealthy() async {
+  /// Last time `PRAGMA quick_check` passed. The check reads the whole
+  /// database; running it before every sync upload (250 ms after any write)
+  /// froze the interface on large workshops.
+  static DateTime? _lastHealthyCheckAt;
+  static const Duration _healthCheckInterval = Duration(minutes: 10);
+
+  Future<bool> isDatabaseHealthy({bool force = false}) async {
     try {
       final currentDb = await db;
       if (currentDb == null) return false;
+      final lastCheck = _lastHealthyCheckAt;
+      if (!force &&
+          lastCheck != null &&
+          DateTime.now().difference(lastCheck) < _healthCheckInterval) {
+        return true;
+      }
       final check = await currentDb.rawQuery('PRAGMA quick_check');
-      return check.isNotEmpty &&
+      final healthy =
+          check.isNotEmpty &&
           check.every(
             (row) => row.values.any(
               (value) => value.toString().toLowerCase() == 'ok',
             ),
           );
+      _lastHealthyCheckAt = healthy ? DateTime.now() : null;
+      return healthy;
     } catch (error) {
       // Do not label a moved open handle as corruption. The sync layer can
       // safely close and reopen it, whereas treating it as corruption would
@@ -4171,6 +4286,14 @@ class SqlDatabase {
       'color_id': colorId,
       'price': price,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await recordWorkshopPrice(
+      myDb,
+      table: 'SeriesColorPrices',
+      rowKey: priceRowKey([seriesId, colorId]),
+      column: 'price',
+      price: price,
+      source: 'manual',
+    );
     CloudSyncService().notifyChange();
     return res;
   }
@@ -4229,6 +4352,14 @@ class SqlDatabase {
         )) {
       throw StateError('تعذر التحقق من حفظ سعر القطاع');
     }
+    await recordWorkshopPrice(
+      myDb,
+      table: 'SectionColorPrices',
+      rowKey: priceRowKey([sectionId, colorId]),
+      column: 'price',
+      price: price,
+      source: 'manual',
+    );
     CloudSyncService().notifyChange();
     return res;
   }
@@ -4244,6 +4375,14 @@ class SqlDatabase {
       'color_id': colorId,
       'price': price,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await recordWorkshopPrice(
+      myDb,
+      table: 'AccessoryColorPrices',
+      rowKey: priceRowKey([accessoryId, colorId]),
+      column: 'price',
+      price: price,
+      source: 'manual',
+    );
     CloudSyncService().notifyChange();
     return res;
   }
@@ -4462,7 +4601,15 @@ class SqlDatabase {
         now,
       ],
     );
-    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+    // The local rule is immediately available. Upload it in the background so
+    // a slow connection does not delay the success feedback in the series UI.
+    unawaited(() async {
+      try {
+        await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+      } catch (error) {
+        debugPrint('Deferred section-sharing sync failed: $error');
+      }
+    }());
     final rows = await myDb.rawQuery(
       '''
       SELECT id FROM SectionSharingRules
@@ -4712,9 +4859,10 @@ class SqlDatabase {
   /// Adds the immutable, user-facing client ID infrastructure.  [id] remains
   /// a distributed technical key for synchronisation; [client_code] is the
   /// business ID shown to people (1, 2, 3...) and is never recalculated.
-  Future<void> _ensureClientCodeInfrastructure(
-    DatabaseExecutor executor,
-  ) async {
+  Future<void> _ensureClientCodeInfrastructure(DatabaseExecutor executor) =>
+      _ensureSchemaOnce(executor, '_ensureClientCodeInfrastructure', () => _ensureClientCodeInfrastructureUncached(executor));
+
+  Future<void> _ensureClientCodeInfrastructureUncached(DatabaseExecutor executor) async {
     try {
       await executor.execute(
         'ALTER TABLE Client ADD COLUMN client_code INTEGER NOT NULL DEFAULT 0;',
@@ -4981,6 +5129,7 @@ class SqlDatabase {
       debugPrint('Warning updating MaterialRemnants reservation: $e');
     }
 
+    CloudSyncService().notifyChange();
     return true;
   }
 
@@ -5133,11 +5282,13 @@ class SqlDatabase {
   }
 
   Future<void> _ensureClientBusinessSegment(DatabaseExecutor database) async {
-    try {
-      await database.execute(
-        "ALTER TABLE Client ADD COLUMN business_segment TEXT NOT NULL DEFAULT 'windows'",
-      );
-    } catch (_) {}
+    await _ensureSchemaOnce(database, '_ensureClientBusinessSegment', () async {
+      try {
+        await database.execute(
+          "ALTER TABLE Client ADD COLUMN business_segment TEXT NOT NULL DEFAULT 'windows'",
+        );
+      } catch (_) {}
+    });
     await database.rawUpdate(
       "UPDATE Client SET business_segment = 'windows' "
       "WHERE business_segment IS NULL OR TRIM(business_segment) = ''",
@@ -5769,10 +5920,22 @@ class SqlDatabase {
   }
 
   Future<void> _ensureOrderQueryInfrastructure(DatabaseExecutor myDb) async {
+    await _ensureSchemaOnce(
+      myDb,
+      '_ensureOrderQueryInfrastructure',
+      () => _ensureOrderQueryInfrastructureUncached(myDb),
+    );
+    // Synced orders may arrive without a display code: keep this check (it
+    // stops after one cheap query when nothing is missing).
+    await _backfillOrderCodes(myDb);
+  }
+
+  Future<void> _ensureOrderQueryInfrastructureUncached(
+    DatabaseExecutor myDb,
+  ) async {
     await _ensureOrderTrashInfrastructure(myDb);
     await _ensureOrderStockReservationInfrastructure(myDb);
     await _ensureOrderPinningInfrastructure(myDb);
-    await _backfillOrderCodes(myDb);
 
     // Ensure Projects table exists
     try {
@@ -5924,6 +6087,7 @@ class SqlDatabase {
     int id,
     String newStatus, {
     bool skipAllocationSync = false,
+    bool resetWorkerProgress = false,
   }) async {
     Database? myDb = await db;
     final updatedBy = await _currentOrderEditor();
@@ -5939,7 +6103,11 @@ class SqlDatabase {
     );
 
     if (!skipAllocationSync) {
-      await syncAllocationsFromOrderStatus(id, newStatus);
+      await syncAllocationsFromOrderStatus(
+        id,
+        newStatus,
+        resetWorkerProgress: resetWorkerProgress,
+      );
     }
 
     // The local database is authoritative for the current action. Cloud
@@ -6215,10 +6383,71 @@ class SqlDatabase {
     return res;
   }
 
+  /// Moves glass sizes that glass reception wrote into confirmed_mesures_json
+  /// (an object instead of the list of window measurements) to their own
+  /// column. The overwritten window measurements cannot be recovered.
+  Future<void> _moveLegacyGlassOverrides(Database db) async {
+    final rows = await db.query(
+      'Commandes_details',
+      columns: ['id', 'confirmed_mesures_json'],
+      where: "TRIM(confirmed_mesures_json) LIKE '{%'",
+    );
+    for (final row in rows) {
+      final raw = row['confirmed_mesures_json']?.toString() ?? '';
+      Object? decoded;
+      try {
+        decoded = jsonDecode(raw);
+      } catch (_) {
+        continue;
+      }
+      if (decoded is! Map) continue;
+      final hasGlass =
+          decoded.containsKey('glass_height') ||
+          decoded.containsKey('glass_width');
+      await db.update(
+        'Commandes_details',
+        {
+          if (hasGlass) 'glass_override_json': raw,
+          'confirmed_mesures_json': null,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [row['id']],
+      );
+    }
+  }
+
+  /// Saves the glass sizes and specification corrected at glass reception.
+  Future<void> updateCommandeDetailGlassOverride(
+    int detailId, {
+    required String glassText,
+    required double glassHeight,
+    required double glassWidth,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await myDb.update(
+      'Commandes_details',
+      {
+        'glass': glassText,
+        'glass_override_json': jsonEncode({
+          'glass_height': glassHeight,
+          'glass_width': glassWidth,
+          'custom_spec': glassText,
+        }),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [detailId],
+    );
+    CloudSyncService().notifyChange();
+  }
+
   Future<void> syncAllocationsFromOrderStatus(
     int orderId,
-    String status,
-  ) async {
+    String status, {
+    bool resetWorkerProgress = false,
+  }) async {
     Database? myDb = await db;
     if (myDb == null) return;
 
@@ -6282,6 +6511,10 @@ class SqlDatabase {
         sLower.contains('انتظار') ||
         sLower.contains('مؤكد') ||
         sLower.contains('قياسات');
+    // Erasing worker progress is only allowed when the user confirmed it.
+    // This sync also runs when the allocation screen opens and after cloud
+    // downloads; those calls must never wipe what workers recorded.
+    if (isPreMfg && !resetWorkerProgress) return;
 
     for (var i = 0; i < details.length; i++) {
       final detailId = (details[i]['id'] as num?)?.toInt() ?? 0;
@@ -9298,25 +9531,32 @@ class SqlDatabase {
       await reconcileClientPayments(previousClientId);
     }
 
-    var uploaded = false;
-    try {
-      await CloudSyncService().notifyChangeImmediate();
-      uploaded = true;
-    } catch (error) {
-      debugPrint('Order $savedId saved locally; cloud upload deferred: $error');
-    }
-    if (uploaded) {
-      _notifyOrderEventSafe(
-        orderId: savedId,
-        isNew: createdNewOrder,
-        author: editor,
-      );
-      await _sendOrderPushEventSafe(
-        orderId: savedId,
-        action: createdNewOrder ? 'created' : 'updated',
-        author: editor,
-      );
-    }
+    // The order is committed locally at this point. Upload and notify in the
+    // background: waiting for the network and the push Edge Function (cold
+    // start + FCM) made the final "save" button feel slow.
+    unawaited(() async {
+      var uploaded = false;
+      try {
+        await CloudSyncService().notifyChangeImmediate();
+        uploaded = true;
+      } catch (error) {
+        debugPrint(
+          'Order $savedId saved locally; cloud upload deferred: $error',
+        );
+      }
+      if (uploaded) {
+        _notifyOrderEventSafe(
+          orderId: savedId,
+          isNew: createdNewOrder,
+          author: editor,
+        );
+        await _sendOrderPushEventSafe(
+          orderId: savedId,
+          action: createdNewOrder ? 'created' : 'updated',
+          author: editor,
+        );
+      }
+    }());
     return savedId;
   }
 
@@ -9381,13 +9621,24 @@ class SqlDatabase {
       // Consume credit retained from an earlier overpayment.
       await reconcileClientPayments(idClient);
     }
-    await CloudSyncService().notifyChangeImmediate();
-    _notifyOrderEventSafe(orderId: distributedId, isNew: true, author: editor);
-    await _sendOrderPushEventSafe(
-      orderId: distributedId,
-      action: 'created',
-      author: editor,
-    );
+    unawaited(() async {
+      try {
+        await CloudSyncService().notifyChangeImmediate();
+      } catch (error) {
+        debugPrint('Order $distributedId upload deferred: $error');
+        return;
+      }
+      _notifyOrderEventSafe(
+        orderId: distributedId,
+        isNew: true,
+        author: editor,
+      );
+      await _sendOrderPushEventSafe(
+        orderId: distributedId,
+        action: 'created',
+        author: editor,
+      );
+    }());
     unawaited(
       _recordDashboardActivity(
         activityType: 'order_added',
@@ -9457,17 +9708,25 @@ class SqlDatabase {
         );
         if (clientId != null) await reconcileClientPayments(clientId);
       }
-      await CloudSyncService().notifyChangeImmediate();
-      _notifyOrderEventSafe(
-        orderId: idCommande,
-        isNew: false,
-        author: data['updated_by']?.toString() ?? '',
-      );
-      await _sendOrderPushEventSafe(
-        orderId: idCommande,
-        action: 'updated',
-        author: data['updated_by']?.toString() ?? '',
-      );
+      final updatedBy = data['updated_by']?.toString() ?? '';
+      unawaited(() async {
+        try {
+          await CloudSyncService().notifyChangeImmediate();
+        } catch (error) {
+          debugPrint('Order $idCommande upload deferred: $error');
+          return;
+        }
+        _notifyOrderEventSafe(
+          orderId: idCommande,
+          isNew: false,
+          author: updatedBy,
+        );
+        await _sendOrderPushEventSafe(
+          orderId: idCommande,
+          action: 'updated',
+          author: updatedBy,
+        );
+      }());
       unawaited(
         _recordDashboardActivity(
           activityType: 'order_updated',
@@ -9633,17 +9892,19 @@ class SqlDatabase {
           ),
         );
         _notifyOrderDeletedSafe(notificationRow);
-        try {
-          await WorkerPushNotificationService.instance.sendOrderEvent(
-            action: 'deleted',
-            orderId: id,
-            orderCode: orderCodeStr,
-            clientName: clientNameStr,
-            author: deletedBy,
-          );
-        } catch (error) {
-          debugPrint('Order deletion push notification skipped: $error');
-        }
+        unawaited(
+          WorkerPushNotificationService.instance
+              .sendOrderEvent(
+                action: 'deleted',
+                orderId: id,
+                orderCode: orderCodeStr,
+                clientName: clientNameStr,
+                author: deletedBy,
+              )
+              .catchError((Object error) {
+                debugPrint('Order deletion push notification skipped: $error');
+              }),
+        );
       } else {
         unawaited(
           logAuditAction(
@@ -10543,7 +10804,10 @@ class SqlDatabase {
     return res;
   }
 
-  Future<void> _ensureDeliveriesLoadedColumn(Database db) async {
+  Future<void> _ensureDeliveriesLoadedColumn(Database db) =>
+      _ensureSchemaOnce(db, '_ensureDeliveriesLoadedColumn', () => _ensureDeliveriesLoadedColumnUncached(db));
+
+  Future<void> _ensureDeliveriesLoadedColumnUncached(Database db) async {
     try {
       await db.execute('''
         CREATE TABLE IF NOT EXISTS Commandes_deliveries (
@@ -10578,7 +10842,10 @@ class SqlDatabase {
     }
   }
 
-  Future<void> _ensureAccessoryRulesColumns(Database db) async {
+  Future<void> _ensureAccessoryRulesColumns(Database db) =>
+      _ensureSchemaOnce(db, '_ensureAccessoryRulesColumns', () => _ensureAccessoryRulesColumnsUncached(db));
+
+  Future<void> _ensureAccessoryRulesColumnsUncached(Database db) async {
     for (final statement in const [
       'ALTER TABLE Accessories ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0',
       'ALTER TABLE Accessories ADD COLUMN screw_count INTEGER NOT NULL DEFAULT 0',
@@ -11055,6 +11322,30 @@ class SqlDatabase {
     return null;
   }
 
+  /// Latest positive purchase price of every item of [itemType] bought
+  /// without a colour, read in one query for item lists (instead of one
+  /// [getLatestPurchasePrice] query per listed item).
+  Future<Map<int, double>> getLatestPurchasePrices(String itemType) async {
+    final myDb = await db;
+    if (myDb == null) return const {};
+    final aliases = _inventoryTypeAliases(itemType).toList();
+    final marks = List.filled(aliases.length, '?').join(', ');
+    final rows = await myDb.rawQuery(
+      'SELECT item_id, price FROM Achat_items '
+      'WHERE item_type IN ($marks) AND (color_id IS NULL OR color_id = 0) '
+      'AND price > 0 ORDER BY id DESC',
+      aliases,
+    );
+    final result = <int, double>{};
+    for (final row in rows) {
+      final id = (row['item_id'] as num?)?.toInt();
+      final price = (row['price'] as num?)?.toDouble();
+      if (id == null || price == null) continue;
+      result.putIfAbsent(id, () => price);
+    }
+    return result;
+  }
+
   Future<int> insertAchatItem({
     required int achatId,
     required String itemCode,
@@ -11298,7 +11589,9 @@ class SqlDatabase {
     if (myDb == null) return 'ACH-0001';
     final rows = await myDb.query('Achats', columns: ['invoice_number']);
     int maxSuffix = 0;
-    final regex = RegExp(r'(\d+)');
+    // Only our own ACH-<n> numbers count: a supplier's invoice number such
+    // as FA-2026/004512 made the next number jump to ACH-4513.
+    final regex = RegExp(r'^ACH-(\d+)', caseSensitive: false);
     final existingSet = <String>{};
 
     for (final row in rows) {
@@ -11306,7 +11599,8 @@ class SqlDatabase {
       if (invoice.isNotEmpty) {
         existingSet.add(invoice.toUpperCase());
       }
-      for (final match in regex.allMatches(invoice)) {
+      final match = regex.firstMatch(invoice);
+      if (match != null) {
         final suffix = int.tryParse(match.group(1)!) ?? 0;
         if (suffix > maxSuffix) {
           maxSuffix = suffix;
@@ -11327,104 +11621,50 @@ class SqlDatabase {
     }
   }
 
+  /// Permanently removes a purchase invoice that is in the trash.
+  ///
+  /// Moving it to the trash already reversed its stock
+  /// (`stock_reversed_on_delete`), so the stock is never reversed a second
+  /// time here. Stock movements and supplier payments stay as history: the
+  /// payments are real cash movements and remain on the supplier's account.
   Future<int> deleteAchat(int id) async {
     Database? myDb = await db;
     if (myDb == null) return 0;
+    await _ensureAchatTrashInfrastructure(myDb);
 
-    // Check inventory usage before deletion
-    final items = await myDb.query(
-      'Achat_items',
-      where: 'achat_id = ?',
+    final achatRows = await myDb.query(
+      'Achats',
+      where: 'id = ?',
       whereArgs: [id],
+      limit: 1,
     );
-
-    // 1. Verify quantities
-    for (var item in items) {
-      double qty = (item['quantity'] as num).toDouble();
-
-      final invRows = await myDb.query(
-        'Inventory',
-        where:
-            'item_id = ? AND item_type = ? AND (color_id = ? OR (color_id IS NULL AND ? IS NULL)) AND location_id = ?',
-        whereArgs: [
-          item['item_id'],
-          item['item_type'],
-          item['color_id'],
-          item['color_id'],
-          1,
-        ],
+    if (achatRows.isEmpty) return 0;
+    final achat = achatRows.first;
+    if (((achat['is_deleted'] as num?)?.toInt() ?? 0) != 1) {
+      throw StateError(
+        'لا يمكن الحذف النهائي إلا لفاتورة شراء موجودة في سلة المحذوفات.',
       );
-
-      double currentQty = 0;
-      if (invRows.isNotEmpty) {
-        currentQty = (invRows.first['quantity'] as num).toDouble();
-      }
-
-      if (currentQty < qty) {
-        throw Exception(
-          "?? ???? ??? ???????? ???? ?? ??????? ??? ??????? ???? ?? ??????? ?? ????????.",
-        );
-      }
     }
+    final supplierId = (achat['supplier_id'] as num?)?.toInt();
 
-    // 2. Silent deletion (as if it never existed)
     await myDb.transaction((txn) async {
-      for (var item in items) {
-        double qty = (item['quantity'] as num).toDouble();
-
-        final invRows = await txn.query(
-          'Inventory',
-          where:
-              'item_id = ? AND item_type = ? AND (color_id = ? OR (color_id IS NULL AND ? IS NULL)) AND location_id = ?',
-          whereArgs: [
-            item['item_id'],
-            item['item_type'],
-            item['color_id'],
-            item['color_id'],
-            1,
-          ],
-        );
-
-        if (invRows.isNotEmpty) {
-          double currentQty = (invRows.first['quantity'] as num).toDouble();
-          double newQty = currentQty - qty;
-
-          if (newQty <= 0) {
-            await txn.delete(
-              'Inventory',
-              where: 'id = ?',
-              whereArgs: [invRows.first['id']],
-            );
-          } else {
-            await txn.update(
-              'Inventory',
-              {'quantity': newQty},
-              where: 'id = ?',
-              whereArgs: [invRows.first['id']],
-            );
-          }
-        }
-
-        await txn.delete(
-          'InventoryTransactions',
-          where:
-              'reference_id = ? AND transaction_type = ? AND item_id = ? AND item_type = ?',
-          whereArgs: [id, 'Purchase', item['item_id'], item['item_type']],
-        );
-      }
-
       await txn.delete('Achat_items', where: 'achat_id = ?', whereArgs: [id]);
-      await txn.delete(
-        'Treasury',
-        where: "reference_id = ? AND entity_type = 'Supplier'",
-        whereArgs: [id],
-      );
       await txn.delete('Achats', where: 'id = ?', whereArgs: [id]);
+      if (supplierId != null && supplierId > 0) {
+        await _rebuildSupplierPaymentLedger(txn, supplierId);
+      }
     });
 
     CloudSyncService().notifyChange();
+    await logAuditAction(
+      actionType: 'DELETE',
+      entityType: 'purchase',
+      entityId: id.toString(),
+      entityTitle: 'فاتورة شراء #${achat['invoice_number'] ?? id}',
+      details: 'تم حذف فاتورة الشراء نهائياً من سلة المحذوفات.',
+    );
 
-    // ??? ??? Achat ??? Firestore ??????? (???? ??? ???? legacy sync)
+    // Legacy Firestore cleanup (only for the old sync path).
     if (CloudSyncService.supabaseWorkshopDataOnly) return 1;
 
     try {
@@ -11556,7 +11796,7 @@ class SqlDatabase {
           );
         }
       }
-      return txn.update(
+      final updated = await txn.update(
         'Achats',
         {
           'is_deleted': 1,
@@ -11570,6 +11810,12 @@ class SqlDatabase {
         where: 'id = ?',
         whereArgs: [id],
       );
+      // Payments allocated to this invoice go back to the supplier balance.
+      final supplierId = (achat['supplier_id'] as num?)?.toInt();
+      if (supplierId != null && supplierId > 0) {
+        await _rebuildSupplierPaymentLedger(txn, supplierId);
+      }
+      return updated;
     });
     CloudSyncService().notifyChangeImmediate();
     await logAuditAction(
@@ -11660,7 +11906,7 @@ class SqlDatabase {
           );
         }
       }
-      return txn.update(
+      final updated = await txn.update(
         'Achats',
         {
           'is_deleted': 0,
@@ -11673,6 +11919,11 @@ class SqlDatabase {
         where: 'id = ?',
         whereArgs: [id],
       );
+      final supplierId = (achat['supplier_id'] as num?)?.toInt();
+      if (supplierId != null && supplierId > 0) {
+        await _rebuildSupplierPaymentLedger(txn, supplierId);
+      }
+      return updated;
     });
     if (res > 0) {
       try {
@@ -13099,11 +13350,32 @@ class SqlDatabase {
     double price,
   ) async {
     Database? myDb = await db;
-    await myDb!.insert('GlassColorPrices', {
-      'glass_id': glassId,
-      'color_name': colorName,
-      'price': price,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    // Update in place so the row keeps its synchronised id.
+    final updated = await myDb!.update(
+      'GlassColorPrices',
+      {'price': price},
+      where: 'glass_id = ? AND color_name = ?',
+      whereArgs: [glassId, colorName],
+    );
+    if (updated == 0) {
+      await myDb.insert(
+        'GlassColorPrices',
+        _withDistributedId({
+          'glass_id': glassId,
+          'color_name': colorName,
+          'price': price,
+        }),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await recordWorkshopPrice(
+      myDb,
+      table: 'GlassColorPrices',
+      rowKey: priceRowKey([glassId, colorName]),
+      column: 'price',
+      price: price,
+      source: 'manual',
+    );
     CloudSyncService().notifyChange();
   }
 
@@ -13597,7 +13869,10 @@ class SqlDatabase {
 
   /// Exact links between a treasury transaction and the orders or purchase
   /// invoices it settles. This makes Treasury the financial source of truth.
-  Future<void> _ensurePaymentAllocationSchema(DatabaseExecutor executor) async {
+  Future<void> _ensurePaymentAllocationSchema(DatabaseExecutor executor) =>
+      _ensureSchemaOnce(executor, '_ensurePaymentAllocationSchema', () => _ensurePaymentAllocationSchemaUncached(executor));
+
+  Future<void> _ensurePaymentAllocationSchemaUncached(DatabaseExecutor executor) async {
     await executor.execute('''
       CREATE TABLE IF NOT EXISTS PaymentAllocations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -13711,9 +13986,10 @@ class SqlDatabase {
       WHERE t.entity_type = ? AND t.entity_id = ?
         AND (t.reference_id IS NULL OR c.id IS NULL
              OR c.is_deleted IS NULL OR c.is_deleted = 0)
+        AND (t.document_type IS NULL OR t.document_type != ?)
       ORDER BY t.created_at ASC, t.id ASC
       ''',
-      ['Client', clientId],
+      ['Client', clientId, materialSaleDocumentType],
     );
     final receipts = allTransactions.where(_isClientReceipt).toList();
 
@@ -13884,9 +14160,12 @@ class SqlDatabase {
     int supplierId,
   ) async {
     await _ensurePaymentAllocationSchema(executor);
+    await _ensureAchatTrashInfrastructure(executor);
+    // Invoices in the trash are cancelled: supplier payments must not be
+    // allocated to them (the client ledger already skips deleted orders).
     final purchases = await executor.query(
       'Achats',
-      where: 'supplier_id = ?',
+      where: 'supplier_id = ? AND (is_deleted IS NULL OR is_deleted = 0)',
       whereArgs: [supplierId],
       orderBy: 'created_at ASC, id ASC',
     );
@@ -14099,6 +14378,140 @@ class SqlDatabase {
     CloudSyncService().notifyChangeImmediate();
   }
 
+  /// Treasury rows that pay a shop document (MaterialSales) carry
+  /// `document_type = 'MaterialSale'`. They are client receipts, but they
+  /// already settle the shop document (`MaterialSales.paid_amount`), so the
+  /// window-order ledger must never allocate them to `Commandes` again.
+  static const String materialSaleDocumentType = 'MaterialSale';
+
+  Future<void> _ensureTreasuryDocumentType(Database database) =>
+      _ensureSchemaOnce(database, '_ensureTreasuryDocumentType', () async {
+        var columnAdded = false;
+        try {
+          await database.execute(
+            'ALTER TABLE Treasury ADD COLUMN document_type TEXT;',
+          );
+          columnAdded = true;
+        } catch (_) {
+          // The column already exists.
+        }
+        if (columnAdded) {
+          await _separateLegacyShopReceipts(database);
+        }
+      });
+
+  /// One-time repair of receipts recorded by the shop editor before
+  /// `document_type` existed: they were also allocated to the client's window
+  /// orders, which counted the same payment twice.
+  Future<void> _separateLegacyShopReceipts(Database database) async {
+    try {
+      await _ensurePaymentAllocationSchema(database);
+      await database.transaction((txn) async {
+        final shopReceipts = await txn.rawQuery('''
+          SELECT t.id, t.entity_id FROM Treasury t
+          WHERE LOWER(TRIM(COALESCE(t.entity_type, ''))) = 'client'
+            AND t.document_type IS NULL
+            AND t.reference_id IN (SELECT id FROM MaterialSales)
+            AND t.reference_id NOT IN (SELECT id FROM Commandes)
+            AND (t.caisse_name = 'صندوق المحل'
+                 OR t.description LIKE 'دفعة مبيعات مواد%')
+        ''');
+        if (shopReceipts.isEmpty) return;
+        final receiptIds = [
+          for (final row in shopReceipts) _paymentRecordId(row['id']),
+        ].whereType<int>().toList();
+        final clientIds = {
+          for (final row in shopReceipts) _paymentRecordId(row['entity_id']),
+        }.whereType<int>();
+        for (var start = 0; start < receiptIds.length; start += 500) {
+          final chunk = receiptIds.sublist(
+            start,
+            (start + 500).clamp(0, receiptIds.length),
+          );
+          final marks = List.filled(chunk.length, '?').join(', ');
+          // Remove the shop money from the orders it was wrongly applied to;
+          // the ledger rebuild below then recomputes the remaining payments.
+          await txn.rawUpdate('''
+            UPDATE Commandes SET advance_payment = MAX(0,
+              COALESCE(advance_payment, 0) - COALESCE((
+                SELECT SUM(pa.amount) FROM PaymentAllocations pa
+                WHERE pa.document_type = 'Commande'
+                  AND pa.document_id = Commandes.id
+                  AND pa.treasury_id IN ($marks)
+              ), 0))
+            WHERE id IN (
+              SELECT document_id FROM PaymentAllocations
+              WHERE document_type = 'Commande' AND treasury_id IN ($marks)
+            )
+          ''', [...chunk, ...chunk]);
+          await txn.rawDelete(
+            'DELETE FROM PaymentAllocations WHERE treasury_id IN ($marks)',
+            chunk,
+          );
+          await txn.rawUpdate(
+            'UPDATE Treasury SET document_type = ? WHERE id IN ($marks)',
+            [materialSaleDocumentType, ...chunk],
+          );
+        }
+        for (final clientId in clientIds) {
+          await _rebuildClientPaymentLedger(txn, clientId);
+        }
+      });
+    } catch (error) {
+      debugPrint('Legacy shop receipt separation skipped: $error');
+    }
+  }
+
+  /// Sum of the treasury receipts recorded for a shop document.
+  Future<double> materialSaleReceiptsTotal(int saleId) async {
+    final myDb = await db;
+    if (myDb == null) return 0.0;
+    final rows = await myDb.rawQuery(
+      'SELECT transaction_type, amount FROM Treasury '
+      'WHERE document_type = ? AND reference_id = ?',
+      [materialSaleDocumentType, saleId],
+    );
+    var total = 0.0;
+    for (final row in rows) {
+      final type = _normalisedTreasuryType(
+        row['transaction_type']?.toString() ?? '',
+      );
+      final amount = _paymentNumber(row['amount']);
+      total += type == 'encaissement' ? amount : -amount;
+    }
+    return total;
+  }
+
+  /// Records in the shop cash box the part of a shop document's paid amount
+  /// that the user just added in the editor ([newPaid] − [previousPaid]),
+  /// so the document and the cash box always agree. Only the increase made
+  /// now is recorded: old documents whose paid amount predates the treasury
+  /// link are left as they are.
+  Future<void> recordMaterialSalePaidIncrease({
+    required int saleId,
+    required double previousPaid,
+    required double newPaid,
+    required String saleCode,
+    int? clientId,
+    String clientName = '',
+    String clientPhone = '',
+  }) async {
+    final increase = newPaid - previousPaid;
+    if (increase <= _paymentTolerance) return;
+    await insertTreasury(
+      'encaissement',
+      double.parse(increase.toStringAsFixed(2)),
+      'دفعة مبيعات مواد: $saleCode ($clientName)',
+      referenceId: saleId,
+      recordedBy: 'user',
+      entityType: 'Client',
+      entityId: clientId,
+      phone: clientPhone,
+      caisseName: 'صندوق المحل',
+      documentType: materialSaleDocumentType,
+    );
+  }
+
   Future<int> insertTreasury(
     String transactionType,
     double amount,
@@ -14113,11 +14526,13 @@ class SqlDatabase {
     String? caisseName,
     String? paymentMethod,
     String? createdAt,
+    String? documentType,
   }) async {
     Database? myDb = await db;
     if (myDb == null) return 0;
     final transactionAt = createdAt ?? DateTime.now().toUtc().toIso8601String();
     final treasuryData = _withDistributedId({
+      if (documentType != null) 'document_type': documentType,
       'transaction_type': transactionType,
       'amount': amount,
       'description': description,
@@ -14251,6 +14666,24 @@ class SqlDatabase {
         where: 'treasury_id = ?',
         whereArgs: [id],
       );
+      final saleId = _paymentRecordId(row['reference_id']);
+      if (deleted > 0 &&
+          isClientReceipt &&
+          row['document_type']?.toString() == materialSaleDocumentType &&
+          saleId != null) {
+        // The shop document loses the payment that was just removed from
+        // the cash box, so both keep the same amount.
+        await txn.rawUpdate(
+          '''
+          UPDATE MaterialSales
+          SET paid_amount = MAX(0, paid_amount - ?),
+              remaining_amount = MAX(0, net_total - MAX(0, paid_amount - ?)),
+              updated_at = ?
+          WHERE id = ?
+          ''',
+          [amount, amount, DateTime.now().toUtc().toIso8601String(), saleId],
+        );
+      }
       if (deleted > 0 && isClientReceipt && entityId != null) {
         await _rebuildClientPaymentLedger(txn, entityId);
       } else if (deleted > 0 && isSupplierPayment && entityId != null) {
@@ -14438,7 +14871,29 @@ class SqlDatabase {
     });
   }
 
+  /// Schema (tables, their definitions and triggers) for which the sync
+  /// tracking was last installed. The full pass reads every table and
+  /// creates four triggers per table; it is called before every upload and
+  /// many deletions, so it only runs again when the schema really changed.
+  static String? _syncInfrastructureSignature;
+
+  Future<String> _syncSchemaSignature(DatabaseExecutor db) async {
+    final rows = await db.rawQuery('''
+      SELECT
+        (SELECT COUNT(*) FROM sqlite_master WHERE type = 'table') AS tables,
+        (SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger') AS triggers,
+        (SELECT COALESCE(SUM(LENGTH(sql)), 0)
+         FROM sqlite_master WHERE type = 'table') AS definitions
+    ''');
+    final row = rows.first;
+    return '${row['tables']}:${row['triggers']}:${row['definitions']}';
+  }
+
   Future<void> _ensureSyncTombstoneInfrastructure(DatabaseExecutor db) async {
+    if (_syncInfrastructureSignature != null &&
+        await _syncSchemaSignature(db) == _syncInfrastructureSignature) {
+      return;
+    }
     await db.execute('''
       CREATE TABLE IF NOT EXISTS SyncTombstones (
         table_name TEXT NOT NULL,
@@ -14468,6 +14923,11 @@ class SqlDatabase {
       )
     ''');
     await _ensureProfileColorsSyncIds(db);
+    try {
+      await _ensureWorkshopPriceSchema(db);
+    } catch (error) {
+      debugPrint('Could not prepare workshop price tables: $error');
+    }
     try {
       final treasuryCols = await _tableColumns(db, 'Treasury');
       if (treasuryCols.isNotEmpty && !treasuryCols.contains('updated_at')) {
@@ -14614,6 +15074,7 @@ class SqlDatabase {
         debugPrint('Could not track cloud changes for $table: $error');
       }
     }
+    _syncInfrastructureSignature = await _syncSchemaSignature(db);
   }
 
   Future<PendingCloudChanges> exportPendingCloudChanges({
@@ -15384,6 +15845,235 @@ class SqlDatabase {
     return info.map((row) => row['name'].toString()).toSet();
   }
 
+  /// Catalogue base-price columns. The catalogue is global, so a workshop's
+  /// own value for one of these columns lives in [WorkshopPriceOverrides].
+  static const Map<String, List<String>> workshopBasePriceColumns = {
+    'Accessories': ['price'],
+    'Glass': ['price_per_sqm'],
+    'Joints': ['price_per_meter'],
+    'Series': ['price_per_meter'],
+    'ShutterComponents': ['price'],
+    'Sections': ['price_dzd'],
+    'TemperedGlassItems': ['price', 'cost_price'],
+  };
+
+  /// Sources of a workshop price that an administrator publication must not
+  /// replace unless the manager explicitly asks for it.
+  static const Set<String> ownWorkshopPriceSources = {'manual', 'purchase'};
+
+  static String priceRowKey(Iterable<Object?> keys) =>
+      keys.map((key) => '${key ?? ''}').join('|');
+
+  /// Workshop-owned prices: typed by the manager, derived from a purchase or
+  /// accepted from an administrator publication. The table is workshop data,
+  /// so every phone of the workshop receives it. Base catalogue prices are
+  /// re-applied from it after each catalogue refresh; colour-price rows only
+  /// use it as a marker of who set the price.
+  Future<void> _ensureWorkshopPriceSchema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS WorkshopPriceOverrides (
+        id INTEGER PRIMARY KEY,
+        table_name TEXT NOT NULL,
+        row_key TEXT NOT NULL,
+        column_name TEXT NOT NULL,
+        price REAL NOT NULL DEFAULT 0.0,
+        source TEXT NOT NULL DEFAULT 'manual',
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        UNIQUE(table_name, row_key, column_name)
+      )
+    ''');
+
+    // GlassColorPrices had no id column: the sync triggers and the workshop
+    // upload skip such tables, so glass colour prices never reached the other
+    // phones of the workshop. Rebuild it once with distributed ids.
+    final glassColumns = await _tableColumns(db, 'GlassColorPrices');
+    if (glassColumns.isEmpty || glassColumns.contains('id')) return;
+    final rows = await db.query('GlassColorPrices');
+    await db.execute('DROP TABLE IF EXISTS GlassColorPrices_with_id');
+    await db.execute('''
+      CREATE TABLE GlassColorPrices_with_id (
+        id INTEGER PRIMARY KEY,
+        glass_id INTEGER,
+        color_name TEXT,
+        price REAL NOT NULL,
+        UNIQUE(glass_id, color_name)
+      )
+    ''');
+    for (final row in rows) {
+      await db.insert(
+        'GlassColorPrices_with_id',
+        _withDistributedId({
+          'glass_id': row['glass_id'],
+          'color_name': row['color_name'],
+          'price': row['price'] ?? 0.0,
+        }),
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
+    await db.execute('DROP TABLE GlassColorPrices');
+    await db.execute(
+      'ALTER TABLE GlassColorPrices_with_id RENAME TO GlassColorPrices',
+    );
+  }
+
+  /// Records a workshop-owned price. Never throws: a failed marker must not
+  /// undo the price the user has just saved.
+  Future<void> recordWorkshopPrice(
+    DatabaseExecutor executor, {
+    required String table,
+    required String rowKey,
+    required String column,
+    required double price,
+    required String source,
+  }) async {
+    try {
+      final now = DateTime.now().toUtc().toIso8601String();
+      final updated = await executor.update(
+        'WorkshopPriceOverrides',
+        {'price': price, 'source': source, 'updated_at': now},
+        where: 'table_name = ? AND row_key = ? AND column_name = ?',
+        whereArgs: [table, rowKey, column],
+      );
+      if (updated == 0) {
+        await executor.insert(
+          'WorkshopPriceOverrides',
+          _withDistributedId({
+            'table_name': table,
+            'row_key': rowKey,
+            'column_name': column,
+            'price': price,
+            'source': source,
+            'updated_at': now,
+          }),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    } catch (error) {
+      debugPrint('Workshop price marker skipped for $table/$rowKey: $error');
+    }
+  }
+
+  Future<void> markWorkshopPrice({
+    required String table,
+    required String rowKey,
+    required String column,
+    required double price,
+    String source = 'manual',
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await recordWorkshopPrice(
+      myDb,
+      table: table,
+      rowKey: rowKey,
+      column: column,
+      price: price,
+      source: source,
+    );
+  }
+
+  /// (table → row key) pairs whose price the workshop set itself.
+  Future<Set<String>> readOwnWorkshopPriceKeys(DatabaseExecutor executor) async {
+    try {
+      final rows = await executor.query(
+        'WorkshopPriceOverrides',
+        columns: const ['table_name', 'row_key'],
+        where:
+            'source IN (${List.filled(ownWorkshopPriceSources.length, '?').join(', ')})',
+        whereArgs: ownWorkshopPriceSources.toList(),
+      );
+      return {for (final r in rows) '${r['table_name']}\x1f${r['row_key']}'};
+    } catch (_) {
+      return <String>{};
+    }
+  }
+
+  Future<Map<String, Map<String, Map<String, double>>>> _readBasePriceOverrides(
+    DatabaseExecutor executor,
+  ) async {
+    final result = <String, Map<String, Map<String, double>>>{};
+    List<Map<String, Object?>> rows;
+    try {
+      rows = await executor.query(
+        'WorkshopPriceOverrides',
+        where:
+            'table_name IN (${List.filled(workshopBasePriceColumns.length, '?').join(', ')})',
+        whereArgs: workshopBasePriceColumns.keys.toList(),
+      );
+    } catch (_) {
+      return result;
+    }
+    for (final row in rows) {
+      final table = row['table_name']?.toString() ?? '';
+      final column = row['column_name']?.toString() ?? '';
+      if (!(workshopBasePriceColumns[table]?.contains(column) ?? false)) {
+        continue;
+      }
+      final price = (row['price'] as num?)?.toDouble();
+      if (price == null) continue;
+      result
+          .putIfAbsent(table, () => {})
+          .putIfAbsent(row['row_key']?.toString() ?? '', () => {})[column] =
+          price;
+    }
+    return result;
+  }
+
+  /// Puts the workshop's own base prices back into an incoming catalogue so a
+  /// central-catalogue refresh cannot erase them.
+  Future<void> _overlayWorkshopBasePrices(
+    Map<String, dynamic> catalogData,
+  ) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    final overrides = await _readBasePriceOverrides(myDb);
+    for (final entry in overrides.entries) {
+      final rows = catalogData[entry.key];
+      if (rows is! List) continue;
+      for (final row in rows) {
+        if (row is! Map) continue;
+        final prices = entry.value['${row['id']}'];
+        if (prices != null) row.addAll(prices);
+      }
+    }
+  }
+
+  /// Writes the workshop's own base prices into the local catalogue tables,
+  /// e.g. after another phone of the workshop sent new overrides.
+  Future<void> applyWorkshopBasePriceOverrides() async {
+    final myDb = await db;
+    if (myDb == null) return;
+    final overrides = await _readBasePriceOverrides(myDb);
+    if (overrides.isEmpty) return;
+    await myDb.transaction((txn) async {
+      // Catalogue tables are not uploaded with the workshop data, so these
+      // local writes must not pile up in the change log.
+      await txn.update('_sync_runtime_flags', {
+        'suppress_tombstones': 1,
+      }, where: 'id = 1');
+      try {
+        for (final entry in overrides.entries) {
+          final columns = await _tableColumns(txn, entry.key);
+          for (final row in entry.value.entries) {
+            for (final price in row.value.entries) {
+              if (!columns.contains(price.key)) continue;
+              await txn.rawUpdate(
+                'UPDATE "${entry.key}" SET "${price.key}" = ? '
+                'WHERE CAST(id AS TEXT) = ? '
+                'AND ("${price.key}" IS NULL OR "${price.key}" != ?)',
+                [price.value, row.key, price.value],
+              );
+            }
+          }
+        }
+      } finally {
+        await txn.update('_sync_runtime_flags', {
+          'suppress_tombstones': 0,
+        }, where: 'id = 1');
+      }
+    });
+  }
+
   static bool _isSafeSqlIdentifier(String value) {
     return RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$').hasMatch(value);
   }
@@ -15962,9 +16652,13 @@ class SqlDatabase {
     }
     if (catalogData.isEmpty) {
       throw Exception(
-        'â”˜Ã¤â•ªÂº â•ªÂ¬â”˜Ãªâ•ªÂ¼â•ªÂ» â•ªÂ¿â”˜Ã¨â•ªÂºâ”˜Ã¥â•ªÂºâ•ªÂ¬ â”˜Ã¢â•ªÂ¬â•ªÂºâ”˜Ã¤â”˜Ãªâ•ªÂ¼ â•ªâ•¡â•ªÂºâ”˜Ã¤â•ªÂ¡â•ªâŒ â”˜Ã¤â”˜Ã¤â•ªÂºâ•ªâ”‚â•ªÂ¬â”˜Ã¨â•ªâ–’â•ªÂºâ•ªÂ».',
+        'لا توجد بيانات كتالوج صالحة للاستيراد.',
       );
     }
+    // الحفاظ على أسعار الورشة إذا كانت مزامنة الأسعار معطلة من طرف المدير
+    await PriceSyncService.instance.preserveLocalPricesIfSyncDisabled(catalogData);
+    // أسعار الورشة الخاصة (يدوية، من الشراء، أو من نشرة مقبولة) تبقى فوق الكتالوج
+    await _overlayWorkshopBasePrices(catalogData);
     await importAllData(catalogData);
   }
 
@@ -16008,6 +16702,9 @@ class SqlDatabase {
       replaceAllData: replaceAllData,
       mergeAllData: !replaceAllData,
     );
+    if (workshopData.containsKey('WorkshopPriceOverrides')) {
+      await applyWorkshopBasePriceOverrides();
+    }
   }
 
   Future<String> getDatabaseFilePath() async {
@@ -16787,7 +17484,10 @@ class SqlDatabase {
     ''');
   }
 
-  Future<void> _ensureInventoryAlertSchema(DatabaseExecutor db) async {
+  Future<void> _ensureInventoryAlertSchema(DatabaseExecutor db) =>
+      _ensureSchemaOnce(db, '_ensureInventoryAlertSchema', () => _ensureInventoryAlertSchemaUncached(db));
+
+  Future<void> _ensureInventoryAlertSchemaUncached(DatabaseExecutor db) async {
     try {
       await db.execute(
         'ALTER TABLE CurrentStock ADD COLUMN low_stock_alert_enabled INTEGER NOT NULL DEFAULT 0;',
@@ -16795,7 +17495,10 @@ class SqlDatabase {
     } catch (_) {}
   }
 
-  Future<void> _ensureOrderInventoryIssueSchema(DatabaseExecutor db) async {
+  Future<void> _ensureOrderInventoryIssueSchema(DatabaseExecutor db) =>
+      _ensureSchemaOnce(db, '_ensureOrderInventoryIssueSchema', () => _ensureOrderInventoryIssueSchemaUncached(db));
+
+  Future<void> _ensureOrderInventoryIssueSchemaUncached(DatabaseExecutor db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS OrderInventoryIssueSessions (
         id INTEGER PRIMARY KEY,
@@ -17998,7 +18701,15 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return;
 
+    final isCostedPurchase =
+        quantityChange > 0 && unitPrice != null && unitPrice > 0;
     await myDb.transaction((txn) async {
+      // Stock of every location before this purchase: the average cost is a
+      // single price per item and colour, not a per-location price.
+      final stockBeforePurchase = isCostedPurchase
+          ? await _totalStockQuantity(txn, itemId, itemType, colorId)
+          : 0.0;
+
       // 1. Record the transaction
       await txn.insert(
         'InventoryTransactions',
@@ -18069,117 +18780,196 @@ class SqlDatabase {
         );
       }
 
-      // 3. Auto-update catalog price using Weighted Average Cost (CMP / WAC)
-      // When incoming quantityChange > 0 and unitPrice is provided
-      if (quantityChange > 0 && unitPrice != null && unitPrice > 0) {
-        double oldPrice = 0.0;
-        final normType = itemType.toLowerCase().trim();
-
-        if (normType == 'section' ||
-            normType == 'sections' ||
-            normType == 'profile') {
-          if (colorId != null) {
-            final pRows = await txn.query(
-              'SectionColorPrices',
-              where: 'section_id = ? AND color_id = ?',
-              whereArgs: [itemId, colorId],
-            );
-            if (pRows.isNotEmpty) {
-              oldPrice = (pRows.first['price'] as num?)?.toDouble() ?? 0.0;
-            }
-          }
-        } else if (normType == 'accessory' || normType == 'accessories') {
-          if (colorId != null) {
-            final pRows = await txn.query(
-              'AccessoryColorPrices',
-              where: 'accessory_id = ? AND color_id = ?',
-              whereArgs: [itemId, colorId],
-            );
-            if (pRows.isNotEmpty) {
-              oldPrice = (pRows.first['price'] as num?)?.toDouble() ?? 0.0;
-            }
-          }
-          if (oldPrice <= 0) {
-            final aRows = await txn.query(
-              'Accessories',
-              columns: ['price'],
-              where: 'id = ?',
-              whereArgs: [itemId],
-            );
-            if (aRows.isNotEmpty) {
-              oldPrice = (aRows.first['price'] as num?)?.toDouble() ?? 0.0;
-            }
-          }
-        }
-
-        // Calculate Weighted Average Price (CMP)
-        // If no prior stock or old price is 0, adopt the new purchase price directly
-        double updatedAvgPrice = unitPrice;
-        if (currentQty > 0 && oldPrice > 0) {
-          final totalUnits = currentQty + quantityChange;
-          if (totalUnits > 0) {
-            updatedAvgPrice =
-                ((currentQty * oldPrice) + (quantityChange * unitPrice)) /
-                totalUnits;
-          }
-        }
-
-        // Apply updated price into the catalog
-        if (updatedAvgPrice > 0) {
-          if (normType == 'section' ||
-              normType == 'sections' ||
-              normType == 'profile') {
-            if (colorId != null) {
-              await txn.execute('''
-                CREATE TABLE IF NOT EXISTS SectionColorPrices (
-                  id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  section_id INTEGER NOT NULL,
-                  color_id INTEGER NOT NULL,
-                  price REAL NOT NULL DEFAULT 0.0,
-                  UNIQUE(section_id, color_id)
-                )
-              ''');
-              final updated = await txn.update(
-                'SectionColorPrices',
-                {'price': updatedAvgPrice},
-                where: 'section_id = ? AND color_id = ?',
-                whereArgs: [itemId, colorId],
-              );
-              if (updated == 0) {
-                await txn.insert(
-                  'SectionColorPrices',
-                  {
-                    'section_id': itemId,
-                    'color_id': colorId,
-                    'price': updatedAvgPrice,
-                  },
-                  conflictAlgorithm: ConflictAlgorithm.replace,
-                );
-              }
-            }
-          } else if (normType == 'accessory' || normType == 'accessories') {
-            if (colorId != null) {
-              await txn.insert(
-                'AccessoryColorPrices',
-                {
-                  'accessory_id': itemId,
-                  'color_id': colorId,
-                  'price': updatedAvgPrice,
-                },
-                conflictAlgorithm: ConflictAlgorithm.replace,
-              );
-            }
-            await txn.update(
-              'Accessories',
-              {'price': updatedAvgPrice},
-              where: 'id = ?',
-              whereArgs: [itemId],
-            );
-          }
-        }
+      // 3. Purchase price → cost price (weighted average cost, CMP).
+      if (isCostedPurchase) {
+        await _applyPurchaseCost(
+          txn,
+          itemId: itemId,
+          itemType: itemType,
+          colorId: colorId,
+          quantity: quantityChange,
+          unitPrice: unitPrice!,
+          stockBefore: stockBeforePurchase,
+        );
       }
     });
     CloudSyncService().notifyChange();
+  }
+
+  static Set<String> _inventoryTypeAliases(String itemType) {
+    switch (itemType.toLowerCase().replaceAll(' ', '').trim()) {
+      case 'section':
+      case 'sections':
+      case 'profile':
+      case 'profiles':
+        return {'Sections', 'Section', 'Profiles', 'Profile'};
+      case 'accessory':
+      case 'accessories':
+        return {'Accessories', 'Accessory'};
+      case 'shuttercomponent':
+      case 'shuttercomponents':
+        return {'ShutterComponents', 'ShutterComponent', 'Shutter Components'};
+      case 'joint':
+      case 'joints':
+        return {'Joints', 'Joint'};
+      case 'glass':
+        return {'Glass', 'glass'};
+      default:
+        return {itemType};
+    }
+  }
+
+  Future<double> _totalStockQuantity(
+    DatabaseExecutor txn,
+    int itemId,
+    String itemType,
+    int? colorId,
+  ) async {
+    final aliases = _inventoryTypeAliases(itemType).toList();
+    final marks = List.filled(aliases.length, '?').join(', ');
+    final hasColor = colorId != null && colorId > 0;
+    final rows = await txn.rawQuery(
+      'SELECT COALESCE(SUM(quantity), 0) AS qty FROM CurrentStock '
+      'WHERE item_id = ? AND item_type IN ($marks) AND '
+      '${hasColor ? 'color_id = ?' : '(color_id IS NULL OR color_id = 0)'}',
+      [itemId, ...aliases, if (hasColor) colorId],
+    );
+    final qty = (rows.first['qty'] as num?)?.toDouble() ?? 0.0;
+    return qty > 0 ? qty : 0.0;
+  }
+
+  /// Weighted average cost (CMP). With no stock left, the new purchase price
+  /// becomes the price directly; otherwise the old stock and the purchased
+  /// quantity are averaged: (stock × old + qty × new) / (stock + qty).
+  ///
+  /// The price is written where the quantity & cost table reads it (colour
+  /// price, else catalogue base price) and marked as a purchase price so a
+  /// catalogue refresh or an administrator publication keeps it.
+  Future<void> _applyPurchaseCost(
+    DatabaseExecutor txn, {
+    required int itemId,
+    required String itemType,
+    required int? colorId,
+    required double quantity,
+    required double unitPrice,
+    required double stockBefore,
+  }) async {
+    final aliases = _inventoryTypeAliases(itemType);
+    final hasColor = colorId != null && colorId > 0;
+    String baseTable;
+    String baseColumn;
+    String? colorTable;
+    String? colorKeyColumn;
+    if (aliases.contains('Sections')) {
+      baseTable = 'Sections';
+      baseColumn = 'price_dzd';
+      colorTable = 'SectionColorPrices';
+      colorKeyColumn = 'section_id';
+    } else if (aliases.contains('Accessories')) {
+      baseTable = 'Accessories';
+      baseColumn = 'price';
+      colorTable = 'AccessoryColorPrices';
+      colorKeyColumn = 'accessory_id';
+    } else if (aliases.contains('ShutterComponents')) {
+      baseTable = 'ShutterComponents';
+      baseColumn = 'price';
+      colorTable = 'ShutterColorPrices';
+      colorKeyColumn = 'shutter_component_id';
+    } else if (aliases.contains('Joints')) {
+      baseTable = 'Joints';
+      baseColumn = 'price_per_meter';
+    } else if (aliases.contains('Glass')) {
+      baseTable = 'Glass';
+      baseColumn = 'price_per_sqm';
+    } else {
+      return;
+    }
+
+    final baseColumns = await _tableColumns(txn, baseTable);
+    var oldPrice = 0.0;
+    if (baseColumns.contains(baseColumn)) {
+      final baseRows = await txn.query(
+        baseTable,
+        columns: [baseColumn],
+        where: 'id = ?',
+        whereArgs: [itemId],
+        limit: 1,
+      );
+      if (baseRows.isNotEmpty) {
+        oldPrice = (baseRows.first[baseColumn] as num?)?.toDouble() ?? 0.0;
+      }
+    }
+    final useColorTable =
+        hasColor && colorTable != null && colorKeyColumn != null;
+    if (useColorTable) {
+      final colorRows = await txn.query(
+        colorTable!,
+        columns: const ['price'],
+        where: '$colorKeyColumn = ? AND color_id = ?',
+        whereArgs: [itemId, colorId],
+        limit: 1,
+      );
+      final colorPrice = colorRows.isEmpty
+          ? 0.0
+          : (colorRows.first['price'] as num?)?.toDouble() ?? 0.0;
+      if (colorPrice > 0) oldPrice = colorPrice;
+    }
+
+    var averagePrice = unitPrice;
+    if (stockBefore > 0 && oldPrice > 0) {
+      averagePrice =
+          (stockBefore * oldPrice + quantity * unitPrice) /
+          (stockBefore + quantity);
+    }
+    averagePrice = (averagePrice * 100).roundToDouble() / 100;
+    if (averagePrice <= 0) return;
+
+    if (useColorTable) {
+      final table = colorTable!;
+      final keyColumn = colorKeyColumn!;
+      final updated = await txn.update(
+        table,
+        {'price': averagePrice},
+        where: '$keyColumn = ? AND color_id = ?',
+        whereArgs: [itemId, colorId],
+      );
+      if (updated == 0) {
+        await txn.insert(
+          table,
+          _withDistributedId({
+            keyColumn: itemId,
+            'color_id': colorId,
+            'price': averagePrice,
+          }),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await recordWorkshopPrice(
+        txn,
+        table: table,
+        rowKey: priceRowKey([itemId, colorId]),
+        column: 'price',
+        price: averagePrice,
+        source: 'purchase',
+      );
+      return;
+    }
+
+    if (!baseColumns.contains(baseColumn)) return;
+    await txn.update(
+      baseTable,
+      {baseColumn: averagePrice},
+      where: 'id = ?',
+      whereArgs: [itemId],
+    );
+    await recordWorkshopPrice(
+      txn,
+      table: baseTable,
+      rowKey: priceRowKey([itemId]),
+      column: baseColumn,
+      price: averagePrice,
+      source: 'purchase',
+    );
   }
 
   Future<List<Map<String, dynamic>>> readAllPossibleStock(
@@ -18491,101 +19281,86 @@ class SqlDatabase {
     List<Map<String, dynamic>> enrichedStock = [];
     Map<String, Map<String, dynamic>> groupedStock = {};
 
+    // Names are read once per table instead of one or two queries per stock
+    // row (thousands of queries for a large warehouse on every dashboard load).
+    final itemTypes = {for (final row in stock) row['item_type']?.toString()};
+    Future<Map<int, String>> namesOf(String table) async {
+      final rows = await myDb.query(table, columns: const ['id', 'name']);
+      return {
+        for (final r in rows)
+          if (r['id'] is int) r['id'] as int: r['name']?.toString() ?? '',
+      };
+    }
+
+    bool hasAny(Set<String> types) => itemTypes.any(types.contains);
+    const shutterTypes = {
+      'Shutter Component',
+      'ShutterComponents',
+      'Lame',
+      'Glissiere',
+      'Axe',
+      'Caisson',
+    };
+    final colorNames = stock.any((row) => row['color_id'] != null)
+        ? await namesOf('Colors')
+        : const <int, String>{};
+    final profileNames = hasAny(const {'Profile'})
+        ? await namesOf('Profile')
+        : const <int, String>{};
+    final accessoryNames = hasAny(const {'Accessory', 'Accessories'})
+        ? await namesOf('Accessories')
+        : const <int, String>{};
+    final glassNames = hasAny(const {'Glass'})
+        ? await namesOf('Glass')
+        : const <int, String>{};
+    final shutterNames = hasAny(shutterTypes)
+        ? await namesOf('ShutterComponents')
+        : const <int, String>{};
+    final jointNames = hasAny(const {'Joints', 'Joint'})
+        ? await namesOf('Joints')
+        : const <int, String>{};
+    final sectionNames = <int, String>{};
+    if (hasAny(const {'Sections', 'Section'})) {
+      final rows = await myDb.rawQuery('''
+          SELECT sec.id AS id, sec.name as section_name, sec.code as section_code, ser.name as series_name, p.name as profile_name
+          FROM Sections sec
+          LEFT JOIN Series ser ON sec.series_id = ser.id
+          LEFT JOIN Profile p ON ser.profile_id = p.id
+        ''');
+      for (final r in rows) {
+        final id = r['id'];
+        if (id is! int) continue;
+        final sName = r['section_name']?.toString() ?? '';
+        final sCode = r['section_code']?.toString() ?? '';
+        final serName = r['series_name']?.toString() ?? '';
+        final pName = r['profile_name']?.toString() ?? '';
+        // Format: ProfileName - SeriesName - [Code] SectionName
+        final codeStr = sCode.isNotEmpty ? '[$sCode] ' : '';
+        final parts = [pName, serName].where((s) => s.isNotEmpty).join(' - ');
+        var name = parts.isNotEmpty
+            ? '$parts - $codeStr$sName'
+            : '$codeStr$sName';
+        if (name.trim().isEmpty) name = sName;
+        sectionNames[id] = name;
+      }
+    }
+
     for (var row in stock) {
       final itemType = row['item_type'] as String;
       final itemId = row['item_id'] as int;
       final colorId = row['color_id'] as int?;
 
-      String itemName = 'â”˜Ã â•ªÂ¼â”˜Ã§â”˜Ãªâ”˜Ã¤';
-      String colorName = '';
-
-      if (colorId != null) {
-        final colorRow = await myDb.query(
-          'Colors',
-          columns: ['name'],
-          where: 'id = ?',
-          whereArgs: [colorId],
-        );
-        if (colorRow.isNotEmpty) colorName = colorRow.first['name'].toString();
-      }
-
-      if (itemType == 'Profile') {
-        final itemRow = await myDb.query(
-          'Profile',
-          columns: ['name'],
-          where: 'id = ?',
-          whereArgs: [itemId],
-        );
-        if (itemRow.isNotEmpty) itemName = itemRow.first['name'].toString();
-      } else if (itemType == 'Accessory' || itemType == 'Accessories') {
-        final itemRow = await myDb.query(
-          'Accessories',
-          columns: ['name'],
-          where: 'id = ?',
-          whereArgs: [itemId],
-        );
-        if (itemRow.isNotEmpty) itemName = itemRow.first['name'].toString();
-      } else if (itemType == 'Glass') {
-        final itemRow = await myDb.query(
-          'Glass',
-          columns: ['name'],
-          where: 'id = ?',
-          whereArgs: [itemId],
-        );
-        if (itemRow.isNotEmpty) itemName = itemRow.first['name'].toString();
-      } else if (itemType == 'Shutter Component' ||
-          itemType == 'ShutterComponents') {
-        final itemRow = await myDb.query(
-          'ShutterComponents',
-          columns: ['name'],
-          where: 'id = ?',
-          whereArgs: [itemId],
-        );
-        if (itemRow.isNotEmpty) itemName = itemRow.first['name'].toString();
-      } else if (itemType == 'Lame' ||
-          itemType == 'Glissiere' ||
-          itemType == 'Axe' ||
-          itemType == 'Caisson') {
-        final itemRow = await myDb.query(
-          'ShutterComponents',
-          columns: ['name'],
-          where: 'id = ?',
-          whereArgs: [itemId],
-        );
-        if (itemRow.isNotEmpty) itemName = itemRow.first['name'].toString();
-      } else if (itemType == 'Sections' || itemType == 'Section') {
-        final itemRow = await myDb.rawQuery(
-          '''
-          SELECT sec.name as section_name, sec.code as section_code, ser.name as series_name, p.name as profile_name
-          FROM Sections sec
-          LEFT JOIN Series ser ON sec.series_id = ser.id
-          LEFT JOIN Profile p ON ser.profile_id = p.id
-          WHERE sec.id = ?
-        ''',
-          [itemId],
-        );
-        if (itemRow.isNotEmpty) {
-          final sName = itemRow.first['section_name']?.toString() ?? '';
-          final sCode = itemRow.first['section_code']?.toString() ?? '';
-          final serName = itemRow.first['series_name']?.toString() ?? '';
-          final pName = itemRow.first['profile_name']?.toString() ?? '';
-          // Format: ProfileName - SeriesName - [Code] SectionName
-          final codeStr = sCode.isNotEmpty ? '[$sCode] ' : '';
-          final parts = [pName, serName].where((s) => s.isNotEmpty).join(' - ');
-          itemName = parts.isNotEmpty
-              ? '$parts - $codeStr$sName'
-              : '$codeStr$sName';
-          if (itemName.trim().isEmpty) itemName = sName;
-        }
-      } else if (itemType == 'Joints' || itemType == 'Joint') {
-        final itemRow = await myDb.query(
-          'Joints',
-          columns: ['name'],
-          where: 'id = ?',
-          whereArgs: [itemId],
-        );
-        if (itemRow.isNotEmpty) itemName = itemRow.first['name'].toString();
-      }
+      final colorName = colorId == null ? '' : colorNames[colorId] ?? '';
+      final String? resolvedName = switch (itemType) {
+        'Profile' => profileNames[itemId],
+        'Accessory' || 'Accessories' => accessoryNames[itemId],
+        'Glass' => glassNames[itemId],
+        'Sections' || 'Section' => sectionNames[itemId],
+        'Joints' || 'Joint' => jointNames[itemId],
+        _ when shutterTypes.contains(itemType) => shutterNames[itemId],
+        _ => null,
+      };
+      final itemName = resolvedName ?? 'مجهول';
 
       String key = '${itemName}_${colorName}_$itemType';
       if (groupedStock.containsKey(key)) {
@@ -18829,6 +19604,7 @@ class SqlDatabase {
     if (idOrType == null) {
       await database.delete('InventoryTransactions');
     }
+    CloudSyncService().notifyChange();
   }
 
   static bool _auditLogsInfrastructureReady = false;
@@ -18918,6 +19694,11 @@ class SqlDatabase {
         'ALTER TABLE AuditLogs ADD COLUMN updated_at TEXT NOT NULL DEFAULT "";',
       );
     } catch (_) {}
+    // The audit screen pages newest-first; without this index every page
+    // sorts the whole table, including its large JSON snapshots.
+    await executor.execute(
+      'CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON AuditLogs(timestamp DESC, id DESC);',
+    );
     _auditLogsInfrastructureReady = true;
   }
 
@@ -19044,11 +19825,106 @@ class SqlDatabase {
       await _ensureAuditLogsInfrastructure(database);
       return await database.query(
         'AuditLogs',
-        orderBy: 'timestamp DESC',
+        orderBy: 'timestamp DESC, id DESC',
         limit: limit,
       );
     } catch (e) {
       return [];
+    }
+  }
+
+  /// Search filter shared by [readAuditLogsPage] and [countAuditLogs].
+  /// The JSON snapshots in `details` are deliberately not scanned: they hold
+  /// whole documents and would make every keystroke a full-table read.
+  (String?, List<Object?>) _auditLogsSearchClause(String? query) {
+    final q = (query ?? '').trim();
+    if (q.isEmpty) return (null, const []);
+    final like = '%$q%';
+    return (
+      '(entity_title LIKE ? OR user_name LIKE ? OR action_type LIKE ? '
+          'OR entity_type LIKE ? OR entity_id LIKE ?)',
+      [like, like, like, like, like],
+    );
+  }
+
+  /// Reads one page of the audit log, newest first, without the heavy
+  /// `details` payload. Pass the last row of the previous page as
+  /// [beforeTimestamp]/[beforeId] to continue (keyset pagination).
+  Future<List<Map<String, dynamic>>> readAuditLogsPage({
+    int limit = 50,
+    String? beforeTimestamp,
+    int? beforeId,
+    String? query,
+  }) async {
+    final database = await db;
+    if (database == null) return [];
+    try {
+      await _ensureAuditLogsInfrastructure(database);
+      final where = <String>[];
+      final args = <Object?>[];
+      final (searchWhere, searchArgs) = _auditLogsSearchClause(query);
+      if (searchWhere != null) {
+        where.add(searchWhere);
+        args.addAll(searchArgs);
+      }
+      if (beforeTimestamp != null && beforeId != null) {
+        where.add('(timestamp < ? OR (timestamp = ? AND id < ?))');
+        args.addAll([beforeTimestamp, beforeTimestamp, beforeId]);
+      }
+      args.add(limit);
+      return await database.rawQuery('''
+        SELECT id, action_type, entity_type, entity_id, entity_title,
+               user_name, timestamp,
+               CASE WHEN details IS NULL OR details = '' THEN 0 ELSE 1 END
+                 AS has_details,
+               CASE WHEN substr(details, 1, 1) IN ('{', '[') THEN ''
+                    ELSE substr(COALESCE(details, ''), 1, 300) END
+                 AS details_preview
+        FROM AuditLogs
+        ${where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}'}
+        ORDER BY timestamp DESC, id DESC
+        LIMIT ?
+      ''', args);
+    } catch (e) {
+      debugPrint('Error reading audit logs page: $e');
+      return [];
+    }
+  }
+
+  Future<int> countAuditLogs({String? query}) async {
+    final database = await db;
+    if (database == null) return 0;
+    try {
+      await _ensureAuditLogsInfrastructure(database);
+      final (searchWhere, searchArgs) = _auditLogsSearchClause(query);
+      final rows = await database.rawQuery(
+        'SELECT COUNT(*) AS c FROM AuditLogs'
+        '${searchWhere == null ? '' : ' WHERE $searchWhere'}',
+        searchArgs,
+      );
+      return (rows.first['c'] as num?)?.toInt() ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Loads the full before/after payload of one audit entry on demand.
+  Future<String> readAuditLogDetails(int id) async {
+    final database = await db;
+    if (database == null) return '';
+    try {
+      await _ensureAuditLogsInfrastructure(database);
+      final rows = await database.query(
+        'AuditLogs',
+        columns: ['details'],
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (rows.isEmpty) return '';
+      return rows.first['details']?.toString() ?? '';
+    } catch (_) {
+      return '';
     }
   }
 
@@ -20048,6 +20924,14 @@ class SqlDatabase {
         price_per_meter = excluded.price_per_meter
     ''',
       [colorId, profilePricePerBar, bottomCoverPricePerBar, pricePerMeter],
+    );
+    await recordWorkshopPrice(
+      myDb,
+      table: 'CaissonTunnelPrices',
+      rowKey: priceRowKey([colorId]),
+      column: 'price_per_meter',
+      price: pricePerMeter,
+      source: 'manual',
     );
     CloudSyncService().notifyCatalogChange();
   }
@@ -21184,7 +22068,10 @@ class SqlDatabase {
     };
   }
 
-  Future<void> _ensureTemperedGlassItemsTable(Database dbInstance) async {
+  Future<void> _ensureTemperedGlassItemsTable(Database dbInstance) =>
+      _ensureSchemaOnce(dbInstance, '_ensureTemperedGlassItemsTable', () => _ensureTemperedGlassItemsTableUncached(dbInstance));
+
+  Future<void> _ensureTemperedGlassItemsTableUncached(Database dbInstance) async {
     await dbInstance.execute('''
       CREATE TABLE IF NOT EXISTS TemperedGlassItems (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -22706,11 +23593,50 @@ class SqlDatabase {
     if (rows.isEmpty) return;
     final sale = rows.first;
     if ((sale['is_deleted'] as num?)?.toInt() == 1) return;
+    // A customer return already put part of the goods back into stock.
+    // Reversing the whole sale as well would count those goods twice and
+    // leave the return attached to a deleted document.
+    final activeReturns = await myDb.rawQuery(
+      '''
+      SELECT 1 FROM MaterialSales
+      WHERE doc_type = 'retour' AND source_sale_id = ?
+        AND (is_deleted IS NULL OR is_deleted = 0)
+      LIMIT 1
+      ''',
+      [saleId],
+    );
+    if (activeReturns.isNotEmpty) {
+      throw StateError(
+        'لا يمكن حذف وثيقة لها مرتجعات. احذف وثيقة المرتجع أولاً.',
+      );
+    }
     await snapshotMaterialSale(saleId, actionType: 'before_delete');
+    final deletedBy = await _currentOrderEditor();
+    Future<void> markDeleted(DatabaseExecutor executor) async {
+      final now = DateTime.now().toUtc().toIso8601String();
+      await executor.update(
+        'MaterialSales',
+        {
+          'is_deleted': 1,
+          'deleted_at': now,
+          'deleted_by': deletedBy,
+          'status_before_delete': sale['status']?.toString() ?? 'draft',
+          'status': 'cancelled',
+          'stock_deducted': 0,
+          'updated_at': now,
+        },
+        where: 'id = ?',
+        whereArgs: [saleId],
+      );
+    }
+
     final isInternal = (sale['is_internal'] as num?)?.toInt() == 1;
     if (isInternal && (sale['stock_deducted'] as num?)?.toInt() == 1) {
       await cancelOrReverseInternalMaterialSaleTransfer(saleId: saleId);
+      await markDeleted(myDb);
     } else if ((sale['stock_deducted'] as num?)?.toInt() == 1) {
+      // Stock reversal and the deleted flag are written together: an
+      // interruption between them used to allow a second reversal.
       await myDb.transaction((txn) async {
         final items = await txn.query(
           'MaterialSaleItems',
@@ -22773,23 +23699,11 @@ class SqlDatabase {
             }),
           );
         }
+        await markDeleted(txn);
       });
+    } else {
+      await markDeleted(myDb);
     }
-    final now = DateTime.now().toUtc().toIso8601String();
-    await myDb.update(
-      'MaterialSales',
-      {
-        'is_deleted': 1,
-        'deleted_at': now,
-        'deleted_by': await _currentOrderEditor(),
-        'status_before_delete': sale['status']?.toString() ?? 'draft',
-        'status': 'cancelled',
-        'stock_deducted': 0,
-        'updated_at': now,
-      },
-      where: 'id = ?',
-      whereArgs: [saleId],
-    );
     await logAuditAction(
       actionType: 'delete',
       entityType: 'MaterialSale',
@@ -23489,6 +24403,17 @@ class SqlDatabase {
   }
 
   /// Deduct stock for all items in a confirmed sale (stock_deducted must be 0).
+  /// Posts the stock of a shop document.
+  ///
+  /// * First posting: deducts every line from [locationId] and stores that
+  ///   warehouse on the document, so a later deletion or return goes back to
+  ///   the same warehouse.
+  /// * Already posted (e.g. lines rewritten while confirming): only the
+  ///   difference between the current lines and what was already deducted is
+  ///   applied, from the document's own warehouse.
+  ///
+  /// Lines of the same item are summed before the availability check, so two
+  /// lines can never take more than the warehouse holds.
   Future<void> deductStockForMaterialSale(
     int saleId, {
     int locationId = 1,
@@ -23502,7 +24427,8 @@ class SqlDatabase {
         whereArgs: [saleId],
       );
       if (saleRows.isEmpty) throw StateError('وثيقة البيع غير موجودة.');
-      if ((saleRows.first['stock_deducted'] as num?)?.toInt() == 1) return;
+      final sale = saleRows.first;
+      final alreadyPosted = (sale['stock_deducted'] as num?)?.toInt() == 1;
       final items = await txn.query(
         'MaterialSaleItems',
         where: 'sale_id = ?',
@@ -23510,20 +24436,76 @@ class SqlDatabase {
       );
       if (items.isEmpty) throw StateError('لا يمكن تأكيد وثيقة بدون عناصر.');
       final now = DateTime.now().toUtc().toIso8601String();
+      final stockLocation = alreadyPosted
+          ? (sale['location_id'] as num?)?.toInt() ?? locationId
+          : locationId;
 
-      // Validate every line first. Nothing is written if even one item is
-      // unavailable, so unavailable lines are never silently omitted.
+      String keyOf(String type, int id, int? color) => '$type|$id|${color ?? ''}';
+      final required = <String, double>{};
+      final keyParts = <String, (String, int, int?)>{};
+      final labels = <String, String>{};
       for (final item in items) {
         final itemType = item['item_type']?.toString() ?? '';
         final itemId = (item['item_id'] as num?)?.toInt() ?? 0;
         final colorId = (item['color_id'] as num?)?.toInt();
-        final requiredQty = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+        final qty = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+        final label =
+            item['item_name']?.toString() ??
+            item['item_code']?.toString() ??
+            'عنصر';
+        if (itemId <= 0 || qty <= 0) {
+          throw StateError('العنصر $label بلا صنف أو كمية صالحة.');
+        }
+        final key = keyOf(itemType, itemId, colorId);
+        required[key] = (required[key] ?? 0.0) + qty;
+        keyParts[key] = (itemType, itemId, colorId);
+        labels[key] = label;
+      }
+
+      // What this document already took from stock.
+      final deducted = <String, double>{};
+      if (alreadyPosted) {
+        final movements = await txn.query(
+          'InventoryTransactions',
+          where:
+              "reference_id = ? AND transaction_type IN "
+              "('Material Sale', 'Material Sale Adjustment', "
+              "'Material Sale Reversal')",
+          whereArgs: [saleId],
+        );
+        // Documents posted before the movements were recorded cannot be
+        // reconciled safely: keep the stock as it is. (A reversal belongs to
+        // an earlier deletion that a restore posted again.)
+        if (movements.isEmpty) return;
+        for (final move in movements) {
+          final itemType = move['item_type']?.toString() ?? '';
+          final itemId = (move['item_id'] as num?)?.toInt() ?? 0;
+          final colorId = (move['color_id'] as num?)?.toInt();
+          final key = keyOf(itemType, itemId, colorId);
+          deducted[key] =
+              (deducted[key] ?? 0.0) -
+              ((move['quantity'] as num?)?.toDouble() ?? 0.0);
+          keyParts.putIfAbsent(key, () => (itemType, itemId, colorId));
+          labels.putIfAbsent(
+            key,
+            () => move['item_type']?.toString() ?? 'عنصر',
+          );
+        }
+      }
+
+      final changes = <String, double>{
+        for (final key in {...required.keys, ...deducted.keys})
+          key: (required[key] ?? 0.0) - (deducted[key] ?? 0.0),
+      }..removeWhere((_, change) => change.abs() <= 0.000001);
+
+      Future<(String, List<Object?>, double, bool)> stockOf(String key) async {
+        final (itemType, itemId, colorId) = keyParts[key]!;
         final where = colorId == null
             ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
             : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
         final args = colorId == null
-            ? [itemId, itemType, locationId]
-            : [itemId, itemType, colorId, locationId];
+            ? <Object?>[itemId, itemType, stockLocation]
+            : <Object?>[itemId, itemType, colorId, stockLocation];
         final stock = await txn.query(
           'CurrentStock',
           where: where,
@@ -23533,52 +24515,56 @@ class SqlDatabase {
         final available = stock.isEmpty
             ? 0.0
             : (stock.first['quantity'] as num?)?.toDouble() ?? 0.0;
-        if (itemId <= 0 ||
-            requiredQty <= 0 ||
-            available + 0.000001 < requiredQty) {
-          final label =
-              item['item_name']?.toString() ??
-              item['item_code']?.toString() ??
-              'عنصر';
+        return (where, args, available, stock.isNotEmpty);
+      }
+
+      // Validate every extra deduction first: nothing is written if even one
+      // item is short, so unavailable lines are never silently omitted.
+      for (final entry in changes.entries) {
+        if (entry.value <= 0) continue;
+        final (_, _, available, _) = await stockOf(entry.key);
+        if (available + 0.000001 < entry.value) {
           throw StateError(
-            'المخزون غير كافٍ لـ $label: المتوفر $available والمطلوب $requiredQty.',
+            'المخزون غير كافٍ لـ ${labels[entry.key]}: المتوفر $available والمطلوب ${entry.value}.',
           );
         }
       }
 
-      for (final item in items) {
-        final itemType = item['item_type']?.toString() ?? '';
-        final itemId = (item['item_id'] as num).toInt();
-        final colorId = (item['color_id'] as num?)?.toInt();
-        final qty = (item['quantity'] as num).toDouble();
-        final where = colorId == null
-            ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
-            : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
-        final args = colorId == null
-            ? [itemId, itemType, locationId]
-            : [itemId, itemType, colorId, locationId];
-        final stock = await txn.query(
-          'CurrentStock',
-          where: where,
-          whereArgs: args,
-          limit: 1,
-        );
-        final available = (stock.first['quantity'] as num).toDouble();
-        await txn.update(
-          'CurrentStock',
-          {'quantity': available - qty, 'updated_at': now},
-          where: where,
-          whereArgs: args,
-        );
+      for (final entry in changes.entries) {
+        final (itemType, itemId, colorId) = keyParts[entry.key]!;
+        final (where, args, available, exists) = await stockOf(entry.key);
+        if (exists) {
+          await txn.update(
+            'CurrentStock',
+            {'quantity': available - entry.value, 'updated_at': now},
+            where: where,
+            whereArgs: args,
+          );
+        } else {
+          // Only a reduced line (negative change) can reach a missing row.
+          await txn.insert(
+            'CurrentStock',
+            _withDistributedId({
+              'item_id': itemId,
+              'item_type': itemType,
+              'color_id': colorId,
+              'location_id': stockLocation,
+              'quantity': -entry.value,
+              'updated_at': now,
+            }),
+          );
+        }
         await txn.insert(
           'InventoryTransactions',
           _withDistributedId({
             'item_id': itemId,
             'item_type': itemType,
             'color_id': colorId,
-            'location_id': locationId,
-            'quantity': -qty,
-            'transaction_type': 'Material Sale',
+            'location_id': stockLocation,
+            'quantity': -entry.value,
+            'transaction_type': alreadyPosted
+                ? 'Material Sale Adjustment'
+                : 'Material Sale',
             'reference_id': saleId,
             'created_at': now,
           }),
@@ -23586,7 +24572,11 @@ class SqlDatabase {
       }
       await txn.update(
         'MaterialSales',
-        {'stock_deducted': 1, 'updated_at': now},
+        {
+          'stock_deducted': 1,
+          'location_id': stockLocation,
+          'updated_at': now,
+        },
         where: 'id = ?',
         whereArgs: [saleId],
       );

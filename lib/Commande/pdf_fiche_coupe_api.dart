@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:database_data/Commande/capture_image.dart';
@@ -142,29 +143,20 @@ class PdfFicheCoupeApi {
 
     // تحميل بيانات كل منتج مع دمج القطع وصور المقاطع
     final articles = <_ArticleData>[];
-    var nextWindowNumber = 1;
     for (final item in activeItems) {
-      final articleQty = _num(
-        item['quantity'],
-        fb: 1,
-      ).round().clamp(1, 999999).toInt();
       articles.add(
         await _loadArticle(
           db,
           item,
           resolvedLanguage,
           imageCache,
-          firstWindowNumber: nextWindowNumber,
           kitBundleData: kitBundles.data,
           kitPerLeafMap: kitBundles.perLeaf,
           kitBundleMetadata: kitBundles.metadata,
           kitBundlePrices: kitBundles.prices,
         ),
       );
-      nextWindowNumber += articleQty;
     }
-    final showWindowNumbers = nextWindowNumber > 2;
-
     // شعار الورشة
     pw.Widget? logoWidget;
     if (logoBase64.isNotEmpty) {
@@ -248,7 +240,6 @@ class PdfFicheCoupeApi {
                 font: font,
                 fontBold: fontBold,
                 tr: tr,
-                showWindowNumbers: showWindowNumbers,
               ),
             );
           }
@@ -417,9 +408,11 @@ class PdfFicheCoupeApi {
     required pw.Font font,
     required pw.Font fontBold,
     required _Tr tr,
-    required bool showWindowNumbers,
   }) {
     final widgets = <pw.Widget>[];
+    // Number distinct measurement groups, not every physical window.  The
+    // number links the measurements table to every affected cutting row.
+    final showMeasurementNumbers = data.measurements.length > 1;
 
     // ── 1. شريط عنوان المنتج ──
     widgets.add(
@@ -574,10 +567,29 @@ class PdfFicheCoupeApi {
       );
     }
 
+    if (data.hingeLines.isNotEmpty) {
+      widgets.add(pw.SizedBox(height: 4));
+      widgets.add(
+        pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          color: _kRowAlt,
+          alignment: tr.isRtl
+              ? pw.Alignment.centerRight
+              : pw.Alignment.centerLeft,
+          child: pw.Text(
+            _shapeText(data.hingeLines.join('   |   ')),
+            style: pw.TextStyle(font: font, fontSize: 8),
+            textAlign: tr.isRtl ? pw.TextAlign.right : pw.TextAlign.left,
+          ),
+        ),
+      );
+    }
+
     // Confirmed production sizes are the bridge between the drawing and the
-    // cut rows. Keep the same window numbers here and in every profile cut so
-    // the manager and workshop operator can verify them at a glance.
-    if (data.measurements.isNotEmpty) {
+    // cut rows. Show one row per distinct size with its total quantity.
+    // One size is already visible in the article header.  A separate table is
+    // useful only when production contains more than one distinct size.
+    if (data.measurements.length > 1) {
       widgets.add(pw.SizedBox(height: 6));
       widgets.add(
         _buildConfirmedMeasurementsTable(
@@ -585,7 +597,7 @@ class PdfFicheCoupeApi {
           font,
           fontBold,
           tr,
-          showWindowNumbers: showWindowNumbers,
+          showWindowNumbers: showMeasurementNumbers,
         ),
       );
     }
@@ -608,7 +620,7 @@ class PdfFicheCoupeApi {
           font,
           fontBold,
           tr,
-          showWindowNumbers: showWindowNumbers,
+          showWindowNumbers: showMeasurementNumbers,
         ),
       );
       tablesBelow.add(pw.SizedBox(height: 6));
@@ -630,7 +642,7 @@ class PdfFicheCoupeApi {
           font,
           fontBold,
           tr,
-          showWindowNumbers: showWindowNumbers,
+          showWindowNumbers: showMeasurementNumbers,
         ),
       );
       if (shutterAccessories.isNotEmpty) {
@@ -747,12 +759,24 @@ class PdfFicheCoupeApi {
       final row = rows[i];
       final isAlt = i.isOdd;
       final cutCount = row.cuts.length;
-      final descriptionLines = row.description.split('\n').fold<int>(
-        0,
-        (sum, line) =>
-            sum + (line.trim().length / 34).ceil().clamp(1, 99).toInt(),
-      );
-      final contentHeight = descriptionLines * 11.0 + 8.0;
+      final contentHeight = row.description.split('\n').fold<double>(8.0, (
+        height,
+        line,
+      ) {
+        final trimmed = line.trim();
+        final isWarning = trimmed.contains('تنبيه') ||
+            trimmed.contains('Attention') ||
+            trimmed.contains('Warning');
+        final charsPerLine = isWarning ? 27 : 34;
+        final visualLines = (trimmed.length / charsPerLine)
+            .ceil()
+            .clamp(1, 99)
+            .toInt();
+        // Warning text has a larger font, padding and its own border inside
+        // the side-cover designation cell.
+        return height + visualLines * (isWarning ? 14.0 : 11.0) +
+            (isWarning ? 9.0 : 0.0);
+      });
       final cutsHeight = cutCount * 25.0;
       final totalRowHeight = contentHeight > cutsHeight
           ? contentHeight
@@ -924,6 +948,11 @@ class PdfFicheCoupeApi {
       AppLanguage.english => 'Height',
       AppLanguage.arabic => 'الارتفاع',
     };
+    final quantityLabel = switch (tr.lang) {
+      AppLanguage.french => 'Quantité',
+      AppLanguage.english => 'Quantity',
+      AppLanguage.arabic => 'الكمية',
+    };
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
@@ -935,6 +964,7 @@ class PdfFicheCoupeApi {
             if (showWindowNumbers) 0: const pw.FixedColumnWidth(44),
             (showWindowNumbers ? 1 : 0): const pw.FlexColumnWidth(),
             (showWindowNumbers ? 2 : 1): const pw.FlexColumnWidth(),
+            (showWindowNumbers ? 3 : 2): const pw.FixedColumnWidth(70),
           },
           children: [
             pw.TableRow(
@@ -944,6 +974,7 @@ class PdfFicheCoupeApi {
                   _cell('N°', fontBold, align: pw.TextAlign.center, bold: true, boldFont: fontBold),
                 _cell(widthLabel, fontBold, align: pw.TextAlign.center, bold: true, boldFont: fontBold),
                 _cell(heightLabel, fontBold, align: pw.TextAlign.center, bold: true, boldFont: fontBold),
+                _cell(quantityLabel, fontBold, align: pw.TextAlign.center, bold: true, boldFont: fontBold),
               ],
             ),
             for (final measurement in measurements)
@@ -953,6 +984,7 @@ class PdfFicheCoupeApi {
                     _cell(measurement.windowNumber, fontBold, align: pw.TextAlign.center, bold: true, boldFont: fontBold),
                   _cell('${measurement.widthMm.toStringAsFixed(0)} mm', font, align: pw.TextAlign.center),
                   _cell('${measurement.heightMm.toStringAsFixed(0)} mm', font, align: pw.TextAlign.center),
+                  _cell('${measurement.qty}', fontBold, align: pw.TextAlign.center, bold: true, boldFont: fontBold),
                 ],
               ),
           ],
@@ -1182,7 +1214,10 @@ class PdfFicheCoupeApi {
     // 1. مسار مباشر من قاعدة البيانات
     if (catalogItemId != null && catalogItemId > 0) {
       try {
-        final database = await db.initDb();
+        // Reuse the shared connection. initDb() re-resolves the encryption
+        // password and reopens the file for every uncached section image.
+        final database = await db.db;
+        if (database == null) throw StateError('database unavailable');
         final normalizedType = (inventoryItemType ?? '').toLowerCase();
         final table = normalizedType.contains('accessory')
             ? 'Accessories'
@@ -1350,7 +1385,6 @@ class PdfFicheCoupeApi {
     Map<String, dynamic> item,
     AppLanguage lang,
     Map<String, pw.Widget?> imageCache, {
-    required int firstWindowNumber,
     required Map<String, List<Map<String, dynamic>>> kitBundleData,
     required Map<String, bool> kitPerLeafMap,
     required Map<String, Map<String, dynamic>> kitBundleMetadata,
@@ -1394,7 +1428,7 @@ class PdfFicheCoupeApi {
         item,
         quantityLimit: qty,
       );
-      var measurementWindowNumber = firstWindowNumber;
+      var measurementGroupNumber = 1;
       for (final measurement in measurements) {
         final instanceModel = WindowModel(db: db);
         applyWindowModelFromMap(instanceModel, decoded);
@@ -1434,24 +1468,64 @@ class PdfFicheCoupeApi {
         await engine.stabilizeSelections(window: instanceModel, items: bom);
         bom = generateBom();
         await engine.stabilizeSelections(window: instanceModel, items: bom);
+        final generatedForFiltering = generateBom();
+        // Workshop instructions (notably the orange customised side-cover
+        // warning) belong to the physical cut row.  Catalogue filtering may
+        // return a rebuilt BOM item, so retain and re-attach those notes by a
+        // stable component identity instead of relying on object identity.
+        List<String> productionNoteKeys(BomItem value) {
+          final keys = <String>[];
+          final overrideKey = value.overrideKey?.trim() ?? '';
+          if (overrideKey.isNotEmpty) {
+            keys.add('override:${overrideKey.toLowerCase()}');
+          }
+          final catalogId = value.catalogItemId;
+          if (catalogId != null) keys.add('catalog:$catalogId');
+          final profileCode = value.profileCode?.trim() ?? '';
+          if (profileCode.isNotEmpty) {
+            keys.add('profile:${profileCode.toLowerCase()}');
+          }
+          final role = (value.roleKey ?? value.selectorType ?? '').trim();
+          if (role.isNotEmpty) keys.add('role:${role.toLowerCase()}');
+          final originalName = value.originalName.trim();
+          if (originalName.isNotEmpty) {
+            keys.add('name:${originalName.toLowerCase()}');
+          }
+          return keys;
+        }
+
+        final productionNotes = <String, String>{};
+        for (final value in generatedForFiltering) {
+          final note = value.productionNote?.trim();
+          if (note == null || note.isEmpty) continue;
+          for (final key in productionNoteKeys(value)) {
+            productionNotes[key] = note;
+          }
+        }
         bom = await engine.filterItemsByAvailableCandidates(
           window: instanceModel,
-          items: generateBom(),
+          items: generatedForFiltering,
         );
-        final windowNumbers = [
-          for (var offset = 0; offset < measuredQty; offset++)
-            '${measurementWindowNumber + offset}',
-        ];
-        final windowNumber = windowNumbers.join(', ');
-        for (final number in windowNumbers) {
-          confirmedMeasurements.add(
-            _ConfirmedMeasurement(
-              windowNumber: number,
-              widthMm: measuredWidth,
-              heightMm: measuredHeight,
-            ),
-          );
+        if (productionNotes.isNotEmpty) {
+          bom = bom.map((value) {
+            if (value.productionNote?.trim().isNotEmpty == true) return value;
+            String? note;
+            for (final key in productionNoteKeys(value)) {
+              note = productionNotes[key];
+              if (note != null) break;
+            }
+            return note == null ? value : value.copyWith(productionNote: note);
+          }).toList(growable: false);
         }
+        final windowNumber = '$measurementGroupNumber';
+        confirmedMeasurements.add(
+          _ConfirmedMeasurement(
+            windowNumber: windowNumber,
+            widthMm: measuredWidth,
+            heightMm: measuredHeight,
+            qty: measuredQty,
+          ),
+        );
         final activeMeasurementItems = bom
             .where((r) => r.isActive && r.purchaseQuantity > 0)
             .toList(growable: false);
@@ -1459,7 +1533,7 @@ class PdfFicheCoupeApi {
         for (final bomItem in activeMeasurementItems) {
           windowNumbersByItem[bomItem] = windowNumber;
         }
-        measurementWindowNumber += measuredQty;
+        measurementGroupNumber++;
       }
 
       // The quantity table treats a configured shutter Kit as one collapsible
@@ -1468,6 +1542,40 @@ class PdfFicheCoupeApi {
       // duplicating all of its internal children underneath it.
       final ficheItems = <BomItem>[];
       final collapsedShutterKits = <String>{};
+      int shutterSectionsForKit(String groupName) {
+        final splits = model.effectiveShutterSplits;
+        final code = normalizeKitDescriptionCode(
+          kitBundleMetadata[groupName]?['description'],
+        );
+        bool isMotor(String value) =>
+            value == 'محرك' || value.toLowerCase().contains('moteur');
+        bool isCrank(String value) {
+          final v = value.toLowerCase();
+          return value == 'منايفال' ||
+              value == 'مانيفال' ||
+              value == 'مانيفر' ||
+              v.contains('maniv');
+        }
+        String mechanism(ShutterSplitSection split) =>
+            split.mechanism?.trim().isNotEmpty == true
+            ? split.mechanism!.trim()
+            : model.shutterMechanism;
+        if (code == 'MT') {
+          return splits.where((s) => isMotor(mechanism(s))).length;
+        }
+        if (code == 'M') {
+          return splits.where((s) => isCrank(mechanism(s))).length;
+        }
+        if (code == 'V') {
+          return splits.where((s) => !isMotor(mechanism(s))).length;
+        }
+        return splits.length;
+      }
+
+      final totalMeasuredQuantity = confirmedMeasurements.fold<int>(
+        0,
+        (sum, measurement) => sum + measurement.qty,
+      );
       for (final bomItem in active) {
         final groupName = bomItem.kitGroupName?.trim() ?? '';
         final isShutterKit =
@@ -1498,7 +1606,9 @@ class PdfFicheCoupeApi {
             profileCode: metadata?['code']?.toString(),
             name: exactKitName,
             imagePath: metadata?['image_path']?.toString(),
-            quantity: qty.toDouble(),
+            quantity:
+                totalMeasuredQuantity.toDouble() *
+                math.max(1, shutterSectionsForKit(groupName)).toDouble(),
             unit: 'kit',
             unitPrice: kitBundlePrices[groupName] ?? 0,
             kitGroupName: groupName,
@@ -1640,6 +1750,81 @@ class PdfFicheCoupeApi {
         windowNumbersByItem: windowNumbersByItem,
       );
 
+      // Do not rely on BOM filtering to carry this workshop instruction.
+      // Rebuild it from the saved drawing and inject it into the exact visible
+      // profile row (standalone Side Cover, or Frame for an integrated cover).
+      final directSideCoverWarning = _sideCoverWarningFromModel(model, lang);
+      if (directSideCoverWarning != null) {
+        bool isSideCoverNote(String line) {
+          final l = line.trim();
+          return l.startsWith('تنبيه الغطاء الجانبي') ||
+              l.startsWith('Attention couvre-joint') ||
+              l.startsWith('Warning side cover');
+        }
+
+        // The BOM note is Arabic and may be stale; keep a single, localized
+        // instruction built from the saved drawing.
+        for (var i = 0; i < profileRows.length; i++) {
+          final row = profileRows[i];
+          final lines = row.description.split('\n');
+          if (!lines.any(isSideCoverNote)) continue;
+          profileRows[i] = _ProfileCutRow(
+            reference: row.reference,
+            description: lines.where((l) => !isSideCoverNote(l)).join('\n'),
+            imageWidget: row.imageWidget,
+            cuts: row.cuts,
+          );
+        }
+        final selectedCoverCode =
+            model.selectedSideCover?.code.trim().toLowerCase() ??
+            model.sideCoverOverride?['code']?.toString().trim().toLowerCase() ??
+            '';
+        final frameCode =
+            model.activeFrameOverride?['code']
+                ?.toString()
+                .trim()
+                .toLowerCase() ??
+            '';
+        int coverRowIndex() => profileRows.indexWhere((row) {
+          final ref = row.reference.trim().toLowerCase();
+          final text = row.description.toLowerCase();
+          return (selectedCoverCode.isNotEmpty && ref == selectedCoverCode) ||
+              text.contains('side cover') ||
+              text.contains('couvre joint') ||
+              text.contains('couvre-joint') ||
+              text.contains('الغطاء الجانبي');
+        });
+        int frameRowIndex() => profileRows.indexWhere((row) {
+          final ref = row.reference.trim().toLowerCase();
+          final text = row.description.toLowerCase();
+          return (frameCode.isNotEmpty && ref == frameCode) ||
+              text.contains('frame') ||
+              text.contains('cadre') ||
+              text.contains('الإطار');
+        });
+        // Standalone cover → its own cut row; integrated cover → the frame.
+        // Fall back to the other one, then to the first profile row, so the
+        // instruction is never silently dropped from the fiche.
+        var targetIndex = model.isIntegratedFrame
+            ? frameRowIndex()
+            : coverRowIndex();
+        if (targetIndex < 0) {
+          targetIndex = model.isIntegratedFrame
+              ? coverRowIndex()
+              : frameRowIndex();
+        }
+        if (targetIndex < 0 && profileRows.isNotEmpty) targetIndex = 0;
+        if (targetIndex >= 0) {
+          final target = profileRows[targetIndex];
+          profileRows[targetIndex] = _ProfileCutRow(
+            reference: target.reference,
+            description: '${target.description}\n$directSideCoverWarning',
+            imageWidget: target.imageWidget,
+            cuts: target.cuts,
+          );
+        }
+      }
+
       final shutterProfileRows = await _buildGroupedProfileRows(
         active.where(_isShutterComponent).toList(),
         db,
@@ -1664,6 +1849,7 @@ class PdfFicheCoupeApi {
         itemImages: itemImages,
         measurements: confirmedMeasurements,
         drawing: drawing,
+        hingeLines: _hingeLines(model, _Tr(lang)),
       );
     } catch (_) {
       final rawGamme = item['game']?.toString() ?? '';
@@ -1692,6 +1878,19 @@ class PdfFicheCoupeApi {
         drawing: null,
       );
     }
+  }
+
+  /// Hinge positions measured on the sash, so the workshop drills the
+  /// layout the drawing shows (automatic or placed by hand).
+  static List<String> _hingeLines(WindowModel model, _Tr tr) {
+    if (model.systemMode == 'sliding') return const [];
+    return [
+      for (final s in model.hingeSummaries())
+        if (s.positions.isNotEmpty)
+          '${tr.sash(s.sashNumber)}: ${s.positions.length} ${tr.hinges} '
+              '(${s.horizontal ? tr.fromLeft : tr.fromBottom}) '
+              '${s.positions.map((p) => p.round()).join(' / ')} mm',
+    ];
   }
 
   static bool _isShutterComponent(BomItem item) {
@@ -1756,6 +1955,20 @@ class PdfFicheCoupeApi {
       );
     }
     return result;
+  }
+
+  static String? _sideCoverWarningFromModel(
+    WindowModel model,
+    AppLanguage lang,
+  ) {
+    final integrated = model.isIntegratedFrame;
+    return model.sideCoverWarningText(
+      integrated: integrated,
+      fallbackWidth: integrated
+          ? model.integratedFrameSideCoverWidth
+          : model.standaloneSideCoverWidth,
+      lang: lang,
+    );
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -1856,14 +2069,34 @@ class PdfFicheCoupeApi {
         final mm = (pM * 1000).round();
         if (mm <= 0) continue;
         final windowNumber = windowNumbersByItem[bom] ?? '';
-        final cutKey = '$windowNumber|$mm|$angles';
+        // Equal cuts belong on one line with their total quantity. Measurement
+        // group numbers are excluded from the key, then combined as "1, 2".
+        final cutKey = '$mm|$angles';
         final cur = existing.cuts[cutKey];
         if (cur != null) {
+          final measurementNumbers = <String>{
+            ...cur.windowNumber
+                .split(',')
+                .map((value) => value.trim())
+                .where((value) => value.isNotEmpty),
+            ...windowNumber
+                .split(',')
+                .map((value) => value.trim())
+                .where((value) => value.isNotEmpty),
+          }.toList()
+            ..sort((a, b) {
+              final aNumber = int.tryParse(a);
+              final bNumber = int.tryParse(b);
+              if (aNumber != null && bNumber != null) {
+                return aNumber.compareTo(bNumber);
+              }
+              return a.compareTo(b);
+            });
           existing.cuts[cutKey] = (
             qty: cur.qty + 1,
             lengthMm: mm,
             angles: angles,
-            windowNumber: windowNumber,
+            windowNumber: measurementNumbers.join(', '),
           );
         } else {
           existing.cuts[cutKey] = (
@@ -2166,32 +2399,55 @@ class PdfFicheCoupeApi {
           ),
           for (final detail in details) ...[
             pw.SizedBox(height: 1.5),
-            pw.Text(
-              _shapeText(detail),
-              style: pw.TextStyle(
-                font:
-                    detail.contains('تنبيه') ||
-                        detail.contains('Attention') ||
-                        detail.contains('Warning') ||
-                        detail.contains('المطلوب الفعلي') ||
-                        detail.contains('Besoin réel') ||
-                        detail.contains('Actual requirement')
-                    ? fontBold
-                    : font,
-                fontSize: 6.8,
-                color:
-                    detail.contains('تنبيه') ||
-                        detail.contains('Attention') ||
-                        detail.contains('Warning')
-                    ? PdfColors.orange800
-                    : detail.contains('المطلوب الفعلي') ||
+            if (detail.contains('تنبيه') ||
+                detail.contains('Attention') ||
+                detail.contains('Warning'))
+              pw.Container(
+                width: double.infinity,
+                padding: const pw.EdgeInsets.symmetric(
+                  horizontal: 5,
+                  vertical: 4,
+                ),
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.orange50,
+                  border: pw.Border.all(
+                    color: PdfColors.orange800,
+                    width: 0.8,
+                  ),
+                  borderRadius: const pw.BorderRadius.all(
+                    pw.Radius.circular(3),
+                  ),
+                ),
+                child: pw.Text(
+                  _shapeText(detail),
+                  style: pw.TextStyle(
+                    font: fontBold,
+                    fontSize: 10.2,
+                    color: PdfColors.orange900,
+                  ),
+                  textAlign: align,
+                ),
+              )
+            else
+              pw.Text(
+                _shapeText(detail),
+                style: pw.TextStyle(
+                  font:
+                      detail.contains('المطلوب الفعلي') ||
                           detail.contains('Besoin réel') ||
                           detail.contains('Actual requirement')
-                    ? _kBlue
-                    : PdfColors.grey600,
+                      ? fontBold
+                      : font,
+                  fontSize: 6.8,
+                  color:
+                      detail.contains('المطلوب الفعلي') ||
+                          detail.contains('Besoin réel') ||
+                          detail.contains('Actual requirement')
+                      ? _kBlue
+                      : PdfColors.grey600,
+                ),
+                textAlign: align,
               ),
-              textAlign: align,
-            ),
           ],
         ],
       ),
@@ -2237,6 +2493,10 @@ class PdfFicheCoupeApi {
         text.contains('axe') ||
         text.contains('caisson') ||
         text.contains('gliss') ||
+        text.contains('triangle') ||
+        text.contains('tringle') ||
+        text.contains('تراينغل') ||
+        text.contains('ترينغل') ||
         text.contains('الشرائح') ||
         text.contains('المحور') ||
         text.contains('الصندوق'))
@@ -2245,9 +2505,19 @@ class PdfFicheCoupeApi {
   }
 
   static String _formatExplicitAngles(String value) {
-    final numbers = RegExp(
-      r'\d+',
-    ).allMatches(value).map((match) => match.group(0)).toList();
+    // Slanted cuts carry decimals (e.g. "31.7/45.0"): keep them whole,
+    // otherwise "31.7" reads as the two angles 31° and 7°.
+    final numbers = RegExp(r'\d+(?:[.,]\d+)?')
+        .allMatches(value)
+        .map((match) => match.group(0)!.replaceAll(',', '.'))
+        .map((text) {
+          final number = double.tryParse(text);
+          if (number == null) return text;
+          return number == number.roundToDouble()
+              ? number.round().toString()
+              : number.toStringAsFixed(1);
+        })
+        .toList();
     if (numbers.length >= 2) return '${numbers[0]}° / ${numbers[1]}°';
     return value;
   }
@@ -2831,17 +3101,21 @@ class PdfFicheCoupeApi {
           ? 'Verrou'
           : (targetLang == AppLanguage.english ? 'Flush bolt' : 'فيرو');
     }
+    // Check Triangle before Crémone because legacy Triangle names often contain
+    // both words (for example "تراينغل الكريمون").  The cutting sheet must
+    // describe the cut profile, not the locking accessory that drives it.
+    if (lowerClean.contains('triangle') ||
+        lowerClean.contains('tringle') ||
+        clean.contains('تراينغل') ||
+        clean.contains('ترينغل')) {
+      return targetLang == AppLanguage.arabic ? 'الترايانغل' : 'Triangle';
+    }
     if (lowerClean.contains('crémone') ||
         lowerClean.contains('cremone') ||
         clean.contains('كريمون')) {
       return targetLang == AppLanguage.french
           ? 'Crémone'
           : (targetLang == AppLanguage.english ? 'Cremone' : 'كريمون');
-    }
-    if (lowerClean.contains('tringle') || clean.contains('تراينغل')) {
-      return targetLang == AppLanguage.french
-          ? 'Tringle crémone'
-          : (targetLang == AppLanguage.english ? 'Cremone rod' : 'قضيب كريمون');
     }
     if (lowerClean.contains('joint brosse') || clean.contains('جوان بروس')) {
       return targetLang == AppLanguage.french
@@ -2989,7 +3263,31 @@ class _Tr {
   String get joints => switch (lang) {
     AppLanguage.french => 'JOINTS',
     AppLanguage.english => 'GASKETS',
-    AppLanguage.arabic => 'المفاصل',
+    AppLanguage.arabic => 'الجوانات',
+  };
+
+  String get hinges => switch (lang) {
+    AppLanguage.french => 'paumelles',
+    AppLanguage.english => 'hinges',
+    AppLanguage.arabic => 'مفاصل',
+  };
+
+  String sash(int n) => switch (lang) {
+    AppLanguage.french => 'Ouvrant $n',
+    AppLanguage.english => 'Sash $n',
+    AppLanguage.arabic => 'الضلفة $n',
+  };
+
+  String get fromBottom => switch (lang) {
+    AppLanguage.french => 'axes depuis le bas',
+    AppLanguage.english => 'centres from the bottom',
+    AppLanguage.arabic => 'المحاور من الأسفل',
+  };
+
+  String get fromLeft => switch (lang) {
+    AppLanguage.french => 'axes depuis la gauche',
+    AppLanguage.english => 'centres from the left',
+    AppLanguage.arabic => 'المحاور من اليسار',
   };
 
   String get image => switch (lang) {
@@ -3071,6 +3369,9 @@ class _ArticleData {
   final List<_ConfirmedMeasurement> measurements;
   final Uint8List? drawing;
 
+  /// One line per hinged sash: its hinge centres in mm.
+  final List<String> hingeLines;
+
   const _ArticleData({
     required this.gamme,
     required this.openingType,
@@ -3086,6 +3387,7 @@ class _ArticleData {
     this.itemImages = const {},
     this.measurements = const [],
     required this.drawing,
+    this.hingeLines = const [],
   });
 }
 
@@ -3093,11 +3395,13 @@ class _ConfirmedMeasurement {
   final String windowNumber;
   final double widthMm;
   final double heightMm;
+  final int qty;
 
   const _ConfirmedMeasurement({
     required this.windowNumber,
     required this.widthMm,
     required this.heightMm,
+    required this.qty,
   });
 }
 

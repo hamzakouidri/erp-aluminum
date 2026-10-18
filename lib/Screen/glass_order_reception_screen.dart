@@ -92,11 +92,14 @@ class _GlassOrderReceptionScreenState extends State<GlassOrderReceptionScreen> {
     final game = (item['game'] ?? '').toString().toLowerCase().trim();
     final windowType = (item['window_type'] ?? '').toString().toLowerCase();
 
-    // 1. فحص وجود قياسات معدلة/مؤكدة مسبقاً في confirmed_mesures_json
-    final confirmedJson = item['confirmed_mesures_json']?.toString();
-    if (confirmedJson != null && confirmedJson.isNotEmpty && confirmedJson != '{}') {
+    // 1. أبعاد الزجاج المعدّلة عند الاستلام (glass_override_json)، أو الصيغة
+    // القديمة التي كانت تُكتب خطأً في confirmed_mesures_json.
+    final overrideJson =
+        item['glass_override_json']?.toString() ??
+        item['confirmed_mesures_json']?.toString();
+    if (overrideJson != null && overrideJson.isNotEmpty && overrideJson != '{}') {
       try {
-        final map = jsonDecode(confirmedJson) as Map<String, dynamic>;
+        final map = jsonDecode(overrideJson) as Map<String, dynamic>;
         final gh = (map['glass_height'] as num?)?.toDouble();
         final gw = (map['glass_width'] as num?)?.toDouble();
         if (gh != null && gw != null && gh > 0 && gw > 0) {
@@ -413,23 +416,14 @@ class _GlassOrderReceptionScreenState extends State<GlassOrderReceptionScreen> {
                     newGlassText = outerCtrl.text.trim();
                   }
 
-                  final dbInst = await widget.db.db;
-                  if (dbInst != null) {
-                    final confirmedMap = <String, dynamic>{
-                      'glass_height': newH,
-                      'glass_width': newW,
-                      'custom_spec': newGlassText,
-                    };
-                    await dbInst.update(
-                      'Commandes_details',
-                      {
-                        'glass': newGlassText,
-                        'confirmed_mesures_json': jsonEncode(confirmedMap),
-                      },
-                      where: 'id = ?',
-                      whereArgs: [item['id']],
-                    );
-                  }
+                  // Own column: confirmed_mesures_json holds the window
+                  // measurements and must not be overwritten here.
+                  await widget.db.updateCommandeDetailGlassOverride(
+                    (item['id'] as num).toInt(),
+                    glassText: newGlassText,
+                    glassHeight: newH,
+                    glassWidth: newW,
+                  );
 
                   if (mounted) {
                     Navigator.pop(ctx);

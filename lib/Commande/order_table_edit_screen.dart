@@ -1094,6 +1094,8 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
           lower == 'gris' ||
           lower == 'رمادي')
         return 'Gris';
+      if (lower == 'faux bois marron clair' || lower == 'خشبي بني فاتح' || lower == 'light brown wood grain')
+        return 'Faux bois marron clair';
       if (lower == 'faux bois marron' || lower == 'marron faux bois' || lower == 'خشبي بني' || lower == 'بني خشبي')
         return 'Faux Bois Marron';
       if (lower == 'brown' || lower == 'faux bois' || lower == 'بني')
@@ -1109,6 +1111,8 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
           lower == 'gris' ||
           lower == 'رمادي')
         return 'Grey';
+      if (lower == 'faux bois marron clair' || lower == 'خشبي بني فاتح' || lower == 'light brown wood grain')
+        return 'Light brown wood grain';
       if (lower == 'faux bois marron' || lower == 'marron faux bois' || lower == 'خشبي بني' || lower == 'بني خشبي')
         return 'Brown Wood (Faux Bois Marron)';
       if (lower == 'brown' || lower == 'faux bois' || lower == 'بني')
@@ -1125,6 +1129,8 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
           lower == 'gris' ||
           lower == 'رمادي')
         return 'رمادي';
+      if (lower == 'faux bois marron clair' || lower == 'خشبي بني فاتح' || lower == 'light brown wood grain')
+        return 'خشبي بني فاتح';
       if (lower == 'faux bois marron' || lower == 'marron faux bois' || lower == 'خشبي بني' || lower == 'بني خشبي')
         return 'خشبي بني (Faux Bois Marron)';
       if (lower == 'brown' || lower == 'faux bois' || lower == 'بني')

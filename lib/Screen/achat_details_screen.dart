@@ -1337,6 +1337,8 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
                     quantityChange: qtyDiff,
                     transactionType: 'Purchase Edit',
                     referenceId: widget.achatId,
+                    // Extra purchased quantity enters the average cost.
+                    unitPrice: qtyDiff > 0 && newPrice > 0 ? newPrice : null,
                   );
                 }
 

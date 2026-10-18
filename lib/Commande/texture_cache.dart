@@ -11,6 +11,7 @@ class TextureCache {
   static ui.Image? woodTextureAntique;
   static ui.Image? woodTextureDark;
   static ui.Image? woodTextureGrey;
+  static ui.Image? woodTextureLightBrown;
 
   // Static cached shaders to avoid allocations during drawing
   static ui.Shader? _shaderD0;
@@ -18,6 +19,7 @@ class TextureCache {
   static ui.Shader? _shaderAntique;
   static ui.Shader? _shaderDark;
   static ui.Shader? _shaderGrey;
+  static ui.Shader? _shaderLightBrown;
 
   static Future<void> init() async {
     try {
@@ -75,6 +77,17 @@ class TextureCache {
         });
         woodTextureGrey = await completer.future;
       }
+
+      if (woodTextureLightBrown == null) {
+        final ByteData data = await rootBundle.load(
+          'assets/images/wood_texture_light_brown.png',
+        );
+        final Completer<ui.Image> completer = Completer();
+        ui.decodeImageFromList(data.buffer.asUint8List(), (ui.Image img) {
+          completer.complete(img);
+        });
+        woodTextureLightBrown = await completer.future;
+      }
       
       // Pre-compile the shaders
       if (woodTextureD0 != null) {
@@ -112,6 +125,14 @@ class TextureCache {
       if (woodTextureGrey != null) {
         _shaderGrey = ui.ImageShader(
           woodTextureGrey!,
+          ui.TileMode.repeated,
+          ui.TileMode.repeated,
+          Matrix4.identity().scaled(0.5).storage,
+        );
+      }
+      if (woodTextureLightBrown != null) {
+        _shaderLightBrown = ui.ImageShader(
+          woodTextureLightBrown!,
           ui.TileMode.repeated,
           ui.TileMode.repeated,
           Matrix4.identity().scaled(0.5).storage,
@@ -192,5 +213,18 @@ class TextureCache {
       );
     }
     return _shaderGrey;
+  }
+
+  static ui.Shader? getShaderLightBrown() {
+    if (woodTextureLightBrown == null) ensureLoading();
+    if (_shaderLightBrown == null && woodTextureLightBrown != null) {
+      _shaderLightBrown = ui.ImageShader(
+        woodTextureLightBrown!,
+        ui.TileMode.repeated,
+        ui.TileMode.repeated,
+        Matrix4.identity().scaled(0.5).storage,
+      );
+    }
+    return _shaderLightBrown;
   }
 }

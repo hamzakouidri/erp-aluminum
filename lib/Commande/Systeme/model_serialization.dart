@@ -370,6 +370,12 @@ extension WindowZoneSerialization on WindowZone {
       'slidingMontantSlim': slidingMontantSlim,
       'disabledVerticalDivisions': disabledVerticalDivisions,
       'disabledHorizontalDivisions': disabledHorizontalDivisions,
+      if (slantedDividers.isNotEmpty)
+        'slantedDividers': slantedDividers.map((d) => d.toMap()).toList(),
+      if (customHinges.isNotEmpty)
+        'customHinges': customHinges.map(
+          (leaf, layout) => MapEntry(leaf.toString(), layout.toMap()),
+        ),
       'isSubdivided': isSubdivided,
       'hasSashPlintheBottom': hasSashPlintheBottom,
       'cellGlassSpec': cellGlassSpec.map((k, v) => MapEntry(k, v.toMap())),
@@ -513,6 +519,18 @@ WindowZone windowZoneFromMap(Map<String, dynamic> map) {
         const {},
     isSubdivided: map['isSubdivided'] ?? false,
     hasSashPlintheBottom: map['hasSashPlintheBottom'] ?? false,
+    // Unknown or malformed entries are skipped, never fatal.
+    slantedDividers: [
+      for (final raw in (map['slantedDividers'] as List?) ?? const [])
+        ?SlantedDivider.fromMap(raw),
+    ],
+    customHinges: {
+      if (map['customHinges'] is Map)
+        for (final entry in (map['customHinges'] as Map).entries)
+          if (int.tryParse(entry.key.toString()) case final leaf?)
+            if (SashHingeLayout.fromMap(entry.value) case final layout?)
+              leaf: layout,
+    },
     cellGlassSpec:
         (map['cellGlassSpec'] as Map?)?.map(
           (k, v) => MapEntry(
@@ -614,6 +632,7 @@ extension WindowModelSerialization on WindowModel {
       'useSystemOB': useSystemOB,
       'useDemiOB': effectiveUseDemiOB,
       'useVerrouCentral': useVerrouCentral,
+      'parcloseCutMode': parcloseCutMode,
       'hasSideCovers': hasSideCovers,
       'multiFrameSideCoverManuallyEnabled': multiFrameSideCoverManuallyEnabled,
       'sideCoverUseSecondWidth': sideCoverUseSecondWidth,
@@ -800,6 +819,11 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   model.useVerrouCentral =
       map['useVerrouCentral'] == true ||
       map['useVerrouCentral']?.toString().toLowerCase() == 'true';
+  final savedParcloseCutMode = map['parcloseCutMode']?.toString();
+  model.parcloseCutMode =
+      const {'45', '90_length', '90_width'}.contains(savedParcloseCutMode)
+      ? savedParcloseCutMode!
+      : '45';
   // Older/cloud records can store booleans as 0/1 or strings. Normalise the
   // value here so an explicit "false" never gets treated as enabled by the
   // drawing painter, while missing legacy data keeps the default enabled.

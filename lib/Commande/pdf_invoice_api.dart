@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -35,6 +36,52 @@ class PdfInvoiceApi {
         bytes[3] == 0x47;
     final isJpeg = bytes[0] == 0xFF && bytes[1] == 0xD8;
     return isPng || isJpeg;
+  }
+
+  /// Largest side (px) of an item image in the PDF. Its box is at most a
+  /// few centimetres wide, so this is still sharp when printed.
+  static const int _maxImageSidePx = 700;
+
+  /// Item drawings are 1400-1800 px PNGs. The pdf package decodes PNG pixel
+  /// by pixel in Dart on the UI thread, which took seconds per image on a
+  /// phone (and ran out of time or memory with many items). The engine's
+  /// native decoder scales the image down first and the raw pixels go into
+  /// the PDF as they are. A small JPEG is embedded directly.
+  static Future<pw.ImageProvider?> _pdfImage(Uint8List bytes) async {
+    final isJpeg = bytes[0] == 0xFF && bytes[1] == 0xD8;
+    ui.ImmutableBuffer? buffer;
+    ui.ImageDescriptor? descriptor;
+    ui.Codec? codec;
+    ui.Image? image;
+    try {
+      buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+      descriptor = await ui.ImageDescriptor.encoded(buffer);
+      final w = descriptor.width;
+      final h = descriptor.height;
+      if (w <= 0 || h <= 0) return null;
+      final longest = math.max(w, h);
+      if (isJpeg && longest <= _maxImageSidePx * 1.5) {
+        return pw.MemoryImage(bytes);
+      }
+      final scale = math.min(1.0, _maxImageSidePx / longest);
+      codec = await descriptor.instantiateCodec(
+        targetWidth: math.max(1, (w * scale).round()),
+        targetHeight: math.max(1, (h * scale).round()),
+      );
+      image = (await codec.getNextFrame()).image;
+      final raw = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (raw == null) return null;
+      return _RgbaImage(raw.buffer.asUint8List(), image.width, image.height);
+    } catch (e) {
+      debugPrint('PdfInvoiceApi: image conversion failed: $e');
+      // The previous path still works, only slower.
+      return pw.MemoryImage(bytes);
+    } finally {
+      image?.dispose();
+      codec?.dispose();
+      descriptor?.dispose();
+      buffer?.dispose();
+    }
   }
 
   // ── Font cache (Amiri: full Arabic + Latin support) ──────────────────────
@@ -107,7 +154,7 @@ class PdfInvoiceApi {
         data.isProForma ||
         data.documentTitleKey == 'FACTURE_VENTE' ||
         data.documentTitleKey == 'BON_ROUTE';
-    final imageWidgets = <int, pw.MemoryImage>{};
+    final imageWidgets = <int, pw.ImageProvider>{};
     if (!isOfficial) {
       // Partial delivery notes can contain many repeated item images. Cache
       // each load once and start all item loads together instead of waiting
@@ -139,7 +186,7 @@ class PdfInvoiceApi {
         return null;
       }
 
-      final imageResults = await Future.wait<MapEntry<int, pw.MemoryImage>?>([
+      final imageResults = await Future.wait<MapEntry<int, Uint8List>?>([
         for (int i = 0; i < data.items.length; i++)
           () async {
             final item = data.items[i];
@@ -183,12 +230,19 @@ class PdfInvoiceApi {
 
             return bytes == null || !_isPdfCompatibleImage(bytes)
                 ? null
-                : MapEntry(i, pw.MemoryImage(bytes));
+                : MapEntry(i, bytes);
           }(),
       ]);
 
+      // One image at a time keeps the memory peak low on a phone; an image
+      // repeated on several lines is converted once.
+      final converted = <Uint8List, pw.ImageProvider?>{};
       for (final result in imageResults) {
-        if (result != null) imageWidgets[result.key] = result.value;
+        if (result == null) continue;
+        final image = converted.containsKey(result.value)
+            ? converted[result.value]
+            : converted[result.value] = await _pdfImage(result.value);
+        if (image != null) imageWidgets[result.key] = image;
       }
     }
 
@@ -839,7 +893,7 @@ class PdfInvoiceApi {
   static pw.Widget _dataRow({
     required DevisLineItem item,
     required int index,
-    required pw.MemoryImage? image,
+    required pw.ImageProvider? image,
     required bool hidePrices,
     required bool isProForma,
     int imageMode = 0,
@@ -1043,7 +1097,7 @@ class PdfInvoiceApi {
 
   static List<pw.Widget> _buildTable(
     DevisData data,
-    Map<int, pw.MemoryImage> imageWidgets, {
+    Map<int, pw.ImageProvider> imageWidgets, {
     int imageMode = 0,
   }) {
     final bool hidePrices = data.hidePrices;
@@ -1210,7 +1264,7 @@ class PdfInvoiceApi {
   // ── جدول خاص بالـ Caisson Tunnel المستقل (6 أعمدة) ──────────────────────
   static List<pw.Widget> _buildCaissonTunnelTable(
     DevisData data,
-    Map<int, pw.MemoryImage> imageWidgets,
+    Map<int, pw.ImageProvider> imageWidgets,
     bool hidePrices,
     bool hasBorder,
   ) {
@@ -1522,35 +1576,49 @@ class PdfInvoiceApi {
     } else {
       label = 'ملاحظة';
     }
-    final labelText = '$label:';
-    final noteText = _ar(note);
-    final labelWidget = pw.Text(
-      labelText,
-      textDirection: pw.TextDirection.ltr,
-      style: pw.TextStyle(
-        fontSize: 10,
-        fontWeight: pw.FontWeight.bold,
-        color: PdfColors.grey900,
-      ),
-    );
-    final noteWidget = pw.Expanded(
-      child: pw.Text(
-        noteText,
-        textDirection: _dir(note),
-        style: pw.TextStyle(
-          fontSize: 10,
-          fontWeight: pw.FontWeight.bold,
-          color: PdfColors.grey900,
-        ),
-      ),
-    );
+    final isAr = _currentLang == AppLanguage.arabic;
+    final lines = note.split('\n').where((l) => l.trim().isNotEmpty).toList();
+
     return pw.Container(
       width: double.infinity,
-      child: pw.Row(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: _currentLang == AppLanguage.arabic
-            ? [noteWidget, pw.SizedBox(width: 5), labelWidget]
-            : [labelWidget, pw.SizedBox(width: 5), noteWidget],
+      child: pw.Column(
+        crossAxisAlignment: isAr
+            ? pw.CrossAxisAlignment.end
+            : pw.CrossAxisAlignment.start,
+        children: [
+          pw.Row(
+            mainAxisAlignment: isAr
+                ? pw.MainAxisAlignment.end
+                : pw.MainAxisAlignment.start,
+            children: [
+              pw.Text(
+                _ar('$label:'),
+                textDirection: _dir(label),
+                style: pw.TextStyle(
+                  fontSize: 10,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.grey900,
+                ),
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 3),
+          ...lines.map(
+            (line) => pw.Padding(
+              padding: const pw.EdgeInsets.only(bottom: 2),
+              child: pw.Text(
+                _ar(line),
+                textDirection: _dir(line),
+                textAlign: isAr ? pw.TextAlign.right : pw.TextAlign.left,
+                style: pw.TextStyle(
+                  fontSize: 10,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.grey900,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1713,6 +1781,13 @@ class PdfInvoiceApi {
   static pw.Widget _buildTotals(DevisData data) {
     final bool isOfficial =
         data.isProForma || data.documentTitleKey == 'FACTURE_VENTE';
+    final documentKey = (data.documentTitleKey ?? '').toUpperCase();
+    final bool isDevis =
+        !isOfficial &&
+        (documentKey.isEmpty ||
+            documentKey == 'DOC_DEVIS' ||
+            documentKey == 'DEVIS' ||
+            documentKey == 'DEVIS_PARTIAL');
     final totalBrutLabel = isOfficial ? 'TOTAL HT' : t('Total Brut');
     final remiseLabel = isOfficial ? 'REMISE' : t('Remise');
     final netHtLabel = isOfficial ? 'NET HT' : t('Total après remise');
@@ -1723,6 +1798,10 @@ class PdfInvoiceApi {
     final amountRemaining = (data.totalTTC - data.amountPaid)
         .clamp(0.0, double.infinity)
         .toDouble();
+    final bool showRemise =
+        isDevis || (data.isDiscountApplicable && data.remise > 0);
+    final bool showTva =
+        isDevis || isOfficial || data.tvaPercent > 0 || data.tvaAmount > 0;
 
     return pw.Align(
       alignment: pw.Alignment.centerRight,
@@ -1731,9 +1810,11 @@ class PdfInvoiceApi {
         child: pw.Column(
           children: [
             _totalRow(totalBrutLabel, data.totalBrut),
-            _totalRow(remiseLabel, data.remise),
-            _totalRow(netHtLabel, data.totalBeforeTax),
-            _totalRow(tvaLabel, data.tvaAmount),
+            if (showRemise) ...[
+              _totalRow(remiseLabel, data.remise),
+              _totalRow(netHtLabel, data.totalBeforeTax),
+            ],
+            if (showTva) _totalRow(tvaLabel, data.tvaAmount),
             pw.Container(
               width: double.infinity,
               margin: const pw.EdgeInsets.only(top: 4),
@@ -1765,12 +1846,16 @@ class PdfInvoiceApi {
                 ],
               ),
             ),
-            _totalRow(
-              t('Montant payé'),
-              data.amountPaid,
-              color: PdfColors.green,
-            ),
-            _totalRow(t('Remaining:'), amountRemaining, color: PdfColors.red),
+            if (isDevis)
+              _totalRow(t('Montant payé'), data.amountPaid)
+            else if (data.amountPaid > 0)
+              _totalRow(
+                t('Montant payé'),
+                data.amountPaid,
+                color: PdfColors.green,
+              ),
+            if (!isDevis && (data.amountPaid > 0 || isOfficial))
+              _totalRow(t('Remaining:'), amountRemaining, color: PdfColors.red),
           ],
         ),
       ),
@@ -2022,4 +2107,23 @@ class PdfInvoiceApi {
       child: pw.Text(_ar(text), style: const pw.TextStyle(fontSize: 9)),
     );
   }
+}
+
+/// Engine-decoded RGBA pixels handed straight to the PDF. pw.RawImage first
+/// rebuilds an `image` package bitmap pixel by pixel in Dart, which cost
+/// several seconds per drawing on a phone.
+class _RgbaImage extends pw.ImageProvider {
+  _RgbaImage(this._rgba, int width, int height)
+    : super(width, height, PdfImageOrientation.topLeft, null);
+
+  final Uint8List _rgba;
+
+  @override
+  PdfImage buildImage(pw.Context context, {int? width, int? height}) =>
+      PdfImage(
+        context.document,
+        image: _rgba,
+        width: this.width!,
+        height: this.height!,
+      );
 }

@@ -6,6 +6,7 @@ import 'package:intl/intl.dart' hide TextDirection;
 import 'package:database_data/widgets/app_material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:flutter_file_dialog/flutter_file_dialog.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:provider/provider.dart';
@@ -13,6 +14,7 @@ import 'package:database_data/settings/app_settings.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
+import 'package:database_data/services/share_filename_utils.dart';
 import 'package:database_data/Commande/devis_builder.dart';
 import 'package:database_data/Commande/pdf_invoice_api.dart';
 
@@ -86,6 +88,10 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     final tvaAmount = (totalBeforeTax * _currentDevisData.tvaPercent) / 100;
     final totalTTC = totalBeforeTax + tvaAmount;
 
+    final String effectiveInvoiceNote = _currentDevisData.invoiceNote
+        .replaceAll(DevisBuilder.pricingNotePattern, '')
+        .trim();
+
     return DevisData(
       orderId: _currentDevisData.orderId,
       orderDate: _currentDevisData.orderDate,
@@ -103,7 +109,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       totalTTC: totalTTC,
       amountPaid: _currentDevisData.amountPaid,
       amountInWords: _currentDevisData.amountInWords,
-      invoiceNote: _currentDevisData.invoiceNote,
+      invoiceNote: effectiveInvoiceNote,
       isPartial: _currentDevisData.isPartial,
       hidePrices: _currentDevisData.hidePrices,
       isProForma: _currentDevisData.isProForma,
@@ -117,6 +123,9 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       clientId: _currentDevisData.clientId,
       sequenceNumber: _currentDevisData.sequenceNumber,
       priorConfirmedWindowsCount: _currentDevisData.priorConfirmedWindowsCount,
+      orderStatus: _currentDevisData.orderStatus,
+      isConfirmed: _currentDevisData.isConfirmed,
+      isDiscountApplicable: _currentDevisData.isDiscountApplicable,
       rawOrder: _currentDevisData.rawOrder,
       rawItems: _currentDevisData.rawItems,
     );
@@ -818,11 +827,26 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         // ── 0: سعر الورشة العادي ──
-                        _pricingTierButton(0, 'Atelier (100%)', 'سعر الورشة', _blue),
+                        _pricingTierButton(
+                          0,
+                          'Atelier (100%)',
+                          'سعر الورشة',
+                          _blue,
+                        ),
                         // ── 1: سعر المقاول ──
-                        _pricingTierButton(1, 'Artisan / Entreprise (-10%)', 'سعر المقاول (-10%)', Colors.orange.shade800),
+                        _pricingTierButton(
+                          1,
+                          'Artisan / Entreprise (-10%)',
+                          'سعر المقاول (-10%)',
+                          Colors.orange.shade800,
+                        ),
                         // ── 2: سعر المشروع ──
-                        _pricingTierButton(2, 'Projet / Promoteur (-18%)', 'سعر المشروع (-18%)', Colors.teal.shade700),
+                        _pricingTierButton(
+                          2,
+                          'Projet / Promoteur (-18%)',
+                          'سعر المشروع (-18%)',
+                          Colors.teal.shade700,
+                        ),
                       ],
                     ),
                   ),
@@ -1245,6 +1269,10 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
             );
           },
         ),
+        if (data.invoiceNote.trim().isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _buildDocumentNote(data.invoiceNote.trim()),
+        ],
         _buildFooter(),
       ],
     );
@@ -1413,6 +1441,10 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                                 ),
                               ),
                             ),
+                          ],
+                          if (data.invoiceNote.trim().isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            _buildDocumentNote(data.invoiceNote.trim()),
                           ],
                           _buildFooter(),
                         ],
@@ -1937,7 +1969,12 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   }
 
   /// زر تبديل مستوى التسعير (0=ورشة / 1=مقاول / 2=مشروع)
-  Widget _pricingTierButton(int tier, String labelFr, String labelAr, Color activeColor) {
+  Widget _pricingTierButton(
+    int tier,
+    String labelFr,
+    String labelAr,
+    Color activeColor,
+  ) {
     final bool active = _pricingTier == tier;
     final String label = _invoiceLanguage == AppLanguage.french
         ? labelFr
@@ -2373,6 +2410,13 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
 
   Widget _buildTotals() {
     final bool isOfficial = _isOfficial;
+    final documentKey = (data.documentTitleKey ?? '').toUpperCase();
+    final bool isDevis =
+        !isOfficial &&
+        (documentKey.isEmpty ||
+            documentKey == 'DOC_DEVIS' ||
+            documentKey == 'DEVIS' ||
+            documentKey == 'DEVIS_PARTIAL');
     final totalBrutLabel = isOfficial ? 'TOTAL HT' : t('Total Brut');
     final remiseLabel = isOfficial ? 'REMISE' : t('Remise');
     final netHtLabel = isOfficial ? 'NET HT' : t('Total après remise');
@@ -2384,6 +2428,11 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         .clamp(0.0, double.infinity)
         .toDouble();
 
+    final bool showRemise =
+        isDevis || (data.isDiscountApplicable && data.remise > 0);
+    final bool showTva =
+        isDevis || isOfficial || data.tvaPercent > 0 || data.tvaAmount > 0;
+
     return Align(
       alignment: Alignment.centerRight,
       child: SizedBox(
@@ -2391,23 +2440,90 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         child: Column(
           children: [
             _totalRow(totalBrutLabel, data.totalBrut),
-            _totalRow(remiseLabel, data.remise),
-            _totalRow(netHtLabel, data.totalBeforeTax),
-            _totalRow(tvaLabel, data.tvaAmount),
+            if (showRemise) ...[
+              _totalRow(remiseLabel, data.remise),
+              _totalRow(netHtLabel, data.totalBeforeTax),
+            ],
+            if (showTva) _totalRow(tvaLabel, data.tvaAmount),
             _totalRow(totalTtcLabel, data.totalTTC, highlight: true),
-            _totalRow(t('Montant payé'), data.amountPaid, color: Colors.green),
-            _totalRow(t('Remaining:'), amountRemaining, color: Colors.red),
+            if (isDevis)
+              _totalRow(t('Montant payé'), data.amountPaid)
+            else if (data.amountPaid > 0)
+              _totalRow(
+                t('Montant payé'),
+                data.amountPaid,
+                color: Colors.green,
+              ),
+            if (!isDevis && (data.amountPaid > 0 || isOfficial))
+              _totalRow(t('Remaining:'), amountRemaining, color: Colors.red),
           ],
         ),
       ),
     );
   }
 
+  Widget _buildDocumentNote(String note) {
+    final cleanNote = note.trim();
+    if (cleanNote.isEmpty) return const SizedBox.shrink();
+
+    final isAr = _invoiceLanguage == AppLanguage.arabic;
+    final isFr = _invoiceLanguage == AppLanguage.french;
+    final label = isFr ? 'Remarque:' : (isAr ? 'ملاحظة:' : 'Note:');
+    final lines = cleanNote
+        .split('\n')
+        .where((l) => l.trim().isNotEmpty)
+        .toList();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.only(top: 8),
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: Color(0xFFE0E0E0), width: 0.8)),
+      ),
+      child: Column(
+        crossAxisAlignment: isAr
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: isAr
+                ? MainAxisAlignment.end
+                : MainAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                  fontFamily: 'Cairo',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          ...lines.map(
+            (line) => Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Text(
+                line,
+                textAlign: isAr ? TextAlign.right : TextAlign.left,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                  fontFamily: 'Cairo',
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildFooter() {
     final isOfficial = _isOfficial;
-    final note = data.invoiceNote.trim();
-    if (!isOfficial && note.isEmpty) return const SizedBox.shrink();
-
     final parts = <String>[];
     if (isOfficial) {
       if (data.workshop.name.isNotEmpty) {
@@ -2426,48 +2542,22 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     }
 
     final footerText = parts.join(' | ');
-    String noteLabel;
-    if (_invoiceLanguage == AppLanguage.french) {
-      noteLabel = 'Remarque';
-    } else if (_invoiceLanguage == AppLanguage.english) {
-      noteLabel = 'Note';
-    } else {
-      noteLabel = 'ملاحظة';
-    }
-    final noteText = note.isEmpty ? '' : '$noteLabel: $note';
+    if (footerText.isEmpty) return const SizedBox.shrink();
 
     return Column(
       children: [
         const SizedBox(height: 16),
         const Divider(height: 1, thickness: 0.8, color: Colors.black12),
         const SizedBox(height: 10),
-        if (noteText.isNotEmpty)
-          Text(
-            noteText,
-            style: const TextStyle(
-              fontSize: 11,
-              color: Colors.black87,
-              fontWeight: FontWeight.w600,
-              fontFamily: 'Cairo',
-            ),
-            textAlign: TextAlign.center,
-            softWrap: true,
-            maxLines: null,
-            overflow: TextOverflow.visible,
-            textWidthBasis: TextWidthBasis.parent,
+        Text(
+          footerText,
+          style: const TextStyle(
+            fontSize: 9,
+            color: Colors.black54,
+            fontFamily: 'Cairo',
           ),
-        if (noteText.isNotEmpty && footerText.isNotEmpty)
-          const SizedBox(height: 5),
-        if (footerText.isNotEmpty)
-          Text(
-            footerText,
-            style: const TextStyle(
-              fontSize: 9,
-              color: Colors.black54,
-              fontFamily: 'Cairo',
-            ),
-            textAlign: TextAlign.center,
-          ),
+          textAlign: TextAlign.center,
+        ),
       ],
     );
   }
@@ -2855,47 +2945,28 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         }
         return;
       }
-      final cleanName = data.clientName.trim().replaceAll(
-        RegExp(r'[\\/:*?"<>|]'),
-        '_',
+      final filename = sharedPdfFilename(
+        documentType: 'Devis',
+        orderNumber: data.orderId,
+        clientName: data.clientName,
       );
-      final filename = cleanName.isNotEmpty
-          ? '$cleanName.pdf'
-          : 'devis_${data.orderId}.pdf';
-
-      if (Platform.isWindows) {
-        // On Windows share = save with file picker
-        final picked = await FilePicker.saveFile(
-          dialogTitle: t('مشاركة / حفظ PDF'),
-          fileName: filename,
-          type: FileType.custom,
-          allowedExtensions: ['pdf'],
-        );
-        if (picked != null) {
-          await File(picked).writeAsBytes(bytes);
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  t('تم حفظ PDF بنجاح'),
-                  style: const TextStyle(fontFamily: 'Cairo'),
-                ),
-                duration: const Duration(seconds: 4),
-              ),
-            );
-          }
-        }
-      } else {
-        // Mobile: use system share sheet with safe fallback
-        try {
-          await Printing.sharePdf(bytes: bytes, filename: filename);
-        } catch (_) {
-          await Printing.sharePdf(
-            bytes: bytes,
-            filename: 'devis_${data.orderId}.pdf',
-          );
-        }
-      }
+      // A real temporary file preserves the attachment name across Android,
+      // iOS and Windows. The ASCII-safe client slug avoids URL-encoded Arabic
+      // names appearing as percent sequences in receiving applications.
+      final tempDirectory = await getTemporaryDirectory();
+      final separator = Platform.isWindows ? '\\' : '/';
+      final file = File('${tempDirectory.path}$separator$filename');
+      await file.writeAsBytes(bytes, flush: true);
+      final shareTitle = t('مشاركة');
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path, mimeType: 'application/pdf')],
+          fileNameOverrides: [filename],
+          title: shareTitle,
+          subject: shareTitle,
+          text: shareTitle,
+        ),
+      );
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/settings/app_settings.dart';
+import 'package:database_data/settings/localization.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
@@ -125,6 +126,31 @@ class SupabaseWorkshopSyncService {
   String? _workshopDataChannelName;
   String _deviceId = '';
   void Function()? _onDataChanged;
+
+  // Realtime delivers the exact changed row key. Fetching that row directly
+  // makes it visible immediately, independent of the incremental cursor.
+  final Map<String, Map<String, String>> _pendingRealtimeRows = {};
+  Timer? _realtimeFlushTimer;
+  bool _incrementalDownloadQueued = false;
+  // row key -> last applied revision; skips rows already applied through
+  // Realtime when the cursor download later returns them again.
+  final Map<String, int> _appliedRevisions = {};
+  // null = unknown, true/false once the server column has been probed.
+  bool? _serverCursorSupported;
+  Timer? _pricePushTimer;
+  int _pendingPricePushRows = 0;
+
+  static const Set<String> priceTables = {
+    'GlassColorPrices',
+    'ShutterColorPrices',
+    'ShutterSqmPrices',
+    'ShutterBoxLimits',
+    'CaissonTunnelPrices',
+    'SeriesColorPrices',
+    'SectionColorPrices',
+    'AccessoryColorPrices',
+    'WorkshopPriceOverrides',
+  };
 
   String lastUploadSummary = '';
   String lastDownloadSummary = '';
@@ -282,6 +308,12 @@ class SupabaseWorkshopSyncService {
     _uploadTimer?.cancel();
     _backgroundSyncTimer?.cancel();
     _permissionsRefreshTimer?.cancel();
+    _realtimeFlushTimer?.cancel();
+    _realtimeFlushTimer = null;
+    _pendingRealtimeRows.clear();
+    _incrementalDownloadQueued = false;
+    _appliedRevisions.clear();
+    _serverCursorSupported = null;
     final permissionsChannel = _permissionsChannel;
     if (permissionsChannel != null) {
       unawaited(_client.removeChannel(permissionsChannel));
@@ -693,6 +725,20 @@ class SupabaseWorkshopSyncService {
           (_) => downloadWorkshopData(full: true),
         );
       }
+      if (!full) {
+        // The active pass may already have read past the point where this
+        // new change landed. Run one more incremental pass after it instead
+        // of silently returning the older task (the change would otherwise
+        // wait for the next background cycle).
+        _incrementalDownloadQueued = true;
+        return activeDownload.then<void>((_) {
+          if (!_incrementalDownloadQueued) {
+            return _activeDownload ?? Future<void>.value();
+          }
+          _incrementalDownloadQueued = false;
+          return downloadWorkshopData();
+        });
+      }
       return activeDownload;
     }
 
@@ -797,7 +843,11 @@ class SupabaseWorkshopSyncService {
 
   void _startPermissionsRefreshFallback() {
     _permissionsRefreshTimer?.cancel();
-    _permissionsRefreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+    // The realtime subscription on workshop_members delivers permission
+    // changes immediately; this poll only recovers a missed event. Polling
+    // every 10 seconds sent two requests per device and rebuilt the
+    // permission-dependent screens each time.
+    _permissionsRefreshTimer = Timer.periodic(const Duration(minutes: 2), (_) {
       if (_isInBackground || !isReady) return;
       unawaited(
         refreshCurrentPermissions().catchError((error) {
@@ -841,6 +891,8 @@ class SupabaseWorkshopSyncService {
     }
   }
 
+  String? _lastPermissionsSnapshot;
+
   Future<void> refreshCurrentPermissions() async {
     await _ensureReady();
     final workshopUuid = _workshopUuid!;
@@ -872,7 +924,24 @@ class SupabaseWorkshopSyncService {
             row['role']?.toString() ?? 'worker',
             permissions,
           );
+    // Nothing changed since the last refresh: do not rewrite the settings
+    // nor rebuild every screen listening to permission changes.
+    final snapshot = jsonEncode({
+      'workshop': workshopUuid,
+      'user': user.id,
+      'role': appRole,
+      'permissions': permissions,
+    });
     final prefs = await SharedPreferences.getInstance();
+    final encodedPermissions = jsonEncode(permissions);
+    // The stored values are compared too: a sign-out clears them while this
+    // service keeps its last snapshot.
+    if (snapshot == _lastPermissionsSnapshot &&
+        prefs.getString('user_role') == appRole &&
+        prefs.getString('permissions_json') == encodedPermissions) {
+      return;
+    }
+    _lastPermissionsSnapshot = snapshot;
     await prefs.setString('user_role', appRole);
     await prefs.setString('permissions_json', jsonEncode(permissions));
     await prefs.setString(
@@ -964,7 +1033,8 @@ class SupabaseWorkshopSyncService {
             column: 'workshop_id',
             value: workshopUuid,
           ),
-          callback: (_) {
+          callback: (payload) {
+            if (_queueRealtimeRow(payload)) return;
             unawaited(
               downloadWorkshopData()
                   .then((_) {
@@ -1017,6 +1087,222 @@ class SupabaseWorkshopSyncService {
             );
           }
         });
+  }
+
+  /// Queues the row named by a Realtime event for a direct fetch. Returns
+  /// false when the event carries no usable key (e.g. a truncated payload) or
+  /// targets a metadata row, so the caller falls back to a cursor download.
+  bool _queueRealtimeRow(PostgresChangePayload payload) {
+    final record = payload.eventType == PostgresChangeEvent.delete
+        ? payload.oldRecord
+        : payload.newRecord;
+    final table = record['table_name']?.toString() ?? '';
+    final rowId = record['row_id']?.toString() ?? '';
+    if (table.isEmpty || rowId.isEmpty) return false;
+    if (table == _workshopProfileTable ||
+        table == _workshopCatalogConfigurationTable) {
+      return false;
+    }
+    if (!_isWorkshopTable(table)) return true;
+    // Our own upload echoed back: the local database already has it.
+    final deviceId = record['device_id']?.toString() ?? '';
+    if (deviceId.isNotEmpty && deviceId == _deviceId) return true;
+
+    _pendingRealtimeRows[_rowKey(table, rowId)] = {
+      'table_name': table,
+      'row_id': rowId,
+      'event': payload.eventType == PostgresChangeEvent.delete ? 'delete' : '',
+    };
+    // A batch upload produces one event per row; collect them briefly so a
+    // 25-row upload costs one fetch instead of 25.
+    _realtimeFlushTimer ??= Timer(const Duration(milliseconds: 150), () {
+      _realtimeFlushTimer = null;
+      unawaited(
+        _flushRealtimeRows().catchError((Object e) {
+          debugPrint('Realtime row apply failed, falling back: $e');
+          unawaited(downloadWorkshopData().catchError((_) {}));
+        }),
+      );
+    });
+    return true;
+  }
+
+  Future<void> _flushRealtimeRows() async {
+    if (_pendingRealtimeRows.isEmpty || !isReady) return;
+    final workshopUuid = _workshopUuid!;
+    final requested = Map<String, Map<String, String>>.of(_pendingRealtimeRows);
+    _pendingRealtimeRows.clear();
+
+    final rowIds = requested.values
+        .map((entry) => entry['row_id']!)
+        .toSet()
+        .toList(growable: false);
+    final rows = <Map<String, dynamic>>[];
+    final found = <String>{};
+    for (var start = 0; start < rowIds.length; start += 50) {
+      final chunk = rowIds.sublist(start, min(start + 50, rowIds.length));
+      final result = await _client
+          .from('workshop_sync_rows')
+          .select(await _downloadColumns())
+          .eq('workshop_id', workshopUuid)
+          .inFilter('row_id', chunk);
+      for (final rawRow in result) {
+        final row = Map<String, dynamic>.from(rawRow as Map);
+        final key = _rowKey(
+          row['table_name']?.toString() ?? '',
+          row['row_id']?.toString() ?? '',
+        );
+        if (!requested.containsKey(key)) continue;
+        found.add(key);
+        rows.add(row);
+      }
+    }
+    // A hard DELETE on the server leaves nothing to fetch: apply it as a
+    // tombstone so the row also disappears locally.
+    final now = DateTime.now().toUtc().toIso8601String();
+    for (final entry in requested.entries) {
+      if (found.contains(entry.key) || entry.value['event'] != 'delete') {
+        continue;
+      }
+      rows.add({
+        'table_name': entry.value['table_name'],
+        'row_id': entry.value['row_id'],
+        'payload': {'id': entry.value['row_id']},
+        'updated_at': now,
+        'deleted_at': now,
+      });
+    }
+    if (rows.isEmpty) return;
+
+    // Serialize with any running download so two imports never overlap.
+    while (_activeDownload != null) {
+      try {
+        await _activeDownload;
+      } catch (_) {}
+    }
+    final task = _downloadChanges(full: false, explicitRows: rows);
+    late Future<void> trackedTask;
+    trackedTask = task.whenComplete(() {
+      if (identical(_activeDownload, trackedTask)) {
+        _activeDownload = null;
+      }
+    });
+    _activeDownload = trackedTask;
+    await trackedTask;
+  }
+
+  /// Probes once whether the server stamps rows with `server_updated_at`
+  /// (supabase/realtime_sync_cursor.sql). Unknown on a network error.
+  Future<bool> _hasServerCursor() async {
+    final cached = _serverCursorSupported;
+    if (cached != null) return cached;
+    final workshopUuid = _workshopUuid;
+    if (workshopUuid == null) return false;
+    try {
+      await _client
+          .from('workshop_sync_rows')
+          .select('server_updated_at')
+          .eq('workshop_id', workshopUuid)
+          .limit(1);
+      _serverCursorSupported = true;
+      return true;
+    } on PostgrestException catch (error) {
+      if (error.message.contains('server_updated_at') ||
+          error.code == '42703' ||
+          error.code == 'PGRST204') {
+        _serverCursorSupported = false;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<String> _downloadColumns() async {
+    const base = 'table_name,row_id,payload,updated_at,deleted_at,device_id,'
+        'revision';
+    return await _hasServerCursor() ? '$base,server_updated_at' : base;
+  }
+
+  Future<String?> _readLastServerSyncAt() async {
+    final code = _workshopCode;
+    if (code == null || code.isEmpty) return null;
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('supabase_workshop_last_server_sync_$code');
+  }
+
+  Future<void> _saveLastServerSyncAt(String value) async {
+    final code = _workshopCode;
+    if (code == null || code.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('supabase_workshop_last_server_sync_$code', value);
+  }
+
+  /// Sends one push to the other managers after a burst of price edits made
+  /// on this device (the price screens save cell by cell).
+  void _schedulePricePush(int changedRows) {
+    if (changedRows <= 0) return;
+    _pendingPricePushRows += changedRows;
+    _pricePushTimer?.cancel();
+    _pricePushTimer = Timer(const Duration(seconds: 4), () {
+      final count = _pendingPricePushRows;
+      _pendingPricePushRows = 0;
+      _pricePushTimer = null;
+      unawaited(_sendPricePush(count));
+    });
+  }
+
+  Future<AppLanguage> _currentLanguage() async {
+    final prefs = await SharedPreferences.getInstance();
+    final index = prefs.getInt('app_language') ?? 0;
+    return index >= 0 && index < AppLanguage.values.length
+        ? AppLanguage.values[index]
+        : AppLanguage.arabic;
+  }
+
+  Future<void> _sendPricePush(int count) async {
+    try {
+      final lang = await _currentLanguage();
+      final body = Localization.translate(
+        'تم تحديث {count} سعر في إدارة الأسعار',
+        lang,
+      ).replaceAll('{count}', count.toString());
+      await WorkerPushNotificationService.instance.sendManagerEvent(
+        eventType: 'prices',
+        title: Localization.translate('تحديث الأسعار', lang),
+        body: body,
+        data: {'count': count.toString()},
+      );
+    } catch (error) {
+      // A worker without manager rights is refused by the function, and a
+      // workshop without managers has no recipients; both are expected.
+      debugPrint('Price push skipped: $error');
+    }
+  }
+
+  Future<void> _showIncomingPriceNotification(int count) async {
+    if (count <= 0 || _isInBackground) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final role = prefs.getString('user_role') ?? 'worker';
+      if (!const {'owner', 'manager', 'co_manager', 'admin'}.contains(role)) {
+        return;
+      }
+      final enabled = await WorkerPushNotificationService.instance
+          .loadPreferences(const ['prices']);
+      if (enabled['prices'] == false) return;
+      final lang = await _currentLanguage();
+      await OrderNotificationService().showAssignmentNotification(
+        title: Localization.translate('تحديث الأسعار', lang),
+        body: Localization.translate(
+          'تم تحديث {count} سعر في إدارة الأسعار',
+          lang,
+        ).replaceAll('{count}', count.toString()),
+        data: const {'type': 'prices'},
+      );
+    } catch (error) {
+      debugPrint('Price notification skipped: $error');
+    }
   }
 
   void _subscribeToOrderNotifications() {
@@ -1155,16 +1441,37 @@ class SupabaseWorkshopSyncService {
     // them overwrite a newer copy already stored in Supabase.
     await _upsertRows(rows, preserveNewerRemote: true);
     await _acknowledgeSyncedChanges(pending);
+    // Any price written on this device (price screen, purchase cost update,
+    // accepted publication...) reaches the other managers as a push.
+    _schedulePricePush(
+      rows
+          .where((row) => priceTables.contains(row['table_name']?.toString()))
+          .length,
+    );
 
     lastUploadSummary =
         'تم رفع ${rows.length} تغيير سريع إلى Supabase '
         '(${pending.changedRows} تعديل، ${pending.deletedRows} حذف).';
   }
 
-  Future<void> _downloadChanges({required bool full}) async {
+  Future<void> _downloadChanges({
+    required bool full,
+    List<Map<String, dynamic>>? explicitRows,
+  }) async {
     await _ensureReady();
     final workshopUuid = _workshopUuid!;
     final since = full ? null : await _readLastSyncAt();
+    // The row's own updated_at comes from the editing device. A device whose
+    // clock is behind, or an edit uploaded after being made offline, has an
+    // updated_at older than the cursor and was never downloaded. The server
+    // stamp orders rows by when Supabase actually received them.
+    final useServerCursor = explicitRows == null && await _hasServerCursor();
+    final serverSince = full || !useServerCursor
+        ? null
+        : await _readLastServerSyncAt();
+    final columns = await _downloadColumns();
+    String? newestServerUpdate;
+    var incomingPriceRows = 0;
     final data = <String, dynamic>{};
     final tombstones = <Map<String, dynamic>>[];
     Map<String, dynamic>? catalogConfiguration;
@@ -1185,6 +1492,29 @@ class SupabaseWorkshopSyncService {
       if (updatedAt != null &&
           (newestUpdate == null || updatedAt.compareTo(newestUpdate!) > 0)) {
         newestUpdate = updatedAt;
+      }
+      final serverUpdatedAt = row['server_updated_at']?.toString();
+      if (serverUpdatedAt != null &&
+          (newestServerUpdate == null ||
+              DateTime.parse(serverUpdatedAt).isAfter(
+                DateTime.parse(newestServerUpdate!),
+              ))) {
+        newestServerUpdate = serverUpdatedAt;
+      }
+
+      final revision = (row['revision'] as num?)?.toInt();
+      final key = _rowKey(table, rowId);
+      if (!full && revision != null) {
+        // Already applied when Realtime delivered it; applying it again
+        // would only repeat its notification.
+        if (_appliedRevisions[key] == revision) return;
+        if (_appliedRevisions.length > 5000) _appliedRevisions.clear();
+        _appliedRevisions[key] = revision;
+      }
+      final fromOtherDevice =
+          (row['device_id']?.toString() ?? '') != _deviceId;
+      if (!full && fromOtherDevice && priceTables.contains(table)) {
+        incomingPriceRows++;
       }
 
       final deletedAt = row['deleted_at']?.toString();
@@ -1291,7 +1621,7 @@ class SupabaseWorkshopSyncService {
             rows = await _client
                 .from('workshop_sync_rows')
                 .select(
-                  'table_name,row_id,payload,updated_at,deleted_at,device_id',
+                  columns,
                 )
                 .eq('workshop_id', workshopUuid)
                 .eq('table_name', table)
@@ -1313,7 +1643,7 @@ class SupabaseWorkshopSyncService {
                   final singleRows = await _client
                       .from('workshop_sync_rows')
                       .select(
-                        'table_name,row_id,payload,updated_at,deleted_at,device_id',
+                        columns,
                       )
                       .eq('workshop_id', workshopUuid)
                       .eq('table_name', table)
@@ -1350,15 +1680,27 @@ class SupabaseWorkshopSyncService {
           offset += tableBatchSize;
         }
       }
+    } else if (explicitRows != null) {
+      for (final row in explicitRows) {
+        processRow(row);
+      }
     } else {
       const incrementalBatchSize = 10;
-      while (true) {
+      // Without a stored server cursor (first run after the migration) the
+      // device cursor is used once; it seeds the server cursor below.
+      final cursorColumn = serverSince != null
+          ? 'server_updated_at'
+          : 'updated_at';
+      final cursorValue = serverSince ?? since;
+      // No cursor at all means the bootstrap has not completed yet; the full
+      // download owns that case.
+      while (cursorValue != null) {
         final rows = await _client
             .from('workshop_sync_rows')
-            .select('table_name,row_id,payload,updated_at,deleted_at,device_id')
+            .select(columns)
             .eq('workshop_id', workshopUuid)
-            .gt('updated_at', since!)
-            .order('updated_at', ascending: true)
+            .gt(cursorColumn, cursorValue)
+            .order(cursorColumn, ascending: true)
             .range(start, start + incrementalBatchSize - 1);
         if (rows.isEmpty) break;
 
@@ -1485,8 +1827,36 @@ class SupabaseWorkshopSyncService {
       );
     }
 
-    if (newestUpdate != null && (!full || downloadedBusinessRows > 0)) {
-      await _saveLastSyncAt(newestUpdate!);
+    // Rows fetched for a Realtime event are not a contiguous range, so they
+    // must not move either cursor past rows that were not read yet.
+    if (explicitRows == null) {
+      if (newestUpdate != null && (!full || downloadedBusinessRows > 0)) {
+        await _saveLastSyncAt(newestUpdate!);
+      }
+      if (useServerCursor && (!full || downloadedBusinessRows > 0)) {
+        var serverCursor = newestServerUpdate;
+        if (serverCursor == null && serverSince == null) {
+          // First pass after the migration and nothing new: start from the
+          // newest server stamp so the next pass reads only later uploads.
+          try {
+            final latest = await _client
+                .from('workshop_sync_rows')
+                .select('server_updated_at')
+                .eq('workshop_id', workshopUuid)
+                .order('server_updated_at', ascending: false)
+                .limit(1)
+                .maybeSingle();
+            serverCursor = latest?['server_updated_at']?.toString();
+          } catch (_) {}
+        }
+        if (serverCursor != null) {
+          await _saveLastServerSyncAt(serverCursor);
+        }
+      }
+    }
+
+    if (incomingPriceRows > 0) {
+      unawaited(_showIncomingPriceNotification(incomingPriceRows));
     }
 
     lastDownloadSummary = downloadedRows == 0
@@ -1590,64 +1960,55 @@ class SupabaseWorkshopSyncService {
   }
 
   Future<String> _resolveWorkshopUuid(String code, String workshopName) async {
-    // Prove that the workshop exists before invoking the membership RPC.
-    // Older deployed versions of ensure_my_workshop created a workshop when
-    // the supplied code was missing; looking it up first makes the client safe
-    // even before the database migration is applied.
+    final cleanCode = code.trim().toUpperCase();
+    if (cleanCode.isEmpty) {
+      throw Exception('كود الورشة مطلوب.');
+    }
+
+    // 1. استدعاء ensure_my_workshop أولاً:
+    // هذه الدالة في Supabase هي SECURITY DEFINER، ولذلك تملك الصلاحية للبحث
+    // عن الورشة بكود الانضمام أو الكود الداخلي حتى لو كان العامل ليس عضواً بعد (تتجاوز RLS)،
+    // وتقوم بإنشاء عضوية العامل (في انتظار الموافقة) وإرجاع معرّف الورشة id.
+    try {
+      final result = await _client.rpc(
+        'ensure_my_workshop',
+        params: {
+          'target_code': cleanCode,
+          'target_name': workshopName.trim().isEmpty ? cleanCode : workshopName.trim(),
+        },
+      );
+      final resolvedId = result?.toString().trim() ?? '';
+      if (resolvedId.isNotEmpty) {
+        return resolvedId;
+      }
+    } catch (error) {
+      debugPrint('Supabase ensure_my_workshop note: $error');
+      if (error.toString().contains('WORKSHOP_USER_LIMIT_REACHED')) {
+        rethrow;
+      }
+    }
+
+    // 2. البحث المباشر كاحتياط (في حال كان المستخدم عضواً بالفعل ومصرحاً له بالقراءة عبر RLS)
     Map<String, dynamic>? existing;
     try {
       final result = await _client
           .from('workshops')
           .select('id')
-          .or('code.eq.$code,join_code.eq.$code')
+          .or('code.eq.$cleanCode,join_code.eq.$cleanCode')
           .maybeSingle();
       existing = result == null ? null : Map<String, dynamic>.from(result);
     } catch (_) {
-      final result = await _client
-          .from('workshops')
-          .select('id')
-          .eq('code', code)
-          .maybeSingle();
-      existing = result == null ? null : Map<String, dynamic>.from(result);
+      try {
+        final result = await _client
+            .from('workshops')
+            .select('id')
+            .eq('code', cleanCode)
+            .maybeSingle();
+        existing = result == null ? null : Map<String, dynamic>.from(result);
+      } catch (_) {}
     }
     final existingId = existing?['id']?.toString() ?? '';
     if (existingId.isNotEmpty) {
-      try {
-        final result = await _client.rpc(
-          'ensure_my_workshop',
-          params: {
-            'target_code': code,
-            'target_name': workshopName.trim().isEmpty ? code : workshopName,
-          },
-        );
-        final resolvedId = result?.toString() ?? '';
-        if (resolvedId == existingId) return resolvedId;
-      } catch (error) {
-        print('Supabase existing-workshop membership RPC failed: $error');
-      }
-
-      final user = _client.auth.currentUser;
-      if (user != null) {
-        try {
-          final membership = await _client
-              .from('workshop_members')
-              .select('workshop_id')
-              .eq('workshop_id', existingId)
-              .eq('user_id', user.id)
-              .maybeSingle();
-          if (membership == null) {
-            throw Exception(
-              'لم تُنشأ عضوية الورشة. طبّق ملف '
-              'supabase/workshop_join_code_migration.sql في Supabase.',
-            );
-          }
-        } catch (error) {
-          throw Exception(
-            'تعذر التحقق من عضوية الورشة. طبّق ملف '
-            'supabase/workshop_join_code_migration.sql في Supabase: $error',
-          );
-        }
-      }
       return existingId;
     }
 
@@ -2041,7 +2402,13 @@ class SupabaseWorkshopSyncService {
     await saveString('workshop_nis', profile['nis']);
     await saveString('workshop_ai', profile['ai']);
     await saveString('workshop_rib', profile['rib']);
-    await saveString('workshop_logo_base64', profile['logo']);
+    // Several profile writers (systems, join code, workshop creation) publish
+    // the row without a logo. Treat a missing/empty logo as "unchanged";
+    // overwriting it with '' erased the workshop image after re-login.
+    final incomingLogo = profile['logo']?.toString().trim() ?? '';
+    if (incomingLogo.isNotEmpty) {
+      await saveString('workshop_logo_base64', incomingLogo);
+    }
     await saveString('workshop_worker_count', profile['worker_count']);
 
     final systems = profile['workshop_systems'];

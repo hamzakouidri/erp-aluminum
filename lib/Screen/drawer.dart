@@ -909,10 +909,21 @@ class _AppDrawerState extends State<AppDrawer> {
   }
 
   Future<void> _signOut() async {
-    Navigator.of(context, rootNavigator: true).pop();
+    final workspace = context.read<WorkspaceController>();
+    // On desktop the drawer is an embedded sidebar, not a modal route.
+    // Popping the root navigator there removes the app's home route (the
+    // auth gate) and leaves an empty, transparent window instead of
+    // LoginScreen. Only close the drawer when it is actually a modal drawer.
+    final scaffold = Scaffold.maybeOf(context);
+    if (scaffold != null && scaffold.isDrawerOpen) {
+      scaffold.closeDrawer();
+    }
     try {
-      context.read<WorkspaceController>().resetForSignedOut();
+      // Switch the auth gate to LoginScreen first, then reset the workspace
+      // once the old navigators have been disposed.
       await AppAuthService().signOut();
+      await WidgetsBinding.instance.endOfFrame;
+      workspace.resetForSignedOut();
       await AppAuthService().signOutGoogleSession();
       CloudSyncService().reset();
       SupabaseWorkshopSyncService().stop();

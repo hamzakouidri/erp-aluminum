@@ -76,14 +76,37 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
       _ordersList = ordersList;
 
       // 3. Get Client Payments (Treasury)
-      final treasuryList = await myDb.query('Treasury', where: "entity_type = 'Client' AND entity_id = ?", whereArgs: [widget.clientId]);
+      // Shop payments settle shop documents, not the window orders listed
+      // here; counting them made the client look in credit.
+      final treasuryList = await myDb.query(
+        'Treasury',
+        where:
+            "entity_type = 'Client' AND entity_id = ? "
+            'AND (document_type IS NULL OR document_type != ?)',
+        whereArgs: [widget.clientId, SqlDatabase.materialSaleDocumentType],
+      );
 
       // 4. Load Order details if detailed view is used (we pre-fetch details for all orders)
+      // One query for all orders instead of one query per order.
       final Map<int, List<Map<String, dynamic>>> orderDetailsMap = {};
-      for (var order in ordersList) {
-        final orderId = order['id'] as int;
-        final details = await myDb.query('Commandes_details', where: 'id_commandes = ?', whereArgs: [orderId]);
-        orderDetailsMap[orderId] = details;
+      final orderIds = [for (final order in ordersList) order['id'] as int];
+      const chunkSize = 500; // SQLite bound-variable limit.
+      for (var start = 0; start < orderIds.length; start += chunkSize) {
+        final chunk = orderIds.sublist(
+          start,
+          (start + chunkSize).clamp(0, orderIds.length),
+        );
+        final details = await myDb.query(
+          'Commandes_details',
+          where:
+              'id_commandes IN (${List.filled(chunk.length, '?').join(', ')})',
+          whereArgs: chunk,
+        );
+        for (final detail in details) {
+          final orderId = (detail['id_commandes'] as num?)?.toInt();
+          if (orderId == null) continue;
+          orderDetailsMap.putIfAbsent(orderId, () => []).add(detail);
+        }
       }
 
       // 5. Combine and Sort chronologically

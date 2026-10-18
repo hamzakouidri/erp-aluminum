@@ -33,6 +33,37 @@ void main() {
     expect(model.shutterIsLongerThanWindow, isFalse);
   });
 
+  test('changing shutter mechanism updates every split section', () {
+    final model = WindowModel(db: SqlDatabase())
+      ..hasShutter = true
+      ..isShutterSplit = true
+      ..shutterMechanism = 'حزام'
+      ..motorHasInterrupteur = true
+      ..motorHasTelecommande = true
+      ..shutterSplits = const [
+        ShutterSplitSection(
+          width: 600,
+          leftOffset: 0,
+          mechanism: 'محرك',
+        ),
+        ShutterSplitSection(
+          width: 600,
+          leftOffset: 600,
+          mechanism: 'منايفال',
+        ),
+      ];
+
+    model.setAllShutterMechanism('مانيفال');
+
+    expect(model.shutterMechanism, 'منايفال');
+    expect(model.shutterSplits.map((split) => split.mechanism), [
+      'منايفال',
+      'منايفال',
+    ]);
+    expect(model.motorHasInterrupteur, isFalse);
+    expect(model.motorHasTelecommande, isFalse);
+  });
+
   test('quotation shows how much the shutter exceeds the window', () {
     final line = DevisBuilder.buildLineItemFromDetail(
       {

@@ -16,6 +16,7 @@ import 'package:database_data/sql_database.dart'; // كائن الوصول لق�
 import 'package:database_data/Commande/Systeme/model.dart'; // نموذج بيانات النافذة (WindowModel)
 import 'package:database_data/Commande/Systeme/calculate_component.dart'; // منطق توليد قائمة المكونات (BOM)
 import 'package:database_data/Commande/Systeme/bom_engine_v2.dart';
+import 'package:database_data/Commande/Systeme/parclose_cut_mode_selector.dart';
 import 'package:database_data/Commande/window_painter.dart'; // رسّام يعرض شكل النافذة (Custom Painter)
 import 'package:database_data/Commande/Systeme/profile_selector_dialog.dart'; // نافذة اختيار بروفيل/مكون بدي
 import 'package:provider/provider.dart'; // لإدارة حالة الإعدادات العامة (اللغة...)
@@ -623,6 +624,39 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     return null;
   }
 
+  String _actualRequirementFor(BomItem item, AppLanguage lang) {
+    final usedMeters = _actualUsedMetersFor(item);
+    if (usedMeters == null || usedMeters <= 0) return '-';
+
+    final barLength = item.length ?? 0.0;
+    if (item.category != 'profile' || barLength <= 0) {
+      final formatted = usedMeters % 1 == 0
+          ? usedMeters.toInt().toString()
+          : usedMeters.toStringAsFixed(2);
+      return '${formatted}m';
+    }
+
+    final exactBars = usedMeters / barLength;
+    var fullBars = exactBars.floor();
+    var remainingCm = ((usedMeters - (fullBars * barLength)) * 100).round();
+    final barLengthCm = (barLength * 100).round();
+    if (remainingCm >= barLengthCm) {
+      fullBars++;
+      remainingCm = 0;
+    }
+
+    final barLabel = Localization.translate('بار', lang);
+    final cmLabel = Localization.translate('سم', lang);
+    final detail = remainingCm > 0
+        ? '$fullBars $barLabel + $remainingCm $cmLabel'
+        : '$fullBars $barLabel';
+    final exactLabel = exactBars
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+    return '$exactLabel $barLabel\n$detail';
+  }
+
   _BomSwapTarget _resolveBomSwapTarget(BomItem item) {
     final original = item.originalName;
     final lower = original.toLowerCase();
@@ -1164,18 +1198,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       }
     }
 
-    var price = _safeDouble(accessory['price_dzd'] ?? accessory['price']);
-    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
-    if (settings.applyPurchasePricesToCostTable && accessoryId != null) {
-      final purchasePrice = await SqlDatabase().getLatestPurchasePrice(
-        itemId: accessoryId,
-        itemType: 'Accessories',
-        colorId: colorId,
-      );
-      if (purchasePrice != null && purchasePrice >= 0) {
-        price = purchasePrice;
-      }
-    }
+    // Purchases already write their weighted average cost into these price
+    // columns, so the stored price is the current cost.
+    final price = _safeDouble(accessory['price_dzd'] ?? accessory['price']);
     if (canCachePrice) _accessoryPriceCache[cacheKey] = price;
     return price;
   }
@@ -1251,6 +1276,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   String _tableSectionForItem(BomItem item) {
     if (item.category == 'profile') return 'profile';
     if (item.category == 'joint') return 'joint';
+    if (item.category == 'moustiquaire') return 'moustiquaire';
     if (item.category == 'glass' || item.category == 'panneau') {
       return 'glass';
     }
@@ -2137,59 +2163,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         .toList(growable: false);
   }
 
-  Future<List<BomItem>> _applyPurchasePricesIfEnabled(
-    List<BomItem> items,
-  ) async {
-    final settings = Provider.of<AppSettingsProvider>(context, listen: false);
-    if (!settings.applyPurchasePricesToCostTable) return items;
-
-    final sqlDb = SqlDatabase();
-    final updatedList = <BomItem>[];
-
-    for (final item in items) {
-      final itemId = item.catalogItemId;
-      if (itemId == null || itemId <= 0) {
-        updatedList.add(item);
-        continue;
-      }
-
-      String itemType;
-      if (item.category == 'profile') {
-        itemType = 'Sections';
-      } else if (item.category == 'accessory') {
-        itemType = 'Accessories';
-      } else if (item.category == 'shutter') {
-        itemType = 'ShutterComponents';
-      } else if (item.category == 'joint') {
-        itemType = 'Joints';
-      } else if (item.category == 'glass') {
-        itemType = 'Glass';
-      } else {
-        itemType = item.inventoryItemType ?? 'Accessories';
-      }
-
-      final rawColorId = item.category == 'accessory'
-          ? _selectedAccessoryColorId()
-          : (item.colorId ?? widget.model.selectedDbColor?['id']);
-      final colorId = rawColorId is num
-          ? rawColorId.toInt()
-          : int.tryParse('${rawColorId ?? ''}');
-
-      final purchasePrice = await sqlDb.getLatestPurchasePrice(
-        itemId: itemId,
-        itemType: itemType,
-        colorId: colorId,
-      );
-
-      if (purchasePrice != null && purchasePrice > 0) {
-        updatedList.add(item.copyWith(unitPrice: purchasePrice));
-      } else {
-        updatedList.add(item);
-      }
-    }
-    return updatedList;
-  }
-
   Future<List<BomItem>> _generateStrictVisibleBomItems(
     BomEngineV2 engine,
   ) async {
@@ -2232,11 +2205,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             visibleBomItems = strictItems;
           }
         }
-        visibleBomItems = await _applyPurchasePricesIfEnabled(visibleBomItems);
       } catch (error, stackTrace) {
         // Keep resolved rows visible without restoring unlinked placeholders.
         visibleBomItems = _resolvedFallbackBomItems(_generateRawBomItems());
-        visibleBomItems = await _applyPurchasePricesIfEnabled(visibleBomItems);
         debugPrint(
           'Material BOM refresh failed; showing resolved rows: $error',
         );
@@ -2422,13 +2393,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
           debugPrint('_generateStrictVisibleBomItems error/timeout: $e');
           visibleBomItems = _resolvedFallbackBomItems(bomItems);
         }
-      }
-      try {
-        visibleBomItems = await _applyPurchasePricesIfEnabled(
-          visibleBomItems,
-        ).timeout(const Duration(seconds: 4));
-      } catch (e) {
-        debugPrint('_applyPurchasePricesIfEnabled error/timeout: $e');
       }
       _setFetchProgress(0.95);
     } catch (error, stackTrace) {
@@ -2676,6 +2640,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   }
 
   Future<void> _refreshFromDatabaseUpdate() async {
+    // Synced catalogue/price rows may change the kit options.
+    _shutterKitOptionsFuture = null;
     final newStock = await _loadMainWarehouseStock();
     if (mounted) {
       setState(() => _mainWarehouseStock = newStock);
@@ -2967,6 +2933,39 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       _shutterSqmPriceFromDb =
           effectiveShutterSqmPrice; // ⭐️ التحديث الحاسم لسعر الستار
       _moustiquaireSqmPriceFromDb = moustiquaireSqmPrice;
+      if (moustiquaireSqmPrice > 0) {
+        final existingM = widget.model.componentOverrides['موستيكير (Moustiquaire)'];
+        if (existingM is Map) {
+          existingM.putIfAbsent('price', () => moustiquaireSqmPrice);
+          existingM.putIfAbsent('price_per_sqm', () => moustiquaireSqmPrice);
+        } else {
+          widget.model.componentOverrides['موستيكير (Moustiquaire)'] = {
+            'name': 'موستيكير (Moustiquaire)',
+            'price': moustiquaireSqmPrice,
+            'price_per_sqm': moustiquaireSqmPrice,
+            'calculated_price': moustiquaireSqmPrice,
+            'price_dzd': moustiquaireSqmPrice,
+          };
+        }
+        final existingM2 = widget.model.componentOverrides['moustiquaire'];
+        if (existingM2 is Map) {
+          existingM2.putIfAbsent('price', () => moustiquaireSqmPrice);
+          existingM2.putIfAbsent('price_per_sqm', () => moustiquaireSqmPrice);
+        } else {
+          widget.model.componentOverrides['moustiquaire'] = {
+            'name': 'موستيكير (Moustiquaire)',
+            'price': moustiquaireSqmPrice,
+            'price_per_sqm': moustiquaireSqmPrice,
+            'calculated_price': moustiquaireSqmPrice,
+            'price_dzd': moustiquaireSqmPrice,
+          };
+        }
+        for (int i = 0; i < _visibleBomItems.length; i++) {
+          if (_visibleBomItems[i].category == 'moustiquaire' && _visibleBomItems[i].unitPrice <= 0) {
+            _visibleBomItems[i] = _visibleBomItems[i].copyWith(unitPrice: moustiquaireSqmPrice);
+          }
+        }
+      }
       _moteurInstallFee = moteurInstall;
       _obInstallFee = obInstall;
       _demiObInstallFee = demiObInstall;
@@ -3424,7 +3423,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                   height: 250,
                   child: Padding(
                     padding: const EdgeInsets.all(8),
-                    child: FittedBox(
+                    // Isolate the drawing so table rebuilds/animations do not
+                    // repaint the full window drawing on every frame.
+                    child: RepaintBoundary(
+                      child: FittedBox(
                       fit: BoxFit.contain,
                       child: CustomPaint(
                         painter: WindowPainter(
@@ -3436,6 +3438,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                           widget.model.height.toDouble(),
                         ),
                       ),
+                    ),
                     ),
                   ),
                 ),
@@ -3995,22 +3998,27 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             if (widget.model.hasMoustiquaireAddon) ...[
               const SizedBox(height: 10),
               InputDecorator(
-                decoration: const InputDecoration(
-                  labelText:
-                      'سعر المتر المربع للموستيكير (دج) — من إدارة الأسعار',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.grid_on_rounded, color: Colors.green),
+                decoration: InputDecoration(
+                  labelText: Localization.translate(
+                    'سعر المتر المربع للموستيكير (دج) — من إدارة الأسعار',
+                    lang,
+                  ),
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.grid_on_rounded, color: Colors.green),
                 ),
                 child: Text(
-                  '${_moustiquaireSqmPriceFromDb.toStringAsFixed(2)} دج / م²',
+                  '${_moustiquaireSqmPriceFromDb.toStringAsFixed(2)} ${Localization.translate('دج / م²', lang)}',
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
-              const Padding(
-                padding: EdgeInsets.only(top: 5),
+              Padding(
+                padding: const EdgeInsets.only(top: 5),
                 child: Text(
-                  'المساحة = عرض النافذة × ارتفاعها × الكمية. تعديل السعر يتم من إدارة الأسعار فقط.',
-                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                  Localization.translate(
+                    'المساحة = عرض النافذة × ارتفاعها × الكمية. تعديل السعر يتم من إدارة الأسعار فقط.',
+                    lang,
+                  ),
+                  style: const TextStyle(fontSize: 11, color: Colors.grey),
                 ),
               ),
             ],
@@ -4160,9 +4168,32 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   // قاعدة "الترقية فقط" (لا يمكن اختيار كيت أصغر من الحد الأدنى المسموح
   // حسب ارتفاع النافذة أو حسب الكيت الحالي نفسه إن كان أكبر من الحد).
   // ==========================================================================
+  // The kit options depend only on the window height and selected blade.
+  // Creating the future inside build() re-ran every KitBundles/price query on
+  // each setState (price retries, BOM refreshes) and reset the dropdown to a
+  // spinner, which kept the whole table repainting and froze the screen.
+  Future<List<Map<String, dynamic>>>? _shutterKitOptionsFuture;
+  String? _shutterKitOptionsKey;
+
+  Future<List<Map<String, dynamic>>> _shutterKitOptions() {
+    final key =
+        '${widget.model.height}|${widget.model.componentOverrides['الشرائح (Lames)']?['id']}'
+        '|${widget.model.selectedDbColor?['id']}|${widget.model.shutterMechanism}';
+    if (_shutterKitOptionsFuture == null || _shutterKitOptionsKey != key) {
+      _shutterKitOptionsKey = key;
+      _shutterKitOptionsFuture = _loadShutterKitOptions();
+    }
+    return _shutterKitOptionsFuture!;
+  }
+
   Widget _buildKitDropdown(BomItem item) {
     return FutureBuilder<List<Map<String, dynamic>>>(
-      future: () async {
+      future: _shutterKitOptions(),
+      builder: (context, snapshot) => _buildKitDropdownContent(item, snapshot),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _loadShutterKitOptions() async {
         // The kit selector reads only from the Kits page.  A shutter
         // component with "kit" in its name is never a selectable bundle.
         final dbInstance = await SqlDatabase().db;
@@ -4210,8 +4241,12 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               },
             )
             .toList();
-      }(),
-      builder: (context, snapshot) {
+  }
+
+  Widget _buildKitDropdownContent(
+    BomItem item,
+    AsyncSnapshot<List<Map<String, dynamic>>> snapshot,
+  ) {
         if (!snapshot.hasData) {
           // أثناء التحميل: مؤشر دوران صغير بدل الأيقونة
           return const SizedBox(
@@ -4281,8 +4316,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             }).toList();
           },
         );
-      },
-    );
   }
 
   // ==========================================================================
@@ -4314,7 +4347,13 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         0,
         (sum, i) => sum + _pricedTotal(i),
       );
-      final officialKitUnitPrice = _kitBundlePrices[kitName] ?? 0.0;
+      final kitOverride = widget.model.componentOverrides[kitName];
+      final overridePrice = (kitOverride is Map)
+          ? (kitOverride['price'] ?? kitOverride['calculated_price'] ?? kitOverride['price_dzd'])
+          : null;
+      final officialKitUnitPrice = (overridePrice is num && overridePrice > 0)
+          ? overridePrice.toDouble()
+          : (_kitBundlePrices[kitName] ?? 0.0);
       // دالة داخلية: تحدد هل عنصر معين هو "رأس كيت" (وليس عنصرًا فرعيًا داخله)
       bool isKitItem(String name) =>
           name == 'كيت (Kit)' ||
@@ -4384,7 +4423,38 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         (c) => isKitItem(c.originalName),
         orElse: () => children.first,
       );
-      final kitQuantity = math.max(1, widget.model.quantity).toDouble();
+      int shutterSectionsForKit() {
+        if (!isShutterKit || !widget.model.hasShutter) return 1;
+        final splits = widget.model.effectiveShutterSplits;
+        if (shutterKitCode == 'CT') return splits.length;
+        bool isMotor(String value) =>
+            value == 'محرك' || value.toLowerCase().contains('moteur');
+        bool isCrank(String value) {
+          final v = value.toLowerCase();
+          return value == 'منايفال' ||
+              value == 'مانيفال' ||
+              value == 'مانيفر' ||
+              v.contains('maniv');
+        }
+        String mechanism(ShutterSplitSection split) =>
+            split.mechanism?.trim().isNotEmpty == true
+            ? split.mechanism!.trim()
+            : widget.model.shutterMechanism;
+        if (shutterKitCode == 'MT') {
+          return splits.where((s) => isMotor(mechanism(s))).length;
+        }
+        if (shutterKitCode == 'M') {
+          return splits.where((s) => isCrank(mechanism(s))).length;
+        }
+        if (shutterKitCode == 'V') {
+          return splits.where((s) => !isMotor(mechanism(s))).length;
+        }
+        return splits.length;
+      }
+
+      final kitQuantity =
+          math.max(1, widget.model.quantity).toDouble() *
+          math.max(1, shutterSectionsForKit());
       final isMotorKit =
           shutterKitCode == 'MT' ||
           isMatch('كيت فولي موتور (Kit Volet Moteur)', [
@@ -4502,6 +4572,22 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
+                              Text(
+                                visibleCount == 1
+                                    ? Localization.translate('عنصر واحد', lang)
+                                    : visibleCount == 2
+                                    ? Localization.translate('عنصران', lang)
+                                    : (visibleCount >= 3 && visibleCount <= 10)
+                                    ? '$visibleCount ${Localization.translate('عناصر', lang)}'
+                                    : '$visibleCount ${Localization.translate('عنصر', lang)}',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: isDark
+                                      ? Colors.grey.shade400
+                                      : Colors.grey.shade600,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                               if (selectedKitName != null &&
                                   selectedKitName != kitName)
                                 Text(
@@ -4533,32 +4619,23 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                         ? Colors.deepPurple.shade900.withValues(alpha: 0.3)
                         : Colors.deepPurple.shade100.withValues(alpha: 0.4),
                   ),
-                  // عمود الكمية: يعرض عدد عناصر المجموعة بصيغة نصية (واحد/عنصران/عناصر)
+                  // عمود الكمية يعرض عدد الكيتات الفعلي، لا عدد العناصر داخله.
                   _cell(
                     Text(
-                      visibleCount == 1
-                          ? Localization.translate('عنصر واحد', lang)
-                          : visibleCount == 2
-                          ? Localization.translate('عنصران', lang)
-                          : (visibleCount >= 3 && visibleCount <= 10)
-                          ? '$visibleCount ${Localization.translate('عناصر', lang)}'
-                          : '$visibleCount ${Localization.translate('عنصر', lang)}',
+                      kitQuantity == kitQuantity.roundToDouble()
+                          ? kitQuantity.toStringAsFixed(0)
+                          : kitQuantity.toStringAsFixed(2),
                       style: TextStyle(
                         fontSize: 12,
-                        color: isDark ? Colors.white54 : Colors.grey,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white70 : Colors.black87,
                       ),
                     ),
                     _wQty,
                   ),
-                  // صف المجموعة لا يمثل طول قص حقيقيًا.
+                  // لا توجد "مادة مستعملة فعليًا" لرأس الكيت التجاري.
                   _cell(
-                    Text(
-                      '-',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? Colors.white54 : Colors.grey,
-                      ),
-                    ),
+                    const SizedBox.shrink(),
                     _wActualMeters,
                   ),
                   // سعر الكيت الرسمي المخزن في كتالوج مكونات الستار أو مجموع عناصره.
@@ -4734,6 +4811,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             .where((i) => i.category == 'glass' || i.category == 'panneau')
             .toList(),
       ),
+      'moustiquaire': _orderedMaterialItems(
+        'moustiquaire',
+        items.where((i) => i.category == 'moustiquaire').toList(),
+      ),
     };
     final totals = _calculateTotals(
       items,
@@ -4786,8 +4867,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                           .toList(),
                     ),
                     ...groups['accessory']!
-                        .where((i) => i.kitGroupName == null)
-                        .map(_buildDraggableMaterialRow),
+                          .where((i) => i.kitGroupName == null)
+                          .map(_buildDraggableMaterialRow),
                   ],
                   // قسم مكوّنات الستار (نفس منطق التقسيم: كيت مجمّع + عناصر عادية)
                   if (groups['shutter']!.isNotEmpty) ...[
@@ -4806,15 +4887,16 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                         .where((i) => i.kitGroupName == null)
                         .map(_buildDraggableMaterialRow),
                   ],
-                  // قسم الزجاج (بدون كيتات — كل عناصره عادية)
-                  if (groups['glass']!.isNotEmpty) ...[
+                  // قسم الموستيكير (Moustiquaire)
+                  if (groups['moustiquaire'] != null &&
+                      groups['moustiquaire']!.isNotEmpty) ...[
                     _sectionTitle(
-                      'الزجاج',
-                      Colors.teal.shade100,
-                      cost: totals['glass']?['cost'],
-                      selling: totals['glass']?['selling'],
+                      'الموستيكير',
+                      Colors.teal.shade50,
+                      cost: totals['moustiquaire']?['cost'],
+                      selling: totals['moustiquaire']?['selling'],
                     ),
-                    ...groups['glass']!.map(_buildDraggableMaterialRow),
+                    ...groups['moustiquaire']!.map(_buildDraggableMaterialRow),
                   ],
                   // قسم الجوينات (Gaskets)
                   if (groups['joint'] != null &&
@@ -4826,6 +4908,16 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       selling: totals['joint']?['selling'],
                     ),
                     ...groups['joint']!.map(_buildDraggableMaterialRow),
+                  ],
+                  // قسم الزجاج (بدون كيتات — كل عناصره عادية)
+                  if (groups['glass']!.isNotEmpty) ...[
+                    _sectionTitle(
+                      'الزجاج',
+                      Colors.teal.shade100,
+                      cost: totals['glass']?['cost'],
+                      selling: totals['glass']?['selling'],
+                    ),
+                    ...groups['glass']!.map(_buildDraggableMaterialRow),
                   ],
                 ],
               ),
@@ -5830,7 +5922,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         item.kitGroupName != null; // هل هذا الصف عنصر فرعي داخل كيت
     final normalizedUnit = item.unit.trim().toLowerCase();
     final isGlassSquareMeter =
-        (item.category == 'glass' || item.category == 'panneau') &&
+        (item.category == 'glass' ||
+            item.category == 'panneau' ||
+            item.category == 'moustiquaire') &&
         (normalizedUnit == 'م²' ||
             normalizedUnit == 'm²' ||
             normalizedUnit == 'm2' ||
@@ -5845,6 +5939,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     final quantityLabel = isGlassSquareMeter
         ? '${item.quantity.toStringAsFixed(2)} $localizedUnit'
         : '${formatQuantity(item.quantity)} $localizedUnit';
+    final actualRequirement = _actualRequirementFor(item, lang);
+    final requirementLines = actualRequirement.split('\n');
     return Container(
       decoration: BoxDecoration(
         color: inactive
@@ -6086,6 +6182,29 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       ],
                     ),
                   ),
+                  // زر طريقة قطع الباركلوز (ألمنيوم فقط): 45° أو 90° مع أولوية الطول/العرض
+                  if (item.isActive &&
+                      (item.selectorType == 'parclose_simple' ||
+                          item.selectorType == 'parclose_double') &&
+                      ParcloseCutModeSelector.isAvailableFor(widget.model))
+                    Padding(
+                      padding: const EdgeInsets.only(right: 4.0),
+                      child: Tooltip(
+                        message: _lang == 'ar'
+                            ? 'طريقة قطع الباركلوز'
+                            : 'Coupe parclose',
+                        child: GestureDetector(
+                          onTap: _showParcloseCutModeDialog,
+                          child: Icon(
+                            Icons.content_cut,
+                            color: widget.model.parcloseCutAt90
+                                ? Colors.deepPurple
+                                : Colors.blueGrey,
+                            size: 17,
+                          ),
+                        ),
+                      ),
+                    ),
                   // زر التبديل: لعنصر "كيت (Kit)" القديم يظهر قائمة كيت، وإلا أيقونة تبديل عامة تفتح _showSwapDialog
                   if (item.isActive &&
                       item.originalName != 'أغطية الشفرات (Bouchons Lames)')
@@ -6119,13 +6238,23 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
             ),
             // مجموع أطوال قطع القص الفعلية، وليس عدد القضبان المقرّب.
             _cell(
-              Text(
-                _actualUsedMetersFor(item) == null
-                    ? '-'
-                    : '${formatQuantity(_actualUsedMetersFor(item)!)}m',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isDark ? Colors.white70 : Colors.black87,
+              Text.rich(
+                TextSpan(
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.white70 : Colors.black87,
+                  ),
+                  children: [
+                    TextSpan(
+                      text: requirementLines.first,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    if (requirementLines.length > 1)
+                      TextSpan(
+                        text: '\n${requirementLines.skip(1).join('\n')}',
+                        style: const TextStyle(fontWeight: FontWeight.normal),
+                      ),
+                  ],
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -6166,7 +6295,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               Text(
                 '${(_isExcludedFromPricing(item) || !item.isActive
                     ? 0.0
-                    : item.category == 'glass'
+                    : (item.category == 'glass' || item.category == 'moustiquaire')
                     ? item.total
                     : item.purchaseQuantity * item.unitPrice).toStringAsFixed(2)} $currency',
                 style: TextStyle(
@@ -6192,17 +6321,17 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               ),
               _wTotal,
             ),
-            // عمود الطول: للزجاج يعرض "عرض × ارتفاع"، ولغيره الطول بالمتر، وإلا "-"
+            // عمود الطول: للزجاج والموستيكير يعرض "عرض × ارتفاع"، ولغيره الطول بالمتر، وإلا "-"
             _cell(
               Text(
-                (item.category == 'glass' && item.glassHeight != null)
+                ((item.category == 'glass' || item.category == 'moustiquaire') && item.glassHeight != null)
                     ? '${item.length?.toStringAsFixed(0)} × ${item.glassHeight?.toStringAsFixed(0)}'
                     : (item.length != null
                           ? '${item.length?.toStringAsFixed(1)}m'
                           : '-'),
                 style: TextStyle(
                   fontSize: 12,
-                  fontWeight: item.category == 'glass'
+                  fontWeight: (item.category == 'glass' || item.category == 'moustiquaire')
                       ? FontWeight.bold
                       : FontWeight.normal,
                   color: isDark ? Colors.white70 : Colors.black87,
@@ -6211,10 +6340,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               ),
               _wLen,
             ),
-            // عمود اللون (لا يُعرض للزجاج)
+            // عمود اللون (لا يُعرض للزجاج أو الموستيكير)
             _cell(
               Text(
-                item.category == 'glass'
+                (item.category == 'glass' || item.category == 'moustiquaire')
                     ? '-'
                     : ((item.category == 'accessory' ||
                                   item.category == 'other') &&
@@ -6262,6 +6391,24 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   // كل "المكونات المرافقة" (companion components) التي يجب أن تتغيّر معها
   // تلقائيًا (مثل: تغيير الشريحة يستدعي تغيير المحور، الأطاش، السيبورات...).
   // ==========================================================================
+  void _showParcloseCutModeDialog() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        content: AnimatedBuilder(
+          animation: widget.model,
+          builder: (_, __) => ParcloseCutModeSelector(model: widget.model),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(_lang == 'ar' ? 'إغلاق' : 'Fermer'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showSwapDialog(BomItem item) async {
     final swapTarget = _resolveBomSwapTarget(item);
     String pType = swapTarget.profileType;
@@ -6414,15 +6561,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         ),
       );
       if (selected != null && mounted) {
-        double price = 0.0;
-        if (widget.model.selectedDbColor != null) {
-          int colorId = widget.model.selectedDbColor!['id'];
-          final db = SqlDatabase();
-          price = await db.getSectionPrice(
-            selected['id'],
-            colorId,
-          ); // جلب السعر حسب اللون
-        }
+        final rawCId = widget.model.selectedDbColor?['id'];
+        final colorId = rawCId is num ? rawCId.toInt() : int.tryParse('${rawCId ?? ''}');
+        final db = SqlDatabase();
+        final price = await db.getSectionPrice(selected['id'], colorId);
         final mutableSelected = Map<String, dynamic>.from(selected);
         mutableSelected['calculated_price'] = price;
         setState(() {
@@ -6462,12 +6604,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         ),
       );
       if (selected != null && mounted) {
-        double price = 0.0;
-        if (widget.model.selectedDbColor != null) {
-          int colorId = widget.model.selectedDbColor!['id'];
-          final db = SqlDatabase();
-          price = await db.getSectionPrice(selected['id'], colorId);
-        }
+        final rawCId = widget.model.selectedDbColor?['id'];
+        final colorId = rawCId is num ? rawCId.toInt() : int.tryParse('${rawCId ?? ''}');
+        final db = SqlDatabase();
+        final price = await db.getSectionPrice(selected['id'], colorId);
         final mutableSelected = Map<String, dynamic>.from(selected);
         mutableSelected['calculated_price'] = price;
         // إذا كانت الظلفة الجديدة مرتبطة بحديد دعم، اجلبه + ابحث عن حديد مفصل خاص (Mifsal) كما في _fetchDefaults
@@ -6553,12 +6693,10 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         ),
       );
       if (selected != null && mounted) {
-        double price = 0.0;
-        if (widget.model.selectedDbColor != null) {
-          int colorId = widget.model.selectedDbColor!['id'];
-          final db = SqlDatabase();
-          price = await db.getSectionPrice(selected['id'], colorId);
-        }
+        final rawCId = widget.model.selectedDbColor?['id'];
+        final colorId = rawCId is num ? rawCId.toInt() : int.tryParse('${rawCId ?? ''}');
+        final db = SqlDatabase();
+        final price = await db.getSectionPrice(selected['id'], colorId);
         final mutableSelected = Map<String, dynamic>.from(selected);
         mutableSelected['calculated_price'] = price;
         setState(() {
@@ -6819,26 +6957,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
       try {
         double price = 0.0;
         final db = SqlDatabase();
-        // حساب السعر: بروفيل حسب اللون، وإلا السعر العام المباشر
-        final settings = Provider.of<AppSettingsProvider>(
-          context,
-          listen: false,
-        );
-        if (pCategory == 'profile' && widget.model.selectedDbColor != null) {
-          int colorId = widget.model.selectedDbColor!['id'];
+        // حساب السعر: بروفيل حسب اللون، وإلا السعر العام المباشر.
+        // سعر الشراء مُدمج مسبقاً فيه (المتوسط المرجّح عند كل شراء).
+        if (pCategory == 'profile') {
+          final rawCId = widget.model.selectedDbColor?['id'];
+          final colorId = rawCId is num ? rawCId.toInt() : int.tryParse('${rawCId ?? ''}');
           price = await db.getSectionPrice(selected['id'], colorId);
           if (price <= 0) {
             price = _safeDouble(selected['price_dzd'] ?? selected['price']);
-          }
-          if (settings.applyPurchasePricesToCostTable) {
-            final purchasePrice = await db.getLatestPurchasePrice(
-              itemId: (selected['id'] as num).toInt(),
-              itemType: 'Sections',
-              colorId: colorId,
-            );
-            if (purchasePrice != null && purchasePrice > 0) {
-              price = purchasePrice;
-            }
           }
         } else if (pCategory == 'accessory') {
           final dbInstance = await db.db;
@@ -6847,19 +6973,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
               : await _resolveSelectedAccessoryPrice(dbInstance, selected);
         } else {
           price = _safeDouble(selected['price_dzd'] ?? selected['price']);
-          if (settings.applyPurchasePricesToCostTable &&
-              selected['id'] != null) {
-            final purchasePrice = await db.getLatestPurchasePrice(
-              itemId: (selected['id'] as num).toInt(),
-              itemType: pCategory == 'shutter'
-                  ? 'ShutterComponents'
-                  : pCategory,
-              colorId: widget.model.selectedDbColor?['id'],
-            );
-            if (purchasePrice != null && purchasePrice > 0) {
-              price = purchasePrice;
-            }
-          }
         }
         final mutableSelected = Map<String, dynamic>.from(selected);
         mutableSelected['manual_selection'] = true;
@@ -7352,37 +7465,111 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
     }
 
     // جلب المعرف الحقيقي سواء من catalogItemId أو من الـ override
-    final int? dbId =
+    int? dbId =
         item.catalogItemId ??
         (override?['id'] is num
             ? (override!['id'] as num).toInt()
             : int.tryParse('${override?['id'] ?? ''}'));
 
-    final colorId = item.category == 'accessory'
-        ? _selectedAccessoryColorId()
-        : (widget.model.selectedDbColor?['id'] is num
-              ? (widget.model.selectedDbColor!['id'] as num).toInt()
-              : int.tryParse('${widget.model.selectedDbColor?['id'] ?? ''}'));
+    if (dbId == null && item.category == 'profile') {
+      if (item.profileCode != null && item.profileCode!.isNotEmpty) {
+        final sec = await db.query('Sections', columns: ['id'], where: 'code = ?', whereArgs: [item.profileCode], limit: 1);
+        if (sec.isNotEmpty) dbId = (sec.first['id'] as num).toInt();
+      }
+      if (dbId == null && item.name.isNotEmpty) {
+        final sec = await db.query('Sections', columns: ['id'], where: 'name = ?', whereArgs: [item.name], limit: 1);
+        if (sec.isNotEmpty) dbId = (sec.first['id'] as num).toInt();
+      }
+    }
+
+    // استخراج معرف اللون بدقة من عمود الجدول (item.colorId أو item.colorName) أو من لون النموذج المختار
+    int? resolvedColorId = item.colorId;
+    if (resolvedColorId == null || resolvedColorId <= 0) {
+      if (item.category == 'accessory') {
+        resolvedColorId = _selectedAccessoryColorId();
+      } else {
+        final rawId = widget.model.selectedDbColor?['id'];
+        resolvedColorId = rawId is num ? rawId.toInt() : int.tryParse('${rawId ?? ''}');
+      }
+    }
+
+    // إذا لم يتوفر المعرف بعد، نقوم بمطابقته فوراً بالاسم المكتوب في عمود اللون (item.colorName) أو لون النافذة
+    final targetColorName = (item.colorName != null && item.colorName!.trim().isNotEmpty)
+        ? item.colorName!.trim()
+        : (widget.model.selectedDbColor?['name']?.toString().trim() ??
+            widget.model.frameColor.toString().split('.').last.trim());
+
+    if ((resolvedColorId == null || resolvedColorId <= 0) && targetColorName.isNotEmpty && targetColorName != '-') {
+      final cRows = await db.query(
+        'Colors',
+        columns: ['id'],
+        where: 'LOWER(TRIM(name)) = LOWER(TRIM(?))',
+        whereArgs: [targetColorName],
+        limit: 1,
+      );
+      if (cRows.isNotEmpty) {
+        resolvedColorId = (cRows.first['id'] as num).toInt();
+      } else {
+        // بحث مرن في حال وجود كلمات إضافية مثل Blanc أو الأبيض
+        final allColors = await db.query('Colors', columns: ['id', 'name']);
+        for (final row in allColors) {
+          final cName = (row['name'] ?? '').toString().trim().toLowerCase();
+          final tName = targetColorName.toLowerCase();
+          if (cName == tName || cName.contains(tName) || tName.contains(cName)) {
+            resolvedColorId = (row['id'] as num).toInt();
+            break;
+          }
+        }
+      }
+    }
+
+    final colorId = resolvedColorId;
 
     String? errorMsg;
     bool success = false;
     try {
       if (item.category == 'profile') {
         if (dbId != null) {
-          if (colorId != null) {
-            await SqlDatabase().setSectionColorPrice(dbId, colorId, newPrice);
+          if (resolvedColorId != null && resolvedColorId > 0) {
+            await SqlDatabase().setSectionColorPrice(dbId, resolvedColorId, newPrice);
           } else {
-            // إذا لم يكن هناك لون محدد للبروفيل، نحدث السعر الافتراضي في جدول Sections مباشرة
-            await db.update(
-              'Sections',
-              {'price': newPrice, 'price_dzd': newPrice},
-              where: 'id = ?',
+            // تحديث جميع الأسعار المسجلة مسبقاً لهذا البروفيل في SectionColorPrices
+            final existingRows = await db.query(
+              'SectionColorPrices',
+              columns: ['color_id'],
+              where: 'section_id = ?',
               whereArgs: [dbId],
             );
+            if (existingRows.isNotEmpty) {
+              await db.update(
+                'SectionColorPrices',
+                {'price': newPrice},
+                where: 'section_id = ?',
+                whereArgs: [dbId],
+              );
+            } else {
+              // إذا لم تكن هناك أي ألوان مسجلة لهذا البروفيل أصلاً، نربطه باللون الافتراضي (الأبيض) أو أول لون متاح
+              final whiteColor = await db.query(
+                'Colors',
+                columns: ['id'],
+                where: "LOWER(name) LIKE '%white%' OR LOWER(name) LIKE '%blanc%' OR name LIKE '%أبيض%' OR name LIKE '%ابيض%'",
+                limit: 1,
+              );
+              int? fallbackColorId = whiteColor.isNotEmpty ? (whiteColor.first['id'] as num).toInt() : null;
+              if (fallbackColorId == null) {
+                final anyColor = await db.query('Colors', columns: ['id'], limit: 1);
+                if (anyColor.isNotEmpty) {
+                  fallbackColorId = (anyColor.first['id'] as num).toInt();
+                }
+              }
+              if (fallbackColorId != null) {
+                await SqlDatabase().setSectionColorPrice(dbId, fallbackColorId, newPrice);
+              }
+            }
           }
           success = true;
         } else {
-          errorMsg = 'العنصر غير مرتبط بقاعدة البيانات أو لم يتم تحديد لون';
+          errorMsg = 'العنصر غير مرتبط بقاعدة البيانات';
         }
       } else if (item.category == 'accessory') {
         if (dbId != null) {
@@ -7452,6 +7639,14 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         } else {
           errorMsg = 'العنصر غير مرتبط بقاعدة البيانات';
         }
+      } else if (item.category == 'moustiquaire' || item.overrideKey == 'moustiquaire') {
+        await db.insert('ShutterSqmPrices', {
+          'blade_type': 'Moustiquaire_Sqm',
+          'color_id': 0,
+          'price_per_sqm': newPrice,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        _moustiquaireSqmPriceFromDb = newPrice;
+        success = true;
       } else if (item.category == 'glass' || item.category == 'panneau') {
         // الزجاج: عملية أكثر تعقيدًا — تحاول إيجاد سجل الزجاج المطابق بالضبط عبر التشطيب واللون
         if (widget.model.zones.isNotEmpty) {
@@ -7632,6 +7827,74 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       // أيضاً نسجل بنفس الاسم الأصلي لضمان التقاط createProfile له
                       widget.model.componentOverrides[item.originalName] =
                           existing;
+
+                      if (item.overrideKey == 'side_cover' ||
+                          item.category == 'side_cover' ||
+                          item.originalName.contains('الغطاء الجانبي') ||
+                          item.selectorType == 'side_cover') {
+                        widget.model.sideCoverOverride ??= <String, dynamic>{};
+                        widget.model.sideCoverOverride!['price'] = newPrice;
+                        widget.model.sideCoverOverride!['calculated_price'] = newPrice;
+                        widget.model.sideCoverOverride!['price_dzd'] = newPrice;
+                        if (item.catalogItemId != null) widget.model.sideCoverOverride!['id'] = item.catalogItemId;
+                        existing['price'] = newPrice;
+                        existing['calculated_price'] = newPrice;
+                        widget.model.componentOverrides['side_cover'] = existing;
+                        widget.model.componentOverrides['الغطاء الجانبي (Side Cover)'] = existing;
+                      }
+                      if (item.overrideKey == 'sash' || item.originalName.contains('الظلفة') || item.selectorType == 'sash') {
+                        widget.model.sashOverride ??= <String, dynamic>{};
+                        widget.model.sashOverride!['price'] = newPrice;
+                        widget.model.sashOverride!['calculated_price'] = newPrice;
+                        widget.model.sashOverride!['price_dzd'] = newPrice;
+                        if (item.catalogItemId != null) widget.model.sashOverride!['id'] = item.catalogItemId;
+                        widget.model.componentOverrides['sash'] = existing;
+                        widget.model.componentOverrides['الظلفة (Sash)'] = existing;
+                        for (final z in widget.model.zones) {
+                          if (z.sashOverride != null) {
+                            z.sashOverride!['price'] = newPrice;
+                            z.sashOverride!['calculated_price'] = newPrice;
+                            z.sashOverride!['price_dzd'] = newPrice;
+                          }
+                          if (z.slidingSashOverride != null) {
+                            z.slidingSashOverride!['price'] = newPrice;
+                            z.slidingSashOverride!['calculated_price'] = newPrice;
+                            z.slidingSashOverride!['price_dzd'] = newPrice;
+                          }
+                        }
+                      }
+                      if (item.overrideKey == 'frame' || item.originalName.contains('الإطار') || item.selectorType == 'frame') {
+                        widget.model.frameOverride ??= <String, dynamic>{};
+                        widget.model.frameOverride!['price'] = newPrice;
+                        widget.model.frameOverride!['calculated_price'] = newPrice;
+                        widget.model.frameOverride!['price_dzd'] = newPrice;
+                        if (item.catalogItemId != null) widget.model.frameOverride!['id'] = item.catalogItemId;
+                        widget.model.componentOverrides['frame'] = existing;
+                        widget.model.componentOverrides['الإطار (Frame)'] = existing;
+                      }
+                      if (item.overrideKey == 'triangle' || item.originalName.contains('تراينغل') || item.selectorType == 'triangle') {
+                        widget.model.componentOverrides['triangle'] = existing;
+                        widget.model.componentOverrides['تراينغل الكريمون (Triangle)'] = existing;
+                      }
+                      if (item.overrideKey == 'moustiquaire' ||
+                          item.category == 'moustiquaire' ||
+                          item.originalName.contains('موستيكير') ||
+                          item.originalName.contains('Moustiquaire')) {
+                        existing['price'] = newPrice;
+                        existing['price_per_sqm'] = newPrice;
+                        existing['calculated_price'] = newPrice;
+                        existing['price_dzd'] = newPrice;
+                        widget.model.componentOverrides['moustiquaire'] = existing;
+                        widget.model.componentOverrides['موستيكير (Moustiquaire)'] = existing;
+                        _moustiquaireSqmPriceFromDb = newPrice;
+                      }
+
+                      // تحديث فوري للعنصر المعروض في القائمة
+                      final itemIdx = _visibleBomItems.indexOf(item);
+                      if (itemIdx != -1) {
+                        _visibleBomItems = List<BomItem>.from(_visibleBomItems);
+                        _visibleBomItems[itemIdx] = item.copyWith(unitPrice: newPrice);
+                      }
 
                       if (saveToDb) {
                         await _updatePriceInDatabase(item, newPrice);

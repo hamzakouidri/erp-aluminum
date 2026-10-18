@@ -11,6 +11,31 @@ final Map<String, Map<AppLanguage, String>> translationPhase12Keys = {
     AppLanguage.french: 'Complétez les informations du compte',
     AppLanguage.english: 'Complete account details',
   },
+  'مدير ورشة': {
+    AppLanguage.arabic: 'مدير ورشة',
+    AppLanguage.french: 'Responsable d’atelier',
+    AppLanguage.english: 'Workshop manager',
+  },
+  'كود الورشة': {
+    AppLanguage.arabic: 'كود الورشة',
+    AppLanguage.french: 'Code de l’atelier',
+    AppLanguage.english: 'Workshop code',
+  },
+  'أدخل الاسم الكامل.': {
+    AppLanguage.arabic: 'أدخل الاسم الكامل.',
+    AppLanguage.french: 'Saisissez le nom complet.',
+    AppLanguage.english: 'Enter the full name.',
+  },
+  'أدخل كود الورشة.': {
+    AppLanguage.arabic: 'أدخل كود الورشة.',
+    AppLanguage.french: 'Saisissez le code de l’atelier.',
+    AppLanguage.english: 'Enter the workshop code.',
+  },
+  'أدخل اسم الورشة.': {
+    AppLanguage.arabic: 'أدخل اسم الورشة.',
+    AppLanguage.french: 'Saisissez le nom de l’atelier.',
+    AppLanguage.english: 'Enter the workshop name.',
+  },
   'أين وقع الخطأ وما هو المقطع التالف؟': {
     AppLanguage.arabic: 'أين وقع الخطأ وما هو المقطع التالف؟',
     AppLanguage.french: 'Où s\'est produite l\'erreur et quel est le profil endommagé ?',
@@ -335,5 +360,202 @@ final Map<String, Map<AppLanguage, String>> translationPhase12Keys = {
     AppLanguage.arabic: 'لا توجد نوافذ تحتوي على ستار في هذه الطلبية.',
     AppLanguage.french: 'Aucune fenêtre avec store trouvée dans cette commande.',
     AppLanguage.english: 'No windows with shutters found in this order.',
+  },
+  'موستيكير': {
+    AppLanguage.arabic: 'موستيكير',
+    AppLanguage.french: 'Moustiquaire',
+    AppLanguage.english: 'Flyscreen',
+  },
+  'إضافتها إلى الكمية والتكلفة دون إظهارها في الرسم': {
+    AppLanguage.arabic: 'إضافتها إلى الكمية والتكلفة دون إظهارها في الرسم',
+    AppLanguage.french: 'Ajouter au quantitatif et coût sans l\'afficher sur le dessin',
+    AppLanguage.english: 'Add to quantity and cost without showing on drawing',
+  },
+  'تبديل آلية الستار: محرك / منايفال / حزام': {
+    AppLanguage.arabic: 'تبديل آلية الستار: محرك / منايفال / حزام',
+    AppLanguage.french: 'Mécanisme du volet : Moteur / Manivelle / Sangle',
+    AppLanguage.english: 'Shutter mechanism: Motor / Crank / Strap',
+  },
+  'تبديل جهة الستار: يمين / يسار': {
+    AppLanguage.arabic: 'تبديل جهة الستار: يمين / يسار',
+    AppLanguage.french: 'Côté commande du volet : Droite / Gauche',
+    AppLanguage.english: 'Shutter drive side: Right / Left',
+  },
+  'فتح جدول الكمية والتكلفة': {
+    AppLanguage.arabic: 'فتح جدول الكمية والتكلفة',
+    AppLanguage.french: 'Ouvrir le tableau des débits et coûts',
+    AppLanguage.english: 'Open quantity and cost table',
+  },
+  'معاينة ثلاثية الأبعاد': {
+    AppLanguage.arabic: 'معاينة ثلاثية الأبعاد',
+    AppLanguage.french: 'Aperçu 3D',
+    AppLanguage.english: '3D Preview',
+  },
+  'رقم...': {
+    AppLanguage.arabic: 'رقم...',
+    AppLanguage.french: 'N°...',
+    AppLanguage.english: 'No...',
+  },
+  'العميل...': {
+    AppLanguage.arabic: 'العميل...',
+    AppLanguage.french: 'Client...',
+    AppLanguage.english: 'Customer...',
+  },
+  'المورد...': {
+    AppLanguage.arabic: 'المورد...',
+    AppLanguage.french: 'Fournisseur...',
+    AppLanguage.english: 'Supplier...',
+  },
+  'اسم...': {
+    AppLanguage.arabic: 'اسم...',
+    AppLanguage.french: 'Nom...',
+    AppLanguage.english: 'Name...',
+  },
+  'تاريخ...': {
+    AppLanguage.arabic: 'تاريخ...',
+    AppLanguage.french: 'Date...',
+    AppLanguage.english: 'Date...',
+  },
+  'النوع...': {
+    AppLanguage.arabic: 'النوع...',
+    AppLanguage.french: 'Type...',
+    AppLanguage.english: 'Type...',
+  },
+  'الحالة...': {
+    AppLanguage.arabic: 'الحالة...',
+    AppLanguage.french: 'Statut...',
+    AppLanguage.english: 'Status...',
+  },
+  'المبلغ...': {
+    AppLanguage.arabic: 'المبلغ...',
+    AppLanguage.french: 'Montant...',
+    AppLanguage.english: 'Amount...',
+  },
+  'الربط...': {
+    AppLanguage.arabic: 'الربط...',
+    AppLanguage.french: 'Liaison...',
+    AppLanguage.english: 'Link...',
+  },
+  'لا توجد نتيجة مطابقة': {
+    AppLanguage.arabic: 'لا توجد نتيجة مطابقة',
+    AppLanguage.french: 'Aucun résultat correspondant',
+    AppLanguage.english: 'No matching results',
+  },
+  'الكمية المتاحة': {
+    AppLanguage.arabic: 'الكمية المتاحة',
+    AppLanguage.french: 'Quantité disponible',
+    AppLanguage.english: 'Available quantity',
+  },
+  'الكمية المتاحة:': {
+    AppLanguage.arabic: 'الكمية المتاحة:',
+    AppLanguage.french: 'Quantité disponible :',
+    AppLanguage.english: 'Available quantity:',
+  },
+  'المراد إرجاعه': {
+    AppLanguage.arabic: 'المراد إرجاعه',
+    AppLanguage.french: 'À retourner',
+    AppLanguage.english: 'To return',
+  },
+  'المراد إرجاعه:': {
+    AppLanguage.arabic: 'المراد إرجاعه:',
+    AppLanguage.french: 'À retourner :',
+    AppLanguage.english: 'To return:',
+  },
+  'مزامنة الأسعار': {
+    AppLanguage.arabic: 'مزامنة الأسعار',
+    AppLanguage.french: 'Synchronisation des prix',
+    AppLanguage.english: 'Price Synchronization',
+  },
+  'قبول مزامنة الأسعار من مدير التطبيق': {
+    AppLanguage.arabic: 'قبول مزامنة الأسعار من مدير التطبيق',
+    AppLanguage.french: 'Accepter la synchronisation des prix de l\'administrateur',
+    AppLanguage.english: 'Accept price sync from app administrator',
+  },
+  'مزامنة أسعار البروفيلات': {
+    AppLanguage.arabic: 'مزامنة أسعار البروفيلات',
+    AppLanguage.french: 'Synchroniser les prix des profilés',
+    AppLanguage.english: 'Sync profile prices',
+  },
+  'مزامنة أسعار بيع السلاسل (سعر المتر الخطي)': {
+    AppLanguage.arabic: 'مزامنة أسعار بيع السلاسل (سعر المتر الخطي)',
+    AppLanguage.french: 'Synchroniser les prix de vente des séries (au mètre linéaire)',
+    AppLanguage.english: 'Sync series selling prices (per linear meter)',
+  },
+  'مزامنة أسعار الإكسسوارات': {
+    AppLanguage.arabic: 'مزامنة أسعار الإكسسوارات',
+    AppLanguage.french: 'Synchroniser les prix des accessoires',
+    AppLanguage.english: 'Sync accessory prices',
+  },
+  'مزامنة أسعار الستائر': {
+    AppLanguage.arabic: 'مزامنة أسعار الستائر',
+    AppLanguage.french: 'Synchroniser les prix des volets',
+    AppLanguage.english: 'Sync shutter prices',
+  },
+  'مزامنة أسعار الجوانات': {
+    AppLanguage.arabic: 'مزامنة أسعار الجوانات',
+    AppLanguage.french: 'Synchroniser les prix des joints',
+    AppLanguage.english: 'Sync joint prices',
+  },
+  'مزامنة أسعار الزجاج': {
+    AppLanguage.arabic: 'مزامنة أسعار الزجاج',
+    AppLanguage.french: 'Synchroniser les prix du vitrage',
+    AppLanguage.english: 'Sync glass prices',
+  },
+  'تحديث الأسعار الآن من السحابة': {
+    AppLanguage.arabic: 'تحديث الأسعار الآن من السحابة',
+    AppLanguage.french: 'Mettre à jour les prix depuis le cloud maintenant',
+    AppLanguage.english: 'Update prices from cloud now',
+  },
+  'نشر وتحديث الأسعار لجميع الورشات': {
+    AppLanguage.arabic: 'نشر وتحديث الأسعار لجميع الورشات',
+    AppLanguage.french: 'Publier les prix pour tous les ateliers',
+    AppLanguage.english: 'Publish prices to all workshops',
+  },
+  'الإشعارات': {
+    AppLanguage.arabic: 'الإشعارات',
+    AppLanguage.french: 'Notifications',
+    AppLanguage.english: 'Notifications',
+  },
+  'القص والفضلات': {
+    AppLanguage.arabic: 'القص والفضلات',
+    AppLanguage.french: 'Coupe et chutes',
+    AppLanguage.english: 'Cutting and offcuts',
+  },
+  'الشاشة والمظهر': {
+    AppLanguage.arabic: 'الشاشة والمظهر',
+    AppLanguage.french: 'Affichage et apparence',
+    AppLanguage.english: 'Display and appearance',
+  },
+  'النسخ الاحتياطي واسترجاع البيانات': {
+    AppLanguage.arabic: 'النسخ الاحتياطي واسترجاع البيانات',
+    AppLanguage.french: 'Sauvegarde et restauration des données',
+    AppLanguage.english: 'Backup and data restore',
+  },
+  'رفع البيانات وتنزيلها أو تصدير نسخة محلية واستيرادها.': {
+    AppLanguage.arabic: 'رفع البيانات وتنزيلها أو تصدير نسخة محلية واستيرادها.',
+    AppLanguage.french:
+        'Envoyer ou télécharger les données, ou exporter et importer une sauvegarde locale.',
+    AppLanguage.english:
+        'Upload or download data, or export and import a local backup.',
+  },
+  'احتساب التكلفة': {
+    AppLanguage.arabic: 'احتساب التكلفة',
+    AppLanguage.french: 'Calcul du coût',
+    AppLanguage.english: 'Cost calculation',
+  },
+  'تحديث الأسعار': {
+    AppLanguage.arabic: 'تحديث الأسعار',
+    AppLanguage.french: 'Mise à jour des prix',
+    AppLanguage.english: 'Price update',
+  },
+  'تم تحديث {count} سعر في إدارة الأسعار': {
+    AppLanguage.arabic: 'تم تحديث {count} سعر في إدارة الأسعار',
+    AppLanguage.french: '{count} prix mis à jour dans la gestion des prix',
+    AppLanguage.english: '{count} prices updated in price management',
+  },
+  'إضافة وتحديث الأسعار': {
+    AppLanguage.arabic: 'إضافة وتحديث الأسعار',
+    AppLanguage.french: 'Ajout et mise à jour des prix',
+    AppLanguage.english: 'Price additions and updates',
   },
 };

@@ -75,6 +75,8 @@ Map<String, Map<String, double>> calculateSellingTotals({
   double accessorySellingCost =
       0.0; // جزء من تكلفة الإكسسوارات المحدد كـ "قابل للربح" (is_selling_calculated)
   double jointCost = 0.0; // إجمالي تكلفة الجوينات
+  double sideCoverCost = 0.0; // إجمالي تكلفة الغطاء الجانبي
+  double moustiquaireCost = 0.0; // إجمالي تكلفة الموستيكير
   double mainProfileMeters =
       0.0; // إجمالي الأمتار الخطية للبروفيلات الرئيسية (مع البلانت ×2)
   double otherProfileCost =
@@ -154,8 +156,12 @@ Map<String, Map<String, double>> calculateSellingTotals({
       }
     } else if (item.category == 'glass' || item.category == 'panneau') {
       glassCost += item.total;
+    } else if (item.category == 'moustiquaire') {
+      moustiquaireCost += item.total;
     } else if (item.category == 'joint') {
       jointCost += item.total;
+    } else if (item.category == 'side_cover') {
+      sideCoverCost += item.total;
     } else if (item.category == 'shutter' ||
         isShutterAccessory(item) ||
         isBouchonLame(item)) {
@@ -189,18 +195,18 @@ Map<String, Map<String, double>> calculateSellingTotals({
   if (hasActiveKit('Verrou Central', const ['Verrou Central_'])) {
     specialAccessoryInstallFees += verrouInstallFee * model.quantity;
   }
-  // أجرة تركيب المحرك تُضاف فقط إذا الآلية محرك ووُجد عنصر يخص المحرك مفعّل
+  // أجرة تركيب المحرك تُضاف مرة واحدة لكل نافذة إذا الآلية محرك ووُجد عنصر يخص المحرك مفعّل
   double motorCrankInstallFees = 0.0;
   final mech = model.shutterMechanism;
   final isMotor = mech == 'محرك';
-  for (var item in activeItems) {
-    if (isShutterAccessory(item)) {
-      final nameLower = item.originalName.toLowerCase();
-      if ((nameLower.contains('moteur') || nameLower.contains('محرك')) &&
-          isMotor) {
-        motorCrankInstallFees += moteurInstallFee * model.quantity;
-      }
-    }
+  if (isMotor &&
+      activeItems.any(
+        (item) =>
+            isShutterAccessory(item) &&
+            (item.originalName.toLowerCase().contains('moteur') ||
+                item.originalName.toLowerCase().contains('محرك')),
+      )) {
+    motorCrankInstallFees = moteurInstallFee * model.quantity;
   }
   // متغيرات أسعار البيع لكل قسم (تُحسب حسب طريقة costMethod أدناه)
   double profileSelling = 0.0;
@@ -209,6 +215,7 @@ Map<String, Map<String, double>> calculateSellingTotals({
   double moustiquaireSelling = 0.0;
   double accessorySelling = 0.0;
   double jointSelling = 0.0;
+  double sideCoverSelling = 0.0;
   // السعر الفعلي لمتر مربع الستار (يدوي إن وُجد، وإلا من قاعدة البيانات)
   double effectiveShutterSqmPrice = shutterSqmPrice;
   bool hasShutter = items.any(
@@ -220,8 +227,20 @@ Map<String, Map<String, double>> calculateSellingTotals({
       hasShutter // سعر بيع الستار محسوبًا بالمتر المربع (يُستخدم في طريقتين من الثلاث)
       ? (effectiveShutterSqmPrice * areaSqm * model.quantity)
       : 0.0;
+  // Same rounded area (all units included) as the moustiquaire BOM row.
+  final double moustiquaireAreaSqm = moustiquaireAddonAreaSqm(model);
+  final overrideMoustiquairePriceRaw =
+      model.componentOverrides['موستيكير (Moustiquaire)']?['price_per_sqm'] ??
+      model.componentOverrides['موستيكير (Moustiquaire)']?['price'] ??
+      model.componentOverrides['moustiquaire']?['price_per_sqm'] ??
+      model.componentOverrides['moustiquaire']?['price'];
+  final double effectiveMoustiquaireSqmPrice =
+      (overrideMoustiquairePriceRaw is num && overrideMoustiquairePriceRaw > 0)
+      ? overrideMoustiquairePriceRaw.toDouble()
+      : (double.tryParse('$overrideMoustiquairePriceRaw') ??
+            moustiquaireSqmPrice);
   final moustiquaireAreaPrice = model.hasMoustiquaireAddon
-      ? moustiquaireSqmPrice * areaSqm * model.quantity
+      ? effectiveMoustiquaireSqmPrice * moustiquaireAreaSqm
       : 0.0;
   // ---- طريقة 1: النسبة المئوية — سعر البيع = التكلفة × (1 + نسبة الربح) ----
   if (costMethod == CostMethod.percentage) {
@@ -235,6 +254,7 @@ Map<String, Map<String, double>> calculateSellingTotals({
         specialAccessoryInstallFees +
         motorCrankInstallFees;
     jointSelling = jointCost * factor;
+    sideCoverSelling = sideCoverCost * factor;
     // ---- طريقة 2: سعر المتر المربع الكلي للنافذة (يُطرح منه الزجاج ليبقى نصيب البروفيل) ----
   } else if (costMethod == CostMethod.squareMeter) {
     if (model.isShutterOnly) {
@@ -254,6 +274,7 @@ Map<String, Map<String, double>> calculateSellingTotals({
         specialAccessoryInstallFees +
         motorCrankInstallFees;
     jointSelling = jointCost;
+    sideCoverSelling = sideCoverCost;
     // ---- طريقة 3: سعر المتر الخطي للبروفيلات الرئيسية + تكلفة البروفيلات الأخرى كما هي ----
   } else if (costMethod == CostMethod.linearMeter) {
     profileSelling =
@@ -265,28 +286,37 @@ Map<String, Map<String, double>> calculateSellingTotals({
         specialAccessoryInstallFees +
         motorCrankInstallFees;
     jointSelling = jointCost;
+    sideCoverSelling = sideCoverCost;
   }
   // The add-on is priced independently from the selected window pricing
   // method, exactly like a shutter sold by square metre.
   moustiquaireSelling = moustiquaireAreaPrice;
   // المجاميع الكلية للتكلفة وسعر البيع
   double totalCost =
-      profileCost + glassCost + shutterCost + accessoryCost + jointCost;
+      profileCost +
+      glassCost +
+      shutterCost +
+      accessoryCost +
+      jointCost +
+      sideCoverCost +
+      moustiquaireCost;
   double totalSelling =
       profileSelling +
       glassSelling +
       shutterSelling +
       accessorySelling +
       jointSelling +
+      sideCoverSelling +
       moustiquaireSelling;
   // إرجاع كل القيم كخريطة مقسّمة حسب القسم (لكل قسم: cost و selling)
   return {
     'profile': {'cost': profileCost, 'selling': profileSelling},
     'glass': {'cost': glassCost, 'selling': glassSelling},
     'shutter': {'cost': shutterCost, 'selling': shutterSelling},
+    'side_cover': {'cost': sideCoverCost, 'selling': sideCoverSelling},
     'accessory': {'cost': accessoryCost, 'selling': accessorySelling},
     'joint': {'cost': jointCost, 'selling': jointSelling},
-    'moustiquaire': {'cost': 0.0, 'selling': moustiquaireSelling},
+    'moustiquaire': {'cost': moustiquaireCost, 'selling': moustiquaireSelling},
     'total': {'cost': totalCost, 'selling': totalSelling},
   };
 }

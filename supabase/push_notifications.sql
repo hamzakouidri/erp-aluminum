@@ -44,3 +44,46 @@ using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
 revoke all on public.notification_preferences from anon;
 grant select, insert, update, delete on public.notification_preferences to authenticated;
+
+-- A phone that signs in with another account keeps the same FCM token. The
+-- RLS policy above forbids updating a row owned by the previous account, so
+-- a plain upsert failed and the new account never received pushes on that
+-- device. This function moves the token to the current member atomically.
+create or replace function public.register_push_token(
+  requested_token text,
+  requested_workshop_id uuid,
+  requested_platform text default 'android'
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+  if coalesce(trim(requested_token), '') = '' then
+    return false;
+  end if;
+  if not exists (
+    select 1 from public.workshop_members
+    where workshop_id = requested_workshop_id and user_id = auth.uid()
+  ) then
+    raise exception 'not a workshop member';
+  end if;
+
+  insert into public.device_push_tokens (user_id, workshop_id, token, platform, updated_at)
+  values (auth.uid(), requested_workshop_id, trim(requested_token),
+          coalesce(nullif(trim(requested_platform), ''), 'android'), now())
+  on conflict (token) do update
+  set user_id = excluded.user_id,
+      workshop_id = excluded.workshop_id,
+      platform = excluded.platform,
+      updated_at = now();
+  return true;
+end;
+$$;
+
+revoke all on function public.register_push_token(text, uuid, text) from public, anon;
+grant execute on function public.register_push_token(text, uuid, text) to authenticated;

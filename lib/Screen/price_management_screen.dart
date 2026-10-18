@@ -9,6 +9,8 @@ import '../sql_database.dart';
 import '../services/cloud_sync_service.dart';
 import '../utils/real_color_resolver.dart';
 import '../widgets/section_image.dart';
+import '../widgets/price_sync_banner.dart';
+import 'standard_sheets_screen.dart';
 
 class GlassDisplayItem {
   final Map<String, dynamic> glass;
@@ -104,7 +106,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
   void initState() {
     super.initState();
     _tabController = TabController(
-      length: 10,
+      length: 11,
       vsync: this,
       initialIndex: _sessionSelectedTab ?? widget.initialIndex,
     );
@@ -649,6 +651,19 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       where: 'id = ?',
       whereArgs: [id],
     );
+    // A base catalogue price typed by the manager is a workshop price: keep
+    // it across catalogue refreshes and send it to the workshop's phones.
+    if (SqlDatabase.workshopBasePriceColumns[table]?.contains(column) ??
+        false) {
+      await db.recordWorkshopPrice(
+        dbInstance,
+        table: table,
+        rowKey: SqlDatabase.priceRowKey([id]),
+        column: column,
+        price: newPrice,
+        source: 'manual',
+      );
+    }
     CloudSyncService().notifyChange();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -771,6 +786,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
 
     return Column(
       children: [
+        PriceSyncBanner(
+          categoryKey: 'series',
+          onPriceUpdated: _loadAllData,
+        ),
         Padding(
           padding: const EdgeInsets.all(16.0),
           child: DropdownButtonFormField<int>(
@@ -889,6 +908,12 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     final lang = Provider.of<AppSettingsProvider>(context).language;
     return Column(
       children: [
+        // Components and m² selling prices are separate price pages.
+        PriceSyncBanner(
+          key: ValueKey('shutter-sync-$_shutterPricingMode'),
+          categoryKey: _shutterPricingMode == 0 ? 'shutters' : 'shutter_sqm',
+          onPriceUpdated: _loadAllData,
+        ),
         Padding(
           padding: const EdgeInsets.all(12.0),
           child: Container(
@@ -1656,6 +1681,19 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       final p = double.tryParse(priceCtrl.text.trim()) ?? 0.0;
       final c = double.tryParse(costCtrl.text.trim()) ?? 0.0;
       await db.updateTemperedGlassItem(id, {'price': p, 'cost_price': c});
+      final dbInstance = await db.db;
+      if (dbInstance != null) {
+        for (final entry in {'price': p, 'cost_price': c}.entries) {
+          await db.recordWorkshopPrice(
+            dbInstance,
+            table: 'TemperedGlassItems',
+            rowKey: SqlDatabase.priceRowKey([id]),
+            column: entry.key,
+            price: entry.value,
+            source: 'manual',
+          );
+        }
+      }
       _loadAllData();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -2367,6 +2405,15 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       where: 'id = ?',
       whereArgs: [shutterId],
     );
+    await db.recordWorkshopPrice(
+      dbInstance,
+      table: 'ShutterComponents',
+      rowKey: SqlDatabase.priceRowKey([shutterId]),
+      column: 'price',
+      price: price,
+      source: 'manual',
+    );
+    CloudSyncService().notifyChange();
     if (!mounted) return;
     setState(() {
       final idx = shutterList.indexWhere((item) => item['id'] == shutterId);
@@ -4911,6 +4958,50 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     );
   }
 
+  Future<void> _showCostCalculationSettings() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return Consumer<AppSettingsProvider>(
+          builder: (context, settings, _) {
+            final lang = settings.language;
+            return AlertDialog(
+              title: Text(Localization.translate('احتساب التكلفة', lang)),
+              content: SizedBox(
+                width: 520,
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(
+                    Icons.price_check_rounded,
+                    color: Colors.blue,
+                  ),
+                  title: Text(
+                    Localization.translate(
+                      'أسعار الشراء تُطبَّق تلقائياً على جدول الكمية والتكلفة',
+                      lang,
+                    ),
+                  ),
+                  subtitle: Text(
+                    Localization.translate(
+                      'عند كل شراء يصبح السعر هو المتوسط المرجّح بين المخزون الحالي والكمية الجديدة، وإذا كان المخزون صفراً يُعتمد سعر الشراء الجديد مباشرة. يظهر آخر سعر شراء في الفاتورة ويمكن تعديله.',
+                      lang,
+                    ),
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(Localization.translate('إغلاق', lang)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     AppLanguage lang = Provider.of<AppSettingsProvider>(context).language;
@@ -4920,6 +5011,38 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       appBar: AppBar(
         title: Text(Localization.translate('إدارة الأسعار', lang)),
         centerTitle: true,
+        actions: [
+          TextButton.icon(
+            style: TextButton.styleFrom(foregroundColor: Colors.white),
+            icon: const Icon(Icons.layers_outlined),
+            label: Text(
+              switch (lang) {
+                AppLanguage.french => 'Panneaux',
+                AppLanguage.english => 'Sheets',
+                _ => 'الألواح والبانوهات',
+              },
+            ),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const StandardSheetsScreen(),
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.calculate_outlined, color: Colors.white),
+            tooltip: Localization.translate('احتساب التكلفة', lang),
+            onPressed: _showCostCalculationSettings,
+          ),
+          IconButton(
+            icon: const Icon(Icons.sync_alt_rounded, color: Colors.white),
+            tooltip: Localization.translate('مزامنة الأسعار', lang),
+            onPressed: () => showPriceSyncSettingsDialog(
+              context,
+              onPriceUpdated: _loadAllData,
+            ),
+          ),
+        ],
         backgroundColor: Theme.of(context).brightness == Brightness.dark
             ? Theme.of(context).appBarTheme.backgroundColor
             : Colors.blue,
@@ -4934,6 +5057,14 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
             Tab(text: Localization.translate("الألمنيوم (السلاسل)", lang)),
             Tab(text: Localization.translate("ألوان الأنظمة", lang)),
             Tab(text: Localization.translate("الزجاج", lang)),
+            Tab(
+              icon: const Icon(Icons.layers_outlined, size: 18),
+              text: switch (lang) {
+                AppLanguage.french => 'Prix panneaux et verre',
+                AppLanguage.english => 'Panel & glass prices',
+                _ => 'أسعار الألواح والبانوهات والزجاج',
+              },
+            ),
             Tab(text: Localization.translate("الستائر", lang)),
             Tab(text: Localization.translate("الجوانات", lang)),
             Tab(text: Localization.translate("الإكسسوارات", lang)),
@@ -4959,21 +5090,101 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                 children: [
                   _buildSeriesColorTab(context),
                   _buildProfileColorsTab(context),
-                  _buildGlassList(context),
-                  _buildShutterPricingTab(context),
-                  _buildList(
-                    context,
-                    jointList,
-                    'Joints',
-                    'name',
-                    'price_per_meter',
-                    Localization.translate('سعر المتر الطولي', lang),
+                  Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(
+                          Icons.layers_outlined,
+                          color: Colors.blueAccent,
+                        ),
+                        title: Text(
+                          switch (lang) {
+                            AppLanguage.arabic => 'أسعار ومقاسات الألواح الكاملة',
+                            AppLanguage.french => 'Prix et formats des panneaux',
+                            AppLanguage.english => 'Full sheet sizes and prices',
+                          },
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: Text(
+                          switch (lang) {
+                            AppLanguage.arabic => 'الزجاج، الريزين، الأليكوبوند، البانو ساندويتش والبيكسي جلاس',
+                            AppLanguage.french => 'Verre, résine, Alucobond, panneau sandwich et Plexiglas',
+                            AppLanguage.english => 'Glass, resin, Alucobond, sandwich panels and Plexiglas',
+                          },
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const StandardSheetsScreen(),
+                          ),
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      PriceSyncBanner(
+                        categoryKey: 'glass',
+                        onPriceUpdated: _loadAllData,
+                      ),
+                      Expanded(child: _buildGlassList(context)),
+                    ],
                   ),
-                  _buildAccessoryColorTab(context),
-                  _buildSectionPricingTab(context),
+                  const StandardSheetsScreen(),
+                  _buildShutterPricingTab(context),
+                  Column(
+                    children: [
+                      PriceSyncBanner(
+                        categoryKey: 'joints',
+                        onPriceUpdated: _loadAllData,
+                      ),
+                      Expanded(
+                        child: _buildList(
+                          context,
+                          jointList,
+                          'Joints',
+                          'name',
+                          'price_per_meter',
+                          Localization.translate('سعر المتر الطولي', lang),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Column(
+                    children: [
+                      PriceSyncBanner(
+                        categoryKey: 'accessories',
+                        onPriceUpdated: _loadAllData,
+                      ),
+                      Expanded(child: _buildAccessoryColorTab(context)),
+                    ],
+                  ),
+                  Column(
+                    children: [
+                      PriceSyncBanner(
+                        categoryKey: 'profiles',
+                        onPriceUpdated: _loadAllData,
+                      ),
+                      Expanded(child: _buildSectionPricingTab(context)),
+                    ],
+                  ),
                   _buildShutterBoxLimitsTab(context),
-                  _buildCaissonTunnelPricingTab(context),
-                  _buildTemperedGlassPricingTab(context),
+                  Column(
+                    children: [
+                      PriceSyncBanner(
+                        categoryKey: 'caisson_tunnel',
+                        onPriceUpdated: _loadAllData,
+                      ),
+                      Expanded(child: _buildCaissonTunnelPricingTab(context)),
+                    ],
+                  ),
+                  Column(
+                    children: [
+                      PriceSyncBanner(
+                        categoryKey: 'tempered_glass',
+                        onPriceUpdated: _loadAllData,
+                      ),
+                      Expanded(child: _buildTemperedGlassPricingTab(context)),
+                    ],
+                  ),
                 ],
               ),
       ),

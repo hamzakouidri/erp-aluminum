@@ -1464,11 +1464,15 @@ void main() {
     );
 
     expect(coverItem.productionNote, contains('يمين'));
-    expect(coverItem.productionNote, contains('من 0 إلى 70 سم'));
+    expect(coverItem.productionNote, contains('من أقصى الأعلى إلى 70 سم'));
     expect(coverItem.productionNote, contains('عرضه الظاهر 3 سم'));
-    expect(coverItem.productionNote, isNot(contains('يسار')));
-    expect(coverItem.productionNote, isNot(contains('أعلى')));
-    expect(coverItem.productionNote, isNot(contains('أسفل')));
+    // 70 cm covered span + the original 6 cm cover face + 0.5 cm PVC
+    // welding allowance. The customised 3 cm façade projection must not
+    // reduce the cutting allowance to 73.5 cm.
+    expect(coverItem.pieces, contains(closeTo(0.765, 0.0001)));
+    expect(coverItem.productionNote, isNot(contains('يسار:')));
+    expect(coverItem.productionNote, isNot(contains('أعلى:')));
+    expect(coverItem.productionNote, isNot(contains('أسفل:')));
   });
 
   test('series colour previews use the real requested finishes', () {

@@ -323,11 +323,11 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
           return name.contains(query) || code.contains(query);
         }).toList();
       }
+      final latestPrices = await _db.getLatestPurchasePrices(
+        'ShutterComponents',
+      );
       for (var sc in rawShutters) {
-        final latest = await _db.getLatestPurchasePrice(
-          itemId: sc['id'] as int,
-          itemType: 'ShutterComponents',
-        );
+        final latest = latestPrices[sc['id']];
         final price = (latest != null && latest > 0)
             ? latest
             : ((sc['price'] as num?)?.toDouble() ?? 0.0);
@@ -358,11 +358,9 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
               'verre'.contains(query);
         }).toList();
       }
+      final latestPrices = await _db.getLatestPurchasePrices('Glass');
       for (var g in rawGlass) {
-        final latest = await _db.getLatestPurchasePrice(
-          itemId: g['id'] as int,
-          itemType: 'Glass',
-        );
+        final latest = latestPrices[g['id']];
         final price = (latest != null && latest > 0)
             ? latest
             : ((g['price_per_sqm'] as num?)?.toDouble() ??
@@ -392,11 +390,9 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
           return name.contains(query) || code.contains(query);
         }).toList();
       }
+      final latestPrices = await _db.getLatestPurchasePrices('Joints');
       for (var j in rawJoints) {
-        final latest = await _db.getLatestPurchasePrice(
-          itemId: j['id'] as int,
-          itemType: 'Joints',
-        );
+        final latest = latestPrices[j['id']];
         final price = (latest != null && latest > 0)
             ? latest
             : ((j['price_per_meter'] as num?)?.toDouble() ??
@@ -439,16 +435,15 @@ class _AchatItemPickerState extends State<AchatItemPicker> {
 
     double defaultPrice = (item['default_price'] as num?)?.toDouble() ?? 0.0;
 
-    // تأكيد السعر من آخر عملية شراء إذا كان 0
-    if (defaultPrice <= 0) {
-      final latest = await _db.getLatestPurchasePrice(
-        itemId: item['id'] as int,
-        itemType: itemType,
-        colorId: selectedColorId,
-      );
-      if (latest != null && latest > 0) {
-        defaultPrice = latest;
-      }
+    // آخر سعر شراء لهذا العنصر واللون يُقترح دائماً (قابل للتعديل)،
+    // وإلا يبقى السعر الافتراضي من الكتالوج.
+    final latest = await _db.getLatestPurchasePrice(
+      itemId: item['id'] as int,
+      itemType: itemType,
+      colorId: selectedColorId,
+    );
+    if (latest != null && latest > 0) {
+      defaultPrice = latest;
     }
 
     if (!mounted) return;

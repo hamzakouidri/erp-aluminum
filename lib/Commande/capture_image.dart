@@ -167,6 +167,8 @@ Future<Uint8List> captureWindowImage(
   return byteData!.buffer.asUint8List();
 }
 
+var _drawingFileSequence = 0;
+
 Future<String> saveWindowImageToDisk(
   WindowModel model, {
   int maxSide = 1800,
@@ -183,7 +185,9 @@ Future<String> saveWindowImageToDisk(
     if (!await imagesDir.exists()) {
       await imagesDir.create(recursive: true);
     }
-    final fileName = 'window_${DateTime.now().millisecondsSinceEpoch}.png';
+    // The sequence suffix keeps concurrent renders from sharing a file name.
+    final fileName =
+        'window_${DateTime.now().millisecondsSinceEpoch}_${_drawingFileSequence++}.png';
     final file = File('${imagesDir.path}/$fileName');
     await file.writeAsBytes(bytes);
     return file.path;

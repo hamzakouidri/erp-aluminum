@@ -123,10 +123,16 @@ class BomEngineV2 {
             assemblyAccessoryRoles.contains(role)) {
           return null;
         }
-        // An accessory dependency was explicitly linked from its parent in the
-        // catalogue. It does not need a second standalone series rule.
+        // An accessory linked from its parent is published only when the
+        // linked product itself has an enabled rule (any role, shown in
+        // quantities) in the same series. Screw rows are rebuilt below.
         if ((item.overrideKey ?? '').startsWith('linked-accessory:')) {
-          return item;
+          if (_isAccessoryScrewRow(item)) return item;
+          final linkedId = item.catalogItemId;
+          final seriesId = _seriesIdForItem(window, item);
+          if (linkedId == null || seriesId == null) return null;
+          final enabled = await _enabledAccessoryRuleIds(seriesId);
+          return enabled.contains(linkedId) ? item : null;
         }
 
         // A configured Kit is authoritative: its active child rows are the
@@ -378,37 +384,11 @@ class BomEngineV2 {
             requireQuantity: true,
           ),
         );
-        Map<String, dynamic>? selectedScrew = candidates.isEmpty
+        // No catalogue-wide `is_accessory_screw` fallback: a screw is only
+        // published through an enabled rule of this series.
+        final Map<String, dynamic>? selectedScrew = candidates.isEmpty
             ? null
             : Map<String, dynamic>.from(candidates.first);
-        // Older catalogues often marked the physical screw with
-        // is_accessory_screw while its single CatalogItemRules row carried
-        // another screw role (box/bouchon/assembly). A role link from a
-        // Paumelle must still resolve that explicitly flagged product.
-        if (selectedScrew == null) {
-          final flagged = await database.query(
-            'Accessories',
-            where:
-                'is_accessory_screw = 1 AND (is_active = 1 OR is_active IS NULL)',
-            // Defaults belong to CatalogItemRules, not Accessories.
-            orderBy: 'id ASC',
-          );
-          final expectedMaterial = (materialByAccessoryId[sourceId] ?? '')
-              .trim()
-              .toLowerCase();
-          selectedScrew = flagged
-              .map((row) => Map<String, dynamic>.from(row))
-              .where((row) {
-                final material = '${row['material_type'] ?? ''}'
-                    .trim()
-                    .toLowerCase();
-                return expectedMaterial.isEmpty ||
-                    material.isEmpty ||
-                    material == 'both' ||
-                    material == expectedMaterial;
-              })
-              .firstOrNull;
-        }
         if (selectedScrew == null) continue;
         final screwId = _catalogInt(selectedScrew['id']);
         if (screwId == null) continue;
@@ -457,32 +437,6 @@ class BomEngineV2 {
             screwId = _catalogInt(candidates.first['id']);
           }
         }
-        if (screwId == null) {
-          final flagged = await database.query(
-            'Accessories',
-            where:
-                'is_accessory_screw = 1 AND (is_active = 1 OR is_active IS NULL)',
-            orderBy: 'id ASC',
-          );
-          final expectedMaterial = (materialByAccessoryId[sourceId] ?? '')
-              .trim()
-              .toLowerCase();
-          final selectedScrew = flagged
-              .map((r) => Map<String, dynamic>.from(r))
-              .where((r) {
-                final material = '${r['material_type'] ?? ''}'
-                    .trim()
-                    .toLowerCase();
-                return expectedMaterial.isEmpty ||
-                    material.isEmpty ||
-                    material == 'both' ||
-                    material == expectedMaterial;
-              })
-              .firstOrNull;
-          if (selectedScrew != null) {
-            screwId = _catalogInt(selectedScrew['id']);
-          }
-        }
       }
       if (screwId == null) continue;
       final sourceQuantity = quantitiesByAccessoryId[sourceId] ?? 0.0;
@@ -492,6 +446,19 @@ class BomEngineV2 {
       screwSeries[screwId] =
           sourceSeriesByAccessoryId[sourceId] ?? window.activeSeries?.id;
       screwMaterials[screwId] = materialByAccessoryId[sourceId];
+    }
+    // A screw linked on the accessory itself (screw_accessory_id, or the
+    // resolved override) is published only when that screw has an enabled
+    // screw rule shown in quantities for the same series.
+    final enabledScrewIdsBySeries = <int, Set<int>>{};
+    for (final screwId in totalsByScrewId.keys.toList()) {
+      final seriesId = screwSeries[screwId] ?? window.activeSeries?.id;
+      final allowed = seriesId == null
+          ? const <int>{}
+          : enabledScrewIdsBySeries[seriesId] ??= await _enabledScrewIds(
+              seriesId,
+            );
+      if (!allowed.contains(screwId)) totalsByScrewId.remove(screwId);
     }
     if (totalsByScrewId.isEmpty) return const [];
 
@@ -538,6 +505,49 @@ class BomEngineV2 {
       );
     }
     return result;
+  }
+
+  /// Accessories with an active screw rule (any `*_screw` role) of
+  /// [seriesId] that is shown in the quantity table.
+  Future<Set<int>> _enabledScrewIds(int seriesId) =>
+      _enabledAccessoryRuleIds(seriesId, screwsOnly: true);
+
+  final Map<String, Future<Set<int>>> _enabledAccessoryRuleIdsCache = {};
+
+  /// Accessories with an active rule of [seriesId] shown in the quantity
+  /// table (optionally restricted to `*_screw` roles).
+  Future<Set<int>> _enabledAccessoryRuleIds(
+    int seriesId, {
+    bool screwsOnly = false,
+  }) => _enabledAccessoryRuleIdsCache.putIfAbsent(
+    '$seriesId|$screwsOnly',
+    () => _loadEnabledAccessoryRuleIds(seriesId, screwsOnly: screwsOnly),
+  );
+
+  Future<Set<int>> _loadEnabledAccessoryRuleIds(
+    int seriesId, {
+    required bool screwsOnly,
+  }) async {
+    final rules = await _db.getCatalogItemRules(
+      itemTable: 'Accessories',
+      seriesId: seriesId,
+      exactSeriesOnly: true,
+    );
+    return rules
+        .where((rule) {
+          if (rule['is_active'] == 0 || rule['is_active'] == false) {
+            return false;
+          }
+          if (_catalogInt(rule['show_in_quantity']) == 0) return false;
+          final ruleSeries = _catalogInt(rule['series_id']);
+          if (ruleSeries != null && ruleSeries != seriesId) return false;
+          if (!screwsOnly) return true;
+          final role = '${rule['role_key'] ?? ''}'.trim().toLowerCase();
+          return role.endsWith('_screw');
+        })
+        .map((rule) => _catalogInt(rule['item_id']))
+        .whereType<int>()
+        .toSet();
   }
 
   List<BomItem> _deduplicateRoleAccessories(List<BomItem> items) {
@@ -1448,7 +1458,9 @@ class BomEngineV2 {
       isActive: item.isActive,
       exclusionGroup: item.exclusionGroup,
       pieces: item.pieces,
+      pieceCutAngles: item.pieceCutAngles,
       cuttingList: cuttingList ?? item.cuttingList,
+      productionNote: item.productionNote,
       kitGroupName: item.kitGroupName,
       exactQuantity: item.exactQuantity == null ? null : quantity,
       catalogItemId: item.catalogItemId,
@@ -1501,7 +1513,14 @@ class BomEngineV2 {
             effectiveHeightMm: window.effectiveEspagnoletteHeightMm,
           ),
         );
-        return candidates.isNotEmpty;
+        // The row's own section must be one of the enabled rules of this
+        // role in this series. An enabled role does not authorize a section
+        // left over from another series or a disabled rule.
+        final sectionId = item.catalogItemId;
+        if (sectionId == null) return candidates.isNotEmpty;
+        return candidates.any(
+          (candidate) => _catalogInt(candidate['id']) == sectionId,
+        );
       case 'accessory':
       case 'other':
         final selectorType = item.selectorType?.trim() ?? '';
@@ -1625,6 +1644,18 @@ class BomEngineV2 {
     }
     final matchingCurrent = _matchingCandidate(sections, currentProfile);
     if (matchingCurrent != null && _hasDesignMetadata(currentProfile)) {
+      final existingPrice = _safeDouble(
+        currentProfile?['calculated_price'] ??
+        currentProfile?['price'] ??
+        currentProfile?['price_dzd'],
+      );
+      if (existingPrice <= 0 && currentProfile?['id'] != null) {
+        final colorId = _catalogInt(window.selectedDbColor?['id']);
+        final dbPrice = await _db.getSectionPrice(currentProfile!['id'], colorId);
+        if (dbPrice > 0) {
+          currentProfile['calculated_price'] = dbPrice;
+        }
+      }
       return;
     }
 
@@ -1632,9 +1663,18 @@ class BomEngineV2 {
       matchingCurrent ?? sections.first,
     );
     final colorId = _catalogInt(window.selectedDbColor?['id']);
-    selected['calculated_price'] = colorId == null
-        ? _safeDouble(selected['price_dzd'] ?? selected['price'])
-        : await _db.getSectionPrice(selected['id'], colorId);
+    final dbPrice = await _db.getSectionPrice(selected['id'], colorId);
+    final fallbackPrice = _safeDouble(selected['price_dzd'] ?? selected['price']);
+    // Only a price saved for this same section may survive. When the
+    // previous selection is another section (other series, disabled rule),
+    // its price must not be transferred to the newly resolved profile.
+    final manualPrice = matchingCurrent == null
+        ? 0.0
+        : _safeDouble(currentProfile?['price'] ?? currentProfile?['calculated_price']);
+    selected['calculated_price'] = manualPrice > 0 ? manualPrice : (dbPrice > 0 ? dbPrice : fallbackPrice);
+    if (manualPrice > 0) {
+      selected['price'] = manualPrice;
+    }
 
     final lowerType = selectorType.toLowerCase();
     if (lowerType.contains('lateral')) {

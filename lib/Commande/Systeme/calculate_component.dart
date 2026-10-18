@@ -2,7 +2,7 @@
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/cutting_settings.dart';
 import 'dart:math' as math;
-import 'dart:ui' show Rect;
+import 'dart:ui' show Offset, Rect;
 import 'package:collection/collection.dart';
 
 String _withoutAccessoryQualityLabel(String value) => value
@@ -14,6 +14,33 @@ String _withoutAccessoryQualityLabel(String value) => value
       '',
     )
     .trim();
+
+/// Whether a profile row saved from the quantity table still describes the
+/// section currently selected in the drawing. Rows without an id (legacy
+/// price-only edits) and rows of the same section remain valid.
+bool savedProfileOverrideMatchesSection(
+  Map<dynamic, dynamic> saved,
+  Map<String, dynamic>? selected,
+) {
+  int? idOf(Object? value) =>
+      value is num ? value.toInt() : int.tryParse('${value ?? ''}'.trim());
+  final savedId = idOf(saved['id']);
+  final selectedId = idOf(selected?['id']);
+  return savedId == null || selectedId == null || savedId == selectedId;
+}
+
+/// Area of the moustiquaire add-on, in m², for all units of the line. The
+/// screen is cut 2 mm smaller than the frame on each axis, and the quantity
+/// table shows the area rounded to 0.01 m²; the selling price must use the
+/// same rounded area so both columns agree.
+double moustiquaireAddonAreaSqm(WindowModel window) {
+  final width = math.max(0.0, window.width - 2.0);
+  final height = math.max(0.0, window.height - 2.0);
+  return double.parse(
+    (((width / 1000.0) * (height / 1000.0)) * window.quantity)
+        .toStringAsFixed(2),
+  );
+}
 
 class BomItem {
   final String category;
@@ -1972,9 +1999,9 @@ class ComponentCalculator {
   }
 
   /// Cut length in millimetres for a customised standalone side-cover piece.
-  /// A 45-degree miter adds the cover visible width at every outer corner it
-  /// reaches: full-side pieces add it twice, edge pieces once, middle pieces
-  /// not at all.
+  /// A 45-degree miter adds the profile's original, uncut visible face at
+  /// every outer corner it reaches. A per-side customised projection affects
+  /// the façade drawing only; it must never reduce this cutting allowance.
   ///دور الدالة هو: معرفة ما إذا كانت قطعة الغطاء تصل إلى زوايا النافذة الخارجية أم لا، وإضافة الزيادة الهندسية لقص الزواية
   static double standaloneSideCoverSegmentCutLength({
     required double sideLength,
@@ -2332,7 +2359,14 @@ class ComponentCalculator {
           ? null
           : (window.componentOverrides[originalName] ??
                 window.componentOverrides[selectorType ?? '']);
-      final savedProfileOverride = savedOverride is Map
+      // A saved table row (manual price edit) belongs to one catalogue
+      // section. Once the drawing selects another section, for example after
+      // a series change, that row must not replace the section id, code or
+      // price of the current selection.
+      final savedOverrideIsStale =
+          savedOverride is Map &&
+          !savedProfileOverrideMatchesSection(savedOverride, overrideMap);
+      final savedProfileOverride = savedOverride is Map && !savedOverrideIsStale
           ? Map<String, dynamic>.from(savedOverride)
           : null;
       final resolvedSelectorType =
@@ -2383,7 +2417,7 @@ class ComponentCalculator {
         }
       }
       return _createProfile(
-        ignoreSavedOverride
+        ignoreSavedOverride || savedOverrideIsStale
             ? const <String, dynamic>{}
             : window.componentOverrides,
         originalName,
@@ -2933,47 +2967,16 @@ class ComponentCalculator {
     final hasSeparateCoverBottom = hasSeparateCoverOn('bottom');
 
     String? customSideCoverNote({required bool integrated}) {
-      if (!customSideCoverLayout) return null;
       if (integrated && !hasIntegratedSideCover) return null;
       if (!integrated && !hasNonIntegratedSideCover) return null;
-      final fallbackWidth = integrated
-          ? integratedFrameCoverWidth
-          : separateCoverWidth;
-      String sideLabel(String side) => switch (side) {
-        'left' => 'يسار',
-        'right' => 'يمين',
-        'top' => 'أعلى',
-        'bottom' => 'أسفل',
-        _ => side,
-      };
-      String cm(double mm) {
-        final value = mm / 10.0;
-        return value.toStringAsFixed(value == value.roundToDouble() ? 0 : 1);
-      }
-      final details = window.effectiveSideCoverSegments
-          .where((segment) => segment.endOffset > segment.startOffset)
-          .map((segment) {
-            final width = segment.visibleWidth > 0
-                ? segment.visibleWidth
-                : fallbackWidth;
-            final sideLength = window.sideCoverSideLength(segment.side);
-            final hasSpecialSpan =
-                segment.startOffset > 0.1 ||
-                (sideLength > 0 &&
-                    (segment.endOffset - sideLength).abs() > 0.1);
-            final hasSpecialWidth =
-                segment.visibleWidth > 0 &&
-                (segment.visibleWidth - fallbackWidth).abs() > 0.1;
-            if (!hasSpecialSpan && !hasSpecialWidth) return null;
-            final spanText = hasSpecialSpan
-                ? 'من ${cm(segment.startOffset)} إلى ${cm(segment.endOffset)} سم، '
-                : '';
-            return '${sideLabel(segment.side)}: $spanTextعرضه الظاهر ${cm(width)} سم';
-          })
-          .whereType<String>()
-          .toList();
-      if (details.isEmpty) return null;
-      return '⚠ تنبيه الغطاء الجانبي ${integrated ? 'المدمج' : 'المنفصل'}: ${details.join('؛ ')}';
+      // Shared with the fiche de coupe so the table and the PDF always give
+      // the workshop the same start/end instruction for each cover piece.
+      return window.sideCoverWarningText(
+        integrated: integrated,
+        fallbackWidth: integrated
+            ? integratedFrameCoverWidth
+            : separateCoverWidth,
+      );
     }
 
     BomItem appendSideCoverNote(BomItem item, {required bool integrated}) {
@@ -2985,17 +2988,30 @@ class ComponentCalculator {
     Map<String, dynamic>? selectedSeparateCoverMap;
     if (selectedSeparateSideCover != null) {
       selectedSeparateCoverMap = selectedSeparateSideCover.toMap();
-      final savedCover = window.sideCoverOverride;
-      if (savedCover != null &&
-          savedCover['id']?.toString() ==
-              selectedSeparateSideCover.id.toString()) {
-        selectedSeparateCoverMap['calculated_price'] =
-            savedCover['calculated_price'] ??
+      final savedCover = window.sideCoverOverride ??
+          (window.componentOverrides['side_cover'] is Map
+              ? window.componentOverrides['side_cover']
+              : null) ??
+          (window.componentOverrides['الغطاء الجانبي (Side Cover)'] is Map
+              ? window.componentOverrides['الغطاء الجانبي (Side Cover)']
+              : null);
+      if (savedCover != null) {
+        final priceVal = savedCover['calculated_price'] ??
             savedCover['price_dzd'] ??
             savedCover['price'];
+        if (priceVal != null) {
+          selectedSeparateCoverMap['calculated_price'] = priceVal;
+          selectedSeparateCoverMap['price'] = priceVal;
+        }
       }
     } else {
-      selectedSeparateCoverMap = window.sideCoverOverride;
+      selectedSeparateCoverMap = window.sideCoverOverride ??
+          (window.componentOverrides['side_cover'] is Map
+              ? window.componentOverrides['side_cover']
+              : null) ??
+          (window.componentOverrides['الغطاء الجانبي (Side Cover)'] is Map
+              ? window.componentOverrides['الغطاء الجانبي (Side Cover)']
+              : null);
     }
 
     // حساب netHeight: الارتفاع الصافي قبل حساب الإطار
@@ -3205,20 +3221,14 @@ class ComponentCalculator {
           }
         }
 
-        final hingesPerSash = standardHingeCountForSash(
-          sashHeight: zone.boundary.height,
-          glassStructure: zone.glass.structure,
-        );
-
-        int sashesWithHinges = sashes;
-        if (window.effectiveUseSystemOB || window.effectiveUseDemiOB) {
-          if (zone.content == ZoneContent.singleSash) {
-            sashesWithHinges = 0;
-          } else if (zone.content == ZoneContent.doubleSash) {
-            sashesWithHinges = 1;
-          }
+        // Per leaf, from the same layout the drawing shows (automatic or
+        // placed by hand). With OB the handle leaf's hinges come in its kit.
+        final usesOb = window.effectiveUseSystemOB || window.effectiveUseDemiOB;
+        final obLeaf = window.isHandleLeaf(zone, 0) ? 0 : 1;
+        for (var leaf = 0; leaf < sashes; leaf++) {
+          if (usesOb && leaf == obLeaf) continue;
+          totalHinges += window.hingeCountForLeaf(zone, leaf);
         }
-        totalHinges += (hingesPerSash * sashesWithHinges);
 
         // Check for nested sashes in this zone
         final allCellKeys = <String>{};
@@ -4382,9 +4392,6 @@ class ComponentCalculator {
               final start = math.max(edge.start, segment.startOffset);
               final end = math.min(edge.end, segment.endOffset);
               if (end <= start) continue;
-              final visible = segment.visibleWidth > 0
-                  ? segment.visibleWidth
-                  : separateCoverWidth;
               final miterCount =
                   ((start - edge.start).abs() <= 2.0 && hasMiterAt(edge, start)
                       ? 1
@@ -4397,7 +4404,9 @@ class ComponentCalculator {
               final endMiter =
                   (end - edge.end).abs() <= 2.0 && hasMiterAt(edge, end);
               addSideCoverPiece(
-                ((end - start) + visible * miterCount + pvcWeldingAllowance) /
+                ((end - start) +
+                        separateCoverWidth * miterCount +
+                        pvcWeldingAllowance) /
                     1000.0,
                 startMiter: startMiter,
                 endMiter: endMiter,
@@ -4417,14 +4426,14 @@ class ComponentCalculator {
             final start = segment.startOffset.clamp(0.0, sideLength).toDouble();
             final end = segment.endOffset.clamp(0.0, sideLength).toDouble();
             if (end <= start) continue;
-            final visible = segment.visibleWidth > 0
-                ? segment.visibleWidth
-                : separateCoverWidth;
             final cutLength = standaloneSideCoverSegmentCutLength(
               sideLength: sideLength,
               start: start,
               end: end,
-              visibleWidth: visible,
+              // The customised projection controls what remains visible on
+              // the façade. The miter allowance always comes from the full,
+              // uncut face of the selected cover profile.
+              visibleWidth: separateCoverWidth,
               weldingAllowance: pvcWeldingAllowance,
             );
             final reachesStart = start <= 0.01;
@@ -6312,6 +6321,12 @@ class ComponentCalculator {
             ? Map<String, dynamic>.from(cremoneOverride)
             : const <String, dynamic>{};
         final triangleProfile =
+            (window.componentOverrides['تراينغل الكريمون (Triangle)'] is Map
+                ? Map<String, dynamic>.from(window.componentOverrides['تراينغل الكريمون (Triangle)'])
+                : null) ??
+            (window.componentOverrides['triangle'] is Map
+                ? Map<String, dynamic>.from(window.componentOverrides['triangle'])
+                : null) ??
             window.getConfiguredSectionForRole('triangle')?.toMap() ??
             window.getSectionByType('triangle')?.toMap() ??
             window.getSlidingSectionByType('triangle')?.toMap();
@@ -6372,18 +6387,20 @@ class ComponentCalculator {
               '${firstTrianglePiece.toStringAsFixed(0)} + '
               '${secondTrianglePiece.toStringAsFixed(0)}',
             );
-            for (var i = 0; i < window.quantity; i++) {
-              trianglePieces.addAll([
-                firstTrianglePiece / 1000.0,
-                secondTrianglePiece / 1000.0,
-              ]);
-            }
+            // [createProfile] expands every base cut by [window.quantity].
+            // Keep only the two cuts for one physical window here; expanding
+            // them here as well made Tringle quantities grow by quantity².
+            trianglePieces.addAll([
+              firstTrianglePiece / 1000.0,
+              secondTrianglePiece / 1000.0,
+            ]);
           }
           items.add(
             createProfile(
               'تراينغل الكريمون (Triangle)',
               colorName,
               pieces: trianglePieces,
+              pieceCutAngles: uniformAngles(trianglePieces, '90/90'),
               unit: 'قطاع',
               overrideMap: triangleProfile,
               preferOverrideMap: true,
@@ -6935,6 +6952,9 @@ class ComponentCalculator {
         String descriptionCode, {
         int? splitCount,
         String? mechanism,
+        double? sectionWidthMm,
+        double? sectionHeightMm,
+        double? sectionWeightKg,
         bool filterAxeItems = true,
         bool sizeBound = true,
         bool showKitRow = true,
@@ -7078,9 +7098,9 @@ class ComponentCalculator {
           var expandedItems = expandKitBundle(
             groupName,
             matchedKitItems!,
-            leafHeightMm: window.height.toDouble(),
-            leafWidthMm: window.width.toDouble(),
-            shutterWeightKg: shutterWeightKg,
+            leafHeightMm: sectionHeightMm ?? window.height.toDouble(),
+            leafWidthMm: sectionWidthMm ?? window.width.toDouble(),
+            shutterWeightKg: sectionWeightKg ?? shutterWeightKg,
             mechanismScope: shutterMechanismScope(effectiveMechanism),
             mechanismScopes: shutterMechanismScopes(
               effectiveMechanism,
@@ -7116,44 +7136,63 @@ class ComponentCalculator {
       }
 
       if (!isTunnel) {
-        // Each split box can select a different mechanism. Expand the kit
-        // once per mechanism group so motor parts never leak into belt/crank
-        // boxes (and vice versa).
-        if (motorSplitCount > 0) {
-          addAndExpandKit(
-            'كيت فولي موتور (Kit Volet Moteur)',
-            'MT',
-            splitCount: motorSplitCount,
-            mechanism: 'محرك',
-            filterAxeItems: true,
+        // Every box section is an independent shutter. Expanding one section
+        // at a time is important: kit ranges, motor capacity and accessories
+        // must use that section's width/height/weight, not the full opening.
+        for (final split in shutterSplits) {
+          final mechanism = splitMechanism(split);
+          final sectionHeight = split.customHeight ?? window.height.toDouble();
+          final sectionWeight = shutterCurtainWeightKg(
+            windowWidthMm: split.width,
+            windowHeightMm: sectionHeight,
+            shutterBoxHeightMm: window.shutterBoxHeight,
+            isTunnel: false,
+            bladeHeightMm: selectedBladeHeightMm,
+            bladeWeightPerSqm: bladeWeightPerSqm,
+            bladeEndCapThicknessMm: bladeCapThicknessMm,
           );
-        }
-        if (crankSplitCount > 0) {
-          // Belt and crank share one shutter kit. Each component declares
-          // whether it is common, belt-only or crank-only.
-          addAndExpandKit(
-            'كيت فولي مانيفر (Kit Volet Manivelle)',
-            'V',
-            splitCount: crankSplitCount,
-            mechanism: 'مانيفال',
-          );
-          addAndExpandKit(
-            'كيت مانيفر (Kit Manivelle)',
-            'M',
-            splitCount: crankSplitCount,
-            mechanism: 'مانيفال',
-            sizeBound: false,
-          );
-        }
-        if (beltSplitCount > 0) {
-          // حزام (Sangle): DB: "Kit volet 155", "Kit volet 185", "Kit volet 205"
-          // الاسم الدقيق يؤخذ من componentOverrides تلقائياً، keywords هي فقط للاحتياط
-          addAndExpandKit(
-            'كيت فولي (Kit Volet)',
-            'V',
-            splitCount: beltSplitCount,
-            mechanism: 'حزام',
-          );
+          if (isMotorMechanism(mechanism)) {
+            addAndExpandKit(
+              'كيت فولي موتور (Kit Volet Moteur)',
+              'MT',
+              splitCount: 1,
+              mechanism: mechanism,
+              sectionWidthMm: split.width,
+              sectionHeightMm: sectionHeight,
+              sectionWeightKg: sectionWeight,
+              filterAxeItems: true,
+            );
+          } else if (isCrankMechanism(mechanism)) {
+            addAndExpandKit(
+              'كيت فولي مانيفر (Kit Volet Manivelle)',
+              'V',
+              splitCount: 1,
+              mechanism: mechanism,
+              sectionWidthMm: split.width,
+              sectionHeightMm: sectionHeight,
+              sectionWeightKg: sectionWeight,
+            );
+            addAndExpandKit(
+              'كيت مانيفر (Kit Manivelle)',
+              'M',
+              splitCount: 1,
+              mechanism: mechanism,
+              sectionWidthMm: split.width,
+              sectionHeightMm: sectionHeight,
+              sectionWeightKg: sectionWeight,
+              sizeBound: false,
+            );
+          } else {
+            addAndExpandKit(
+              'كيت فولي (Kit Volet)',
+              'V',
+              splitCount: 1,
+              mechanism: mechanism,
+              sectionWidthMm: split.width,
+              sectionHeightMm: sectionHeight,
+              sectionWeightKg: sectionWeight,
+            );
+          }
         }
         // براغي الكيت
         items.add(createShutter('براغي الكيت', qty: 8.0 * shutterSplitCount));
@@ -7163,31 +7202,54 @@ class ComponentCalculator {
         final tunnelKitType =
             window.caissonPayload?['kitType']?.toString().toLowerCase() ?? '';
         final tunnelSize = window.caissonTunnelHeight.toInt().toString();
-        final tunnelMechanismTokens = isMotor
-            ? ['moteur', 'motor', 'محرك']
-            : isCrank
-            ? ['manoeuvre', 'manivelle', 'maniv', 'مانيف', 'منايف']
-            : isBelt
-            ? ['sangle', 'belt', 'حزام']
-            : ['assemble', 'assembly', 'assemblage', 'تجميع'];
-        addAndExpandKit(
-          'كيت صندوق النفق (Kit Caisson Tunnel)',
-          'CT',
-          sizeBound: false,
-          filterAxeItems: false,
-          showKitRow: true,
-          preferredKitTokens: [tunnelKitType, tunnelSize],
-          requiredKitTokens: tunnelMechanismTokens,
-        );
-        if (isCrank) {
-          // A manoeuvre tunnel is made of two distinct kits: the tunnel
-          // assembly itself and the separate manoeuvre kit.
-          addAndExpandKit(
-            'كيت مانيفر (Kit Manivelle)',
-            'M',
-            sizeBound: false,
-            preferredKitTokens: const ['manoeuvre', 'manivelle', 'maniv'],
+        for (final split in shutterSplits) {
+          final mechanism = splitMechanism(split);
+          final sectionHeight = split.customHeight ?? window.height.toDouble();
+          final sectionWeight = shutterCurtainWeightKg(
+            windowWidthMm: split.width,
+            windowHeightMm: sectionHeight,
+            shutterBoxHeightMm: window.shutterBoxHeight,
+            isTunnel: true,
+            bladeHeightMm: selectedBladeHeightMm,
+            bladeWeightPerSqm: bladeWeightPerSqm,
+            bladeEndCapThicknessMm: bladeCapThicknessMm,
           );
+          final tunnelMechanismTokens = isMotorMechanism(mechanism)
+              ? ['moteur', 'motor', 'محرك']
+              : isCrankMechanism(mechanism)
+              ? ['manoeuvre', 'manivelle', 'maniv', 'مانيف', 'منايف']
+              : isBeltMechanism(mechanism)
+              ? ['sangle', 'belt', 'حزام']
+              : ['assemble', 'assembly', 'assemblage', 'تجميع'];
+          addAndExpandKit(
+            'كيت صندوق النفق (Kit Caisson Tunnel)',
+            'CT',
+            splitCount: 1,
+            mechanism: mechanism,
+            sectionWidthMm: split.width,
+            sectionHeightMm: sectionHeight,
+            sectionWeightKg: sectionWeight,
+            sizeBound: false,
+            filterAxeItems: false,
+            showKitRow: true,
+            preferredKitTokens: [tunnelKitType, tunnelSize],
+            requiredKitTokens: tunnelMechanismTokens,
+          );
+          if (isCrankMechanism(mechanism)) {
+            // A manoeuvre tunnel is made of two distinct kits: the tunnel
+            // assembly itself and the separate manoeuvre kit.
+            addAndExpandKit(
+              'كيت مانيفر (Kit Manivelle)',
+              'M',
+              splitCount: 1,
+              mechanism: mechanism,
+              sectionWidthMm: split.width,
+              sectionHeightMm: sectionHeight,
+              sectionWeightKg: sectionWeight,
+              sizeBound: false,
+              preferredKitTokens: const ['manoeuvre', 'manivelle', 'maniv'],
+            );
+          }
         }
       }
 
@@ -7552,6 +7614,41 @@ class ComponentCalculator {
           }
         }
       }
+    }
+
+    // ===== 12. الموستيكير (Moustiquaire) =====
+    if (window.hasMoustiquaireAddon) {
+      // قياس الموستيكير: عرض الإطار - 2 ملم، وارتفاع الإطار - 2 ملم
+      final double moustiquaireW = math.max(0.0, window.width - 2.0);
+      final double moustiquaireH = math.max(0.0, window.height - 2.0);
+      final double areaSqm = moustiquaireAddonAreaSqm(window);
+
+      final rawPrice = window.componentOverrides['موستيكير (Moustiquaire)']?['price_per_sqm'] ??
+          window.componentOverrides['موستيكير (Moustiquaire)']?['price'] ??
+          window.componentOverrides['moustiquaire']?['price_per_sqm'] ??
+          window.componentOverrides['moustiquaire']?['price'] ??
+          0.0;
+      final double pricePerSqm = rawPrice is num
+          ? rawPrice.toDouble()
+          : double.tryParse('$rawPrice') ?? 0.0;
+
+      items.add(
+        BomItem(
+          category: 'moustiquaire',
+          originalName: 'موستيكير (Moustiquaire)',
+          name: 'موستيكير (Moustiquaire)',
+          quantity: areaSqm > 0 ? areaSqm : 1.0,
+          exactQuantity: areaSqm > 0 ? areaSqm : 1.0,
+          unit: 'م²',
+          length: moustiquaireW,
+          glassHeight: moustiquaireH,
+          unitPrice: pricePerSqm,
+          overrideKey: 'moustiquaire',
+          selectorCategory: 'moustiquaire',
+          selectorType: 'moustiquaire',
+          roleKey: 'moustiquaire',
+        ),
+      );
     }
 
     {
@@ -8095,10 +8192,58 @@ class ComponentCalculator {
       }
     }
 
+    // --- Slanted mullions: each bar is cut at its long point with the angle
+    // shown on the drawing halved at both ends (workshop rule). Profile by
+    // exact catalogue code when the division names one.
+    final Map<String, List<double>> slantedPiecesByCode = {};
+    final Map<String, List<String>> slantedAnglesByCode = {};
+    for (final zone in window.zones) {
+      if (zone.slantedDividers.isEmpty) continue;
+      final geometry = window.slantedGeometryFor(zone);
+      for (final d in geometry.dividers) {
+        final length = geometry.cutLengthMm(d) / 1000.0;
+        if (length <= 0) continue;
+        final code = d.profileCode ?? '';
+        slantedPiecesByCode.putIfAbsent(code, () => []).add(length);
+        slantedAnglesByCode
+            .putIfAbsent(code, () => [])
+            .add(
+              '${geometry.cutAngleDeg(d, atStart: true).toStringAsFixed(1)}/'
+              '${geometry.cutAngleDeg(d, atStart: false).toStringAsFixed(1)}',
+            );
+        totalMullionLengthMeters += length;
+      }
+    }
+    for (final entry in slantedPiecesByCode.entries) {
+      Map<String, dynamic>? section;
+      if (entry.key.isNotEmpty) {
+        for (final s in window.activeSeries?.sections ?? const []) {
+          if (s.code.trim() == entry.key) {
+            section = s.toMap();
+            break;
+          }
+        }
+      }
+      items.add(
+        createProfile(
+          section == null
+              ? 'تقسيم مائل (Traverse inclinée)'
+              : 'تقسيم مائل (Traverse inclinée) — ${entry.key}',
+          colorName,
+          pieces: entry.value,
+          pieceCutAngles: slantedAnglesByCode[entry.key],
+          unit: 'قطاع',
+          overrideMap: section,
+          preferOverrideMap: section != null,
+        ),
+      );
+    }
+
     if (totalMullionLengthMeters > 0) {
       final allMullionPieces = <double>[
         ...mullionPieces,
         for (final pieces in selectedMullionPieces.values) ...pieces,
+        for (final pieces in slantedPiecesByCode.values) ...pieces,
       ];
 
       if (mullionPieces.isNotEmpty) {
@@ -8154,9 +8299,8 @@ class ComponentCalculator {
         );
         if (index != -1) {
           final existing = items[index];
-          // Since the existing item already has the multiplied quantity, we multiply the new batch here before adding
           items[index] = existing.copyWith(
-            qty: existing.quantity + (mullionRenfortScrews * window.quantity),
+            qty: existing.quantity + mullionRenfortScrews,
           );
         } else {
           items.add(
@@ -8224,6 +8368,54 @@ class ComponentCalculator {
     final Map<String, Map<String, dynamic>?> bardageColorData = {};
     List<double> parcloseSimplePieces = [];
     List<double> parcloseDoublePieces = [];
+    // Parallel to the opening parclose lists: true marks a horizontal
+    // (width) piece. A 90° cut shortens one direction once the parclose
+    // profile, and therefore its glass deduction, is resolved.
+    // null marks a shaped piece that a 90° cut never shortens.
+    final List<bool?> parcloseSimpleIsWidth = [];
+    final List<bool?> parcloseDoubleIsWidth = [];
+    // Cut angles aligned with the pieces; only sent to the cutting sheet
+    // when a slanted-division cell made a shaped (non-rectangular) parclose.
+    final List<String> parcloseSimpleAngles = [];
+    final List<String> parcloseDoubleAngles = [];
+    bool hasShapedParclose = false;
+    // Glass polygon of the slanted-division cell being priced, if any.
+    List<Offset>? shapedGlassCell;
+    final String rectParcloseAngles = !window.isPVC && window.parcloseCutAt90
+        ? '90/90'
+        : '45/45';
+    void addOpeningParcloseRect({
+      required bool isDouble,
+      required double widthMm,
+      required double heightMm,
+    }) {
+      final pieces = isDouble ? parcloseDoublePieces : parcloseSimplePieces;
+      final flags = isDouble ? parcloseDoubleIsWidth : parcloseSimpleIsWidth;
+      final angles = isDouble ? parcloseDoubleAngles : parcloseSimpleAngles;
+      final shape = shapedGlassCell;
+      if (shape != null) {
+        // One piece per side of the glass, mitred at half of each corner.
+        hasShapedParclose = true;
+        final n = shape.length;
+        for (var i = 0; i < n; i++) {
+          final j = (i + 1) % n;
+          pieces.add((shape[j] - shape[i]).distance / 1000.0);
+          flags.add(null);
+          final a = SlantedDivisionGeometry.interiorAngleDeg(shape, i) / 2;
+          final b = SlantedDivisionGeometry.interiorAngleDeg(shape, j) / 2;
+          angles.add('${a.toStringAsFixed(1)}/${b.toStringAsFixed(1)}');
+        }
+        return;
+      }
+      pieces
+        ..add(widthMm / 1000.0)
+        ..add(widthMm / 1000.0)
+        ..add(heightMm / 1000.0)
+        ..add(heightMm / 1000.0);
+      flags.addAll(const [true, true, false, false]);
+      angles.addAll(List.filled(4, rectParcloseAngles));
+    }
+
     double requiredOpeningParcloseDoubleThickness = 0.0;
     double maxOpeningSimpleGlassPackThickness = 0.0;
     double maxOpeningDoubleGlassPackThickness = 0.0;
@@ -8614,20 +8806,19 @@ class ComponentCalculator {
             // The bardage profile's own thickness determines its parclose;
             // it must not inherit a sandwich/decor panel thickness.
             if (!(usesOpeningSashProfile && openingSashSkipsGlazingBead)) {
-              final targetParclosePieces = getBardageThickness() > 10.0
-                  ? parcloseDoublePieces
-                  : parcloseSimplePieces;
-              if (getBardageThickness() > 10.0) {
+              final bool bardageNeedsDouble = getBardageThickness() > 10.0;
+              if (bardageNeedsDouble) {
                 requiredOpeningParcloseDoubleThickness = math.max(
                   requiredOpeningParcloseDoubleThickness,
                   getBardageThickness(),
                 );
               }
               for (int q = 0; q < pieceMultiplier * window.quantity; q++) {
-                targetParclosePieces.add(cellGw / 1000.0);
-                targetParclosePieces.add(cellGw / 1000.0);
-                targetParclosePieces.add(cellGh / 1000.0);
-                targetParclosePieces.add(cellGh / 1000.0);
+                addOpeningParcloseRect(
+                  isDouble: bardageNeedsDouble,
+                  widthMm: cellGw,
+                  heightMm: cellGh,
+                );
               }
             }
             return;
@@ -8939,10 +9130,11 @@ class ComponentCalculator {
                 cellThick,
               );
               for (int q = 0; q < pieceMultiplier; q++) {
-                parcloseDoublePieces.add(cellGw / 1000.0);
-                parcloseDoublePieces.add(cellGw / 1000.0);
-                parcloseDoublePieces.add(cellGh / 1000.0);
-                parcloseDoublePieces.add(cellGh / 1000.0);
+                addOpeningParcloseRect(
+                  isDouble: true,
+                  widthMm: cellGw,
+                  heightMm: cellGh,
+                );
               }
             } else {
               maxOpeningSimpleGlassPackThickness = math.max(
@@ -8950,10 +9142,11 @@ class ComponentCalculator {
                 rawCellGlassPackThickness,
               );
               for (int q = 0; q < pieceMultiplier; q++) {
-                parcloseSimplePieces.add(cellGw / 1000.0);
-                parcloseSimplePieces.add(cellGw / 1000.0);
-                parcloseSimplePieces.add(cellGh / 1000.0);
-                parcloseSimplePieces.add(cellGh / 1000.0);
+                addOpeningParcloseRect(
+                  isDouble: false,
+                  widthMm: cellGw,
+                  heightMm: cellGh,
+                );
               }
               if (reducerAllowed &&
                   cellGlass.structure == GlassStructure.simple) {
@@ -9202,6 +9395,55 @@ class ComponentCalculator {
               ),
             );
           }
+        }
+
+        // Fixed zone with slanted mullions: one glass per cell. The glass is
+        // the clear cell less the usual 5 mm per side; it is ordered by its
+        // real shape and priced as the rectangle along its longest side.
+        if (zone.slantedDividers.isNotEmpty &&
+            zone.content == ZoneContent.fixedGlass &&
+            !isRightSash) {
+          final cells = window.slantedGeometryFor(zone).cells();
+          for (var i = 0; i < cells.length; i++) {
+            final glass = SlantedDivisionGeometry.insetConvex(
+              cells[i],
+              videVerre / 2,
+            );
+            if (glass.length < 3) continue;
+            final rect = SlantedDivisionGeometry.pricingRectangle(glass);
+            final before = glassItems.length;
+            shapedGlassCell = glass;
+            try {
+              addSingleGlassPiece(
+                rect.width,
+                rect.height,
+                multiplier,
+                'slant_cell_$i',
+              );
+            } finally {
+              shapedGlassCell = null;
+            }
+            if (glassItems.length > before) {
+              final sides = [
+                for (var k = 0; k < glass.length; k++)
+                  (glass[(k + 1) % glass.length] - glass[k]).distance
+                      .toStringAsFixed(0),
+              ].join(' / ');
+              final corners = [
+                for (var k = 0; k < glass.length; k++)
+                  '${SlantedDivisionGeometry.interiorAngleDeg(glass, k).toStringAsFixed(1)}°',
+              ].join(' / ');
+              final last = glassItems.removeLast();
+              glassItems.add(
+                last.copyWith(
+                  name:
+                      '${last.name}\n- Forme / الشكل: ${glass.length} أضلاع '
+                      '($sides مم) — $corners',
+                ),
+              );
+            }
+          }
+          return;
         }
 
         // دمج الخلايا المتجاورة إذا كانت الفواصل معطلة (Greedy cell merging)
@@ -9726,6 +9968,33 @@ class ComponentCalculator {
           (doubleGlass ? maxGlass > 10.0 : maxGlass <= 10.0);
     }
 
+    // Aluminium only: a 90° parclose cut keeps one direction at the inner
+    // glazing size and shortens the other by the parclose glass deduction on
+    // both ends. A 45° cut (and every PVC window) keeps the mitred lengths.
+    // The gasket perimeters below still use the unshortened lists.
+    List<double> parclosePiecesForCut(
+      List<double> pieces,
+      List<bool?> isWidth,
+      Map<String, dynamic>? parclose,
+    ) {
+      if (window.isPVC || !window.parcloseCutAt90 || parclose == null) {
+        return pieces;
+      }
+      final rawDeduction = parclose['glass_deduction'];
+      final deductionMm = rawDeduction is num
+          ? rawDeduction.toDouble()
+          : double.tryParse(rawDeduction?.toString() ?? '') ?? 0.0;
+      if (deductionMm <= 0) return pieces;
+      final bool shortenWidth = window.parcloseCutMode == '90_length';
+      final double cut = 2 * deductionMm / 1000.0;
+      return [
+        for (var i = 0; i < pieces.length; i++)
+          (i < isWidth.length && isWidth[i] == shortenWidth)
+              ? math.max(0.0, pieces[i] - cut)
+              : pieces[i],
+      ];
+    }
+
     if (parcloseSimplePieces.isNotEmpty) {
       final targetOverride =
           selectedParcloseSimple ??
@@ -9744,7 +10013,12 @@ class ComponentCalculator {
               ? 'لا توجد Parclose Simple مناسبة لهذا الزجاج'
               : 'باكيت زجاج مفرد (Parclose Simple)',
           colorName,
-          pieces: parcloseSimplePieces,
+          pieces: parclosePiecesForCut(
+            parcloseSimplePieces,
+            parcloseSimpleIsWidth,
+            targetOverride,
+          ),
+          pieceCutAngles: hasShapedParclose ? parcloseSimpleAngles : null,
           unit: 'قطاع',
           overrideMap: targetOverride,
           selectorType: 'parclose_simple',
@@ -9771,7 +10045,12 @@ class ComponentCalculator {
               ? 'لا توجد Parclose Double مناسبة لهذا الزجاج'
               : 'باكيت زجاج مزدوج (Parclose Double)',
           colorName,
-          pieces: parcloseDoublePieces,
+          pieces: parclosePiecesForCut(
+            parcloseDoublePieces,
+            parcloseDoubleIsWidth,
+            targetOverride,
+          ),
+          pieceCutAngles: hasShapedParclose ? parcloseDoubleAngles : null,
           unit: 'قطاع',
           overrideMap: targetOverride,
           selectorType: 'parclose_double',
@@ -10331,6 +10610,7 @@ class ComponentCalculator {
           'تراينغل - ${accessory.originalName}',
           colorName,
           pieces: pieces,
+          pieceCutAngles: uniformAngles(pieces, '90/90'),
           unit: 'قطاع',
           overrideMap: triangleProfile,
           preferOverrideMap: true,
@@ -11243,11 +11523,21 @@ class ComponentCalculator {
     final Map<String, dynamic>? savedOverride =
         overrides.containsKey(originalName)
         ? overrides[originalName] as Map<String, dynamic>?
-        : null;
-    final Map<String, dynamic>? selectedOverride =
-        preferOverrideMap && overrideMap != null
-        ? overrideMap
-        : savedOverride ?? overrideMap;
+        : (overrideKey != null && overrides.containsKey(overrideKey)
+            ? overrides[overrideKey] as Map<String, dynamic>?
+            : null);
+    final Map<String, dynamic>? selectedOverride = () {
+      if (savedOverride != null && overrideMap != null) {
+        final merged = Map<String, dynamic>.from(overrideMap);
+        if (savedOverride.containsKey('price')) merged['price'] = savedOverride['price'];
+        if (savedOverride.containsKey('calculated_price')) merged['calculated_price'] = savedOverride['calculated_price'];
+        if (savedOverride.containsKey('price_dzd')) merged['price_dzd'] = savedOverride['price_dzd'];
+        return merged;
+      }
+      return (preferOverrideMap && overrideMap != null)
+          ? overrideMap
+          : (savedOverride ?? overrideMap);
+    }();
     bool isLinked = selectedOverride != null;
     double price = defaultPrice;
     double finalQty = qty;

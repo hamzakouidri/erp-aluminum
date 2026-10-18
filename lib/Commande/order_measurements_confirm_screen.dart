@@ -565,6 +565,44 @@ class _OrderMeasurementsConfirmScreenState
     }
   }
 
+  /// The measurement rows a detail prints stickers for: the rows on screen,
+  /// else the saved draft, else the order line itself.
+  List<Map<String, dynamic>> _stickerInstances(Map<String, dynamic> detail) {
+    final width = measurementQuantityValue(detail['largeur']);
+    final height = measurementQuantityValue(detail['hauteur']);
+    final instances = <Map<String, dynamic>>[];
+    for (final ed in _editors[detail['id']] ?? const <InstanceEditor>[]) {
+      instances.add({
+        'width': int.tryParse(ed.widthCtrl.text) ?? width,
+        'height': int.tryParse(ed.heightCtrl.text) ?? height,
+        'qty': int.tryParse(ed.qtyCtrl.text) ?? 1,
+        'position': ed.positionCtrl.text.trim(),
+      });
+    }
+    if (instances.isEmpty) {
+      final instancesJson = detail['instances_json'];
+      if (instancesJson != null && instancesJson.toString().isNotEmpty) {
+        try {
+          final decoded = jsonDecode(instancesJson.toString());
+          if (decoded is List) {
+            instances.addAll(
+              decoded.whereType<Map>().map(Map<String, dynamic>.from),
+            );
+          }
+        } catch (_) {}
+      }
+    }
+    if (instances.isEmpty) {
+      instances.add({
+        'width': width,
+        'height': height,
+        'qty': measurementQuantityValue(detail['quantity'], fallback: 1),
+        'position': '',
+      });
+    }
+    return instances;
+  }
+
   Future<void> _printStickers({
     int? targetDetailId,
     int? targetInstanceIndex,
@@ -598,24 +636,12 @@ class _OrderMeasurementsConfirmScreenState
     final pdf = pw.Document();
 
     // ── Step 1: compute total window count across ALL instances ──────────────
+    // Use the same rows as the printed pages; the saved instances_json can
+    // differ from what is on screen and made "N / total" disagree.
     int totalWindowCount = 0;
     for (final detail in _detailsList) {
-      final instancesJson = detail['instances_json'];
-      List<Map<String, dynamic>> tmpInstances = [];
-      if (instancesJson != null && instancesJson.toString().isNotEmpty) {
-        try {
-          final decoded = jsonDecode(instancesJson.toString()) as List<dynamic>;
-          tmpInstances = decoded
-              .map((e) => Map<String, dynamic>.from(e))
-              .toList();
-        } catch (_) {}
-      }
-      if (tmpInstances.isEmpty) {
-        totalWindowCount += detail['quantity'] as int;
-      } else {
-        for (final inst in tmpInstances) {
-          totalWindowCount += (inst['qty'] as int? ?? 0);
-        }
+      for (final inst in _stickerInstances(detail)) {
+        totalWindowCount += measurementQuantityValue(inst['qty']);
       }
     }
 
@@ -760,41 +786,7 @@ class _OrderMeasurementsConfirmScreenState
       final detailId = detail['id'] as int;
       final gameName = detail['game']?.toString() ?? 'Window';
       final sashCount = _getSashCount(detail);
-
-      final editorsList = _editors[detailId] ?? [];
-      List<Map<String, dynamic>> instances = [];
-      if (editorsList.isNotEmpty) {
-        for (final ed in editorsList) {
-          final w =
-              int.tryParse(ed.widthCtrl.text) ??
-              (detail['largeur'] as int? ?? 0);
-          final h =
-              int.tryParse(ed.heightCtrl.text) ??
-              (detail['hauteur'] as int? ?? 0);
-          final q = int.tryParse(ed.qtyCtrl.text) ?? 1;
-          final pos = ed.positionCtrl.text.trim();
-          instances.add({'width': w, 'height': h, 'qty': q, 'position': pos});
-        }
-      } else {
-        final instancesJson = detail['instances_json'];
-        if (instancesJson != null && instancesJson.toString().isNotEmpty) {
-          try {
-            final decoded =
-                jsonDecode(instancesJson.toString()) as List<dynamic>;
-            instances = decoded
-                .map((e) => Map<String, dynamic>.from(e))
-                .toList();
-          } catch (_) {}
-        }
-      }
-      if (instances.isEmpty) {
-        instances.add({
-          'width': detail['largeur'] as int? ?? 0,
-          'height': detail['hauteur'] as int? ?? 0,
-          'qty': detail['quantity'] as int? ?? 1,
-          'position': '',
-        });
-      }
+      final instances = _stickerInstances(detail);
 
       // Compute glass dims once per detail (same model for all instances)
       final glassDimsRecord = await _getGlassDimensionsFromBom(detail);
@@ -804,9 +796,9 @@ class _OrderMeasurementsConfirmScreenState
 
       int instIndex = 0;
       for (final inst in instances) {
-        final w = inst['width'] as int;
-        final h = inst['height'] as int;
-        final qty = inst['qty'] as int;
+        final w = measurementQuantityValue(inst['width']);
+        final h = measurementQuantityValue(inst['height']);
+        final qty = measurementQuantityValue(inst['qty']);
         final pos = inst['position']?.toString() ?? '';
 
         // Use the pre-computed glass dims from the detail level

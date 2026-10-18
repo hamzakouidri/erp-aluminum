@@ -306,6 +306,14 @@ class AccessoryScrewOverrideDatabase extends SqlDatabase {
       'show_in_quantity': 1,
       'is_active': 1,
     },
+    // The hinge itself is published only through its own enabled rule.
+    {
+      'item_id': 51,
+      'series_id': 1,
+      'role_key': 'hinge',
+      'show_in_quantity': 1,
+      'is_active': 1,
+    },
   ];
 }
 

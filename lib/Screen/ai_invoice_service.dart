@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ExtractedInvoiceItem {
   final String itemCode;
@@ -49,10 +49,11 @@ class ExtractedInvoiceItem {
 
   static double _number(dynamic value) {
     if (value is num) return value.toDouble();
-    final normalized = value
-        ?.toString()
-        .replaceAll(RegExp(r'[^0-9,.-]'), '')
-        .replaceAll(',', '.') ??
+    final normalized =
+        value
+            ?.toString()
+            .replaceAll(RegExp(r'[^0-9,.-]'), '')
+            .replaceAll(',', '.') ??
         '';
     return double.tryParse(normalized) ?? 0.0;
   }
@@ -99,32 +100,23 @@ class ExtractedInvoice {
 
 class AiInvoiceService {
   /// تحليل صورة الفاتورة واستخراج البيانات.
-  /// Requires a configured API key; failures must never be replaced with
-  /// fabricated invoice data that looks like a successful scan.
+  /// Gemini runs through the authenticated server gateway.  A client must
+  /// never receive or save the shared Google API key.
   static Future<ExtractedInvoice> analyzeInvoice(
     Uint8List imageBytes, {
-    String? apiKey,
     String mimeType = 'image/jpeg',
     List<Map<String, String>> catalogHints = const [],
   }) async {
-    if (apiKey == null || apiKey.trim().isEmpty) {
-      throw StateError('مفتاح Gemini غير مضبوط في الإعدادات.');
-    }
-
     try {
-      final model = GenerativeModel(
-        model: 'gemini-3.8-flash',
-        apiKey: apiKey,
-        generationConfig: GenerationConfig(
-          responseMimeType: 'application/json',
-        ),
-      );
+      final catalogText = catalogHints
+          .take(350)
+          .map((entry) {
+            return '${entry['code'] ?? ''} | ${entry['name'] ?? ''} | ${entry['color'] ?? ''}';
+          })
+          .join('\n');
 
-      final catalogText = catalogHints.take(350).map((entry) {
-        return '${entry['code'] ?? ''} | ${entry['name'] ?? ''} | ${entry['color'] ?? ''}';
-      }).join('\n');
-
-      final prompt = '''
+      final prompt =
+          '''
 أنت خبير OCR لفواتير الألمنيوم والزجاج والأكسسوارات. اقرأ الصورة سطراً سطراً، بما في ذلك الجداول الصغيرة أو الباهتة.
 لا تختصر قائمة السلع ولا تحذف سطراً لأنه غير واضح. أخرج كل سطر سلعة ظاهر في الصورة مرة واحدة وبنفس ترتيب الفاتورة.
 افصل كود السلعة عن اسمها وعن اللون والكمية والوحدة والسعر. لا تخلط الإجمالي بسعر الوحدة.
@@ -161,12 +153,50 @@ $catalogText
 ركز جداً على الأكواد التجارية (مثل P400، P405، TPR)، وعلى جميع الأسطر واللون. إذا كان السطر ضعيفاً أبقه مع confidence منخفض بدلاً من حذفه.
 ''';
 
-      final content = [
-        Content.multi([DataPart(mimeType, imageBytes), TextPart(prompt)]),
-      ];
-
-      final response = await model.generateContent(content);
-      final responseText = response.text;
+      final response = await Supabase.instance.client.functions.invoke(
+        'gemini-gateway',
+        body: {
+          'request_body': {
+            'contents': [
+              {
+                'role': 'user',
+                'parts': [
+                  {
+                    'inlineData': {
+                      'mimeType': mimeType,
+                      'data': base64Encode(imageBytes),
+                    },
+                  },
+                  {'text': prompt},
+                ],
+              },
+            ],
+            'generationConfig': {
+              'temperature': 0.0,
+              'responseMimeType': 'application/json',
+            },
+          },
+        },
+      );
+      if (response.data is! Map) {
+        throw const FormatException(
+          'استجابة غير صالحة من بوابة الذكاء الاصطناعي.',
+        );
+      }
+      final gateway = Map<String, dynamic>.from(response.data as Map);
+      final status = (gateway['status'] as num?)?.toInt() ?? 599;
+      if (status != 200) {
+        throw StateError(
+          'تعذر تحليل الفاتورة بالذكاء الاصطناعي (رمز $status).',
+        );
+      }
+      final rawBody = gateway['body'];
+      final geminiBody = rawBody is String
+          ? jsonDecode(rawBody)
+          : Map<String, dynamic>.from(rawBody as Map);
+      final responseText =
+          geminiBody['candidates']?[0]?['content']?[0]?['parts']?[0]?['text'] ??
+          geminiBody['candidates']?[0]?['content']?['parts']?[0]?['text'];
 
       if (responseText == null || responseText.isEmpty) {
         throw Exception('الرد المستلم من الذكاء الاصطناعي فارغ.');

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -1985,9 +1986,14 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     if (strict.isNotEmpty) {
       return strict;
     }
+    // Like the quantity/cost table: catalogue rows (profiles, accessories,
+    // joints) are never published without an active rule, even when the
+    // strict pass returns nothing. Only calculated materials may remain.
     return raw
         .where((i) =>
             i.isActive &&
+            !const {'profile', 'accessory', 'other', 'joint'}
+                .contains(i.selectorCategory ?? i.category) &&
             (i.requiredQuantity > 0 ||
                 i.quantity > 0 ||
                 (i.pieces != null && i.pieces!.isNotEmpty)))
@@ -2221,6 +2227,48 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           }
 
           // إضافة وتجميع السلع (مع تجميع عناصر الـ kit تحت اسم واحد)
+          final creditedConfiguredKits = <String>{};
+          final productQuantity = instances.isNotEmpty
+              ? instances.fold<int>(
+                  0,
+                  (sum, inst) =>
+                      sum +
+                      _safePositiveInt(
+                        inst['qty'] ?? inst['quantity'],
+                        fallback: orderedQuantity,
+                      ),
+                )
+              : orderedQuantity;
+          int shutterSectionsForKit(String kitName) {
+            final splits = model.effectiveShutterSplits;
+            final code = normalizeKitDescriptionCode(
+              kitCache.metadata[kitName]?['description'],
+            );
+            bool isMotor(String value) =>
+                value == 'محرك' || value.toLowerCase().contains('moteur');
+            bool isCrank(String value) {
+              final v = value.toLowerCase();
+              return value == 'منايفال' ||
+                  value == 'مانيفال' ||
+                  value == 'مانيفر' ||
+                  v.contains('maniv');
+            }
+            String mechanism(ShutterSplitSection split) =>
+                split.mechanism?.trim().isNotEmpty == true
+                ? split.mechanism!.trim()
+                : model.shutterMechanism;
+            if (code == 'MT') {
+              return splits.where((s) => isMotor(mechanism(s))).length;
+            }
+            if (code == 'M') {
+              return splits.where((s) => isCrank(mechanism(s))).length;
+            }
+            if (code == 'V') {
+              return splits.where((s) => !isMotor(mechanism(s))).length;
+            }
+            return splits.length;
+          }
+
           for (final bom in activeBomItems) {
             final category = requiredGoodsCategoryForBom(bom);
             final usesOrderCutting = bomUsesOrderLevelCutting(bom);
@@ -2240,7 +2288,12 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 seriesId: bom.sourceSeriesId,
               );
               final isKitHeader = isRequiredGoodsKitHeader(bom, kitName);
-              final double kitQtyToAdd = isKitHeader ? purchaseQty : 0.0;
+              final double kitQtyToAdd = isKitHeader
+                  ? purchaseQty
+                  : creditedConfiguredKits.add(kitKey)
+                  ? productQuantity.toDouble() *
+                        math.max(1, shutterSectionsForKit(kitName)).toDouble()
+                  : 0.0;
               // If the kit has standalone pricing (no separate sub-items),
               // preserve the header's cost so it does not collapse to 0.
               final double kitCostToAdd = isKitHeader ? (bomCost > 0 ? bomCost : 0.0) : bomCost;
@@ -5707,7 +5760,25 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         0,
         (sum, piece) => sum + piece,
       );
-      return '${_roundQuantity(actualMeters, 'م')} ${_t('م')}';
+      final barLength = (item.stockLength ?? 0) > 0
+          ? item.stockLength!
+          : 6.0;
+      final exactBars = actualMeters / barLength;
+      var fullBars = exactBars.floor();
+      var remainingCm = ((actualMeters - (fullBars * barLength)) * 100).round();
+      final barLengthCm = (barLength * 100).round();
+      if (remainingCm >= barLengthCm) {
+        fullBars++;
+        remainingCm = 0;
+      }
+      final exactLabel = exactBars
+          .toStringAsFixed(2)
+          .replaceFirst(RegExp(r'0+$'), '')
+          .replaceFirst(RegExp(r'\.$'), '');
+      final detail = remainingCm > 0
+          ? '$fullBars ${_t('بار')} + $remainingCm ${_t('سم')}'
+          : '$fullBars ${_t('بار')}';
+      return '$exactLabel ${_t('بار')}\n$detail';
     }
     if (item.category == 'glass' || item.unit.trim().toLowerCase() == 'm²') {
       if ((item.stockLength ?? 0) > 0 && (item.glassHeight ?? 0) > 0) {

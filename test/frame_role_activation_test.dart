@@ -1271,4 +1271,50 @@ void main() {
       model.dispose();
     },
   );
+
+  test('Cremone triangle cuts scale linearly for large quantities', () {
+    final model = RoleWindow();
+    model.width = 800;
+    model.height = 1200;
+    model.quantity = 10;
+    model.zones = [
+      WindowZone(
+        id: 'opening_sash',
+        boundary: const Rect.fromLTWH(50, 50, 700, 1100),
+        content: ZoneContent.singleSash,
+      ),
+    ];
+    model.activeSeries = AluminumSeries(
+      id: 1,
+      profileId: 1,
+      name: 'Test Series',
+      type: 'opening',
+      sections: [
+        AluminumSection(
+          id: 999,
+          seriesId: 1,
+          name: 'Tringle 999',
+          code: 'TR999',
+          type: 'triangle',
+          barLength: 6.0,
+          visibleWidth: 15.0,
+        ),
+      ],
+    );
+    model.componentOverrides['مقبض نافذة (Poignée)'] = {
+      'id': 50,
+      'name': 'Poignée',
+      'price': 0,
+    };
+
+    final bom = ComponentCalculator.generateBom(model, {});
+    final triangle = bom.firstWhere(
+      (item) => item.roleKey == 'triangle' && item.pieces?.isNotEmpty == true,
+    );
+
+    // One cremone has two rods, so 10 windows require exactly 20 cuts.
+    expect(triangle.pieces, hasLength(20));
+
+    model.dispose();
+  });
 }

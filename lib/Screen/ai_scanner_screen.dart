@@ -142,13 +142,8 @@ class _AiScannerScreenState extends State<AiScannerScreen>
 
     try {
       final bytes = await _imageFile!.readAsBytes();
-      final apiKey = Provider.of<AppSettingsProvider>(
-        context,
-        listen: false,
-      ).geminiApiKey;
       final invoice = await AiInvoiceService.analyzeInvoice(
         bytes,
-        apiKey: apiKey,
         mimeType: _mimeTypeForPath(_imageFile!.path),
         catalogHints: _catalogSections.map((section) {
           return {
@@ -235,14 +230,13 @@ class _AiScannerScreenState extends State<AiScannerScreen>
         .trim();
   }
 
-  String _compactCode(String value) => _normaliseMatchText(value)
-      .replaceAll(RegExp(r'\s+'), '')
-      .replaceAll('o', '0');
+  String _compactCode(String value) => _normaliseMatchText(
+    value,
+  ).replaceAll(RegExp(r'\s+'), '').replaceAll('o', '0');
 
-  Set<String> _tokens(String value) => _normaliseMatchText(value)
-      .split(' ')
-      .where((token) => token.length > 1)
-      .toSet();
+  Set<String> _tokens(String value) => _normaliseMatchText(
+    value,
+  ).split(' ').where((token) => token.length > 1).toSet();
 
   double _catalogMatchScore(
     ExtractedInvoiceItem item,
@@ -267,7 +261,8 @@ class _AiScannerScreenState extends State<AiScannerScreen>
     final intersection = sourceTokens.intersection(targetTokens).length;
     final union = sourceTokens.union(targetTokens).length;
     final jaccard = intersection / union;
-    final overlap = intersection /
+    final overlap =
+        intersection /
         (sourceTokens.length < targetTokens.length
             ? sourceTokens.length
             : targetTokens.length);
@@ -275,8 +270,10 @@ class _AiScannerScreenState extends State<AiScannerScreen>
     // packaging). The overlap coefficient still recognises the catalogue name
     // when all its meaningful tokens occur inside that longer description.
     var score = jaccard > overlap * 0.82 ? jaccard : overlap * 0.82;
-    if (itemCode.isNotEmpty && sectionCode.isNotEmpty &&
-        (itemCode.startsWith(sectionCode) || sectionCode.startsWith(itemCode))) {
+    if (itemCode.isNotEmpty &&
+        sectionCode.isNotEmpty &&
+        (itemCode.startsWith(sectionCode) ||
+            sectionCode.startsWith(itemCode))) {
       score += 0.35;
     }
     return score.clamp(0.0, 1.0).toDouble();
@@ -285,7 +282,8 @@ class _AiScannerScreenState extends State<AiScannerScreen>
   int? _colorIdFor(String rawColor) {
     final normalized = _normaliseMatchText(rawColor);
     if (normalized.isEmpty || normalized.contains('غير مذكور')) return null;
-    final aliases = normalized.contains('fbm') ||
+    final aliases =
+        normalized.contains('fbm') ||
             normalized.contains('bois') ||
             normalized.contains('خشب')
         ? <String>{'fbm', 'bois', 'خشبي', 'خشب'}
@@ -1159,10 +1157,8 @@ class _AiScannerScreenState extends State<AiScannerScreen>
   void _showLinkToExistingDialog(ExtractedInvoiceItem item, int itemIndex) {
     final rankedSections = List<Map<String, dynamic>>.from(_catalogSections)
       ..sort(
-        (a, b) => _catalogMatchScore(
-          item,
-          b,
-        ).compareTo(_catalogMatchScore(item, a)),
+        (a, b) =>
+            _catalogMatchScore(item, b).compareTo(_catalogMatchScore(item, a)),
       );
     showDialog(
       context: context,

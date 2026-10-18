@@ -977,6 +977,9 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     );
     final sourceSectionId = (result?['section_id'] as num?)?.toInt();
     if (sourceSectionId == null) return;
+    final sourceSection = candidates.firstWhere(
+      (section) => (section['id'] as num?)?.toInt() == sourceSectionId,
+    );
     await widget.db.saveSectionSharingRule(
       sourceSectionId: sourceSectionId,
       targetScope: 'series',
@@ -984,13 +987,44 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
       roleKey: role.key,
     );
     if (mounted && _selectedSeries != null) {
-      await _selectSeries(_selectedSeries!);
+      // Update the role picker immediately from the row already loaded by the
+      // dialog. Re-reading every role, joint and formula made a simple share
+      // appear to freeze while unrelated tables were loading.
+      final sharedSection = Map<String, dynamic>.from(sourceSection)
+        ..['is_shared'] = 1
+        ..['sharing_role_key'] = role.key
+        ..['sharing_target_scope'] = 'series'
+        ..['sharing_target_id'] = targetSeriesId
+        ..['source_series_id'] = sourceSection['source_series_id'] ??
+            sourceSection['series_id']
+        ..['source_series_name'] = sourceSection['source_series_name'] ??
+            sourceSection['series_name']
+        ..['source_profile_name'] = sourceSection['source_profile_name'] ??
+            sourceSection['profile_name'];
+      setState(() {
+        final index = _sections.indexWhere(
+          (section) => (section['id'] as num?)?.toInt() == sourceSectionId,
+        );
+        if (index < 0) {
+          _sections = [..._sections, sharedSection];
+        } else {
+          _sections[index] = sharedSection;
+        }
+      });
       _showMessage(
         _t(
           'تمت مشاركة البروفيل. اختره من قائمة هذا الدور ثم اضغط حفظ.',
           'Profil partagé. Sélectionnez-le dans ce rôle puis enregistrez.',
         ),
       );
+      // Reconcile with the database without blocking the success message.
+      unawaited(() async {
+        final refreshed = await widget.db.readAvailableSectionsBySeries(
+          targetSeriesId,
+        );
+        if (!mounted || _seriesId != targetSeriesId) return;
+        setState(() => _sections = refreshed);
+      }());
     }
   }
 

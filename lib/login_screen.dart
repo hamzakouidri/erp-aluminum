@@ -51,6 +51,177 @@ bool _isWorkshopUser(Map<String, dynamic> data) {
       role == 'admin';
 }
 
+class _GoogleSignupDetails {
+  const _GoogleSignupDetails({
+    required this.name,
+    required this.workshopName,
+    required this.workshopCode,
+    required this.isWorker,
+  });
+
+  final String name;
+  final String workshopName;
+  final String workshopCode;
+  final bool isWorker;
+}
+
+class _GoogleSignupDetailsDialog extends StatefulWidget {
+  const _GoogleSignupDetailsDialog({
+    required this.language,
+    required this.initialName,
+    required this.initialWorkshopName,
+    required this.initialWorkshopCode,
+    required this.initialIsWorker,
+  });
+
+  final AppLanguage language;
+  final String initialName;
+  final String initialWorkshopName;
+  final String initialWorkshopCode;
+  final bool initialIsWorker;
+
+  @override
+  State<_GoogleSignupDetailsDialog> createState() =>
+      _GoogleSignupDetailsDialogState();
+}
+
+class _GoogleSignupDetailsDialogState
+    extends State<_GoogleSignupDetailsDialog> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _workshopNameController;
+  late final TextEditingController _workshopCodeController;
+  late bool _isWorker;
+  String _validationMessage = '';
+
+  String _t(String key) => Localization.translate(key, widget.language);
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.initialName);
+    _workshopNameController = TextEditingController(
+      text: widget.initialWorkshopName,
+    );
+    _workshopCodeController = TextEditingController(
+      text: widget.initialWorkshopCode,
+    );
+    _isWorker = widget.initialIsWorker;
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _workshopNameController.dispose();
+    _workshopCodeController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final name = _nameController.text.trim();
+    final workshopValue = _isWorker
+        ? _workshopCodeController.text.trim()
+        : _workshopNameController.text.trim();
+    if (name.isEmpty || workshopValue.isEmpty) {
+      setState(() {
+        _validationMessage = name.isEmpty
+            ? _t('أدخل الاسم الكامل.')
+            : _isWorker
+            ? _t('أدخل كود الورشة.')
+            : _t('أدخل اسم الورشة.');
+      });
+      return;
+    }
+
+    Navigator.pop(
+      context,
+      _GoogleSignupDetails(
+        name: name,
+        workshopName: _workshopNameController.text.trim(),
+        workshopCode: _workshopCodeController.text.trim().toUpperCase(),
+        isWorker: _isWorker,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(_t('أكمل بيانات الحساب')),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 430),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SegmentedButton<bool>(
+                segments: [
+                  ButtonSegment<bool>(
+                    value: false,
+                    icon: const Icon(Icons.storefront_outlined),
+                    label: Text(_t('مدير ورشة')),
+                  ),
+                  ButtonSegment<bool>(
+                    value: true,
+                    icon: const Icon(Icons.engineering_outlined),
+                    label: Text(_t('عامل')),
+                  ),
+                ],
+                selected: {_isWorker},
+                onSelectionChanged: (selection) => setState(() {
+                  _isWorker = selection.first;
+                  _validationMessage = '';
+                }),
+              ),
+              const SizedBox(height: 18),
+              TextField(
+                controller: _nameController,
+                textCapitalization: TextCapitalization.words,
+                decoration: InputDecoration(
+                  labelText: _t('الاسم الكامل'),
+                  prefixIcon: const Icon(Icons.person_outline_rounded),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _isWorker
+                    ? _workshopCodeController
+                    : _workshopNameController,
+                textCapitalization: _isWorker
+                    ? TextCapitalization.characters
+                    : TextCapitalization.words,
+                decoration: InputDecoration(
+                  labelText: _isWorker
+                      ? _t('كود الورشة')
+                      : _t('اسم الورشة'),
+                  prefixIcon: Icon(
+                    _isWorker
+                        ? Icons.key_outlined
+                        : Icons.storefront_outlined,
+                  ),
+                ),
+              ),
+              if (_validationMessage.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  _validationMessage,
+                  style: const TextStyle(color: Colors.red),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(_t('إلغاء')),
+        ),
+        FilledButton(onPressed: _submit, child: Text(_t('متابعة'))),
+      ],
+    );
+  }
+}
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -126,130 +297,27 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Future<bool> _collectGoogleSignupDetails({String suggestedName = ''}) async {
-    final nameController = TextEditingController(
-      text: _nameController.text.trim().isNotEmpty
-          ? _nameController.text.trim()
-          : suggestedName.trim(),
-    );
-    final workshopNameController = TextEditingController(
-      text: _workshopNameController.text.trim(),
-    );
-    final workshopCodeController = TextEditingController(
-      text: _workshopCodeController.text.trim(),
-    );
-    var worker = _isWorkerSignup;
-    var validationMessage = '';
-
-    final accepted = await showDialog<bool>(
+    final language = context.read<AppSettingsProvider>().language;
+    final details = await showDialog<_GoogleSignupDetails>(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('أكمل بيانات الحساب'),
-          content: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 430),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SegmentedButton<bool>(
-                    segments: const [
-                      ButtonSegment<bool>(
-                        value: false,
-                        icon: Icon(Icons.storefront_outlined),
-                        label: Text('مدير ورشة'),
-                      ),
-                      ButtonSegment<bool>(
-                        value: true,
-                        icon: Icon(Icons.engineering_outlined),
-                        label: Text('عامل'),
-                      ),
-                    ],
-                    selected: {worker},
-                    onSelectionChanged: (selection) => setDialogState(() {
-                      worker = selection.first;
-                      validationMessage = '';
-                    }),
-                  ),
-                  const SizedBox(height: 18),
-                  TextField(
-                    controller: nameController,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(
-                      labelText: 'الاسم الكامل',
-                      prefixIcon: Icon(Icons.person_outline_rounded),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: worker
-                        ? workshopCodeController
-                        : workshopNameController,
-                    textCapitalization: worker
-                        ? TextCapitalization.characters
-                        : TextCapitalization.words,
-                    decoration: InputDecoration(
-                      labelText: worker ? 'كود الورشة' : 'اسم الورشة',
-                      prefixIcon: Icon(
-                        worker
-                            ? Icons.key_outlined
-                            : Icons.storefront_outlined,
-                      ),
-                    ),
-                  ),
-                  if (validationMessage.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      validationMessage,
-                      style: const TextStyle(color: Colors.red),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('إلغاء'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final name = nameController.text.trim();
-                final workshopValue = worker
-                    ? workshopCodeController.text.trim()
-                    : workshopNameController.text.trim();
-                if (name.isEmpty || workshopValue.isEmpty) {
-                  setDialogState(() {
-                    validationMessage = name.isEmpty
-                        ? 'أدخل الاسم الكامل.'
-                        : worker
-                        ? 'أدخل كود الورشة.'
-                        : 'أدخل اسم الورشة.';
-                  });
-                  return;
-                }
-                _nameController.text = name;
-                _workshopNameController.text = workshopNameController.text
-                    .trim();
-                _workshopCodeController.text = workshopCodeController.text
-                    .trim()
-                    .toUpperCase();
-                _isWorkerSignup = worker;
-                Navigator.pop(dialogContext, true);
-              },
-              child: const Text('متابعة'),
-            ),
-          ],
-        ),
+      builder: (_) => _GoogleSignupDetailsDialog(
+        language: language,
+        initialName: _nameController.text.trim().isNotEmpty
+            ? _nameController.text.trim()
+            : suggestedName.trim(),
+        initialWorkshopName: _workshopNameController.text.trim(),
+        initialWorkshopCode: _workshopCodeController.text.trim(),
+        initialIsWorker: _isWorkerSignup,
       ),
     );
+    if (details == null || !mounted) return false;
 
-    nameController.dispose();
-    workshopNameController.dispose();
-    workshopCodeController.dispose();
-    if (mounted) setState(() {});
-    return accepted == true;
+    _nameController.text = details.name;
+    _workshopNameController.text = details.workshopName;
+    _workshopCodeController.text = details.workshopCode;
+    setState(() => _isWorkerSignup = details.isWorker);
+    return true;
   }
 
   bool _requireGmailAddress() {
@@ -809,7 +877,21 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
-  Future<void> _login() async {
+  /// Keeps the root gate on this screen until the flow has finished
+  /// validating (or rejecting) the new session. See
+  /// [AppAuthService.beginInteractiveSignIn].
+  Future<void> _withAuthHold(Future<void> Function() flow) async {
+    _auth.beginInteractiveSignIn();
+    try {
+      await flow();
+    } finally {
+      _auth.endInteractiveSignIn();
+    }
+  }
+
+  Future<void> _login() => _withAuthHold(_loginFlow);
+
+  Future<void> _loginFlow() async {
     if (!_requireGmailAddress()) return;
     setState(() {
       _isLoading = true;
@@ -911,7 +993,9 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  Future<void> _register() async {
+  Future<void> _register() => _withAuthHold(_registerFlow);
+
+  Future<void> _registerFlow() async {
     if (!_requireGmailAddress()) return;
     setState(() {
       _isLoading = true;
@@ -925,7 +1009,8 @@ class _LoginScreenState extends State<LoginScreen>
       // first membership lookup.
       await CloudSyncService().clearCachedWorkshopContext();
       final workshopName = _workshopNameController.text.trim();
-      final workshopCode = _workshopCodeController.text.trim();
+      final workshopCode =
+          _workshopCodeController.text.trim().toUpperCase();
       final personName = _nameController.text.trim();
       if (personName.isEmpty) {
         throw const AppAuthException(
@@ -1382,7 +1467,9 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
-  Future<void> _signInWithGoogle() async {
+  Future<void> _signInWithGoogle() => _withAuthHold(_signInWithGoogleFlow);
+
+  Future<void> _signInWithGoogleFlow() async {
     final usesDirectWindowsOAuth =
         !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
@@ -1425,7 +1512,7 @@ class _LoginScreenState extends State<LoginScreen>
             personName: _nameController.text.trim(),
             worker: _isWorkerSignup,
             workshopName: _workshopNameController.text.trim(),
-            workshopCode: _workshopCodeController.text.trim(),
+            workshopCode: _workshopCodeController.text.trim().toUpperCase(),
           );
           user = await _auth.signInWithGoogleIdToken(
             idToken: idToken,
@@ -1493,7 +1580,7 @@ class _LoginScreenState extends State<LoginScreen>
             personName: _nameController.text.trim(),
             worker: _isWorkerSignup,
             workshopName: _workshopNameController.text.trim(),
-            workshopCode: _workshopCodeController.text.trim(),
+            workshopCode: _workshopCodeController.text.trim().toUpperCase(),
           );
         }
 
@@ -1573,7 +1660,7 @@ class _LoginScreenState extends State<LoginScreen>
         }
         final prefs = await SharedPreferences.getInstance();
         final code = _isWorkerSignup
-            ? _workshopCodeController.text.trim()
+            ? _workshopCodeController.text.trim().toUpperCase()
             : _generateJoinCode();
         if (_isWorkerSignup && code.isEmpty) {
           throw const AppAuthException(

@@ -354,9 +354,15 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
             if (lenMm <= 0) continue;
             final explicitAngles = item.pieceCutAngles != null &&
                     pieceIndex < item.pieceCutAngles!.length
-                ? RegExp(r'\d+')
+                // Slanted cuts carry decimals ("31.7/45.0"); read each angle
+                // whole, then round it for the optimiser's integer angles.
+                ? RegExp(r'\d+(?:[.,]\d+)?')
                     .allMatches(item.pieceCutAngles![pieceIndex])
-                    .map((match) => int.tryParse(match.group(0) ?? ''))
+                    .map(
+                      (match) => double.tryParse(
+                        (match.group(0) ?? '').replaceAll(',', '.'),
+                      )?.round(),
+                    )
                     .whereType<int>()
                     .toList()
                 : const <int>[];

@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
+import 'package:database_data/services/share_filename_utils.dart';
 import 'package:database_data/widgets/app_material.dart';
 import 'package:database_data/Commande/order_workspace_screen.dart';
 import 'package:database_data/Screen/trash_screen.dart';
@@ -43,6 +44,7 @@ import 'package:database_data/widgets/numeric_filter_search_field.dart';
 import 'package:database_data/widgets/table_date_range_filter.dart';
 import 'package:database_data/widgets/desktop_scroll_behavior.dart';
 import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
 import '../services/auth_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'order_export_service.dart';
@@ -715,6 +717,81 @@ class _CommandeState extends State<Commande> {
         context,
         rootNavigator: true,
       ).push(MaterialPageRoute(builder: (_) => content));
+    }
+  }
+
+  Future<void> _shareCuttingSheetPdf(
+    Uint8List bytes,
+    String filename,
+    AppLanguage lang,
+  ) async {
+    final safeFilename = filename
+        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+        .replaceAll(RegExp(r'\s+'), '_');
+    try {
+      final XFile sharedFile;
+      if (!kIsWeb && Platform.isWindows) {
+        // Windows Share UI requires a real StorageFile path. Passing bytes in
+        // memory can fail before ShowShareUIForWindow and used to fall back to
+        // Printing, whose Windows behaviour is a save dialog.
+        final tempDirectory = await getTemporaryDirectory();
+        final file = File('${tempDirectory.path}\\$safeFilename');
+        await file.writeAsBytes(bytes, flush: true);
+        sharedFile = XFile(file.path, mimeType: 'application/pdf');
+      } else {
+        sharedFile = XFile.fromData(
+          bytes,
+          mimeType: 'application/pdf',
+          name: safeFilename,
+        );
+      }
+      final shareTitle = Localization.translate(
+        'ورقة التقطيع (Fiche de Coupe)',
+        lang,
+      );
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [sharedFile],
+          fileNameOverrides: [safeFilename],
+          title: shareTitle,
+          subject: shareTitle,
+          text: shareTitle,
+        ),
+      );
+    } catch (firstError) {
+      // Printing.sharePdf opens a save dialog on Windows, which is not a
+      // sharing experience. Never silently substitute it for Share UI there.
+      if (!kIsWeb && Platform.isWindows) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'تعذر فتح نافذة مشاركة Windows: $firstError',
+              style: const TextStyle(fontFamily: 'Cairo'),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+      try {
+        final shared = await Printing.sharePdf(
+          bytes: bytes,
+          filename: safeFilename,
+        );
+        if (!shared) throw firstError;
+      } catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${Localization.translate('خطأ في المشاركة: ', lang)}$error',
+              style: const TextStyle(fontFamily: 'Cairo'),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -3532,6 +3609,25 @@ class _CommandeState extends State<Commande> {
                             canChangeOrientation: false,
                             canChangePageFormat: false,
                             canDebug: false,
+                            allowSharing: false,
+                            actions: [
+                              IconButton(
+                                tooltip: Localization.translate(
+                                  'مشاركة',
+                                  lang,
+                                ),
+                                icon: const Icon(Icons.share_outlined),
+                                onPressed: () => _shareCuttingSheetPdf(
+                                  pdfBytes,
+                                  sharedPdfFilename(
+                                    documentType: 'Fiche_Coupe',
+                                    orderNumber: num,
+                                    clientName: _orderClientName(orderData),
+                                  ),
+                                  lang,
+                                ),
+                              ),
+                            ],
                             pdfFileName: 'Fiche_Coupe_$num.pdf',
                           ),
                         );
@@ -5380,6 +5476,22 @@ class _CommandeState extends State<Commande> {
               canChangeOrientation: false,
               canChangePageFormat: false,
               canDebug: false,
+              allowSharing: false,
+              actions: [
+                IconButton(
+                  tooltip: Localization.translate('مشاركة', lang),
+                  icon: const Icon(Icons.share_outlined),
+                  onPressed: () => _shareCuttingSheetPdf(
+                    pdfBytes,
+                    sharedPdfFilename(
+                      documentType: 'Fiche_Coupe',
+                      orderNumber: numStr,
+                      clientName: _orderClientName(orderData),
+                    ),
+                    lang,
+                  ),
+                ),
+              ],
               pdfFileName: 'Fiche_Coupe_$numStr.pdf',
             ),
           );
@@ -5782,7 +5894,7 @@ class _CommandeState extends State<Commande> {
       remise: remise,
       tva: tva,
       total: total,
-      netPayable: total - remise + ((total * tva) / 100),
+      netPayable: total - remise + (((total - remise) * tva) / 100),
       createdAt: DateTime.now().toUtc().toIso8601String(),
       details: copiedDetails,
     );
@@ -5942,6 +6054,72 @@ class _CommandeState extends State<Commande> {
           );
       }
     }
+  }
+
+  /// True when a worker already recorded progress on an allocation of this
+  /// order that has not been handed over to distribution.
+  Future<bool> _orderHasWorkerProgress(int orderId) async {
+    bool done(Object? value) =>
+        value == true || (value is num ? value.toInt() : 0) == 1;
+    for (final detail in await db.readCommandeDetails(orderId)) {
+      final detailId = (detail['id'] as num?)?.toInt() ?? 0;
+      if (detailId <= 0) continue;
+      for (final allocation in await db.readWorkerAllocations(detailId)) {
+        if (done(allocation['is_transferred_to_dist'])) continue;
+        if (done(allocation['is_manufactured']) ||
+            done(allocation['is_glass_installed']) ||
+            done(allocation['is_distributed']) ||
+            done(allocation['is_installed']) ||
+            done(allocation['is_completed']) ||
+            done(allocation['has_reserve'])) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  Future<bool?> _confirmWorkerProgressReset(AppLanguage lang) {
+    String tr(String ar, String fr, String en) => lang == AppLanguage.french
+        ? fr
+        : lang == AppLanguage.english
+        ? en
+        : ar;
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          tr(
+            'مسح تقدم العمال؟',
+            'Effacer l’avancement des ouvriers ?',
+            'Erase worker progress?',
+          ),
+        ),
+        content: Text(
+          tr(
+            'سجّل العمال تقدماً في هذه الطلبية (تصنيع، زجاج، تركيب، انتهاء أو تحفّظات). الرجوع إلى هذه الحالة سيمسح هذا التقدم نهائياً. هل تريد المتابعة؟',
+            'Des ouvriers ont enregistré un avancement sur cette commande (fabrication, vitrage, pose, achèvement ou réserves). Revenir à ce statut l’effacera définitivement. Continuer ?',
+            'Workers have recorded progress on this order (manufacturing, glass, installation, completion or reservations). Going back to this status will erase it permanently. Continue?',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(tr('إلغاء', 'Annuler', 'Cancel')),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(
+              tr('مسح ومتابعة', 'Effacer et continuer', 'Erase and continue'),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<bool> _areAllMeasurementsConfirmed(int orderId) async {
@@ -6241,9 +6419,25 @@ class _CommandeState extends State<Commande> {
                         } else {
                           Navigator.pop(dialogContext);
                         }
+                        var resetWorkerProgress = false;
+                        if (const {
+                          'Confirmed',
+                          'Pending',
+                          'In Progress',
+                        }.contains(stageKey)) {
+                          if (await _orderHasWorkerProgress(orderData['id'])) {
+                            if (!mounted) return;
+                            final confirmed = await _confirmWorkerProgressReset(
+                              lang,
+                            );
+                            if (confirmed != true || !mounted) return;
+                            resetWorkerProgress = true;
+                          }
+                        }
                         await db.updateCommandeStatus(
                           orderData['id'],
                           stageKey,
+                          resetWorkerProgress: resetWorkerProgress,
                         );
                         setState(() {
                           _data = db.readCommandesWithClients();

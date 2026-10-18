@@ -23,15 +23,40 @@ Deno.serve(async (req) => {
     const workerUids = [...new Set((input.worker_uids ?? []).map(String))];
     const audience = String(input.audience ?? "workers");
     const eventType = String(input.event_type ?? "worker_assignment");
-    const supportedAudience = ["managers", "order_viewers", "workers"];
-    if (!workshopId || !supportedAudience.includes(audience) ||
+    const supportedAudience = [
+      "managers",
+      "order_viewers",
+      "workers",
+      "all_managers",
+    ];
+    const isGlobalAudience = audience === "all_managers";
+    if ((!workshopId && !isGlobalAudience) ||
+      !supportedAudience.includes(audience) ||
       (audience === "workers" && workerUids.length === 0))
       return json({ error: "Missing workshop or recipients" }, 400);
 
     const admin = createClient(supabaseUrl, serviceKey);
-    const { data: member } = await admin.from("workshop_members")
-      .select("role,permissions,blocked").eq("workshop_id", workshopId)
-      .eq("user_id", user.id).maybeSingle();
+    const managerRoles = ["owner", "manager", "co_manager", "admin"];
+    // "all_managers" (e.g. new shared prices) reaches every workshop and is
+    // reserved for the application administrator.
+    let isAppAdmin = false;
+    if (isGlobalAudience) {
+      const { data: adminRow } = await admin.from("app_admins")
+        .select("user_id").eq("user_id", user.id).maybeSingle();
+      isAppAdmin = !!adminRow ||
+        (user.email ?? "").toLowerCase() === "kouidrihamza45@gmail.com";
+      if (!isAppAdmin) return json({ error: "Forbidden" }, 403);
+    }
+    // deno-lint-ignore no-explicit-any
+    let member: any = null;
+    if (isGlobalAudience) {
+      member = { role: "admin", permissions: {}, blocked: false };
+    } else {
+      const { data } = await admin.from("workshop_members")
+        .select("role,permissions,blocked").eq("workshop_id", workshopId)
+        .eq("user_id", user.id).maybeSingle();
+      member = data;
+    }
     const isManager = !!member &&
       ["owner", "manager", "co_manager", "admin"].includes(member.role);
     const isOrderEvent = eventType.startsWith("order_");
@@ -43,9 +68,11 @@ Deno.serve(async (req) => {
     }
 
     let recipientsQuery = admin.from("workshop_members")
-      .select("user_id,role,permissions,blocked").eq("workshop_id", workshopId)
-      .eq("blocked", false);
-    if (audience === "managers") {
+      .select("user_id,role,permissions,blocked").eq("blocked", false);
+    if (!isGlobalAudience) {
+      recipientsQuery = recipientsQuery.eq("workshop_id", workshopId);
+    }
+    if (audience === "managers" || isGlobalAudience) {
       recipientsQuery = recipientsQuery.in(
         "role",
         ["owner", "manager", "co_manager", "admin"],
@@ -59,15 +86,21 @@ Deno.serve(async (req) => {
         ["owner", "manager", "co_manager", "admin"].includes(row.role) ||
         row.permissions?.view_orders === true)
       .map((row) => row.user_id)
-      .filter((userId) => userId !== user.id);
+      .filter((userId, index, all) =>
+        userId !== user.id && all.indexOf(userId) === index);
     const preferenceType = String(input.preference_type ?? eventType);
     const { data: disabled } = await admin.from("notification_preferences")
       .select("user_id").eq("event_type", preferenceType).eq("enabled", false)
       .in("user_id", allowed);
     const disabledUsers = new Set((disabled ?? []).map((row) => row.user_id));
     allowed = allowed.filter((userId) => !disabledUsers.has(userId));
-    const { data: tokenRows } = await admin.from("device_push_tokens")
-      .select("token").eq("workshop_id", workshopId).in("user_id", allowed);
+    let tokenQuery = admin.from("device_push_tokens")
+      .select("token").in("user_id", allowed);
+    if (!isGlobalAudience) tokenQuery = tokenQuery.eq("workshop_id", workshopId);
+    const { data: rawTokenRows } = await tokenQuery;
+    const tokenRows = [...new Map(
+      (rawTokenRows ?? []).map((row) => [row.token, row]),
+    ).values()];
 
     const rawServiceAccount = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON") ?? "";
     if (!rawServiceAccount.trim().startsWith("{")) {
@@ -119,7 +152,9 @@ Deno.serve(async (req) => {
           },
           android: {
             priority: "high",
-            ttl: "86400s",
+            // Keep the message queued by FCM while the phone is off or
+            // offline (maximum allowed: 28 days) instead of only 24 hours.
+            ttl: "2419200s",
             notification: {
               channel_id: "erp_orders_alert_channel_v2",
               sound: "default",
@@ -134,18 +169,34 @@ Deno.serve(async (req) => {
         } }),
       });
       const responseBody = await response.text();
+      if (!response.ok &&
+        (response.status === 404 || responseBody.includes("UNREGISTERED"))) {
+        // Uninstalled app / expired token: drop it so it stops failing.
+        await admin.from("device_push_tokens").delete().eq("token", token);
+      }
       if (!response.ok) {
         return { ok: false, token, status: response.status, error: responseBody };
       }
       return { ok: true, token };
     }));
     const failed = results.filter((result) => !result.ok);
+    // Diagnostic line visible in Edge Functions > Logs.
+    console.log(JSON.stringify({
+      event: eventType,
+      audience,
+      recipients: allowed.length,
+      tokens: (tokenRows ?? []).length,
+      sent: results.length - failed.length,
+      failed: failed.length,
+      firstError: failed[0]?.error?.slice(0, 300) ?? null,
+    }));
     return json({
       sent: results.length - failed.length,
       failed: failed.length,
       errors: failed.slice(0, 5).map(({ status, error }) => ({ status, error })),
     }, failed.length === results.length && results.length > 0 ? 502 : 200);
   } catch (error) {
+    console.error("send-worker-assignment failed:", String(error));
     return json({ error: String(error) }, 500);
   }
 });

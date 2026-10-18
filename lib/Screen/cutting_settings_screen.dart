@@ -176,7 +176,7 @@ class _CuttingSettingsScreenState extends State<CuttingSettingsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(Localization.translate('إعدادات القص والفضلات', lang)),
+        title: Text(Localization.translate('القص والفضلات', lang)),
         actions: [
           IconButton(
             onPressed: _isLoading || _isSaving ? null : _saveSettings,
@@ -191,7 +191,7 @@ class _CuttingSettingsScreenState extends State<CuttingSettingsScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              Localization.translate('إعدادات القص والفضلات', lang),
+              Localization.translate('القص والفضلات', lang),
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,

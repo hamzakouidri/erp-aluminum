@@ -8,8 +8,25 @@ import 'package:flutter/material.dart';
 import 'package:database_data/settings/app_settings.dart' show AppLanguage;
 import '../../sql_database.dart';
 import 'package:database_data/utils/real_color_resolver.dart';
+import 'slanted_division.dart';
+import 'sash_hinges.dart';
+
+export 'slanted_division.dart';
+export 'sash_hinges.dart';
 
 enum DimensionTap { none, width, height }
+
+/// One outer dimension label as it was last painted (model coordinates).
+/// [key] says what a tap edits; [dragKey] names the row of dimensions that a
+/// drag moves along [normal], which points away from the frame.
+class DimensionLabelHit {
+  final String key;
+  final String dragKey;
+  final Rect rect;
+  final Offset normal;
+
+  const DimensionLabelHit(this.key, this.dragKey, this.rect, this.normal);
+}
 
 /// SQLite returns `Map<String, Object?>` rows.  Calls made through a dynamic
 /// database handle can otherwise preserve a lazy `MappedListIterable` whose
@@ -1334,6 +1351,11 @@ class WindowZone {
   Map<String, bool> slidingMontantReinforced;
   Map<String, bool> slidingMontantSlim;
   double middleHingeDragOffset;
+
+  /// Hinges the user placed by hand, by leaf: 0 for a single sash and for the
+  /// leaf on the left seen from inside, 1 for the other leaf of a double
+  /// sash. A missing leaf uses the automatic layout.
+  Map<int, SashHingeLayout> customHinges;
   double doubleSashRatio;
 
   /// Whether the exceptional two-handle configuration is enabled.
@@ -1359,6 +1381,10 @@ class WindowZone {
 
   /// Per-cell glass overrides — key is cellKey like 'main_cell_0_0'
   Map<String, GlassSpecification> cellGlassSpec;
+
+  /// Straight mullions crossing this fixed zone at an angle. Their cells are
+  /// keyed 'slant_cell_<i>' in [cellGlassSpec] (see SlantedDivisionGeometry).
+  List<SlantedDivider> slantedDividers;
 
   static GlassSpecification globalDefaultGlass = const GlassSpecification();
 
@@ -1430,7 +1456,11 @@ class WindowZone {
     this.isSubdivided = false,
     this.hasSashPlintheBottom = false,
     Map<String, GlassSpecification>? cellGlassSpec,
-  }) : slidingFaceToFace =
+    List<SlantedDivider>? slantedDividers,
+    Map<int, SashHingeLayout>? customHinges,
+  }) : slantedDividers = List<SlantedDivider>.of(slantedDividers ?? const []),
+       customHinges = Map<int, SashHingeLayout>.of(customHinges ?? const {}),
+       slidingFaceToFace =
            slidingFaceToFace ??
            isSlidingFaceToFaceLayout(
              trackCount: slidingTrackCount,
@@ -1529,8 +1559,12 @@ class WindowZone {
     cellGlassSpec: Map.from(
       cellGlassSpec.map((k, v) => MapEntry(k, v.clone())),
     ),
+    slantedDividers: slantedDividers,
+    customHinges: customHinges,
   );
 
+  /// Slanted divisions are not carried over: they belong to the geometry of
+  /// the zone being split.
   WindowZone cloneForSplit(Rect newBoundary) => WindowZone(
     id: UniqueKey().toString(),
     handlePositionRatio: handlePositionRatio,
@@ -1641,6 +1675,8 @@ class WindowZone {
     bool? isSubdivided,
     bool? hasSashPlintheBottom,
     Map<String, GlassSpecification>? cellGlassSpec,
+    List<SlantedDivider>? slantedDividers,
+    Map<int, SashHingeLayout>? customHinges,
   }) => WindowZone(
     id: id,
     handlePositionRatio: handlePositionRatio ?? this.handlePositionRatio,
@@ -1713,6 +1749,8 @@ class WindowZone {
     cellGlassSpec:
         cellGlassSpec ??
         Map.from(this.cellGlassSpec.map((k, v) => MapEntry(k, v.clone()))),
+    slantedDividers: slantedDividers ?? this.slantedDividers,
+    customHinges: customHinges ?? this.customHinges,
   );
 
   Map<String, String> getMergedCellMap({
@@ -2144,6 +2182,11 @@ List<Color> getEffectiveGradientColors(
       ];
     }
 
+    // Checked before the generic faux bois marron match below.
+    if (isLightBrownWoodName(name)) {
+      return const [Color(0xFFC08A5E), Color(0xFFA66C42), Color(0xFF7E4F2E)];
+    }
+
     if (name.contains('faux bois marron') ||
         name.contains('marron faux bois') ||
         (name.contains('marron') &&
@@ -2294,6 +2337,10 @@ Color getEffectiveBorderColor(
         name.contains('anthracite') ||
         name.contains('انترسيت')) {
       return const Color(0xFF303030);
+    }
+
+    if (isLightBrownWoodName(name)) {
+      return const Color(0xFF6A4127);
     }
 
     if (name.contains('wood') ||
@@ -3053,7 +3100,7 @@ class WindowModel extends ChangeNotifier {
       return;
     }
 
-    shutterMechanism = 'محرك';
+    _synchronizeShutterMechanismValue('محرك');
     final rows = await database.query(
       'ShutterComponents',
       where: '(is_active = 1 OR is_active IS NULL)',
@@ -3482,15 +3529,340 @@ class WindowModel extends ChangeNotifier {
     double? leftSlant,
     double? rightSlant,
     double? arch,
+    bool saveHistory = true,
   }) {
     if (!canBeArchedOrSlanted) return;
-    if (leftSlant != null) topSlantLeftY = leftSlant;
-    if (rightSlant != null) topSlantRightY = rightSlant;
-    if (arch != null) archHeight = arch;
-    if (archHeight > 0 || topSlantLeftY != 0 || topSlantRightY != 0) {
-      hasShutter = false;
+    final wantsShapedHead =
+        (arch ?? archHeight) > 0 ||
+        (leftSlant ?? topSlantLeftY) != 0 ||
+        (rightSlant ?? topSlantRightY) != 0;
+    var historySaved = false;
+    if (wantsShapedHead && hasShutter) {
+      // A roller shutter needs a straight head for its box; on a slanted or
+      // arched frame it is removed completely, and the zones are moved back
+      // up into the space the box used to take (before the limits below are
+      // measured on them).
+      if (saveHistory) _saveSnapshot();
+      historySaved = true;
+      if (componentOverrides['الصندوق (Caisson)']?['id'] == -999) {
+        componentOverrides.remove('الصندوق (Caisson)');
+      }
+      _applyShutterState(false);
     }
+    final next = clampTopShape(
+      leftSlant: leftSlant,
+      rightSlant: rightSlant,
+      arch: arch,
+    );
+    final nextLeft = next.left;
+    final nextRight = next.right;
+    final nextArch = next.arch;
+    if ((nextLeft - topSlantLeftY).abs() < 0.01 &&
+        (nextRight - topSlantRightY).abs() < 0.01 &&
+        (nextArch - archHeight).abs() < 0.01) {
+      if (historySaved) notifyListeners();
+      return;
+    }
+    if (saveHistory && !historySaved) _saveSnapshot();
+    topSlantLeftY = nextLeft;
+    topSlantRightY = nextRight;
+    archHeight = nextArch;
     notifyListeners();
+  }
+
+  /// Circle of the arched head's OUTER edge, or null without an arch. The arch
+  /// is a circular segment standing on the chord between the two top corners,
+  /// with [archHeight] as its sagitta (rise), never more than a semicircle.
+  ({Offset center, double radius, Offset apex})? headArc({
+    double? left,
+    double? right,
+    double? arch,
+    double topOffset = 0.0,
+  }) {
+    final rise = arch ?? archHeight;
+    if (rise <= 0 || width <= 0) return null;
+    final p0 = Offset(0, topOffset + (left ?? topSlantLeftY));
+    final p1 = Offset(width, topOffset + (right ?? topSlantRightY));
+    final chord = p1 - p0;
+    final c = chord.distance;
+    if (c <= 0) return null;
+    final s = math.min(rise, c / 2);
+    final d = chord / c;
+    // Unit normal pointing into the window (downwards for a level chord).
+    final n = Offset(-d.dy, d.dx);
+    final radius = c * c / (8 * s) + s / 2;
+    final mid = (p0 + p1) / 2;
+    return (center: mid + n * (radius - s), radius: radius, apex: mid - n * s);
+  }
+
+  /// Y of the head edge at [x], offset [inset] mm into the window measured
+  /// perpendicular to the edge: a parallel line under a slant, a concentric
+  /// circle under an arch. Frame, sash, glass and parclose all use it so
+  /// every band keeps a constant thickness.
+  double headEdgeY(
+    double x,
+    double inset, {
+    double topOffset = 0.0,
+    double? left,
+    double? right,
+    double? arch,
+  }) {
+    final l = left ?? topSlantLeftY;
+    final r = right ?? topSlantRightY;
+    final circle = headArc(left: l, right: r, arch: arch, topOffset: topOffset);
+    if (circle != null) {
+      final radius = math.max(0.0, circle.radius - inset);
+      final dx = x - circle.center.dx;
+      return circle.center.dy - math.sqrt(math.max(0.0, radius * radius - dx * dx));
+    }
+    if (l == 0 && r == 0 || width <= 0) return topOffset + inset;
+    final slope = (r - l) / width;
+    return topOffset + l + slope * x + inset * math.sqrt(1 + slope * slope);
+  }
+
+  /// Geometry of the slanted divisions of [zone] inside its clear rectangle,
+  /// optionally for a candidate list of [dividers].
+  SlantedDivisionGeometry slantedGeometryFor(
+    WindowZone zone, {
+    List<SlantedDivider>? dividers,
+  }) => SlantedDivisionGeometry(
+    clear: zone.boundary,
+    dividers: dividers ?? zone.slantedDividers,
+    profileWidth: mullionThickness,
+  );
+
+  /// Adds [divider] to the zone, or replaces the one with the same id. Returns
+  /// a translation key (nothing changes) when the result cannot be built.
+  String? setSlantedDivider(
+    String zoneId,
+    SlantedDivider divider, {
+    bool saveHistory = true,
+  }) {
+    final index = zones.indexWhere((z) => z.id == zoneId);
+    if (index == -1) return null;
+    final zone = zones[index];
+    if (zone.content != ZoneContent.fixedGlass &&
+        zone.content != ZoneContent.empty) {
+      return SlantedDivisionError.notFixedZone;
+    }
+    if (zone.innerH > 0 || zone.innerV > 0) {
+      return SlantedDivisionError.mixedDivisions;
+    }
+    if (hasArchOrSlant) {
+      final topRow = zones.map((z) => z.boundary.top).reduce(math.min);
+      if ((zone.boundary.top - topRow).abs() < 2.0) {
+        return SlantedDivisionError.underShapedHead;
+      }
+    }
+    final next = [
+      for (final d in zone.slantedDividers)
+        if (d.id != divider.id) d,
+      divider,
+    ];
+    final error = slantedGeometryFor(
+      zone,
+      dividers: next,
+    ).validate(minimumCellMm: minimumSashCellMm);
+    if (error != null) return error;
+    if (saveHistory) _saveSnapshot();
+    zone.slantedDividers = next;
+    // Cell glass keys follow the new cell order.
+    zone.cellGlassSpec = {
+      for (final entry in zone.cellGlassSpec.entries)
+        if (!entry.key.startsWith('slant_cell_')) entry.key: entry.value,
+    };
+    notifyListeners();
+    return null;
+  }
+
+  /// Translation key of the last rejected drawing action (e.g. a slanted
+  /// stroke that breaks a rule); the drawing page shows it and clears it.
+  String? drawingNotice;
+
+  /// Slanted mullion picked in the editor (shows its end handles).
+  ({String zoneId, String dividerId})? selectedSlantedDivider;
+
+  /// A slanted mullion being dragged: drawn instead of the stored one until
+  /// the drag ends; [error] is the rule it currently breaks, if any.
+  ({String zoneId, SlantedDivider divider, String? error})?
+  slantedDividerPreview;
+
+  List<SlantedDivider> slantedDividersShownFor(WindowZone zone) {
+    final preview = slantedDividerPreview;
+    if (preview == null || preview.zoneId != zone.id) {
+      return zone.slantedDividers;
+    }
+    return [
+      for (final d in zone.slantedDividers)
+        d.id == preview.divider.id ? preview.divider : d,
+    ];
+  }
+
+  WindowZone? _zoneById(String id) {
+    for (final z in zones) {
+      if (z.id == id) return z;
+    }
+    return null;
+  }
+
+  SlantedDivider? slantedDividerById(String zoneId, String dividerId) {
+    final zone = _zoneById(zoneId);
+    if (zone == null) return null;
+    for (final d in zone.slantedDividers) {
+      if (d.id == dividerId) return d;
+    }
+    return null;
+  }
+
+  /// Slanted mullion under [pos] within [slopMm] of its band.
+  ({String zoneId, String dividerId})? slantedDividerAt(
+    Offset pos, {
+    double slopMm = 0.0,
+  }) {
+    for (final zone in zones) {
+      if (zone.slantedDividers.isEmpty ||
+          !zone.boundary.inflate(slopMm).contains(pos)) {
+        continue;
+      }
+      final geometry = slantedGeometryFor(zone);
+      for (final d in zone.slantedDividers) {
+        if (geometry.distanceToDivider(d, pos) <=
+            mullionThickness / 2 + slopMm) {
+          return (zoneId: zone.id, dividerId: d.id);
+        }
+      }
+    }
+    return null;
+  }
+
+  void selectSlantedDivider(({String zoneId, String dividerId})? value) {
+    selectedSlantedDivider = value;
+    drawingRepaint.notifyListeners();
+    super.notifyListeners();
+  }
+
+  /// Moves one end of a slanted mullion as a preview (magnetic 10 mm steps
+  /// along the zone side under the pointer).
+  void previewSlantedDividerEnd(
+    String zoneId,
+    String dividerId, {
+    required bool atStart,
+    required Offset pointer,
+  }) {
+    final zone = _zoneById(zoneId);
+    final stored = slantedDividerById(zoneId, dividerId);
+    if (zone == null || stored == null) return;
+    final anchor = SlantedDivisionGeometry.nearestAnchor(
+      zone.boundary,
+      pointer,
+    );
+    final moved = atStart
+        ? stored.copyWith(start: anchor)
+        : stored.copyWith(end: anchor);
+    final candidate = [
+      for (final d in zone.slantedDividers)
+        d.id == dividerId ? moved : d,
+    ];
+    slantedDividerPreview = (
+      zoneId: zoneId,
+      divider: moved,
+      error: slantedGeometryFor(
+        zone,
+        dividers: candidate,
+      ).validate(minimumCellMm: minimumSashCellMm),
+    );
+    drawingRepaint.notifyListeners();
+  }
+
+  /// Applies the dragged preview (one undo step). Returns the rule it broke
+  /// as a translation key, in which case the mullion stays where it was.
+  String? commitSlantedDividerPreview() {
+    final preview = slantedDividerPreview;
+    slantedDividerPreview = null;
+    if (preview == null) return null;
+    final error = setSlantedDivider(preview.zoneId, preview.divider);
+    drawingRepaint.notifyListeners();
+    return error;
+  }
+
+  void removeSlantedDivider(String zoneId, String dividerId) {
+    final index = zones.indexWhere((z) => z.id == zoneId);
+    if (index == -1) return;
+    final zone = zones[index];
+    if (!zone.slantedDividers.any((d) => d.id == dividerId)) return;
+    if (selectedSlantedDivider?.dividerId == dividerId) {
+      selectedSlantedDivider = null;
+    }
+    _saveSnapshot();
+    zone.slantedDividers = [
+      for (final d in zone.slantedDividers)
+        if (d.id != dividerId) d,
+    ];
+    zone.cellGlassSpec = {
+      for (final entry in zone.cellGlassSpec.entries)
+        if (!entry.key.startsWith('slant_cell_')) entry.key: entry.value,
+    };
+    notifyListeners();
+  }
+
+  /// Head shape shown as a dashed ghost while a slant/arch handle is being
+  /// dragged; the frame itself only changes when the drag is released.
+  ({double left, double right, double arch})? topShapePreview;
+
+  void setTopShapePreview(({double left, double right, double arch})? value) {
+    topShapePreview = value;
+    drawingRepaint.notifyListeners();
+  }
+
+  /// Legal head shape for the requested values (null keeps the current one).
+  /// A corner may be raised above the top line (negative value) until that
+  /// jamb reaches one bar length, or lowered until a jamb or a top zone
+  /// would lose its minimum; a circular head rises at most half the width.
+  ({double left, double right, double arch}) clampTopShape({
+    double? leftSlant,
+    double? rightSlant,
+    double? arch,
+  }) {
+    final maxRaise = -math.max(0.0, maximumFrameBarLengthMm - height);
+    final left = (leftSlant ?? topSlantLeftY)
+        .clamp(maxRaise, maxTopSlantMm(left: true, otherSlant: rightSlant))
+        .toDouble();
+    final right = (rightSlant ?? topSlantRightY)
+        .clamp(maxRaise, maxTopSlantMm(left: false, otherSlant: left))
+        .toDouble();
+    final nextArch = (arch ?? archHeight)
+        .clamp(0.0, math.max(0.0, width / 2))
+        .toDouble();
+    return (left: left, right: right, arch: nextArch);
+  }
+
+  /// Largest drop of one top corner that keeps the jamb on that side and
+  /// every top-row zone above its minimum height. [otherSlant] is the drop
+  /// of the opposite corner (defaults to its current value).
+  double maxTopSlantMm({required bool left, double? otherSlant}) {
+    if (width <= 0 || height <= 0) return 0.0;
+    final other = (otherSlant ?? (left ? topSlantRightY : topSlantLeftY))
+        .clamp(-height, height)
+        .toDouble();
+    final bottomSlant = left ? bottomSlantLeftY : bottomSlantRightY;
+    var limit =
+        height - bottomSlant - profileThickness * 2 - minimumGlazingSpanMm;
+    if (zones.isNotEmpty) {
+      final innerTop = zones.map((z) => z.boundary.top).reduce(math.min);
+      for (final z in zones) {
+        if ((z.boundary.top - innerTop).abs() > 2.0) continue;
+        final room = z.boundary.height - minimumZoneSpanMm(z, isWidth: false);
+        for (final x in [z.boundary.left, z.boundary.right]) {
+          final t = (x / width).clamp(0.0, 1.0).toDouble();
+          // Drop of the top line at x: left*(1-t) + right*t.
+          final ownShare = left ? 1.0 - t : t;
+          final otherShare = 1.0 - ownShare;
+          if (ownShare < 0.01) continue;
+          limit = math.min(limit, (room - other * otherShare) / ownShare);
+        }
+      }
+    }
+    return math.max(0.0, limit);
   }
 
   AluminumProfileSystem? get system {
@@ -4450,6 +4822,191 @@ class WindowModel extends ChangeNotifier {
 
   double _limitFrameDimension(double value) =>
       value.clamp(200.0, maximumFrameBarLengthMm).toDouble();
+
+  /// Smallest side of one outer frame: 380 mm, or 250 mm when the other
+  /// side is at least one metre (a long, narrow frame is still buildable).
+  double minimumFrameSideFor(double otherSide) =>
+      otherSide >= 1000.0 ? 250.0 : 380.0;
+
+  /// Applies [_limitFrameDimension] and the 380/250 mm frame rule together.
+  Size _limitFrameSize(double w, double h) {
+    w = _limitFrameDimension(w);
+    h = _limitFrameDimension(h);
+    w = math.max(w, minimumFrameSideFor(h));
+    h = math.max(h, minimumFrameSideFor(w));
+    return Size(w, h);
+  }
+
+  /// Legal outer size of the physical frame holding [zoneId]. A legacy frame
+  /// already below the rule stays editable at its current size.
+  ({double min, double max}) frameOuterLimits(
+    String zoneId, {
+    required bool isWidth,
+  }) {
+    final rect = frameRectForZone(zoneId) ?? Rect.fromLTWH(0, 0, width, height);
+    final current = isWidth ? rect.width : rect.height;
+    final other = isWidth ? rect.height : rect.width;
+    var min = minimumFrameSideFor(other);
+    if (current > 0 && current < min) min = current;
+    return (min: min, max: maximumFrameBarLengthMm);
+  }
+
+  /// Smallest glazed strip kept inside any zone or leaf, so a division can
+  /// never collapse into a sliver that cannot be manufactured.
+  static const double minimumGlazingSpanMm = 50.0;
+
+  /// Smallest clear glass between two internal sash divisions (petits bois /
+  /// traverses inside one leaf).
+  static const double minimumSashCellMm = 80.0;
+
+  /// Smallest clear opening a zone may keep along one axis. A fixed glass
+  /// only needs its glazing strip; an opening sash must also fit both of its
+  /// sash bars (minus the rebate overlap it shares with the frame).
+  double minimumZoneSpanMm(WindowZone zone, {required bool isWidth}) {
+    final sashT =
+        zone.sashThickness ?? getSectionThickness('sash', fallback: 45.0);
+    final overlap = openingSashOverlap.clamp(0.0, sashT).toDouble();
+    final leaf = 2 * sashT + minimumGlazingSpanMm;
+    switch (zone.content) {
+      case ZoneContent.singleSash:
+        return math.max(minimumGlazingSpanMm, leaf - 2 * overlap);
+      case ZoneContent.doubleSash:
+        if (!isWidth) {
+          return math.max(minimumGlazingSpanMm, leaf - 2 * overlap);
+        }
+        // The narrower leaf must still fit its own bars at the current ratio.
+        final narrowest = math
+            .min(zone.doubleSashRatio, 1.0 - zone.doubleSashRatio)
+            .clamp(0.15, 0.5)
+            .toDouble();
+        return math.max(minimumGlazingSpanMm, leaf / narrowest - 2 * overlap);
+      case ZoneContent.slidingSash:
+        if (!isWidth) return leaf;
+        final count = math.max(1, zone.slidingSashesCount);
+        return count * (sashT + minimumGlazingSpanMm);
+      case ZoneContent.empty:
+      case ZoneContent.fixedGlass:
+        return minimumGlazingSpanMm;
+    }
+  }
+
+  /// Smallest outer width/height the current layout can be resized to while
+  /// every zone keeps [minimumZoneSpanMm]. [_rescaleZonesInternal] scales all
+  /// glazed spans by one factor and keeps mullions and frame bars fixed, so
+  /// the limit is reached when the most constrained zone hits its minimum.
+  double minimumOuterDimensionForLayout({required bool isWidth}) {
+    const absoluteMinimum = 200.0;
+    if (zones.isEmpty || isShutterOnly) return absoluteMinimum;
+    double startOf(WindowZone z) => isWidth ? z.boundary.left : z.boundary.top;
+    double endOf(WindowZone z) =>
+        isWidth ? z.boundary.right : z.boundary.bottom;
+
+    final total = isWidth ? width : height;
+    final innerStart = zones.map(startOf).reduce(math.min);
+    final innerEnd = zones.map(endOf).reduce(math.max);
+    final coords = [...zones.map(startOf), ...zones.map(endOf)]..sort();
+    final edges = <double>[];
+    for (final c in coords) {
+      if (edges.isEmpty || c - edges.last > 2.0) edges.add(c);
+    }
+
+    double zoneSpanTotal = 0.0;
+    double fixedSpanTotal = 0.0;
+    for (var i = 0; i < edges.length - 1; i++) {
+      final span = edges[i + 1] - edges[i];
+      final mid = (edges[i] + edges[i + 1]) / 2;
+      final covered = zones.any((z) => startOf(z) <= mid && mid <= endOf(z));
+      if (covered) {
+        zoneSpanTotal += span;
+      } else {
+        fixedSpanTotal += span;
+      }
+    }
+
+    double requiredScale = 0.0;
+    for (final z in zones) {
+      final span = endOf(z) - startOf(z);
+      if (span <= 0) continue;
+      requiredScale = math.max(
+        requiredScale,
+        minimumZoneSpanMm(z, isWidth: isWidth) / span,
+      );
+    }
+
+    final margins = innerStart + (total - innerEnd);
+    return math.max(
+      absoluteMinimum,
+      margins + fixedSpanTotal + zoneSpanTotal * requiredScale,
+    );
+  }
+
+  /// Legal outer size range for the whole drawing along one axis. A legacy
+  /// drawing that already breaks the minimum stays editable at its current
+  /// size instead of being forced to grow.
+  ({double min, double max}) outerDimensionLimits({
+    required bool isWidth,
+    double? otherSide,
+  }) {
+    if (isShutterOnly) {
+      return isWidth
+          ? (min: 200.0, max: maximumShutterBarLengthMm)
+          : (min: 100.0, max: 10000.0);
+    }
+    final max = maximumFrameBarLengthMm;
+    final current = isWidth ? width : height;
+    final layoutMin = minimumOuterDimensionForLayout(isWidth: isWidth);
+    var min = math.max(
+      layoutMin,
+      // [otherSide] is the requested size of the other axis, when both
+      // change together (the 250 mm exception depends on it).
+      minimumFrameSideFor(otherSide ?? (isWidth ? height : width)),
+    );
+    // Only a drawing that already breaks the rule at its current sizes keeps
+    // its current size as the floor; a valid one must stay valid.
+    final minNow = math.max(
+      layoutMin,
+      minimumFrameSideFor(isWidth ? height : width),
+    );
+    if (current > 0 && current < minNow) min = math.max(200.0, current);
+    return (min: math.min(min, max), max: max);
+  }
+
+  /// Legal clear size range for one zone between its neighbours. The size
+  /// taken from (or given to) the neighbour keeps the total width/height
+  /// unchanged, so the parts always add up to the frame.
+  ({double min, double max})? innerSizeLimits(String zoneId, bool isWidth) {
+    final index = zones.indexWhere((z) => z.id == zoneId);
+    if (index == -1 || !_hasNeighbourAcrossEdge(zones[index], isWidth)) {
+      return null;
+    }
+    final min = minimumZoneSpanMm(zones[index], isWidth: isWidth);
+    final max = getMaxAllowedInnerSize(zoneId, isWidth);
+    if (max < min) return null;
+    return (min: min, max: max);
+  }
+
+  /// Whether the edge [resizeZoneInner] would move is shared with another
+  /// zone. Without a neighbour the edge is the frame itself and moving it
+  /// would detach the zone from its frame bar.
+  bool _hasNeighbourAcrossEdge(WindowZone zone, bool isWidth) {
+    final r = zone.boundary;
+    final gap = divisionThickness + 4;
+    bool overlapsAcross(Rect n) => isWidth
+        ? math.max(r.top, n.top) < math.min(r.bottom, n.bottom) - 2
+        : math.max(r.left, n.left) < math.min(r.right, n.right) - 2;
+    final isLast = isWidth
+        ? !zones.any((z) => z.boundary.left > r.right - 2)
+        : !zones.any((z) => z.boundary.top > r.bottom - 2);
+    return zones.any((other) {
+      if (identical(other, zone)) return false;
+      final n = other.boundary;
+      if (!overlapsAcross(n)) return false;
+      final distance = isWidth
+          ? (isLast ? r.left - n.right : n.left - r.right)
+          : (isLast ? r.top - n.bottom : n.top - r.bottom);
+      return distance >= -1 && distance <= gap;
+    });
+  }
 
   bool get isFramePVC => _isPvcSeries(activeFrameSeries);
 
@@ -5887,6 +6444,7 @@ class WindowModel extends ChangeNotifier {
     shutterSplits = newSplits;
     _saveSnapshot();
     notifyListeners();
+    unawaited(updateShutterDefaultsIfNeeded());
   }
 
   /// تقسيم الصندوق لإطار واحد بعدة عروض (البداية من اليمين كقاعدة أساسية)
@@ -5949,6 +6507,7 @@ class WindowModel extends ChangeNotifier {
     shutterSplits = newSplits;
     _saveSnapshot();
     notifyListeners();
+    unawaited(updateShutterDefaultsIfNeeded());
   }
 
   /// تخصيص أو تصغير ارتفاع الستار لصندوق/إطار معين
@@ -5996,6 +6555,7 @@ class WindowModel extends ChangeNotifier {
     shutterSplits.clear();
     _saveSnapshot();
     notifyListeners();
+    unawaited(updateShutterDefaultsIfNeeded());
   }
 
   /// مزامنة وتمديد الستار تلقائياً عند تمديد أو تغيير أبعاد الإطارات
@@ -6071,6 +6631,38 @@ class WindowModel extends ChangeNotifier {
 
   String shutterDriveSide = 'left';
 
+  void _synchronizeShutterMechanismValue(String mechanism) {
+    shutterMechanism = mechanism;
+    if (isShutterSplit) {
+      shutterSplits = shutterSplits
+          .map((split) => split.copyWith(mechanism: mechanism))
+          .toList();
+    }
+  }
+
+  /// Applies the selected mechanism to both the unified shutter and every
+  /// existing split. Keeping only the top-level value in sync caused the
+  /// drawing controls and the calculated shutter kits to disagree.
+  void setAllShutterMechanism(String requestedMechanism) {
+    final mechanism = switch (requestedMechanism) {
+      'مانيفال' || 'مانيفر' => 'منايفال',
+      'محرك' => 'محرك',
+      _ => 'حزام',
+    };
+    final splitsAlreadyMatch = shutterSplits.every(
+      (split) => (split.mechanism ?? shutterMechanism) == mechanism,
+    );
+    if (shutterMechanism == mechanism && splitsAlreadyMatch) return;
+
+    _saveSnapshot();
+    _synchronizeShutterMechanismValue(mechanism);
+    if (mechanism != 'محرك') {
+      motorHasInterrupteur = false;
+      motorHasTelecommande = false;
+    }
+    notifyListeners();
+  }
+
   void setAllShutterDriveSide(String side) {
     shutterDriveSide = side;
     if (isShutterSplit) {
@@ -6089,19 +6681,32 @@ class WindowModel extends ChangeNotifier {
     _shutterBladeWarningCatalogue = blades;
   }
 
+  /// Blade capacity is checked against the widest independent shutter, not
+  /// the full window opening. Once the box is split, every section has its
+  /// own curtain and may therefore use the smallest blade that supports it.
+  double get effectiveShutterBladeWidthMm {
+    final splits = effectiveShutterSplits;
+    if (splits.isEmpty) return width.toDouble();
+    return splits.fold<double>(
+      0.0,
+      (widest, split) => math.max(widest, split.width),
+    );
+  }
+
   Map<String, dynamic>? get recommendedShutterBlade {
     if (!hasShutter) return null;
     final raw = componentOverrides['الشرائح (Lames)'];
     if (raw is! Map) return null;
     final blade = Map<String, dynamic>.from(raw);
     final limit = _shutterBladeEffectiveMaxWidthMm(blade);
-    if (width <= limit) return null;
+    final requiredWidth = effectiveShutterBladeWidthMm;
+    if (requiredWidth <= limit) return null;
 
     final candidates =
         _shutterBladeWarningCatalogue
             .where(
               (candidate) =>
-                  _shutterBladeEffectiveMaxWidthMm(candidate) >= width,
+                  _shutterBladeEffectiveMaxWidthMm(candidate) >= requiredWidth,
             )
             .toList()
           ..sort((a, b) {
@@ -6133,7 +6738,7 @@ class WindowModel extends ChangeNotifier {
     if (subtype == 'extruded' ||
         name.contains('extruded') ||
         name.contains('إكسترودي')) {
-      shutterMechanism = 'محرك';
+      _synchronizeShutterMechanismValue('محرك');
     }
     shutterMaximumWidthMm = _shutterBladeConfiguredMaxWidthMm(
       automaticSelection,
@@ -6149,11 +6754,12 @@ class WindowModel extends ChangeNotifier {
     if (raw is! Map) return null;
     final blade = Map<String, dynamic>.from(raw);
     final limit = _shutterBladeEffectiveMaxWidthMm(blade);
-    if (width <= limit) return null;
+    final requiredWidth = effectiveShutterBladeWidthMm;
+    if (requiredWidth <= limit) return null;
 
     final recommended = recommendedShutterBlade;
     final bladeName = blade['name']?.toString() ?? shutterLame;
-    final wStr = width.toStringAsFixed(0);
+    final wStr = requiredWidth.toStringAsFixed(0);
     final limitStr = limit.toStringAsFixed(0);
 
     if (lang == AppLanguage.french) {
@@ -6290,6 +6896,23 @@ class WindowModel extends ChangeNotifier {
   bool useSystemOB = false;
   bool useDemiOB = false;
   bool useVerrouCentral = false;
+
+  /// Aluminium opening parclose cutting. `45` cuts every piece at the inner
+  /// glazing size (mitred, like PVC). `90_length` keeps the vertical pieces
+  /// full and shortens the horizontal ones by 2 x the parclose glass
+  /// deduction; `90_width` does the opposite.
+  String parcloseCutMode = '45';
+
+  bool get parcloseCutAt90 =>
+      parcloseCutMode == '90_length' || parcloseCutMode == '90_width';
+
+  void setParcloseCutMode(String mode) {
+    const allowed = {'45', '90_length', '90_width'};
+    final next = allowed.contains(mode) ? mode : '45';
+    if (parcloseCutMode == next) return;
+    parcloseCutMode = next;
+    notifyListeners();
+  }
 
   List<Map<String, dynamic>> systemObComponents = [];
   List<Map<String, dynamic>> verrouCentralComponents = [];
@@ -6752,6 +7375,111 @@ class WindowModel extends ChangeNotifier {
     }
   }
 
+  /// Workshop instruction printed in the side-cover cut row: for every cover
+  /// piece that does not span its whole side (or has a special width) state
+  /// where it starts and stops, measured from the nearest outer edge(s), e.g.
+  /// "from the very top to 70 cm" or "from the top: 10 → 70 cm (from the
+  /// bottom: 150 → 210 cm)". Returns null when every piece is standard.
+  String? sideCoverWarningText({
+    required bool integrated,
+    required double fallbackWidth,
+    AppLanguage lang = AppLanguage.arabic,
+  }) {
+    if (!hasSideCovers || fallbackWidth <= 0) return null;
+    String t(String ar, String fr, String en) => switch (lang) {
+      AppLanguage.french => fr,
+      AppLanguage.english => en,
+      _ => ar,
+    };
+    String sideLabel(String side) => switch (side) {
+      'left' => t('يسار', 'Gauche', 'Left'),
+      'right' => t('يمين', 'Droite', 'Right'),
+      'top' => t('أعلى', 'Haut', 'Top'),
+      'bottom' => t('أسفل', 'Bas', 'Bottom'),
+      _ => side,
+    };
+    String cm(double millimetres) {
+      final value = millimetres / 10.0;
+      return value.toStringAsFixed(value == value.roundToDouble() ? 0 : 1);
+    }
+
+    final unit = t('سم', 'cm', 'cm');
+    final details = <String>[];
+    for (final segment in effectiveSideCoverSegments) {
+      if (segment.endOffset <= segment.startOffset) continue;
+      final width = segment.visibleWidth > 0
+          ? segment.visibleWidth
+          : fallbackWidth;
+      final sideLength = sideCoverSideLength(segment.side);
+      final start = segment.startOffset.clamp(0.0, sideLength).toDouble();
+      final end = segment.endOffset.clamp(0.0, sideLength).toDouble();
+      final reachesStart = start <= 0.1;
+      final reachesEnd = sideLength > 0 && (sideLength - end).abs() <= 0.1;
+      final hasSpecialSpan = !(reachesStart && reachesEnd);
+      final hasSpecialWidth =
+          segment.visibleWidth > 0 &&
+          (segment.visibleWidth - fallbackWidth).abs() > 0.1;
+      if (!hasSpecialSpan && !hasSpecialWidth) continue;
+
+      final vertical = segment.side == 'left' || segment.side == 'right';
+      final fromStart = vertical
+          ? t('من الأعلى', 'depuis le haut', 'from the top')
+          : t('من اليسار', 'depuis la gauche', 'from the left');
+      final fromEnd = vertical
+          ? t('من الأسفل', 'depuis le bas', 'from the bottom')
+          : t('من اليمين', 'depuis la droite', 'from the right');
+      final startEdge = vertical
+          ? t('أقصى الأعلى', 'tout en haut', 'the very top')
+          : t('أقصى اليسار', 'tout à gauche', 'the far left');
+      final endEdge = vertical
+          ? t('أقصى الأسفل', 'tout en bas', 'the very bottom')
+          : t('أقصى اليمين', 'tout à droite', 'the far right');
+
+      var spanText = '';
+      if (hasSpecialSpan) {
+        final length = cm(end - start);
+        final lengthText = t(
+          'بطول $length $unit',
+          'longueur $length $unit',
+          'length $length $unit',
+        );
+        if (reachesStart) {
+          spanText = t(
+            'يبدأ من $startEdge (0) إلى ${cm(end)} $unit، $lengthText',
+            'part de $startEdge (0) jusqu’à ${cm(end)} $unit, $lengthText',
+            'starts at $startEdge (0) up to ${cm(end)} $unit, $lengthText',
+          );
+        } else if (reachesEnd) {
+          spanText = t(
+            'يبدأ من $endEdge (0) إلى ${cm(sideLength - start)} $unit، $lengthText',
+            'part de $endEdge (0) jusqu’à ${cm(sideLength - start)} $unit, $lengthText',
+            'starts at $endEdge (0) up to ${cm(sideLength - start)} $unit, $lengthText',
+          );
+        } else {
+          spanText = t(
+            '$fromStart: من ${cm(start)} إلى ${cm(end)} $unit '
+                '($fromEnd: من ${cm(sideLength - end)} إلى ${cm(sideLength - start)} $unit)، $lengthText',
+            '$fromStart : de ${cm(start)} à ${cm(end)} $unit '
+                '($fromEnd : de ${cm(sideLength - end)} à ${cm(sideLength - start)} $unit), $lengthText',
+            '$fromStart: ${cm(start)} to ${cm(end)} $unit '
+                '($fromEnd: ${cm(sideLength - end)} to ${cm(sideLength - start)} $unit), $lengthText',
+          );
+        }
+        spanText = '$spanText${t('، ', ', ', ', ')}';
+      }
+      details.add(
+        '${sideLabel(segment.side)}: $spanText'
+        '${t('عرضه الظاهر', 'largeur visible', 'visible width')} ${cm(width)} $unit',
+      );
+    }
+    if (details.isEmpty) return null;
+    final kind = integrated
+        ? t('المدمج', 'intégré', 'integrated')
+        : t('المنفصل', 'séparé', 'separate');
+    return '${t('تنبيه الغطاء الجانبي', 'Attention couvre-joint', 'Warning side cover')} '
+        '$kind: ${details.join(t('؛ ', ' ; ', '; '))}';
+  }
+
   SideCoverSegment? sideCoverSegmentForSide(String side) {
     final normalized = side.toLowerCase();
     for (final segment in sideCoverSegments) {
@@ -7116,6 +7844,33 @@ class WindowModel extends ChangeNotifier {
         final updated = Map<String, dynamic>.from(rawOverride);
         updated['calculated_price'] = price;
         componentOverrides[entry.key] = updated;
+      }
+      // The selected frame, sash and cover profiles carry their own
+      // `calculated_price`, which the BOM reads before the colour cache. They
+      // must follow the new colour too, otherwise they keep the old tariff.
+      Map<String, dynamic>? repriced(Map<String, dynamic>? selection) {
+        if (selection == null) return null;
+        final rawId = selection['id'];
+        final id = rawId is num
+            ? rawId.toInt()
+            : int.tryParse(rawId?.toString() ?? '');
+        final price = id == null ? null : sectionPricesForSelectedColor[id];
+        if (price == null) return selection;
+        return Map<String, dynamic>.from(selection)
+          ..['calculated_price'] = price;
+      }
+
+      frameOverride = repriced(frameOverride);
+      sashOverride = repriced(sashOverride);
+      slidingFrameOverride = repriced(slidingFrameOverride);
+      slidingSashOverride = repriced(slidingSashOverride);
+      sideCoverOverride = repriced(sideCoverOverride);
+      for (final zone in zones) {
+        zone.sashOverride = repriced(zone.sashOverride);
+        zone.slidingSashOverride = repriced(zone.slidingSashOverride);
+      }
+      for (final entry in mullionSectionOverrides.entries.toList()) {
+        mullionSectionOverrides[entry.key] = repriced(entry.value)!;
       }
       if (notify) notifyListeners();
     } catch (error) {
@@ -7498,6 +8253,12 @@ class WindowModel extends ChangeNotifier {
   bool? _lastHasShutter;
   bool? _lastIsCaissonTunnel;
   double? _lastShutterBoxHeight;
+  double? _lastHeadRise;
+
+  /// How far the head (arch and/or a raised slant corner) rises above the
+  /// nominal top line; the camera, wall and dimensions must make room for it.
+  double get headRiseMm =>
+      archHeight + math.max(0.0, -math.min(topSlantLeftY, topSlantRightY));
   double _maxObservedLayoutHeight = 0.0;
 
   final SqlDatabase db;
@@ -7537,10 +8298,9 @@ class WindowModel extends ChangeNotifier {
     final previousColorHex = _profileColorHex(preferredColor);
     colorsLoading = true;
     availableColors = [];
-    _selectedDbColor = null;
-    for (final zone in zones) {
-      zone.selectedDbColor = null;
-    }
+    // Keep the current colour painted while the palette loads. Clearing it
+    // here drew the item white for a moment, and every catalogue reload made
+    // an edited item blink between its real colour and white.
     notifyListeners();
 
     List<Map<String, dynamic>> loadedColors;
@@ -10502,11 +11262,15 @@ class WindowModel extends ChangeNotifier {
 
     // Fetch linked renforts for the overrides
     final d = await db.db;
-    final colorId = selectedDbColor?['id'] as int?;
+    final rawColorId = selectedDbColor?['id'];
+    final colorId = rawColorId is num
+        ? rawColorId.toInt()
+        : int.tryParse('${rawColorId ?? ''}');
     if (d != null) {
       // 🟢 جلب سعر الإطار (frameOverride) من قاعدة البيانات
       if (frameOverride != null) {
-        final fId = frameOverride!['id'] as int?;
+        final rawFId = frameOverride!['id'];
+        final fId = rawFId is num ? rawFId.toInt() : int.tryParse('${rawFId ?? ''}');
         if (fId != null) {
           double fPrice = await db.getSectionPrice(fId, colorId);
           if (fPrice == 800.0) fPrice = 0.0;
@@ -10517,18 +11281,26 @@ class WindowModel extends ChangeNotifier {
 
       // 🟢 جلب سعر الظلفة (sashOverride) من قاعدة البيانات
       if (sashOverride != null) {
-        final sId = sashOverride!['id'] as int?;
+        final rawSId = sashOverride!['id'];
+        final sId = rawSId is num ? rawSId.toInt() : int.tryParse('${rawSId ?? ''}');
         if (sId != null) {
           double sPrice = await db.getSectionPrice(sId, colorId);
           if (sPrice == 800.0) sPrice = 0.0;
           sashOverride = Map<String, dynamic>.from(sashOverride!);
           sashOverride!['calculated_price'] = sPrice;
+          for (final z in zones) {
+            if (z.sashOverride != null) {
+              z.sashOverride = Map<String, dynamic>.from(z.sashOverride!);
+              z.sashOverride!['calculated_price'] = sPrice;
+            }
+          }
         }
       }
 
       // 🟢 جلب سعر التغطية الجانبية (sideCoverOverride) من قاعدة البيانات
       if (sideCoverOverride != null) {
-        final scId = sideCoverOverride!['id'] as int?;
+        final rawScId = sideCoverOverride!['id'];
+        final scId = rawScId is num ? rawScId.toInt() : int.tryParse('${rawScId ?? ''}');
         if (scId != null) {
           double scPrice = await db.getSectionPrice(scId, colorId);
           if (scPrice == 800.0) scPrice = 0.0;
@@ -11643,7 +12415,7 @@ class WindowModel extends ChangeNotifier {
           bladeName.contains('extruded') ||
           bladeName.contains('إكسترودي') ||
           (isPVC && !isCaissonTunnel && _isX3dShutterComponent(blade))) {
-        shutterMechanism = 'محرك';
+        _synchronizeShutterMechanismValue('محرك');
       }
     }
 
@@ -11652,7 +12424,8 @@ class WindowModel extends ChangeNotifier {
     // preferred, which prevents a weak blade from being used while avoiding
     // an unnecessarily oversized blade.  A manual choice is never replaced:
     // it remains in the drawing/BOM and receives a clear warning instead.
-    if (database != null && width > 0) {
+    final requiredBladeWidthMm = effectiveShutterBladeWidthMm;
+    if (database != null && requiredBladeWidthMm > 0) {
       try {
         final bladeRows = await database.query(
           'ShutterComponents',
@@ -11679,19 +12452,24 @@ class WindowModel extends ChangeNotifier {
           final currentLimit = blade == null
               ? 0.0
               : _shutterBladeEffectiveMaxWidthMm(blade);
-          final currentSupportsWidth = blade != null && currentLimit >= width;
+          final currentSupportsWidth =
+              blade != null && currentLimit >= requiredBladeWidthMm;
+          final compatible = blades
+              .where(
+                (candidate) =>
+                    _shutterBladeEffectiveMaxWidthMm(candidate) >=
+                    requiredBladeWidthMm,
+              )
+              .toList();
+          final replacement = compatible.isNotEmpty
+              ? compatible.first
+              : blades.last;
+          final replacementId = (replacement['id'] as num?)?.toInt();
 
-          if (!currentSupportsWidth) {
-            final compatible = blades
-                .where(
-                  (candidate) =>
-                      _shutterBladeEffectiveMaxWidthMm(candidate) >= width,
-                )
-                .toList();
-            final replacement = compatible.isNotEmpty
-                ? compatible.first
-                : blades.last;
-            final replacementId = (replacement['id'] as num?)?.toInt();
+          // Re-evaluate automatic choices in both directions. A wider opening
+          // may upgrade to X3D, while splitting that opening must downgrade to
+          // the smallest suitable normal blade instead of keeping X3D.
+          if (!currentSupportsWidth || replacementId != currentId) {
             if (replacementId != null && replacementId != currentId) {
               final automaticSelection = Map<String, dynamic>.from(replacement)
                 ..['manual_selection'] = false
@@ -11716,7 +12494,7 @@ class WindowModel extends ChangeNotifier {
               replacementName.contains('extruded') ||
               replacementName.contains('إكسترودي') ||
               (isPVC && !isCaissonTunnel && _isX3dShutterComponent(blade))) {
-            shutterMechanism = 'محرك';
+            _synchronizeShutterMechanismValue('محرك');
           }
           shutterMaximumWidthMm = _shutterBladeConfiguredMaxWidthMm(blade);
         }
@@ -13569,8 +14347,9 @@ class WindowModel extends ChangeNotifier {
 
   void rescaleZones(double oldW, double oldH, double newW, double newH) {
     if (oldW <= 0 || oldH <= 0 || newW <= 0 || newH <= 0) return;
-    newW = _limitFrameDimension(newW);
-    newH = _limitFrameDimension(newH);
+    final limited = _limitFrameSize(newW, newH);
+    newW = limited.width;
+    newH = limited.height;
     _saveSnapshot();
     _rescaleZonesInternal(oldW, oldH, newW, newH);
     width = newW;
@@ -13926,11 +14705,15 @@ class WindowModel extends ChangeNotifier {
         _lastShowBottomWall != showBottomWall ||
         _lastHasShutter != hasShutter ||
         _lastIsCaissonTunnel != isCaissonTunnel ||
-        _lastShutterBoxHeight != shutterBoxHeight;
+        _lastShutterBoxHeight != shutterBoxHeight ||
+        _lastHeadRise != headRiseMm;
 
     // إذا كان تثبيت الرسم مفعلاً، يتم منع أي حركة أو إعادة حساب للموقع طالما تم حساب الحجم الأولي ولم يتغير نموذج النافذة
+    // Panels only change the canvas height; a new width means the app window
+    // itself was resized, which refits the drawing.
     if (isMovementLocked &&
         lastLayoutSize != null &&
+        (lastLayoutSize!.width - widgetSize.width).abs() < 1.0 &&
         canvasScale > 0 &&
         (canvasDx != 0 || canvasDy != 0) &&
         !stateChanged) {
@@ -13960,6 +14743,7 @@ class WindowModel extends ChangeNotifier {
     _lastHasShutter = hasShutter;
     _lastIsCaissonTunnel = isCaissonTunnel;
     _lastShutterBoxHeight = shutterBoxHeight;
+    _lastHeadRise = headRiseMm;
 
     // Keep a narrow, predictable safety border around the drawing.  The
     // camera then fits the window *and* its dimension lines, rather than
@@ -13995,34 +14779,68 @@ class WindowModel extends ChangeNotifier {
     final double sideCoverExtension = hasSideCovers
         ? sideCoverWidth + 15.0
         : 0.0;
-    final double dimensionLeft = 90.0 + sideCoverExtension;
-    final double dimensionRight = 90.0 + sideCoverExtension;
-    final double dimensionTop =
-        100.0 + (hasShutter ? 20.0 : 0.0) + sideCoverExtension;
-    final double dimensionBottom = 70.0 + sideCoverExtension;
+    // Dimension text and spacing are painted at a constant screen size
+    // (AppWorkspacePainter), so their room is reserved in pixels; frame,
+    // covers, arch and wall are reserved in millimetres.
+    final bool multiFrame = getFrameRects().length > 1;
+    const double dimensionLeftPx = 120.0;
+    const double dimensionRightPx = 120.0;
+    // Slanted mullions add a row of end positions on each side they reach.
+    final bool hasSlantRows = zones.any((z) => z.slantedDividers.isNotEmpty);
+    final double dimensionTopPx =
+        (multiFrame ? 120.0 : 75.0) +
+        (hasSlantRows ? 44.0 : 0.0) +
+        (hasShutter ? 16.0 : 0.0);
+    // A shaped head moves the overall width below the frame.
+    // Coupled frames may carry a chain of frame widths under the drawing.
+    final double dimensionBottomPx =
+        50.0 +
+        (hasArchOrSlant ? 70.0 : 0.0) +
+        (multiFrame ? 40.0 : 0.0) +
+        (hasSlantRows ? 44.0 : 0.0);
 
     // Match the actual wall extent used by WindowPainter (500 mm on both
     // sides) instead of the previous smaller virtual extent.
     final double wallLeft = showWall ? 500.0 : 0.0;
     final double wallRight = showWall ? 500.0 : 0.0;
     final double wallTop = showWall
-        ? (hasShutter ? shutterBoxHeight + 150.0 : 150.0)
+        ? (hasShutter ? shutterBoxHeight + 150.0 : 150.0) + headRiseMm
         : 0.0;
     final double wallBottom = (showWall && showBottomWall) ? 200.0 : 0.0;
-
-    final double contentLeft = math.max(wallLeft, dimensionLeft);
-    final double contentRight = math.max(wallRight, dimensionRight);
-    final double contentTop = math.max(wallTop, dimensionTop);
-    final double contentBottom = math.max(wallBottom, dimensionBottom);
-    final double totalW = width + contentLeft + contentRight;
-    final double totalH = height + contentTop + contentBottom;
 
     final double maxW = math.max(100.0, widgetSize.width - viewportPadding);
     final double maxH = math.max(100.0, effectiveHeight - viewportPadding);
 
-    double sX = maxW / totalW;
-    double sY = maxH / totalH;
-    canvasScale = math.min(sX, sY);
+    // An arch rises above the nominal top line (see _buildOuterShapePath).
+    double sX =
+        math.max(maxW * 0.35, maxW - dimensionLeftPx - dimensionRightPx) /
+        (width + 2 * sideCoverExtension);
+    double sY =
+        math.max(maxH * 0.35, maxH - dimensionTopPx - dimensionBottomPx) /
+        (height + headRiseMm + 2 * sideCoverExtension);
+    if (showWall) {
+      sX = math.min(sX, maxW / (width + wallLeft + wallRight));
+      sY = math.min(sY, maxH / (height + wallTop + wallBottom));
+    }
+    canvasScale = math.max(1e-4, math.min(sX, sY));
+
+    final double contentLeft = math.max(
+      wallLeft,
+      dimensionLeftPx / canvasScale + sideCoverExtension,
+    );
+    final double contentRight = math.max(
+      wallRight,
+      dimensionRightPx / canvasScale + sideCoverExtension,
+    );
+    final double contentTop = math.max(
+      wallTop,
+      dimensionTopPx / canvasScale + sideCoverExtension + headRiseMm,
+    );
+    final double contentBottom = math.max(
+      wallBottom,
+      dimensionBottomPx / canvasScale + sideCoverExtension,
+    );
+    final double totalH = height + contentTop + contentBottom;
 
     final double boundsCenterX = (width + contentRight - contentLeft) / 2;
     final double boundsCenterY = (height + contentBottom - contentTop) / 2;
@@ -14124,9 +14942,11 @@ class WindowModel extends ChangeNotifier {
     final rects = getFrameRects();
     if (index >= rects.length) return;
     final current = rects[index];
-    final clampedSize = outerSize.clamp(200.0, maximumFrameBarLengthMm);
+    final limits = frameOuterLimits(zoneId, isWidth: isWidth);
+    final clampedSize = outerSize.clamp(limits.min, limits.max);
     final delta = clampedSize - (isWidth ? current.width : current.height);
     if (delta.abs() < 0.001) return;
+    final before = List<Rect>.of(rects);
     resizeFrameFromHandles(
       _frameSelectionKey(index),
       moveLeft: false,
@@ -14136,6 +14956,201 @@ class WindowModel extends ChangeNotifier {
       deltaX: isWidth ? delta : 0.0,
       deltaY: isWidth ? 0.0 : delta,
     );
+    _keepStackedFramesAligned(before, isWidth: isWidth);
+  }
+
+  /// After a typed frame dimension: frames beside the resized one have
+  /// already moved (never shrunk). A frame stacked against a frame that
+  /// moved or changed, whose outer edge was aligned with the edge that
+  /// moved, follows that edge when it slides or grows, so the assembly
+  /// keeps its outline. It never shrinks: making one frame smaller changes
+  /// no other frame's size.
+  void _keepStackedFramesAligned(List<Rect> before, {required bool isWidth}) {
+    const tolerance = 3.0;
+    double lo(Rect r) => isWidth ? r.left : r.top;
+    double hi(Rect r) => isWidth ? r.right : r.bottom;
+    bool stacked(Rect a, Rect b) {
+      // Touching across the other axis and overlapping along this one.
+      final touch = isWidth
+          ? (a.bottom - b.top).abs() <= tolerance ||
+                (b.bottom - a.top).abs() <= tolerance
+          : (a.right - b.left).abs() <= tolerance ||
+                (b.right - a.left).abs() <= tolerance;
+      final overlap = isWidth
+          ? math.min(a.right, b.right) - math.max(a.left, b.left)
+          : math.min(a.bottom, b.bottom) - math.max(a.top, b.top);
+      return touch && overlap > 2.0;
+    }
+
+    final handled = <int>{};
+    for (var pass = 0; pass < before.length; pass++) {
+      final after = getFrameRects();
+      if (after.length != before.length) return;
+      final moves = <({double from, double to})>[];
+      final moved = <int>{};
+      for (var i = 0; i < before.length; i++) {
+        final dLo = lo(after[i]) - lo(before[i]);
+        final dHi = hi(after[i]) - hi(before[i]);
+        if (dLo.abs() > 0.5) moves.add((from: lo(before[i]), to: lo(after[i])));
+        if (dHi.abs() > 0.5) moves.add((from: hi(before[i]), to: hi(after[i])));
+        if (dLo.abs() > 0.5 || dHi.abs() > 0.5) moved.add(i);
+      }
+      double follow(double edge) {
+        for (final m in moves) {
+          if ((m.from - edge).abs() <= tolerance) return m.to;
+        }
+        return edge;
+      }
+
+      var changed = false;
+      for (var i = 0; i < before.length; i++) {
+        if (moved.contains(i) || handled.contains(i)) continue;
+        final rect = before[i];
+        if (!moved.any((j) => stacked(before[j], rect))) continue;
+        final dLo = follow(lo(rect)) - lo(rect);
+        final dHi = follow(hi(rect)) - hi(rect);
+        if (dLo.abs() <= 0.5 && dHi.abs() <= 0.5) continue;
+        // The user's rule: another frame may slide or grow with its
+        // neighbours, but is never made smaller, even if the outline then
+        // stops being a rectangle.
+        if (dHi - dLo < -0.5) continue;
+        handled.add(i);
+        changed = true;
+        if ((dLo - dHi).abs() <= 0.5) {
+          // Both edges follow: the frame slides with its neighbours.
+          for (final zone in _frameZoneGroups()[i]) {
+            zone.boundary = zone.boundary.shift(
+              isWidth ? Offset(dLo, 0) : Offset(0, dLo),
+            );
+          }
+          continue;
+        }
+        if (dHi.abs() > 0.5) {
+          _resizePhysicalFrameFromHandles(
+            i,
+            moveLeft: false,
+            moveRight: isWidth,
+            moveTop: false,
+            moveBottom: !isWidth,
+            deltaX: isWidth ? dHi : 0.0,
+            deltaY: isWidth ? 0.0 : dHi,
+            saveHistory: false,
+          );
+        }
+        if (dLo.abs() > 0.5) {
+          _resizePhysicalFrameFromHandles(
+            i,
+            moveLeft: isWidth,
+            moveRight: false,
+            moveTop: !isWidth,
+            moveBottom: false,
+            deltaX: isWidth ? dLo : 0.0,
+            deltaY: isWidth ? 0.0 : dLo,
+            saveHistory: false,
+          );
+        }
+      }
+      if (!changed) break;
+    }
+    _updateOuterSizeFromFrames();
+    notifyListeners();
+  }
+
+  /// Which frames of a coupled drawing carry their own dimension, per side:
+  /// the frames along the top/bottom outline (widths) and the left/right
+  /// outline (heights). A side is left empty when it would only repeat the
+  /// overall dimension or the opposite side. Frames on neither side of an
+  /// axis (a middle row or column) are listed in innerWidths/innerHeights.
+  ({
+    List<PhysicalFrameInfo> top,
+    List<PhysicalFrameInfo> bottom,
+    List<PhysicalFrameInfo> left,
+    List<PhysicalFrameInfo> right,
+    List<PhysicalFrameInfo> innerWidths,
+    List<PhysicalFrameInfo> innerHeights,
+  })
+  frameDimensionChains() {
+    const tolerance = 3.0;
+    final frames = getPhysicalFrameInfos();
+    if (frames.length < 2) {
+      return (
+        top: const [],
+        bottom: const [],
+        left: const [],
+        right: const [],
+        innerWidths: const [],
+        innerHeights: const [],
+      );
+    }
+    final minL = frames.map((f) => f.rect.left).reduce(math.min);
+    final maxR = frames.map((f) => f.rect.right).reduce(math.max);
+    final minT = frames.map((f) => f.rect.top).reduce(math.min);
+    final maxB = frames.map((f) => f.rect.bottom).reduce(math.max);
+    bool near(double a, double b) => (a - b).abs() <= tolerance;
+    bool fullWidth(PhysicalFrameInfo f) =>
+        near(f.rect.left, minL) && near(f.rect.right, maxR);
+    bool fullHeight(PhysicalFrameInfo f) =>
+        near(f.rect.top, minT) && near(f.rect.bottom, maxB);
+
+    List<PhysicalFrameInfo> along(
+      bool Function(PhysicalFrameInfo) onSide,
+      double Function(PhysicalFrameInfo) order,
+    ) => frames.where(onSide).toList()
+      ..sort((a, b) => order(a).compareTo(order(b)));
+
+    var top = along((f) => near(f.rect.top, minT), (f) => f.rect.left);
+    var bottom = along((f) => near(f.rect.bottom, maxB), (f) => f.rect.left);
+    var left = along((f) => near(f.rect.left, minL), (f) => f.rect.top);
+    var right = along((f) => near(f.rect.right, maxR), (f) => f.rect.top);
+    final topIds = top.map((f) => f.index).toSet();
+    final bottomIds = bottom.map((f) => f.index).toSet();
+    final leftIds = left.map((f) => f.index).toSet();
+    final rightIds = right.map((f) => f.index).toSet();
+
+    // A lone frame spanning the whole side is the overall dimension; a
+    // frame already measured on the opposite side is not repeated.
+    if (top.length == 1 && fullWidth(top.first)) top = [];
+    if (bottom.length == 1 && fullWidth(bottom.first)) bottom = [];
+    final shownTop = top.map((f) => f.index).toSet();
+    bottom = [
+      for (final f in bottom)
+        if (!shownTop.contains(f.index)) f,
+    ];
+    if (left.length == 1 && fullHeight(left.first)) left = [];
+    if (right.length == 1 && fullHeight(right.first)) right = [];
+    final shownLeft = left.map((f) => f.index).toSet();
+    right = [
+      for (final f in right)
+        if (!shownLeft.contains(f.index)) f,
+    ];
+
+    return (
+      top: top,
+      bottom: bottom,
+      left: left,
+      right: right,
+      innerWidths: [
+        for (final f in frames)
+          if (!topIds.contains(f.index) &&
+              !bottomIds.contains(f.index) &&
+              !fullWidth(f))
+            f,
+      ],
+      innerHeights: [
+        for (final f in frames)
+          if (!leftIds.contains(f.index) &&
+              !rightIds.contains(f.index) &&
+              !fullHeight(f))
+            f,
+      ],
+    );
+  }
+
+  void _updateOuterSizeFromFrames() {
+    final rects = getFrameRects();
+    if (rects.isEmpty) return;
+    width = rects.map((r) => r.right).reduce(math.max);
+    height = rects.map((r) => r.bottom).reduce(math.max);
   }
 
   /// Selects one physical outer frame in a coupled drawing. A divided single
@@ -14178,18 +15193,8 @@ class WindowModel extends ChangeNotifier {
         : 0.0;
     double topY = topOffset;
     if (pos.dx >= 0 && pos.dx <= width) {
-      double t = pos.dx / width;
-      double slantY = topSlantLeftY + t * (topSlantRightY - topSlantLeftY);
-      if (archHeight > 0) {
-        double y0 = topSlantLeftY;
-        double y1 = math.min(topSlantLeftY, topSlantRightY) - (archHeight * 2);
-        double y2 = topSlantRightY;
-        topY =
-            topOffset +
-            ((1 - t) * (1 - t) * y0 + 2 * (1 - t) * t * y1 + t * t * y2);
-      } else {
-        topY = topOffset + slantY;
-      }
+      // Outer edge of the (possibly slanted or arched) head at this x.
+      topY = headEdgeY(pos.dx, 0, topOffset: topOffset);
     }
 
     // Check if clicked in empty space outside the window bounds
@@ -14687,6 +15692,7 @@ class WindowModel extends ChangeNotifier {
 
   void clearSelection() {
     selection = SelectionInfo.none;
+    selectedHinge = null;
     activeSubZone = null;
     showZoneMenu = false;
     _notifySelectionChanged();
@@ -14792,17 +15798,19 @@ class WindowModel extends ChangeNotifier {
       for (var z in zones) {
         for (final divY in matchingDividers) {
           if ((z.boundary.bottom - divY).abs() <= effectiveThickness + 8.0) {
-            if (z.boundary.top + 50 > minAllowedY) {
-              minAllowedY = z.boundary.top + 50;
+            if (z.boundary.top + minimumZoneSpanMm(z, isWidth: false) > minAllowedY) {
+              minAllowedY = z.boundary.top + minimumZoneSpanMm(z, isWidth: false);
             }
           }
           if ((z.boundary.top - divY).abs() <= effectiveThickness + 8.0) {
-            if (z.boundary.bottom - 50 < maxAllowedY) {
-              maxAllowedY = z.boundary.bottom - 50;
+            if (z.boundary.bottom - minimumZoneSpanMm(z, isWidth: false) < maxAllowedY) {
+              maxAllowedY = z.boundary.bottom - minimumZoneSpanMm(z, isWidth: false);
             }
           }
         }
       }
+      // No legal position: the neighbouring zones are already at their minimum.
+      if (minAllowedY + sep > maxAllowedY - sep) return;
       if (newPos - sep < minAllowedY) newPos = minAllowedY + sep;
       if (newPos + sep > maxAllowedY) newPos = maxAllowedY - sep;
 
@@ -14840,17 +15848,19 @@ class WindowModel extends ChangeNotifier {
       for (var z in zones) {
         for (final divX in matchingDividers) {
           if ((z.boundary.right - divX).abs() <= effectiveThickness + 8.0) {
-            if (z.boundary.left + 50 > minAllowedX) {
-              minAllowedX = z.boundary.left + 50;
+            if (z.boundary.left + minimumZoneSpanMm(z, isWidth: true) > minAllowedX) {
+              minAllowedX = z.boundary.left + minimumZoneSpanMm(z, isWidth: true);
             }
           }
           if ((z.boundary.left - divX).abs() <= effectiveThickness + 8.0) {
-            if (z.boundary.right - 50 < maxAllowedX) {
-              maxAllowedX = z.boundary.right - 50;
+            if (z.boundary.right - minimumZoneSpanMm(z, isWidth: true) < maxAllowedX) {
+              maxAllowedX = z.boundary.right - minimumZoneSpanMm(z, isWidth: true);
             }
           }
         }
       }
+      // No legal position: the neighbouring zones are already at their minimum.
+      if (minAllowedX + sep > maxAllowedX - sep) return;
       if (newPos - sep < minAllowedX) newPos = minAllowedX + sep;
       if (newPos + sep > maxAllowedX) newPos = maxAllowedX - sep;
 
@@ -15168,6 +16178,10 @@ class WindowModel extends ChangeNotifier {
       final zone = zones.firstWhere((z) => z.id == zoneId);
       final previousContent = zone.content;
       zone.content = content;
+      // Slanted divisions exist only in fixed zones (no shaped sashes).
+      if (content != ZoneContent.fixedGlass && content != ZoneContent.empty) {
+        zone.slantedDividers = [];
+      }
       zone.innerH = 0;
       zone.innerV = 0;
       zone.rightInnerH = 0;
@@ -15428,15 +16442,24 @@ class WindowModel extends ChangeNotifier {
     }
 
     final glassR = getSafeGlassRect(sashR, sashT);
-    final physicalSize = isHorizontal ? glassR.height : glassR.width;
-    // Keep numeric editing and pointer dragging on the same 100 mm rule.
-    final minRatio = (100.0 / math.max(1.0, physicalSize))
+    final physicalSize = math.max(
+      1.0,
+      isHorizontal ? glassR.height : glassR.width,
+    );
+    // Every glazed cell keeps at least [minimumSashCellMm] of clear glass
+    // between two dividers (or a divider and the sash); numeric editing and
+    // pointer dragging share this rule.
+    final dividerT = getSectionThickness('mullion', fallback: sashT);
+    final edgeMin = ((minimumSashCellMm + dividerT / 2) / physicalSize)
         .clamp(0.02, 0.45)
         .toDouble();
-    final minVal = index == 0 ? minRatio : positions[index - 1] + minRatio;
+    final gapMin = ((minimumSashCellMm + dividerT) / physicalSize)
+        .clamp(0.02, 0.45)
+        .toDouble();
+    final minVal = index == 0 ? edgeMin : positions[index - 1] + gapMin;
     final maxVal = index == positions.length - 1
-        ? 1.0 - minRatio
-        : positions[index + 1] - minRatio;
+        ? 1.0 - edgeMin
+        : positions[index + 1] - gapMin;
     if (minVal > maxVal) return null;
     return ratio.clamp(minVal, maxVal).toDouble();
   }
@@ -15571,6 +16594,267 @@ class WindowModel extends ChangeNotifier {
     }
   }
 
+  // --- Hinges ---------------------------------------------------------------
+
+  /// Hinged edges painted in the last editor frame (editor canvas only).
+  List<SashHingeEdge> hingeEdges = [];
+
+  /// The hinge picked in the editor, if any.
+  SelectedHinge? selectedHinge;
+
+  /// Leaves of a hinged zone: one for a single sash, two for a double sash
+  /// (0 is the leaf on the left seen from inside).
+  int hingedLeafCount(WindowZone zone) {
+    if (zone.openDirection == null) return 0;
+    if (zone.content == ZoneContent.singleSash) return 1;
+    if (zone.content == ZoneContent.doubleSash) return 2;
+    return 0;
+  }
+
+  /// Whether [leaf] carries the handle (same rule as the painter).
+  bool isHandleLeaf(WindowZone zone, int leaf) {
+    if (zone.content != ZoneContent.doubleSash) return true;
+    if (zone.doubleSashHasTwoHandles) return true;
+    final leftActive = zone.openDirection == OpenDirection.left;
+    return leaf == 0 ? leftActive : !leftActive;
+  }
+
+  /// The handle leaf of a full OB system gets the two hinges of its kit.
+  bool sashLeafUsesObKit(WindowZone zone, int leaf) =>
+      useSystemOB && isHandleLeaf(zone, leaf);
+
+  /// Top- or bottom-hung single sashes carry their hinges along the width.
+  bool hingesAreHorizontal(WindowZone zone) =>
+      zone.content == ZoneContent.singleSash &&
+      (zone.openDirection == OpenDirection.top ||
+          zone.openDirection == OpenDirection.bottom);
+
+  int automaticHingeCount(WindowZone zone) => standardHingeCountForSash(
+    sashHeight: hingesAreHorizontal(zone)
+        ? zone.boundary.width
+        : zone.boundary.height,
+    glassStructure: zone.glass.structure,
+  );
+
+  SashHingeLayout? _customHingeLayout(WindowZone zone, int leaf) {
+    final layout = zone.customHinges[leaf];
+    if (layout == null || layout.horizontal != hingesAreHorizontal(zone)) {
+      return null;
+    }
+    return layout;
+  }
+
+  bool hasCustomHinges(WindowZone zone, int leaf) =>
+      _customHingeLayout(zone, leaf) != null;
+
+  /// Hinge centres of [leaf] in mm from the start of its hinged edge of
+  /// [length] mm. The single source for the drawing, the BOM and the PDF.
+  List<double> hingePositionsFor(WindowZone zone, int leaf, double length) {
+    if (sashLeafUsesObKit(zone, leaf)) {
+      return SashHingeRules.automatic(
+        length,
+        2,
+        endInset: SashHingeRules.obEndInsetMm,
+      );
+    }
+    final custom = _customHingeLayout(zone, leaf);
+    if (custom != null) return SashHingeRules.fitToLength(custom, length);
+    final auto = SashHingeRules.automatic(
+      length,
+      automaticHingeCount(zone),
+      middleOffset: zone.middleHingeDragOffset,
+    );
+    // The legacy middle-hinge offset was measured from the left on a
+    // horizontal edge, not from the head.
+    if (!hingesAreHorizontal(zone)) return auto;
+    return [for (final p in auto.reversed) length - p];
+  }
+
+  /// Hinges [leaf] needs in the BOM.
+  int hingeCountForLeaf(WindowZone zone, int leaf) {
+    final custom = _customHingeLayout(zone, leaf);
+    if (custom == null) return automaticHingeCount(zone);
+    final length = hingeEdgeLengthEstimate(zone, leaf);
+    return math.min(
+      custom.positions.length,
+      SashHingeRules.maxCountFor(length),
+    );
+  }
+
+  /// The hinged edge length of [leaf]: as painted when the editor recorded
+  /// it, otherwise from the zone (the head shape only matters to the top
+  /// zones, where the placed layout keeps the length it was drawn on).
+  double hingeEdgeLengthEstimate(WindowZone zone, int leaf) {
+    for (final edge in hingeEdges) {
+      if (edge.zoneId == zone.id && edge.leaf == leaf) return edge.length;
+    }
+    final custom = _customHingeLayout(zone, leaf);
+    final shapedHead =
+        archHeight != 0 || topSlantLeftY != 0 || topSlantRightY != 0;
+    if (custom != null && shapedHead && !hingesAreHorizontal(zone)) {
+      return custom.referenceLength;
+    }
+    return hingesAreHorizontal(zone)
+        ? zone.boundary.width
+        : zone.boundary.height;
+  }
+
+  /// Hinge positions of every hinged leaf, ordered left to right as seen
+  /// from inside, for the cutting sheet.
+  List<({int sashNumber, bool horizontal, List<double> positions})>
+  hingeSummaries() {
+    final hinged = zones.where((z) => hingedLeafCount(z) > 0).toList()
+      ..sort(
+        (a, b) => (a.boundary.left - b.boundary.left).abs() > 1
+            ? a.boundary.left.compareTo(b.boundary.left)
+            : a.boundary.top.compareTo(b.boundary.top),
+      );
+    final result =
+        <({int sashNumber, bool horizontal, List<double> positions})>[];
+    var number = 0;
+    for (final zone in hinged) {
+      for (var leaf = 0; leaf < hingedLeafCount(zone); leaf++) {
+        number++;
+        final length = hingeEdgeLengthEstimate(zone, leaf);
+        result.add((
+          sashNumber: number,
+          horizontal: hingesAreHorizontal(zone),
+          positions: hingePositionsFor(zone, leaf, length),
+        ));
+      }
+    }
+    return result;
+  }
+
+  SashHingeEdge? hingeEdgeOf(String zoneId, int leaf) {
+    for (final edge in hingeEdges) {
+      if (edge.zoneId == zoneId && edge.leaf == leaf) return edge;
+    }
+    return null;
+  }
+
+  void selectHinge(SelectedHinge? hinge) {
+    selectedHinge = hinge;
+    notifyListeners();
+  }
+
+  /// Stores [positions] as the hand-placed layout of [leaf]. Both leaves of
+  /// a double sash hang at the same height, so the facing leaf gets the same
+  /// layout (moving, adding or removing a hinge on one moves its partner),
+  /// unless that leaf carries an OB kit with its own fixed hinges.
+  void _storeHinges(
+    WindowZone zone,
+    int leaf,
+    List<double> positions,
+    double length,
+  ) {
+    final layout = SashHingeLayout(
+      positions: positions,
+      referenceLength: length,
+      horizontal: hingesAreHorizontal(zone),
+    );
+    final partner = 1 - leaf;
+    final mirrored =
+        zone.content == ZoneContent.doubleSash &&
+        !sashLeafUsesObKit(zone, partner);
+    zone.customHinges = {
+      ...zone.customHinges,
+      leaf: layout,
+      if (mirrored) partner: layout,
+    };
+  }
+
+  /// Moves hinge [index] of [leaf] to [target] mm (snapped to 10 mm, kept
+  /// between its neighbours and the ends). Returns an error key or null.
+  String? moveHinge(
+    String zoneId,
+    int leaf,
+    int index,
+    double target,
+    double length, {
+    bool saveHistory = false,
+    bool snapToGrid = true,
+  }) {
+    final zone = _zoneById(zoneId);
+    if (zone == null) return null;
+    if (sashLeafUsesObKit(zone, leaf)) return hingeObLockedKey;
+    final positions = hingePositionsFor(zone, leaf, length);
+    if (index < 0 || index >= positions.length) return null;
+    final value = SashHingeRules.clampMove(
+      positions,
+      index,
+      target,
+      length,
+      snapToGrid: snapToGrid,
+    );
+    if ((value - positions[index]).abs() < 0.01 &&
+        hasCustomHinges(zone, leaf)) {
+      return null;
+    }
+    if (saveHistory) _saveSnapshot();
+    positions[index] = value;
+    _storeHinges(zone, leaf, positions, length);
+    notifyListeners();
+    return null;
+  }
+
+  /// Adds a hinge to [leaf], as close to [near] as the rules allow (in the
+  /// largest gap when null), and selects it. Returns an error key or null.
+  String? addHinge(String zoneId, int leaf, double length, {double? near}) {
+    final zone = _zoneById(zoneId);
+    if (zone == null) return null;
+    if (sashLeafUsesObKit(zone, leaf)) return hingeObLockedKey;
+    final positions = hingePositionsFor(zone, leaf, length);
+    final at = SashHingeRules.insertionPoint(positions, length, near: near);
+    if (at == null) return hingeNoRoomKey;
+    _saveSnapshot();
+    positions
+      ..add(at)
+      ..sort();
+    _storeHinges(zone, leaf, positions, length);
+    selectedHinge = SelectedHinge(zoneId, leaf, positions.indexOf(at));
+    notifyListeners();
+    return null;
+  }
+
+  /// Removes hinge [index] of [leaf]; a sash keeps at least two hinges.
+  String? removeHinge(String zoneId, int leaf, int index, double length) {
+    final zone = _zoneById(zoneId);
+    if (zone == null) return null;
+    if (sashLeafUsesObKit(zone, leaf)) return hingeObLockedKey;
+    final positions = hingePositionsFor(zone, leaf, length);
+    if (index < 0 || index >= positions.length) return null;
+    if (positions.length <= SashHingeRules.minCount) return hingeMinCountKey;
+    _saveSnapshot();
+    positions.removeAt(index);
+    _storeHinges(zone, leaf, positions, length);
+    selectedHinge = null;
+    notifyListeners();
+    return null;
+  }
+
+  /// Returns [leaf] (or every leaf when null) to the automatic layout.
+  void resetHinges(String zoneId, {int? leaf}) {
+    final zone = _zoneById(zoneId);
+    if (zone == null) return;
+    if (zone.customHinges.isEmpty && zone.middleHingeDragOffset == 0) return;
+    _saveSnapshot();
+    // The two leaves of a double sash always share one layout.
+    zone.customHinges = leaf == null || zone.content == ZoneContent.doubleSash
+        ? {}
+        : ({...zone.customHinges}..remove(leaf));
+    if (leaf == null || zone.customHinges.isEmpty) {
+      zone.middleHingeDragOffset = 0;
+    }
+    notifyListeners();
+  }
+
+  static const hingeObLockedKey =
+      'مفاصل نظام OB ثابتة ضمن الطقم ولا يمكن تعديلها';
+  static const hingeNoRoomKey =
+      'لا يوجد مكان لمفصل آخر: {min} مم من الطرف و {gap} مم بين المفاصل';
+  static const hingeMinCountKey = 'يجب أن تبقى في الضلفة مفصلتان على الأقل';
+
   void updateZoneDoubleSashRatio(
     String zoneId,
     double ratio, {
@@ -15578,6 +16862,8 @@ class WindowModel extends ChangeNotifier {
   }) {
     final idx = zones.indexWhere((z) => z.id == zoneId);
     if (idx != -1) {
+      // Same 15–85 % range as every editor: each leaf keeps its own bars.
+      ratio = ratio.clamp(0.15, 0.85).toDouble();
       if (saveHistory) _saveSnapshot();
       final zone = zones[idx];
       OpenDirection? newDir = zone.openDirection;
@@ -15591,7 +16877,36 @@ class WindowModel extends ChangeNotifier {
     }
   }
 
+  /// Outer dimension labels painted in the last frame (editor canvas only).
+  List<DimensionLabelHit> dimensionLabelHits = [];
+
+  /// Extra distance (mm) the user dragged each outer dimension away from the
+  /// frame, by label key. Editor-only layout state, not part of the design.
+  final Map<String, double> dimensionOffsets = {};
+
+  DimensionLabelHit? dimensionLabelAt(Offset pos) {
+    for (final hit in dimensionLabelHits.reversed) {
+      if (hit.rect.contains(pos)) return hit;
+    }
+    return null;
+  }
+
+  void dragDimension(String key, double deltaMm) {
+    dimensionOffsets[key] = ((dimensionOffsets[key] ?? 0.0) + deltaMm)
+        .clamp(0.0, 3000.0)
+        .toDouble();
+    drawingRepaint.notifyListeners();
+  }
+
   DimensionTap checkOuterDimensionTap(Offset pos) {
+    // Hit exactly the painted labels; they move with the camera, the shaped
+    // head and the user's dragging, so fixed bands no longer match them.
+    if (dimensionLabelHits.isNotEmpty) {
+      final key = dimensionLabelAt(pos)?.key;
+      if (key == 'width') return DimensionTap.width;
+      if (key == 'height') return DimensionTap.height;
+      return DimensionTap.none;
+    }
     if (Rect.fromLTRB(0, -300, width, -50).contains(pos)) {
       return DimensionTap.width;
     }
@@ -15865,9 +17180,13 @@ class WindowModel extends ChangeNotifier {
       // The blade rule is about width only; shutter height remains independent.
       newH = newH.clamp(100.0, 10000.0).toDouble();
     } else {
-      newW = _limitFrameDimension(newW);
-      newH = _limitFrameDimension(newH);
+      // Never shrink below what the zones, sash bars and mullions need.
+      final wLimits = outerDimensionLimits(isWidth: true, otherSide: newH);
+      final hLimits = outerDimensionLimits(isWidth: false, otherSide: newW);
+      newW = newW.clamp(wLimits.min, wLimits.max).toDouble();
+      newH = newH.clamp(hLimits.min, hLimits.max).toDouble();
     }
+    if ((newW - width).abs() < 0.001 && (newH - height).abs() < 0.001) return;
     _saveSnapshot();
     final oldWidth = width;
     final oldHeight = height;
@@ -15903,8 +17222,8 @@ class WindowModel extends ChangeNotifier {
         double divisionX = oldX - sep;
         for (var z in zones) {
           if ((z.boundary.right - (divisionX - sep)).abs() < 2) {
-            if (z.boundary.left + 50 > minAllowedX) {
-              minAllowedX = z.boundary.left + 50;
+            if (z.boundary.left + minimumZoneSpanMm(z, isWidth: true) > minAllowedX) {
+              minAllowedX = z.boundary.left + minimumZoneSpanMm(z, isWidth: true);
             }
           }
         }
@@ -15925,8 +17244,8 @@ class WindowModel extends ChangeNotifier {
         double divisionX = oldX + sep;
         for (var z in zones) {
           if ((z.boundary.left - (divisionX + sep)).abs() < 2) {
-            if (z.boundary.right - 50 < maxAllowedX) {
-              maxAllowedX = z.boundary.right - 50;
+            if (z.boundary.right - minimumZoneSpanMm(z, isWidth: true) < maxAllowedX) {
+              maxAllowedX = z.boundary.right - minimumZoneSpanMm(z, isWidth: true);
             }
           }
         }
@@ -15952,8 +17271,8 @@ class WindowModel extends ChangeNotifier {
         double divisionY = oldY - sep;
         for (var z in zones) {
           if ((z.boundary.bottom - (divisionY - sep)).abs() < 2) {
-            if (z.boundary.top + 50 > minAllowedY) {
-              minAllowedY = z.boundary.top + 50;
+            if (z.boundary.top + minimumZoneSpanMm(z, isWidth: false) > minAllowedY) {
+              minAllowedY = z.boundary.top + minimumZoneSpanMm(z, isWidth: false);
             }
           }
         }
@@ -15974,8 +17293,8 @@ class WindowModel extends ChangeNotifier {
         double divisionY = oldY + sep;
         for (var z in zones) {
           if ((z.boundary.top - (divisionY + sep)).abs() < 2) {
-            if (z.boundary.bottom - 50 < maxAllowedY) {
-              maxAllowedY = z.boundary.bottom - 50;
+            if (z.boundary.bottom - minimumZoneSpanMm(z, isWidth: false) < maxAllowedY) {
+              maxAllowedY = z.boundary.bottom - minimumZoneSpanMm(z, isWidth: false);
             }
           }
         }
@@ -15985,15 +17304,18 @@ class WindowModel extends ChangeNotifier {
   }
 
   void resizeZoneInner(String zoneId, bool isWidth, double newVal) {
-    _saveSnapshot();
     final zIdx = zones.indexWhere((z) => z.id == zoneId);
     if (zIdx == -1) return;
+    // An undivided zone has no neighbour to give or take the difference;
+    // its size comes from the frame, so only the outer size may change it.
+    final limits = innerSizeLimits(zoneId, isWidth);
+    if (limits == null) return;
     final r = zones[zIdx].boundary;
-    newVal = math.min(newVal, maximumFrameBarLengthMm);
+    newVal = newVal.clamp(limits.min, limits.max).toDouble();
+    if ((newVal - (isWidth ? r.width : r.height)).abs() < 0.001) return;
+    _saveSnapshot();
     if (isWidth) {
       double diff = newVal - r.width;
-      if (diff == 0) return;
-      if (newVal > width - 50) diff = (width - 50) - r.width;
       final bool isRightmost = !zones.any((z) => z.boundary.left > r.right - 2);
       if (isRightmost) {
         _moveInternalBoundaryX(r.left, -diff);
@@ -16002,8 +17324,6 @@ class WindowModel extends ChangeNotifier {
       }
     } else {
       double diff = newVal - r.height;
-      if (diff == 0) return;
-      if (newVal > height - 50) diff = (height - 50) - r.height;
       final bool isBottommost = !zones.any(
         (z) => z.boundary.top > r.bottom - 2,
       );
@@ -16263,17 +17583,33 @@ class WindowModel extends ChangeNotifier {
       return value.clamp(minimum, maximum).toDouble();
     }
 
+    // 380 mm per side (250 mm beside a side of one metre or more); a legacy
+    // frame already smaller keeps its size instead of jumping.
+    final minFrameW = math.max(
+      minInnerSize + (2 * profileThickness),
+      math.min(
+        minimumFrameSideFor(currentOuter.height),
+        currentOuter.width,
+      ),
+    );
+    final minFrameH = math.max(
+      minInnerSize + (2 * profileThickness),
+      math.min(
+        minimumFrameSideFor(currentOuter.width),
+        currentOuter.height,
+      ),
+    );
     if (moveLeft) {
       left = clampDouble(
         left + deltaX,
         right - maximumFrameBarLengthMm,
-        right - minInnerSize - (2 * profileThickness),
+        right - minFrameW,
       );
     }
     if (moveRight) {
       right = clampDouble(
         right + deltaX,
-        left + minInnerSize + (2 * profileThickness),
+        left + minFrameW,
         left + maximumFrameBarLengthMm,
       );
     }
@@ -16281,13 +17617,13 @@ class WindowModel extends ChangeNotifier {
       top = clampDouble(
         top + deltaY,
         bottom - maximumFrameBarLengthMm,
-        bottom - minInnerSize - (2 * profileThickness),
+        bottom - minFrameH,
       );
     }
     if (moveBottom) {
       bottom = clampDouble(
         bottom + deltaY,
-        top + minInnerSize + (2 * profileThickness),
+        top + minFrameH,
         top + maximumFrameBarLengthMm,
       );
     }
@@ -16750,18 +18086,20 @@ class WindowModel extends ChangeNotifier {
     double maxAllowedX = width - t * 2;
     for (var z in zones) {
       if ((z.boundary.right - (divisionX - sep)).abs() < 2) {
-        if (z.boundary.left + 50 > minAllowedX) {
-          minAllowedX = z.boundary.left + 50;
+        if (z.boundary.left + minimumZoneSpanMm(z, isWidth: true) > minAllowedX) {
+          minAllowedX = z.boundary.left + minimumZoneSpanMm(z, isWidth: true);
         }
       }
       if ((z.boundary.left - (divisionX + sep)).abs() < 2) {
-        if (z.boundary.right - 50 < maxAllowedX) {
-          maxAllowedX = z.boundary.right - 50;
+        if (z.boundary.right - minimumZoneSpanMm(z, isWidth: true) < maxAllowedX) {
+          maxAllowedX = z.boundary.right - minimumZoneSpanMm(z, isWidth: true);
         }
       }
     }
 
     double newDivisionX = divisionX + diff;
+    // No legal position: the neighbouring zones are already at their minimum.
+    if (minAllowedX + sep > maxAllowedX - sep) return;
     if (newDivisionX - sep < minAllowedX) {
       newDivisionX = minAllowedX + sep;
     }
@@ -16858,18 +18196,20 @@ class WindowModel extends ChangeNotifier {
     double maxAllowedY = height - t * 2;
     for (var z in zones) {
       if ((z.boundary.bottom - (divisionY - sep)).abs() < 2) {
-        if (z.boundary.top + 50 > minAllowedY) {
-          minAllowedY = z.boundary.top + 50;
+        if (z.boundary.top + minimumZoneSpanMm(z, isWidth: false) > minAllowedY) {
+          minAllowedY = z.boundary.top + minimumZoneSpanMm(z, isWidth: false);
         }
       }
       if ((z.boundary.top - (divisionY + sep)).abs() < 2) {
-        if (z.boundary.bottom - 50 < maxAllowedY) {
-          maxAllowedY = z.boundary.bottom - 50;
+        if (z.boundary.bottom - minimumZoneSpanMm(z, isWidth: false) < maxAllowedY) {
+          maxAllowedY = z.boundary.bottom - minimumZoneSpanMm(z, isWidth: false);
         }
       }
     }
 
     double newDivisionY = divisionY + diff;
+    // No legal position: the neighbouring zones are already at their minimum.
+    if (minAllowedY + sep > maxAllowedY - sep) return;
     if (newDivisionY - sep < minAllowedY) {
       newDivisionY = minAllowedY + sep;
     }
@@ -19006,6 +20346,10 @@ class WindowModel extends ChangeNotifier {
     if (value && hasArchOrSlant) return;
     if (hasShutter == value) return;
     _saveSnapshot();
+    _applyShutterState(value);
+  }
+
+  void _applyShutterState(bool value) {
     double oldTopOffset = (hasShutter && !hasArchOrSlant && !isCaissonTunnel)
         ? shutterBoxHeight
         : 0.0;
@@ -19065,7 +20409,7 @@ class WindowModel extends ChangeNotifier {
     isCaissonTunnel = value;
     if (isCaissonTunnel) {
       hasShutter = true;
-      shutterMechanism = 'محرك';
+      _synchronizeShutterMechanismValue('محرك');
       showWall = true;
       componentOverrides['الصندوق (Caisson)'] = {
         'id': -999,
@@ -20350,6 +21694,38 @@ class WindowModel extends ChangeNotifier {
   }
 
   String? glazingFitMessage;
+
+  String localizedGlazingFitMessage(AppLanguage lang) {
+    if (glazingFitMessage == null) return '';
+    if (lang == AppLanguage.arabic) return glazingFitMessage!;
+    var msg = glazingFitMessage!;
+    if (lang == AppLanguage.french) {
+      msg = msg
+          .replaceAll('تعذر الحساب: سعة الزجاج غير محددة للباركلوز أو الضلفة.', 'Calcul impossible : capacité du vitrage non définie pour la parclose ou l\'ouvrant.')
+          .replaceAll('تركيب غير متوافق مع السعة', 'Montage incompatible avec la capacité')
+          .replaceAll('مم', 'mm')
+          .replaceAll('لا توجد تركيبة مسموحة من القواعد؛ النقص ممنوع والزيادة القصوى 1 مم.', 'Aucune combinaison permise par les règles ; déficit interdit, excès max 1 mm.')
+          .replaceAll('البانو:', 'Panneau :')
+          .replaceAll('الاختيار:', 'Sélection :')
+          .replaceAll('التركيب المعتمد:', 'Montage retenu :')
+          .replaceAll('المجموع', 'Total')
+          .replaceAll('السعة', 'Capacité')
+          .replaceAll('أولوية التعديل: الجوانات ثم الأنتركال ثم الزجاج.', 'Priorité d\'ajustement : joints puis intercalaire puis verre.');
+    } else if (lang == AppLanguage.english) {
+      msg = msg
+          .replaceAll('تعذر الحساب: سعة الزجاج غير محددة للباركلوز أو الضلفة.', 'Calculation failed: glass capacity not defined for bead or sash.')
+          .replaceAll('تركيب غير متوافق مع السعة', 'Incompatible assembly with capacity')
+          .replaceAll('مم', 'mm')
+          .replaceAll('لا توجد تركيبة مسموحة من القواعد؛ النقص ممنوع والزيادة القصوى 1 مم.', 'No allowed combination by rules; deficit forbidden, max excess 1 mm.')
+          .replaceAll('البانو:', 'Panel:')
+          .replaceAll('الاختيار:', 'Selection:')
+          .replaceAll('التركيب المعتمد:', 'Approved assembly:')
+          .replaceAll('المجموع', 'Total')
+          .replaceAll('السعة', 'Capacity')
+          .replaceAll('أولوية التعديل: الجوانات ثم الأنتركال ثم الزجاج.', 'Adjustment priority: gaskets then spacer then glass.');
+    }
+    return msg;
+  }
 
   Future<GlassSpecification> fitGlazingByRules(
     GlassSpecification spec, {
@@ -22594,8 +23970,9 @@ class WindowModel extends ChangeNotifier {
       showBottomWall = true;
     }
 
-    width = _limitFrameDimension(newWidth);
-    height = _limitFrameDimension(newHeight);
+    final limitedPreset = _limitFrameSize(newWidth, newHeight);
+    width = limitedPreset.width;
+    height = limitedPreset.height;
 
     if (withShutter) {
       await updateShutterDefaultsIfNeeded();
@@ -22853,6 +24230,21 @@ class WindowModel extends ChangeNotifier {
   }
 
   void endDrawing() {
+    try {
+      _endDrawingImpl();
+    } finally {
+      // If any branch throws, a non-null drawingStart made the drawing page
+      // treat every later click as a continuing drag (mouse "stuck").
+      if (drawingStart != null || drawingCurrent != null) {
+        drawingStart = null;
+        drawingCurrent = null;
+        notifyListeners();
+      }
+      pendingDrawStart = null;
+    }
+  }
+
+  void _endDrawingImpl() {
     pendingDrawStart = null; // always clear, even if we return early
     if (drawingStart == null || drawingCurrent == null) return;
     _saveSnapshot();
@@ -22895,8 +24287,11 @@ class WindowModel extends ChangeNotifier {
     if (zones.isEmpty) {
       Rect drawnRect = Rect.fromPoints(drawingStart!, drawingCurrent!);
       if (drawnRect.width > 50 && drawnRect.height > 50) {
-        width = _limitFrameDimension(drawnRect.width);
-        height = _limitFrameDimension(drawnRect.height);
+        // A first frame is never smaller than 380 mm (250 mm beside a side
+        // of one metre or more).
+        final firstFrame = _limitFrameSize(drawnRect.width, drawnRect.height);
+        width = firstFrame.width;
+        height = firstFrame.height;
         drawnLeft = drawnRect.left;
         drawnTop = drawnRect.top;
         double topOffset = (hasShutter && !hasArchOrSlant)
@@ -23120,6 +24515,13 @@ class WindowModel extends ChangeNotifier {
 
         newW = _limitFrameDimension(newW);
         newH = _limitFrameDimension(newH);
+        // The new frame shares its other side with the frames it is placed
+        // against, so the 380/250 mm rule is measured against that span.
+        if (minVal == dxRight || minVal == dxLeft) {
+          newW = math.max(newW, minimumFrameSideFor(spanBottom - spanTop));
+        } else {
+          newH = math.max(newH, minimumFrameSideFor(spanRight - spanLeft));
+        }
 
         final double prevW = width;
         final double prevH = height;
@@ -23298,6 +24700,48 @@ class WindowModel extends ChangeNotifier {
     }
     double dx = drawingCurrent!.dx - drawingStart!.dx;
     double dy = drawingCurrent!.dy - drawingStart!.dy;
+    // A clearly diagonal stroke (between the minimum angle and its
+    // complement) inside a fixed zone draws a slanted mullion along it,
+    // extended to the zone's sides. Near-horizontal or near-vertical strokes
+    // keep splitting the zone as before.
+    final strokeAngle = math.atan2(dy.abs(), dx.abs()) * 180 / math.pi;
+    const minSlant = SlantedDivisionGeometry.minimumAngleDeg;
+    if ((dx.abs() > 40 || dy.abs() > 40) &&
+        strokeAngle >= minSlant &&
+        strokeAngle <= 90 - minSlant) {
+      WindowZone? slantZone;
+      for (final z in zones) {
+        if (z.boundary.contains(drawingStart!)) {
+          slantZone = z;
+          break;
+        }
+      }
+      if (slantZone != null &&
+          (slantZone.content == ZoneContent.fixedGlass ||
+              slantZone.content == ZoneContent.empty)) {
+        final ends = SlantedDivisionGeometry.anchorsThrough(
+          slantZone.boundary,
+          drawingStart!,
+          drawingCurrent!,
+        );
+        if (ends != null) {
+          final id = 'slant_${DateTime.now().microsecondsSinceEpoch}';
+          // _endDrawingImpl already saved the undo step for this stroke.
+          drawingNotice = setSlantedDivider(
+            slantZone.id,
+            SlantedDivider(id: id, start: ends.$1, end: ends.$2),
+            saveHistory: false,
+          );
+          if (drawingNotice == null) {
+            selectedSlantedDivider = (zoneId: slantZone.id, dividerId: id);
+          }
+        }
+        drawingStart = null;
+        drawingCurrent = null;
+        notifyListeners();
+        return;
+      }
+    }
     if (dx.abs() > 2 || dy.abs() > 2) {
       bool isHorizontal = dx.abs() > dy.abs();
       WindowZone? targetZoneNullable;
@@ -23316,13 +24760,16 @@ class WindowModel extends ChangeNotifier {
               getSectionThickness('sash', fallback: 45.0);
           Rect glassR = getSafeGlassRect(targetZone.boundary, sashT);
 
-          // 🟢 شرط مسافة 100 ملم للرسم
-          double minRatioH = 100.0 / glassR.height;
-          double minRatioV = 100.0 / glassR.width;
+          // Same 80 mm clear-glass rule as _clampInnerDivisionRatio.
+          final cellPitch =
+              minimumSashCellMm +
+              getSectionThickness('mullion', fallback: sashT);
+          double minRatioH = cellPitch / glassR.height;
+          double minRatioV = cellPitch / glassR.width;
 
           if (isHorizontal) {
             double ratio = ((drawingStart!.dy - glassR.top) / glassR.height)
-                .clamp(minRatioH, 1.0 - minRatioH);
+                .clamp(math.min(minRatioH, 0.5), math.max(0.5, 1.0 - minRatioH));
             List<double> currentPos = List.from(targetZone.innerHPositions);
             if (currentPos.isEmpty && targetZone.innerH > 0) {
               currentPos = List.generate(
@@ -23347,8 +24794,14 @@ class WindowModel extends ChangeNotifier {
               final updatedDisabled = <String, bool>{};
               targetZone.disabledHorizontalDivisions.forEach((key, value) {
                 final parts = key.split('_');
-                final c = int.parse(parts[0]);
-                final h = int.parse(parts[1]);
+                // Keys left over from a former double sash look like
+                // "right_0_1"; int.parse threw and froze the drawing page.
+                final c = parts.length == 2 ? int.tryParse(parts[0]) : null;
+                final h = parts.length == 2 ? int.tryParse(parts[1]) : null;
+                if (c == null || h == null) {
+                  updatedDisabled[key] = value;
+                  return;
+                }
                 if (h >= hIndex) {
                   updatedDisabled["${c}_${h + 1}"] = value;
                 } else {
@@ -23379,7 +24832,7 @@ class WindowModel extends ChangeNotifier {
           } else {
             double ratio = ((drawingStart!.dx - glassR.left) / glassR.width)
                 ///
-                .clamp(minRatioV, 1.0 - minRatioV);
+                .clamp(math.min(minRatioV, 0.5), math.max(0.5, 1.0 - minRatioV));
             List<double> currentPos = List.from(targetZone.innerVPositions);
             if (currentPos.isEmpty && targetZone.innerV > 0) {
               currentPos = List.generate(
@@ -23459,12 +24912,15 @@ class WindowModel extends ChangeNotifier {
                 );
           Rect glassR = getSafeGlassRect(sashR, sashT);
 
-          double minRatioH = 100.0 / glassR.height;
-          double minRatioV = 100.0 / glassR.width;
+          final cellPitch =
+              minimumSashCellMm +
+              getSectionThickness('mullion', fallback: sashT);
+          double minRatioH = cellPitch / glassR.height;
+          double minRatioV = cellPitch / glassR.width;
 
           if (isHorizontal) {
             double ratio = ((drawingStart!.dy - glassR.top) / glassR.height)
-                .clamp(minRatioH, 1.0 - minRatioH);
+                .clamp(math.min(minRatioH, 0.5), math.max(0.5, 1.0 - minRatioH));
             if (isRight) {
               List<double> currentPos = List.from(
                 targetZone.rightInnerHPositions,
@@ -23583,7 +25039,7 @@ class WindowModel extends ChangeNotifier {
             }
           } else {
             double ratio = ((drawingStart!.dx - glassR.left) / glassR.width)
-                .clamp(minRatioV, 1.0 - minRatioV);
+                .clamp(math.min(minRatioV, 0.5), math.max(0.5, 1.0 - minRatioV));
             if (isRight) {
               List<double> currentPos = List.from(
                 targetZone.rightInnerVPositions,
@@ -23955,18 +25411,20 @@ class WindowModel extends ChangeNotifier {
         if (!overlapsSelectedSpan(z)) continue;
         for (final divY in matchingDividers) {
           if ((z.boundary.bottom - divY).abs() <= effectiveThickness + 8.0) {
-            if (z.boundary.top + 50 > minAllowedY) {
-              minAllowedY = z.boundary.top + 50;
+            if (z.boundary.top + minimumZoneSpanMm(z, isWidth: false) > minAllowedY) {
+              minAllowedY = z.boundary.top + minimumZoneSpanMm(z, isWidth: false);
             }
           }
           if ((z.boundary.top - divY).abs() <= effectiveThickness + 8.0) {
-            if (z.boundary.bottom - 50 < maxAllowedY) {
-              maxAllowedY = z.boundary.bottom - 50;
+            if (z.boundary.bottom - minimumZoneSpanMm(z, isWidth: false) < maxAllowedY) {
+              maxAllowedY = z.boundary.bottom - minimumZoneSpanMm(z, isWidth: false);
             }
           }
         }
       }
       double newPos = pos + deltaPixels;
+      // No legal position: the neighbouring zones are already at their minimum.
+      if (minAllowedY + sep > maxAllowedY - sep) return;
       if (newPos - sep < minAllowedY) newPos = minAllowedY + sep;
       if (newPos + sep > maxAllowedY) newPos = maxAllowedY - sep;
       double actualDelta = newPos - pos;
@@ -24022,18 +25480,20 @@ class WindowModel extends ChangeNotifier {
         if (!overlapsSelectedSpan(z)) continue;
         for (final divX in matchingDividers) {
           if ((z.boundary.right - divX).abs() <= effectiveThickness + 8.0) {
-            if (z.boundary.left + 50 > minAllowedX) {
-              minAllowedX = z.boundary.left + 50;
+            if (z.boundary.left + minimumZoneSpanMm(z, isWidth: true) > minAllowedX) {
+              minAllowedX = z.boundary.left + minimumZoneSpanMm(z, isWidth: true);
             }
           }
           if ((z.boundary.left - divX).abs() <= effectiveThickness + 8.0) {
-            if (z.boundary.right - 50 < maxAllowedX) {
-              maxAllowedX = z.boundary.right - 50;
+            if (z.boundary.right - minimumZoneSpanMm(z, isWidth: true) < maxAllowedX) {
+              maxAllowedX = z.boundary.right - minimumZoneSpanMm(z, isWidth: true);
             }
           }
         }
       }
       double newPos = pos + deltaPixels;
+      // No legal position: the neighbouring zones are already at their minimum.
+      if (minAllowedX + sep > maxAllowedX - sep) return;
       if (newPos - sep < minAllowedX) newPos = minAllowedX + sep;
       if (newPos + sep > maxAllowedX) newPos = maxAllowedX - sep;
       double actualDelta = newPos - pos;

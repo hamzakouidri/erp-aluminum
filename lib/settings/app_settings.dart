@@ -47,19 +47,32 @@ class AppSettingsProvider extends ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.light;
   CostMethod _costMethod = CostMethod.linearMeter;
   bool _applyPurchasePricesToCostTable = false;
-  BusinessActivityType _businessActivity = BusinessActivityType.workshopAndStore;
+  BusinessActivityType _businessActivity =
+      BusinessActivityType.workshopAndStore;
   WorkingSection _workingSection = WorkingSection.all;
   int? _defaultWorkshopLocationId;
   int? _defaultStoreLocationId;
+
+  // Price synchronization options per category
+  bool _syncPriceProfiles = true;
+  bool _syncPriceSeries = true;
+  bool _syncPriceAccessories = true;
+  bool _syncPriceShutters = true;
+  bool _syncPriceJoints = true;
+  bool _syncPriceGlass = true;
+
+  bool get syncPriceProfiles => _syncPriceProfiles;
+  bool get syncPriceSeries => _syncPriceSeries;
+  bool get syncPriceAccessories => _syncPriceAccessories;
+  bool get syncPriceShutters => _syncPriceShutters;
+  bool get syncPriceJoints => _syncPriceJoints;
+  bool get syncPriceGlass => _syncPriceGlass;
 
   // Tabs are the default workspace on phones and other non-desktop devices.
   AppViewMode _viewMode = AppViewMode.tabs;
   AppUpdateMode _updateMode = AppUpdateMode.automatic;
   double _profitMargin = 0.0;
   double _fontSizeScale = 1.0;
-  String _geminiApiKey =
-      'AQ.Ab8RN6K0VzsqO944GLUZOKqevI4ncAbuewu7Cx8pEUg3O-xVaA';
-
   String _userRole = 'worker';
   String _workshopCode = '';
   String _userDisplayName = 'مدير الورشة';
@@ -107,8 +120,10 @@ class AppSettingsProvider extends ChangeNotifier {
   WorkingSection get workingSection {
     if (!hasWorkshop && hasMaterialsStore) return WorkingSection.materialsStore;
     if (hasWorkshop && !hasMaterialsStore) return WorkingSection.workshop;
-    if (!canAccessWorkshopScope() && canAccessStoreScope()) return WorkingSection.materialsStore;
-    if (canAccessWorkshopScope() && !canAccessStoreScope()) return WorkingSection.workshop;
+    if (!canAccessWorkshopScope() && canAccessStoreScope())
+      return WorkingSection.materialsStore;
+    if (canAccessWorkshopScope() && !canAccessStoreScope())
+      return WorkingSection.workshop;
     return _workingSection;
   }
 
@@ -142,8 +157,6 @@ class AppSettingsProvider extends ChangeNotifier {
   double get profitMargin => _profitMargin;
 
   double get fontSizeScale => _fontSizeScale;
-
-  String get geminiApiKey => _geminiApiKey;
 
   bool get isDarkMode => _themeMode == ThemeMode.dark;
 
@@ -714,8 +727,7 @@ class AppSettingsProvider extends ChangeNotifier {
       );
 
   bool canAccessManagementScope() =>
-      isManager ||
-      _isPermissionTrue(_workerPermissions['access_management']);
+      isManager || _isPermissionTrue(_workerPermissions['access_management']);
 
   bool canAccessWorkshopPurchases() =>
       hasWorkshop &&
@@ -735,9 +747,7 @@ class AppSettingsProvider extends ChangeNotifier {
           ) ||
           _isPermissionTrue(_workerPermissions['purchases']));
 
-  bool canAccessStoreSales() =>
-      hasMaterialsStore &&
-      canViewStoreSales();
+  bool canAccessStoreSales() => hasMaterialsStore && canViewStoreSales();
 
   bool canExecuteInternalSales() =>
       isDualActivity &&
@@ -776,6 +786,21 @@ class AppSettingsProvider extends ChangeNotifier {
         prefs.getBool('app_apply_purchase_prices_to_cost_table') ?? false;
     _profitMargin = prefs.getDouble('app_profit_margin') ?? 20.0; // Default 20%
 
+    // Load Price Synchronization Preferences
+    _syncPriceProfiles = prefs.getBool('sync_price_profiles') ?? true;
+    _syncPriceSeries = prefs.getBool('sync_price_series') ?? true;
+    _syncPriceAccessories = prefs.getBool('sync_price_accessories') ?? true;
+    _syncPriceShutters = prefs.getBool('sync_price_shutters') ?? true;
+    _syncPriceJoints = prefs.getBool('sync_price_joints') ?? true;
+    _syncPriceGlass = prefs.getBool('sync_price_glass') ?? true;
+    _extraPriceSyncSwitches
+      ..clear()
+      ..addAll({
+        for (final key in prefs.getKeys())
+          if (key.startsWith('sync_price_'))
+            key.substring('sync_price_'.length): prefs.getBool(key) ?? true,
+      });
+
     // Load Business Activity Type (Default: workshopAndStore)
     final activityIndex = prefs.getInt('app_business_activity');
     if (activityIndex != null &&
@@ -796,7 +821,9 @@ class AppSettingsProvider extends ChangeNotifier {
       _workingSection = WorkingSection.all;
     }
 
-    _defaultWorkshopLocationId = prefs.getInt('app_default_workshop_location_id');
+    _defaultWorkshopLocationId = prefs.getInt(
+      'app_default_workshop_location_id',
+    );
     _defaultStoreLocationId = prefs.getInt('app_default_store_location_id');
 
     // Load View Mode. A value of classic without the explicit-choice marker
@@ -829,11 +856,6 @@ class AppSettingsProvider extends ChangeNotifier {
 
     // Load Font Size
     _fontSizeScale = prefs.getDouble('app_font_scale') ?? 1.0;
-
-    // Never ship a shared Gemini secret inside the client application.
-    // Existing users keep their locally configured key; new installations
-    // must configure one until requests are moved behind the server proxy.
-    _geminiApiKey = prefs.getString('app_gemini_api_key')?.trim() ?? '';
 
     await reloadPermissions();
   }
@@ -890,13 +912,6 @@ class AppSettingsProvider extends ChangeNotifier {
     await prefs.setDouble('app_font_scale', scale);
   }
 
-  Future<void> setGeminiApiKey(String key) async {
-    _geminiApiKey = key;
-    notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('app_gemini_api_key', key);
-  }
-
   Future<void> setBusinessActivity(BusinessActivityType activity) async {
     _businessActivity = activity;
     notifyListeners();
@@ -913,8 +928,10 @@ class AppSettingsProvider extends ChangeNotifier {
 
   Future<void> setWorkingSection(WorkingSection section) async {
     if (section == WorkingSection.workshop && !canAccessWorkshopScope()) return;
-    if (section == WorkingSection.materialsStore && !canAccessStoreScope()) return;
-    if (section == WorkingSection.all && (!canAccessWorkshopScope() || !canAccessStoreScope())) {
+    if (section == WorkingSection.materialsStore && !canAccessStoreScope())
+      return;
+    if (section == WorkingSection.all &&
+        (!canAccessWorkshopScope() || !canAccessStoreScope())) {
       if (canAccessStoreScope()) {
         _workingSection = WorkingSection.materialsStore;
       } else {
@@ -948,5 +965,61 @@ class AppSettingsProvider extends ChangeNotifier {
     } else {
       await prefs.remove('app_default_store_location_id');
     }
+  }
+
+  Future<void> setSyncPriceProfiles(bool value) async {
+    _syncPriceProfiles = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('sync_price_profiles', value);
+  }
+
+  Future<void> setSyncPriceSeries(bool value) async {
+    _syncPriceSeries = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('sync_price_series', value);
+  }
+
+  Future<void> setSyncPriceAccessories(bool value) async {
+    _syncPriceAccessories = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('sync_price_accessories', value);
+  }
+
+  Future<void> setSyncPriceShutters(bool value) async {
+    _syncPriceShutters = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('sync_price_shutters', value);
+  }
+
+  Future<void> setSyncPriceJoints(bool value) async {
+    _syncPriceJoints = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('sync_price_joints', value);
+  }
+
+  Future<void> setSyncPriceGlass(bool value) async {
+    _syncPriceGlass = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('sync_price_glass', value);
+  }
+
+  /// Price-sync switches of the price pages added after the six above
+  /// (stored as `sync_price_<category>`, enabled by default).
+  final Map<String, bool> _extraPriceSyncSwitches = {};
+
+  bool isExtraPriceSyncEnabled(String category) =>
+      _extraPriceSyncSwitches[category] ?? true;
+
+  Future<void> setExtraPriceSyncEnabled(String category, bool value) async {
+    _extraPriceSyncSwitches[category] = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('sync_price_$category', value);
   }
 }

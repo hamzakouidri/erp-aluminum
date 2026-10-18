@@ -66,8 +66,32 @@ void main() {
       moustiquaireSqmPrice: 2500,
     );
 
-    expect(totals['moustiquaire']!['selling'], 9000);
-    expect(totals['total']!['selling'], 9000);
+    // Screen cut 2 mm smaller: 1.198 × 1.498 × 2 = 3.589 → 3.59 m², the same
+    // rounded area as the quantity-table row.
+    expect(totals['moustiquaire']!['selling'], closeTo(3.59 * 2500, 1e-6));
+    expect(totals['total']!['selling'], closeTo(3.59 * 2500, 1e-6));
+    model.dispose();
+  });
+
+  test('moustiquaire selling matches its quantity-table row', () {
+    final model = WindowModel(db: SqlDatabase(), width: 1234, height: 1567)
+      ..quantity = 3
+      ..hasMoustiquaireAddon = true
+      ..componentOverrides['moustiquaire'] = {'price_per_sqm': 2500.0};
+    final row = ComponentCalculator.generateBom(model, const {})
+        .singleWhere((item) => item.category == 'moustiquaire');
+    final totals = calculateSellingTotals(
+      model: model,
+      items: [row],
+      costMethod: CostMethod.percentage,
+      profitMargin: 0,
+      pricePerSqm: 0,
+      linearMeterPrice: 0,
+      shutterSqmPrice: 0,
+      moustiquaireSqmPrice: 2500,
+    );
+    expect(totals['moustiquaire']!['cost'], closeTo(row.total, 1e-6));
+    expect(totals['moustiquaire']!['selling'], closeTo(row.total, 1e-6));
     model.dispose();
   });
 }

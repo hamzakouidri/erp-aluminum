@@ -44,7 +44,7 @@ class WorkerPushNotificationService {
     }
     final messaging = FirebaseMessaging.instance;
     await messaging.requestPermission(alert: true, badge: true, sound: true);
-    await _registerToken(await messaging.getToken());
+    unawaited(_registerCurrentTokenWithRetry());
     _tokenSubscription = messaging.onTokenRefresh.listen(_registerToken);
     _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((
       state,
@@ -74,6 +74,9 @@ class WorkerPushNotificationService {
         );
         return;
       }
+      // The download above applies the new prices and shows the in-app
+      // price notification itself; showing this one too would duplicate it.
+      if (type == 'prices') return;
       final notification = message.notification;
       OrderNotificationService().showAssignmentNotification(
         title: notification?.title ?? 'مهمة جديدة',
@@ -125,17 +128,38 @@ class WorkerPushNotificationService {
     await _registerCurrentTokenWithRetry();
   }
 
+  bool _registrationInFlight = false;
+
+  /// The token row needs the workshop UUID, which is only known once the
+  /// workshop sync has started. On slow networks that takes longer than a few
+  /// seconds; the old 4 × 1–4 s retry often gave up first, so the device was
+  /// never stored in device_push_tokens and FCM could not reach it while the
+  /// app was closed (only the in-app Realtime path worked).
   Future<void> _registerCurrentTokenWithRetry() async {
-    for (var attempt = 0; attempt < 4; attempt++) {
-      try {
-        await _registerToken(await FirebaseMessaging.instance.getToken());
-        final user = Supabase.instance.client.auth.currentUser;
-        final workshopId = SupabaseWorkshopSyncService().currentWorkshopUuid;
-        if (user != null && workshopId.isNotEmpty) return;
-      } catch (error) {
-        debugPrint('Push token registration attempt failed: $error');
+    if (_registrationInFlight) return;
+    _registrationInFlight = true;
+    try {
+      for (var attempt = 0; attempt < 6; attempt++) {
+        try {
+          final user = Supabase.instance.client.auth.currentUser;
+          if (user == null) return;
+          final sync = SupabaseWorkshopSyncService();
+          if (sync.currentWorkshopUuid.isEmpty) {
+            await sync.ensureStarted(timeout: const Duration(seconds: 30));
+          }
+          if (sync.currentWorkshopUuid.isNotEmpty) {
+            await _registerToken(await FirebaseMessaging.instance.getToken());
+            debugPrint('Push token registered for this device.');
+            return;
+          }
+        } catch (error) {
+          debugPrint('Push token registration attempt failed: $error');
+        }
+        await Future<void>.delayed(Duration(seconds: 5 * (attempt + 1)));
       }
-      await Future<void>.delayed(Duration(seconds: attempt + 1));
+      debugPrint('Push token registration gave up: no workshop context.');
+    } finally {
+      _registrationInFlight = false;
     }
   }
 
@@ -144,6 +168,22 @@ class WorkerPushNotificationService {
     final workshopId = SupabaseWorkshopSyncService().currentWorkshopUuid;
     if (token == null || token.isEmpty || user == null || workshopId.isEmpty) {
       return;
+    }
+    final platform = kIsWeb ? 'web' : Platform.operatingSystem;
+    try {
+      // Moves a token previously owned by another account on this phone.
+      await Supabase.instance.client.rpc(
+        'register_push_token',
+        params: {
+          'requested_token': token,
+          'requested_workshop_id': workshopId,
+          'requested_platform': platform,
+        },
+      );
+      return;
+    } catch (error) {
+      // Older databases without supabase/push_notifications.sql applied.
+      debugPrint('register_push_token RPC unavailable, using upsert: $error');
     }
     await Supabase.instance.client.from('device_push_tokens').upsert({
       'user_id': user.id,

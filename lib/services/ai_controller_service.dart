@@ -1,10 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:path/path.dart' as p;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Representation of an executable action returned by the AI controller
 class AiAction {
@@ -36,16 +36,20 @@ class AiAction {
   }
 }
 
+class _GeminiGatewayResponse {
+  const _GeminiGatewayResponse({required this.statusCode, required this.body});
+
+  final int statusCode;
+  final String body;
+}
+
 class AiControllerService {
-  final String apiKey;
   final SqlDatabase db = SqlDatabase();
 
-  AiControllerService({required this.apiKey});
-
-  static const List<String> candidateModels = [
-    'gemini-3.8-flash',
-    'gemini-3.6-flash',
-  ];
+  /// Gemini requests are sent through the authenticated Supabase Edge
+  /// Function.  The Google key and production model therefore never reach a
+  /// phone or desktop installation.
+  AiControllerService();
 
   static String getSystemInstruction(AppLanguage language) {
     final defaultLang = switch (language) {
@@ -126,48 +130,37 @@ Return strict JSON:
     return normalized;
   }
 
-  /// Sends a request with automatic fallback across available Gemini models
-  Future<http.Response> _postWithFallback(
+  /// Calls the server-side Gemini gateway. The gateway owns the API key,
+  /// model selection and per-user quota checks.
+  Future<_GeminiGatewayResponse> _postThroughGateway(
     Map<String, dynamic> requestBody,
   ) async {
-    http.Response? lastResponse;
-    Object? lastError;
-    for (final model in candidateModels) {
-      try {
-        final url = Uri.parse(
-          'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent',
+    try {
+      final result = await Supabase.instance.client.functions.invoke(
+        'gemini-gateway',
+        body: {'request_body': requestBody},
+      );
+      final raw = result.data;
+      if (raw is! Map) {
+        return const _GeminiGatewayResponse(
+          statusCode: 599,
+          body: '{"error":"invalid_gateway_response"}',
         );
-        final response = await http
-            .post(
-              url,
-              headers: {
-                'Content-Type': 'application/json',
-                'x-goog-api-key': apiKey,
-              },
-              body: jsonEncode(requestBody),
-            )
-            .timeout(const Duration(seconds: 25));
-
-        if (response.statusCode == 200) {
-          return response;
-        }
-        lastResponse = response;
-        debugPrint(
-          'Gemini model $model returned ${response.statusCode}: ${response.body}',
-        );
-      } catch (e) {
-        lastError = e;
-        debugPrint('Gemini model $model failed: $e');
       }
+      final data = Map<String, dynamic>.from(raw);
+      final status = (data['status'] as num?)?.toInt() ?? 599;
+      final responseBody = data['body'];
+      return _GeminiGatewayResponse(
+        statusCode: status,
+        body: responseBody is String ? responseBody : jsonEncode(responseBody),
+      );
+    } catch (error) {
+      debugPrint('Gemini gateway request failed: $error');
+      return _GeminiGatewayResponse(
+        statusCode: 599,
+        body: jsonEncode({'error': 'gateway_unreachable'}),
+      );
     }
-    return lastResponse ??
-        http.Response(
-          jsonEncode({
-            'error': 'network_failure',
-            'details': lastError?.runtimeType.toString(),
-          }),
-          599,
-        );
   }
 
   /// Sends text query to Gemini and parses structured action and speech readout
@@ -176,21 +169,6 @@ Return strict JSON:
     List<Map<String, String>> chatHistory = const [],
     AppLanguage language = AppLanguage.arabic,
   }) async {
-    if (apiKey.trim().isEmpty) {
-      return AiAction(
-        actionType: 'error',
-        parameters: {},
-        speechResponse: switch (language) {
-          AppLanguage.french =>
-            'Veuillez saisir votre clé API Gemini dans les Paramètres pour activer l\'IA.',
-          AppLanguage.english =>
-            'Please enter your Gemini API key in Settings to activate AI.',
-          _ =>
-            'يرجى إدخال مفتاح Gemini API في شاشة الإعدادات لتفعيل الذكاء الاصطناعي.',
-        },
-      );
-    }
-
     try {
       final contents = _normalizedHistory(chatHistory);
 
@@ -212,7 +190,7 @@ Return strict JSON:
         ],
       });
 
-      final response = await _postWithFallback({
+      final response = await _postThroughGateway({
         'system_instruction': {
           'parts': [
             {'text': getSystemInstruction(language)},
@@ -229,24 +207,19 @@ Return strict JSON:
         debugPrint(
           'Gemini API Error: ${response.statusCode} - ${response.body}',
         );
-        final isKeyError =
-            response.body.contains('API_KEY_INVALID') ||
-            response.body.contains('API key not valid') ||
-            response.statusCode == 401 ||
-            response.statusCode == 403;
+        final isConfigurationError = response.statusCode == 503;
         final isQuota = response.statusCode == 429;
         final isNetworkFailure = response.statusCode == 599;
-        final isProviderFailure = response.statusCode >= 500 &&
-            response.statusCode != 599;
+        final isProviderFailure =
+            response.statusCode >= 500 && response.statusCode != 599;
 
-        final errMsg = isKeyError
+        final errMsg = isConfigurationError
             ? switch (language) {
                 AppLanguage.french =>
-                  'Clé API Gemini invalide. Veuillez vérifier votre clé dans les Paramètres.',
+                  'Le service IA doit être configuré par l’administrateur.',
                 AppLanguage.english =>
-                  'Invalid Gemini API key. Please check your key in Settings.',
-                _ =>
-                  'مفتاح Gemini API غير صالح. يرجى التأكد من نسخه في الإعدادات بشكل صحيح.',
+                  'The AI service must be configured by an administrator.',
+                _ => 'يلزم أن يهيئ المدير خدمة الذكاء الاصطناعي على الخادم.',
               }
             : isQuota
             ? switch (language) {
@@ -333,21 +306,6 @@ Return strict JSON:
     List<Map<String, String>> chatHistory = const [],
     AppLanguage language = AppLanguage.arabic,
   }) async {
-    if (apiKey.trim().isEmpty) {
-      return AiAction(
-        actionType: 'error',
-        parameters: {},
-        speechResponse: switch (language) {
-          AppLanguage.french =>
-            'Veuillez saisir votre clé API Gemini dans les Paramètres pour activer la saisie vocale.',
-          AppLanguage.english =>
-            'Please enter your Gemini API key in Settings to activate voice input.',
-          _ =>
-            'يرجى إدخال مفتاح Gemini API في شاشة الإعدادات لتفعيل الاستماع الصوتي.',
-        },
-      );
-    }
-
     try {
       final bytes = await audioFile.readAsBytes();
       final base64Audio = base64Encode(bytes);
@@ -380,7 +338,7 @@ Return strict JSON:
               '3. أرجع كائن JSON حصراً.',
       };
 
-      final response = await _postWithFallback({
+      final response = await _postThroughGateway({
         'system_instruction': {
           'parts': [
             {'text': getSystemInstruction(language)},
@@ -460,20 +418,6 @@ Return strict JSON:
     File imageFile, {
     AppLanguage language = AppLanguage.arabic,
   }) async {
-    if (apiKey.trim().isEmpty) {
-      return AiAction(
-        actionType: 'error',
-        parameters: {},
-        speechResponse: switch (language) {
-          AppLanguage.french =>
-            'Veuillez saisir votre clé API Gemini dans les Paramètres d\'abord.',
-          AppLanguage.english =>
-            'Please enter your Gemini API key in Settings first.',
-          _ => 'يرجى وضع مفتاح Gemini API في الإعدادات أولاً.',
-        },
-      );
-    }
-
     try {
       final bytes = await imageFile.readAsBytes();
       final base64Image = base64Encode(bytes);
@@ -490,7 +434,7 @@ Return strict JSON:
               '${_sketchExtractionInstruction('ar')}',
       };
 
-      final response = await _postWithFallback({
+      final response = await _postThroughGateway({
         'system_instruction': {
           'parts': [
             {'text': getSystemInstruction(language)},
@@ -558,7 +502,8 @@ Return strict JSON:
     };
   }
 
-  static String _sketchExtractionInstruction(String language) => '''
+  static String _sketchExtractionInstruction(String language) =>
+      '''
 Read the complete handwritten measurement sheet and the drawn window/door diagram. Recognize Arabic, French, Latin letters and Algerian workshop abbreviations.
 Inspect dimension arrows, outer width/height, internal divisions, quantities, series/system name, glass, colour, shutter, fixed zones, opening/sliding leaves and opening directions.
 Never invent a value. If a field is unreadable, keep it empty and list it in uncertain_fields. Convert centimetres to millimetres; preserve values already written in millimetres.

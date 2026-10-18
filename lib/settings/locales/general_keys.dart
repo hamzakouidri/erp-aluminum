@@ -816,6 +816,16 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Quitter',
     AppLanguage.english: 'Exit',
   },
+  'الخروج من التطبيق': {
+    AppLanguage.arabic: 'الخروج من التطبيق',
+    AppLanguage.french: 'Quitter l\'application',
+    AppLanguage.english: 'Exit Application',
+  },
+  'هل تريد الخروج من التطبيق؟': {
+    AppLanguage.arabic: 'هل تريد الخروج من التطبيق؟',
+    AppLanguage.french: 'Voulez-vous quitter l\'application ?',
+    AppLanguage.english: 'Do you want to exit the application?',
+  },
   'تم تحويل القياس الحالي إلى ستار': {
     AppLanguage.arabic: 'تم تحويل القياس الحالي إلى ستار',
     AppLanguage.french: 'La mesure actuelle a été convertie en volet',
@@ -3695,6 +3705,34 @@ This action cannot be undone!''',
     AppLanguage.french: 'Prix du volet au m² (DA) - Manuel',
     AppLanguage.english: 'Shutter Sqm Price (DA) - Manual',
   },
+  'سعر المتر المربع للستار (دج) — من الكتالوج': {
+    AppLanguage.arabic: 'سعر المتر المربع للستار (دج) — من الكتالوج',
+    AppLanguage.french: 'Prix du volet au m² (DA) — selon catalogue',
+    AppLanguage.english: 'Shutter price per m² (DA) — from catalog',
+  },
+  'سعر المتر المربع للموستيكير (دج) — من إدارة الأسعار': {
+    AppLanguage.arabic: 'سعر المتر المربع للموستيكير (دج) — من إدارة الأسعار',
+    AppLanguage.french: 'Prix au m² de la moustiquaire (DA) — gestion des prix',
+    AppLanguage.english: 'Moustiquaire price per m² (DA) — price management',
+  },
+  'المساحة = عرض النافذة × ارتفاعها × الكمية. تعديل السعر يتم من إدارة الأسعار فقط.': {
+    AppLanguage.arabic:
+        'المساحة = عرض النافذة × ارتفاعها × الكمية. تعديل السعر يتم من إدارة الأسعار فقط.',
+    AppLanguage.french:
+        'Surface = Largeur × Hauteur × Quantité. Modifiable dans la gestion des prix.',
+    AppLanguage.english:
+        'Area = Width × Height × Quantity. Editable only in price management.',
+  },
+  'دج / م²': {
+    AppLanguage.arabic: 'دج / م²',
+    AppLanguage.french: 'DA / m²',
+    AppLanguage.english: 'DZD / m²',
+  },
+  'تم تأكيد هذه الطلبية': {
+    AppLanguage.arabic: 'تم تأكيد هذه الطلبية',
+    AppLanguage.french: 'Cette commande a été confirmée',
+    AppLanguage.english: 'This order has been confirmed',
+  },
   'معامل عزم المحرك (وزن كغ لكل 1 نيوتن) (الافتراضي: 1.6)': {
     AppLanguage.arabic:
         'معامل عزم المحرك (وزن كغ لكل 1 نيوتن) (الافتراضي: 1.6)',
@@ -5257,6 +5295,26 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'خشبي بني',
     AppLanguage.french: 'Faux Bois Marron',
     AppLanguage.english: 'Brown Wood',
+  },
+  'Faux bois marron clair': {
+    AppLanguage.arabic: 'خشبي بني فاتح',
+    AppLanguage.french: 'Faux bois marron clair',
+    AppLanguage.english: 'Light brown wood grain',
+  },
+  'Faux Bois Marron Clair': {
+    AppLanguage.arabic: 'خشبي بني فاتح',
+    AppLanguage.french: 'Faux bois marron clair',
+    AppLanguage.english: 'Light brown wood grain',
+  },
+  'خشبي بني فاتح': {
+    AppLanguage.arabic: 'خشبي بني فاتح',
+    AppLanguage.french: 'Faux bois marron clair',
+    AppLanguage.english: 'Light brown wood grain',
+  },
+  'Light brown wood grain': {
+    AppLanguage.arabic: 'خشبي بني فاتح',
+    AppLanguage.french: 'Faux bois marron clair',
+    AppLanguage.english: 'Light brown wood grain',
   },
   'بني فاتح (Faux Bois)': {
     AppLanguage.arabic: 'بني فاتح (Faux Bois)',
@@ -7542,6 +7600,36 @@ This action cannot be undone!''',
     AppLanguage.french: 'Tube d\'angle 90° sur montant gauche extérieur',
     AppLanguage.english: '90° angle tube on outer left montant',
   },
+  'الجهتين': {
+    AppLanguage.arabic: 'الجهتين',
+    AppLanguage.french: 'Deux côtés',
+    AppLanguage.english: 'Both sides',
+  },
+  'الموستيكير': {
+    AppLanguage.arabic: 'الموستيكير',
+    AppLanguage.french: 'Moustiquaire',
+    AppLanguage.english: 'Mosquito screen',
+  },
+  'تظهر في الكمية والتكلفة فقط ولا تظهر في الرسم': {
+    AppLanguage.arabic: 'تظهر في الكمية والتكلفة فقط ولا تظهر في الرسم',
+    AppLanguage.french: 'Apparaît uniquement dans la quantité et le coût, pas sur le dessin',
+    AppLanguage.english: 'Appears only in quantity and cost, not on the drawing',
+  },
+  'عرض الضلفة اليمنى (مم)': {
+    AppLanguage.arabic: 'عرض الضلفة اليمنى (مم)',
+    AppLanguage.french: 'Largeur du battant droit (mm)',
+    AppLanguage.english: 'Right sash width (mm)',
+  },
+  'تعديل عرض الدلفة اليسرى': {
+    AppLanguage.arabic: 'تعديل عرض الدلفة اليسرى',
+    AppLanguage.french: 'Modifier la largeur de l\'ouvrant gauche',
+    AppLanguage.english: 'Edit left sash width',
+  },
+  'تعديل عرض الدلفة اليمنى': {
+    AppLanguage.arabic: 'تعديل عرض الدلفة اليمنى',
+    AppLanguage.french: 'Modifier la largeur de l\'ouvrant droit',
+    AppLanguage.english: 'Edit right sash width',
+  },
   'الجهتين معاً (90° Les deux côtés)': {
     AppLanguage.arabic: 'الجهتين معاً (90° الطرفين)',
     AppLanguage.french: 'Les deux côtés (90° Droite et Gauche)',
@@ -8070,5 +8158,25 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'اختر وثيقة البيع',
     AppLanguage.french: 'Choisir le document de vente',
     AppLanguage.english: 'Select sales document',
+  },
+  'أسعار الشراء تُطبَّق تلقائياً على جدول الكمية والتكلفة': {
+    AppLanguage.arabic: 'أسعار الشراء تُطبَّق تلقائياً على جدول الكمية والتكلفة',
+    AppLanguage.french: 'Les prix d\'achat sont appliqués automatiquement au tableau des quantités et coûts',
+    AppLanguage.english: 'Purchase prices are applied automatically to the quantity and cost table',
+  },
+  'عند كل شراء يصبح السعر هو المتوسط المرجّح بين المخزون الحالي والكمية الجديدة، وإذا كان المخزون صفراً يُعتمد سعر الشراء الجديد مباشرة. يظهر آخر سعر شراء في الفاتورة ويمكن تعديله.': {
+    AppLanguage.arabic: 'عند كل شراء يصبح السعر هو المتوسط المرجّح بين المخزون الحالي والكمية الجديدة، وإذا كان المخزون صفراً يُعتمد سعر الشراء الجديد مباشرة. يظهر آخر سعر شراء في الفاتورة ويمكن تعديله.',
+    AppLanguage.french: 'À chaque achat, le prix devient le coût moyen pondéré entre le stock actuel et la nouvelle quantité ; si le stock est nul, le nouveau prix d\'achat est retenu directement. Le dernier prix d\'achat est proposé dans la facture et reste modifiable.',
+    AppLanguage.english: 'On each purchase the price becomes the weighted average of the current stock and the new quantity; with no stock, the new purchase price is used directly. The last purchase price is suggested on the invoice and can be edited.',
+  },
+  'تطبيق أسعار الشراء على جدول الكمية والتكلفة': {
+    AppLanguage.arabic: 'تطبيق أسعار الشراء على جدول الكمية والتكلفة',
+    AppLanguage.french: 'Appliquer les prix d\'achat au tableau des quantités et coûts',
+    AppLanguage.english: 'Apply purchase prices to quantity and cost table',
+  },
+  'يظهر آخر سعر شراء في الفاتورة دائماً، ويُحتسب في جدول التكلفة عند التفعيل فقط': {
+    AppLanguage.arabic: 'يظهر آخر سعر شراء في الفاتورة دائماً، ويُحتسب في جدول التكلفة عند التفعيل فقط',
+    AppLanguage.french: 'Le dernier prix d\'achat apparaît toujours sur la facture, et n\'est calculé dans le tableau des coûts que s\'il est activé',
+    AppLanguage.english: 'The latest purchase price is always shown on the invoice, and only calculated in the cost table when enabled',
   },
 };

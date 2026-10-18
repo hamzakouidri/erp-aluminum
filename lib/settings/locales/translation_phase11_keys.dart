@@ -483,6 +483,11 @@ const Map<String, Map<AppLanguage, String>> translationPhase11Keys = {
     AppLanguage.french: 'barre(s)',
     AppLanguage.english: 'bar(s)',
   },
+  'سم': {
+    AppLanguage.arabic: 'سم',
+    AppLanguage.french: 'cm',
+    AppLanguage.english: 'cm',
+  },
   'قطعة': {
     AppLanguage.arabic: 'قطعة',
     AppLanguage.french: 'pièce(s)',

@@ -230,7 +230,7 @@ class OrderExportService {
     final remise = (orderData['remise'] as num?)?.toDouble() ?? 0.0;
     final tva = (orderData['tva'] as num?)?.toDouble() ?? 0.0;
     final netPayable = (orderData['net_payable'] as num?)?.toDouble() ??
-        (total - remise + ((total * tva) / 100));
+        (total - remise + (((total - remise) * tva) / 100));
 
     final details = rawItems.map((raw) {
       final item = Map<String, dynamic>.from(raw as Map);

@@ -6,7 +6,11 @@ import 'package:database_data/Commande/Systeme/selling_price_calculator.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/gestures.dart'
-    show GestureBinding, PointerScrollEvent, PointerSignalEvent;
+    show
+        GestureBinding,
+        PointerScrollEvent,
+        PointerSignalEvent,
+        kMiddleMouseButton;
 import 'package:database_data/widgets/app_material.dart';
 import 'package:flutter/services.dart'
     show
@@ -29,6 +33,7 @@ import 'package:database_data/Commande/Systeme/calculate_component.dart';
 import 'package:database_data/Commande/Systeme/profile_selector_dialog.dart'
     hide getComponentSize;
 import 'package:database_data/Commande/Systeme/glass_joint_fit.dart';
+import 'package:database_data/Commande/Systeme/parclose_cut_mode_selector.dart';
 import 'package:database_data/widgets/section_image.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:provider/provider.dart';
@@ -308,7 +313,7 @@ class _WindowViewState extends State<WindowView> {
       'محرك' => 'محرك',
       _ => 'حزام',
     };
-    widget.model.shutterMechanism = mechanism;
+    widget.model.setAllShutterMechanism(mechanism);
     if (mechanism == 'حزام') {
       widget.model.shutterDriveSide = 'left';
       widget.model.setAllShutterDriveSide('left');
@@ -495,56 +500,10 @@ class _WindowViewState extends State<WindowView> {
     required bool isVertical,
   }) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isTabletOrDesktop =
         _isWindowsDesktop || MediaQuery.sizeOf(context).width >= 600;
 
     final items = <Widget>[
-      // قفل / تحرير حركة الرسم
-      Material(
-        elevation: 2,
-        color: _isMovementLocked
-            ? (isDark ? const Color(0xFF5D4037) : Colors.amber.shade100)
-            : (isDark ? const Color(0xFF2A2A3C) : Colors.white),
-        borderRadius: BorderRadius.circular(20),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: _toggleMovementLock,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  _isMovementLocked
-                      ? Icons.lock_rounded
-                      : Icons.lock_open_rounded,
-                  size: 16,
-                  color: _isMovementLocked
-                      ? Colors.amber.shade900
-                      : Colors.blue.shade700,
-                ),
-                const SizedBox(width: 5),
-                Text(
-                  _isMovementLocked
-                      ? Localization.translate('الرسم ثابت', lang)
-                      : Localization.translate('حركة حرة', lang),
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: _isMovementLocked
-                        ? (isDark
-                              ? Colors.amber.shade200
-                              : Colors.amber.shade900)
-                        : (isDark ? Colors.white70 : Colors.grey.shade800),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
       if (isTabletOrDesktop) ...[
         // زر الحائط
         _buildQuickCanvasPill(
@@ -574,11 +533,14 @@ class _WindowViewState extends State<WindowView> {
         // Pricing-only mosquito screen. It must not alter the drawing.
         _buildQuickCanvasPill(
           context: context,
-          label: 'موستيكير',
+          label: Localization.translate('موستيكير', lang),
           icon: Icons.grid_on_rounded,
           isActive: widget.model.hasMoustiquaireAddon,
           activeColor: Colors.green.shade700,
-          tooltip: 'إضافتها إلى الكمية والتكلفة دون إظهارها في الرسم',
+          tooltip: Localization.translate(
+            'إضافتها إلى الكمية والتكلفة دون إظهارها في الرسم',
+            lang,
+          ),
           onTap: _toggleMoustiquaireAddon,
         ),
         // زر صندوق النفق
@@ -883,7 +845,8 @@ class _WindowViewState extends State<WindowView> {
     }
 
     // 11. Toggle drawing mode if matches registered shortcut
-    if (ShortcutBindings.instance.matches('drawing_mode', event)) {
+    if (!_isWindowsDesktop &&
+        ShortcutBindings.instance.matches('drawing_mode', event)) {
       _toggleDrawingInteractionMode();
       return true;
     }
@@ -924,9 +887,19 @@ class _WindowViewState extends State<WindowView> {
           capacity: capacity,
           sides: spec.jointTwoSides ? 2 : 1,
         );
+        final lang = context.read<AppSettingsProvider>().language;
+        final unit = lang == AppLanguage.arabic ? 'مم' : 'mm';
         final message = fit == null
-            ? 'تنبيه: لا توجد تركيبة جوانات مفعّلة تطابق الزجاج ($glass مم) والسعة ($capacity مم). النقص ممنوع والزيادة القصوى 1 مم.'
-            : 'تركيبة جوانات متوافقة مقترحة: ${fit.map((row) => '${row['name']} (${row['thickness']} مم)').join(' + ')}. الزجاج: $glass مم، السعة: $capacity مم، الزيادة القصوى 1 مم دون نقص.';
+            ? (lang == AppLanguage.french
+                ? 'Attention : Aucune combinaison de joints active ne correspond au vitrage ($glass $unit) et à la capacité ($capacity $unit). Le manque est interdit, tolérance max +1 $unit.'
+                : lang == AppLanguage.english
+                ? 'Warning: No active gasket combination matches glass ($glass $unit) and capacity ($capacity $unit). Deficit not allowed, max excess +1 $unit.'
+                : 'تنبيه: لا توجد تركيبة جوانات مفعّلة تطابق الزجاج ($glass $unit) والسعة ($capacity $unit). النقص ممنوع والزيادة القصوى 1 $unit.')
+            : (lang == AppLanguage.french
+                ? 'Combinaison de joints suggérée : ${fit.map((row) => '${row['name']} (${row['thickness']} $unit)').join(' + ')}. Vitrage : $glass $unit, Capacité : $capacity $unit, tolérance max +1 $unit sans manque.'
+                : lang == AppLanguage.english
+                ? 'Suggested gasket combination: ${fit.map((row) => '${row['name']} (${row['thickness']} $unit)').join(' + ')}. Glass: $glass $unit, Capacity: $capacity $unit, max excess +1 $unit without deficit.'
+                : 'تركيبة جوانات متوافقة مقترحة: ${fit.map((row) => '${row['name']} (${row['thickness']} $unit)').join(' + ')}. الزجاج: $glass $unit، السعة: $capacity $unit، الزيادة القصوى 1 $unit دون نقص.');
         return Padding(
           padding: const EdgeInsets.all(8),
           child: Text(
@@ -1231,8 +1204,12 @@ class _WindowViewState extends State<WindowView> {
 
   bool _isDraggingHandle = false;
   bool _isDraggingHinge = false;
+  SashHingeEdge? _draggedHingeEdge;
+  int _draggedHingeIndex = 0;
   bool _suppressHandleDragForLongPress = false;
   bool _isDraggingSlantLeft = false;
+  DimensionLabelHit? _draggedDimension;
+  ({String zoneId, String dividerId, bool atStart})? _draggedSlantEnd;
   bool _isDraggingSlantRight = false;
   bool _isDraggingArch = false;
   bool _isDraggingDoubleSashDivider = false;
@@ -1262,11 +1239,13 @@ class _WindowViewState extends State<WindowView> {
   Offset _userPan = Offset.zero;
   Offset _baseUserPan = Offset.zero;
   Offset _focalPointStart = Offset.zero;
-  bool _isMovementLocked = true;
+  // Desktop panning with the middle mouse button or Space + left drag.
+  bool _isPanningCanvas = false;
 
   bool _isDrawerOpen = false;
   bool _isLeftDrawerOpen = false;
   bool _isExitDialogOpen = false;
+  bool _isContextMenuOpen = false;
 
   /// On Windows Flutter excludes a mouse from drag scrolling by default.
   /// Both drawing drawers contain horizontal option rows, so enable mouse and
@@ -1825,7 +1804,11 @@ class _WindowViewState extends State<WindowView> {
     if (!isWood) return null;
 
     String assetPath = 'assets/images/wood_texture.png';
-    if (cleanName.contains('d0') ||
+    if (cleanName.contains('marron clair') ||
+        cleanName.contains('light brown') ||
+        cleanName.contains('بني فاتح')) {
+      assetPath = 'assets/images/wood_texture_light_brown.png';
+    } else if (cleanName.contains('d0') ||
         cleanName.contains('oak') ||
         cleanName.contains('اوك') ||
         cleanName.contains('شين') ||
@@ -2347,6 +2330,10 @@ class _WindowViewState extends State<WindowView> {
   }
 
   void _onModelChanged() {
+    // An undo snapshot may restore the touch move mode; Windows has none.
+    if (_isWindowsDesktop && !widget.model.isDrawingMode) {
+      widget.model.setDrawingMode(true);
+    }
     // A regular window can have both zones and a shutter. Catalogue refreshes
     // must not dismiss the shutter panel simply because those zones exist.
     if (_isShutterSelected &&
@@ -2621,6 +2608,7 @@ class _WindowViewState extends State<WindowView> {
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_hingeKeyHandler);
     _drawingTimer?.cancel();
     _paintbrushTimer?.cancel();
     _catalogReloadDebounce?.cancel();
@@ -2647,27 +2635,473 @@ class _WindowViewState extends State<WindowView> {
     widget.model.updateHandlePosition(zone.id, newRatio.clamp(0.1, 0.9));
   }
 
-  void _handleHingeDrag(Offset delta, WindowZone zone) {
-    if (zone.openDirection == null && zone.content != ZoneContent.slidingSash) {
-      return;
-    }
+  // --- Hinge editing -------------------------------------------------------
 
-    final hingeCount = standardHingeCountForSash(
-      sashHeight: zone.boundary.height,
-      glassStructure: zone.glass.structure,
+  /// Delete removes the selected hinge, Escape releases it. Only active
+  /// while a hinge is selected and no text field has the focus.
+  bool _hingeKeyHandler(KeyEvent event) {
+    if (!mounted ||
+        event is! KeyDownEvent ||
+        widget.model.selectedHinge == null ||
+        ModalRoute.of(context)?.isCurrent != true) {
+      return false;
+    }
+    final focus = FocusManager.instance.primaryFocus?.context;
+    if (focus != null &&
+        (focus.widget is EditableText ||
+            focus.findAncestorWidgetOfExactType<EditableText>() != null)) {
+      return false;
+    }
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.delete ||
+        key == LogicalKeyboardKey.backspace) {
+      _removeSelectedHinge();
+      return true;
+    }
+    if (key == LogicalKeyboardKey.escape) {
+      widget.model.selectHinge(null);
+      return true;
+    }
+    return false;
+  }
+
+  // Hit tests use the hinges exactly as the editor painted them
+  // (model.hingeEdges), so selection always matches the drawing.
+
+  double get _hingeHitRadiusPx {
+    final scale = widget.model.canvasScale * _userScale;
+    // Half a hinge (80 mm) on screen, never smaller than a fingertip/cursor.
+    return math.max(_isWindowsDesktop ? 14.0 : 24.0, 40.0 * scale);
+  }
+
+  ({SashHingeEdge edge, int index})? _hingeAt(Offset local) {
+    ({SashHingeEdge edge, int index})? best;
+    var bestDistance = _hingeHitRadiusPx;
+    for (final edge in widget.model.hingeEdges) {
+      for (var i = 0; i < edge.centers.length; i++) {
+        final d = (_modelToScreen(edge.centers[i]) - local).distance;
+        if (d < bestDistance) {
+          bestDistance = d;
+          best = (edge: edge, index: i);
+        }
+      }
+    }
+    return best;
+  }
+
+  /// The hinged edge under [local], with the position (mm) on it.
+  ({SashHingeEdge edge, double position})? _hingeEdgeAt(Offset local) {
+    final modelPos = _getModelPos(local);
+    for (final edge in widget.model.hingeEdges) {
+      final p = edge.positionAt(modelPos);
+      if (p < 0 || p > edge.length) continue;
+      final onEdge = _modelToScreen(edge.pointAt(p));
+      if ((onEdge - local).distance < _hingeHitRadiusPx * 0.8) {
+        return (edge: edge, position: p);
+      }
+    }
+    return null;
+  }
+
+  void _selectHinge(({SashHingeEdge edge, int index}) hit) {
+    setState(() {
+      _isShutterSelected = false;
+    });
+    widget.model.selectHinge(
+      SelectedHinge(hit.edge.zoneId, hit.edge.leaf, hit.index),
+    );
+    if (!hit.edge.editable) {
+      _showHingeMessage(WindowModel.hingeObLockedKey);
+    }
+  }
+
+  /// A press on a hinge drags it: directly with the mouse or in drawing
+  /// mode, otherwise once it is selected (so panning over it stays panning).
+  bool _startHingeDrag(ScaleStartDetails details) {
+    if (details.pointerCount >= 2) return false;
+    final hit = _hingeAt(details.localFocalPoint);
+    if (hit == null || !hit.edge.editable) return false;
+    final selected = widget.model.selectedHinge;
+    final isSelected =
+        selected != null &&
+        selected.matches(hit.edge) &&
+        selected.index == hit.index;
+    if (!isSelected &&
+        !widget.model.isDrawingMode &&
+        details.kind != PointerDeviceKind.mouse) {
+      return false;
+    }
+    widget.model.selectHinge(
+      SelectedHinge(hit.edge.zoneId, hit.edge.leaf, hit.index),
+    );
+    _draggedHingeEdge = hit.edge;
+    _draggedHingeIndex = hit.index;
+    _isDraggingHinge = true;
+    _propertyDragHistorySaved = false;
+    return true;
+  }
+
+  void _dragHingeTo(Offset local) {
+    final edge = _draggedHingeEdge;
+    if (edge == null) return;
+    if (!_propertyDragHistorySaved) {
+      widget.model.saveSnapshotOutside();
+      _propertyDragHistorySaved = true;
+    }
+    widget.model.moveHinge(
+      edge.zoneId,
+      edge.leaf,
+      _draggedHingeIndex,
+      edge.positionAt(_getModelPos(local)),
+      edge.length,
+    );
+  }
+
+  SashHingeEdge? get _selectedHingeEdge {
+    final selected = widget.model.selectedHinge;
+    if (selected == null) return null;
+    final edge = widget.model.hingeEdgeOf(selected.zoneId, selected.leaf);
+    if (edge == null || selected.index >= _currentHinges(edge).length) {
+      return null;
+    }
+    return edge;
+  }
+
+  /// Positions straight from the model: the painted edge may be one frame
+  /// behind right after an edit.
+  List<double> _currentHinges(SashHingeEdge edge) {
+    for (final zone in widget.model.zones) {
+      if (zone.id == edge.zoneId) {
+        return widget.model.hingePositionsFor(zone, edge.leaf, edge.length);
+      }
+    }
+    return const [];
+  }
+
+  void _addHingeTo(SashHingeEdge edge, {double? near}) {
+    _showHingeMessage(
+      widget.model.addHinge(edge.zoneId, edge.leaf, edge.length, near: near),
+    );
+  }
+
+  void _removeSelectedHinge() {
+    final selected = widget.model.selectedHinge;
+    final edge = _selectedHingeEdge;
+    if (selected == null || edge == null) return;
+    _showHingeMessage(
+      widget.model.removeHinge(
+        edge.zoneId,
+        edge.leaf,
+        selected.index,
+        edge.length,
+      ),
+    );
+  }
+
+  void _resetHingesOf(SashHingeEdge edge) {
+    widget.model.resetHinges(edge.zoneId, leaf: edge.leaf);
+    widget.model.selectHinge(null);
+  }
+
+  void _showHingeMessage(String? key) {
+    if (key == null || !mounted) return;
+    final text = _tr(key)
+        .replaceAll(
+          '{min}',
+          SashHingeRules.minEndDistanceMm.round().toString(),
+        )
+        .replaceAll('{gap}', SashHingeRules.minSpacingMm.round().toString());
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(text),
+          backgroundColor: Colors.orange.shade800,
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+
+  /// Right click on a hinge or on a hinged edge. Returns false when the
+  /// click was elsewhere, so the normal context menu opens.
+  Future<bool> _showHingeContextMenu(Offset global, Offset local) async {
+    final hit = _hingeAt(local);
+    final edgeHit = hit == null ? _hingeEdgeAt(local) : null;
+    final edge = hit?.edge ?? edgeHit?.edge;
+    if (edge == null) return false;
+    if (hit != null) _selectHinge(hit);
+    if (!edge.editable) return true;
+
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final action = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        Rect.fromLTWH(global.dx, global.dy, 1, 1),
+        Offset.zero & overlay.size,
+      ),
+      items: [
+        PopupMenuItem(
+          value: 'add',
+          child: _hingeMenuRow(Icons.add_circle_outline, 'إضافة مفصل هنا'),
+        ),
+        if (hit != null)
+          PopupMenuItem(
+            value: 'remove',
+            child: _hingeMenuRow(Icons.delete_outline, 'حذف المفصل'),
+          ),
+        PopupMenuItem(
+          value: 'reset',
+          child: _hingeMenuRow(Icons.auto_fix_high, 'توزيع المفاصل تلقائياً'),
+        ),
+      ],
+    );
+    if (!mounted) return true;
+    switch (action) {
+      case 'add':
+        _addHingeTo(
+          edge,
+          near: hit != null
+              ? edge.positions[hit.index]
+              : edgeHit?.position,
+        );
+      case 'remove':
+        _removeSelectedHinge();
+      case 'reset':
+        _resetHingesOf(edge);
+    }
+    return true;
+  }
+
+  Widget _hingeMenuRow(IconData icon, String label) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(icon, size: 18),
+      const SizedBox(width: 10),
+      Text(_tr(label), style: const TextStyle(fontSize: 13)),
+    ],
+  );
+
+  Future<void> _showHingePositionDialog(
+    SashHingeEdge edge,
+    SelectedHinge selected,
+  ) async {
+    final positions = _currentHinges(edge);
+    if (selected.index < 0 || selected.index >= positions.length) return;
+    final gap = SashHingeRules.nearestGap(
+      positions,
+      selected.index,
+      edge.length,
+    );
+    final currentDistance = gap.to - gap.from;
+    final controller = TextEditingController(
+      text: currentDistance.toStringAsFixed(
+        currentDistance == currentDistance.roundToDouble() ? 0 : 1,
+      ),
+    );
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+
+    final requestedDistance = await showDialog<double>(
+      context: context,
+      builder: (dialogContext) {
+        String? errorText;
+        return StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: Text(Localization.translate('تغيير مكان المفصل', lang)),
+            content: TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: InputDecoration(
+                labelText: Localization.translate(
+                  'المسافة إلى أقرب مفصل أو طرف (مم)',
+                  lang,
+                ),
+                suffixText: 'mm',
+                errorText: errorText,
+                border: const OutlineInputBorder(),
+              ),
+              onSubmitted: (_) {
+                final value = double.tryParse(
+                  controller.text.trim().replaceAll(',', '.'),
+                );
+                if (value == null || value <= 0) {
+                  setDialogState(
+                    () => errorText = Localization.translate(
+                      'أدخل مسافة صحيحة أكبر من الصفر',
+                      lang,
+                    ),
+                  );
+                  return;
+                }
+                Navigator.pop(dialogContext, value);
+              },
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text(Localization.translate('إلغاء', lang)),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final value = double.tryParse(
+                    controller.text.trim().replaceAll(',', '.'),
+                  );
+                  if (value == null || value <= 0) {
+                    setDialogState(
+                      () => errorText = Localization.translate(
+                        'أدخل مسافة صحيحة أكبر من الصفر',
+                        lang,
+                      ),
+                    );
+                    return;
+                  }
+                  Navigator.pop(dialogContext, value);
+                },
+                child: Text(Localization.translate('تطبيق', lang)),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    controller.dispose();
+    if (!mounted || requestedDistance == null) return;
+
+    final latestPositions = _currentHinges(edge);
+    if (selected.index < 0 || selected.index >= latestPositions.length) return;
+    final latestGap = SashHingeRules.nearestGap(
+      latestPositions,
+      selected.index,
+      edge.length,
+    );
+    final selectedPosition = latestPositions[selected.index];
+    final selectedIsLowerEnd =
+        (selectedPosition - latestGap.from).abs() < 0.5;
+    final target = selectedIsLowerEnd
+        ? latestGap.to - requestedDistance
+        : latestGap.from + requestedDistance;
+    _showHingeMessage(
+      widget.model.moveHinge(
+        edge.zoneId,
+        edge.leaf,
+        selected.index,
+        target,
+        edge.length,
+        saveHistory: true,
+        snapToGrid: false,
+      ),
+    );
+  }
+
+  /// Small bar next to the selected hinge: its position, add, delete and
+  /// back to the automatic layout. Hidden while the hinge is being dragged.
+  Widget? _buildHingeToolbar(BoxConstraints constraints) {
+    final selected = widget.model.selectedHinge;
+    final edge = _selectedHingeEdge;
+    if (selected == null || edge == null || _draggedHingeEdge != null) {
+      return null;
+    }
+    final positions = _currentHinges(edge);
+    final center = _modelToScreen(edge.pointAt(positions[selected.index]));
+    final barWidth = math.min(560.0, math.max(220.0, constraints.maxWidth - 16));
+    const barHeight = 52.0;
+    final left = (center.dx - barWidth / 2)
+        .clamp(8.0, math.max(8.0, constraints.maxWidth - barWidth - 8))
+        .toDouble();
+    var top = center.dy - _hingeHitRadiusPx - barHeight - 8;
+    if (top < 8) top = center.dy + _hingeHitRadiusPx + 8;
+    top = top
+        .clamp(8.0, math.max(8.0, constraints.maxHeight - barHeight - 8))
+        .toDouble();
+    final count = positions.length;
+    final gap = SashHingeRules.nearestGap(
+      positions,
+      selected.index,
+      edge.length,
+    );
+    final position = (gap.to - gap.from).round();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    Widget button(
+      IconData icon,
+      String label,
+      VoidCallback? onTap,
+    ) => TextButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 18),
+      label: Text(_tr(label), style: const TextStyle(fontSize: 11)),
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 7),
+        visualDensity: VisualDensity.compact,
+      ),
     );
 
-    if (hingeCount < 3) {
-      // If 2 hinges, we cannot move anything!
-      return;
-    }
-
-    double dy = delta.dy / (_userScale * widget.model.canvasScale);
-    double newOffset = zone.middleHingeDragOffset;
-    newOffset += dy * 200; // Multiply to make it more responsive
-    if (newOffset < -150) newOffset = -150;
-    if (newOffset > 150) newOffset = 150;
-    widget.model.updateHingePosition(zone.id, newOffset);
+    return Positioned(
+      left: left,
+      top: top,
+      width: barWidth,
+      height: barHeight,
+      child: Material(
+        elevation: 6,
+        borderRadius: BorderRadius.circular(10),
+        color: isDark ? const Color(0xFF2E2E40) : Colors.white,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              Tooltip(
+                message: _tr('اضغط لتغيير مسافة المفصل'),
+                child: TextButton.icon(
+                  onPressed: edge.editable
+                      ? () => _showHingePositionDialog(edge, selected)
+                      : null,
+                  icon: Icon(
+                    edge.vertical ? Icons.height : Icons.swap_horiz_rounded,
+                  ),
+                  label: Text(
+                    '$position mm · $count ${_tr('مفصل')}',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+              if (edge.editable) ...[
+                button(
+                  Icons.add_circle_outline,
+                  'إضافة مفصل',
+                  () => _addHingeTo(edge),
+                ),
+                button(
+                  Icons.delete_outline,
+                  'حذف مفصل',
+                  count > SashHingeRules.minCount
+                      ? _removeSelectedHinge
+                      : null,
+                ),
+                button(
+                  Icons.auto_fix_high,
+                  'توزيع تلقائي',
+                  () => _resetHingesOf(edge),
+                ),
+              ],
+              button(
+                Icons.close,
+                'إغلاق',
+                () => widget.model.selectHinge(null),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   bool _isTopZone(WindowZone zone) {
@@ -2678,31 +3112,10 @@ class _WindowViewState extends State<WindowView> {
     return zone.boundary.top == minTop;
   }
 
-  double getInnerTopY(double x, double t, double topOffset) {
-    if (widget.model.archHeight == 0 &&
-        widget.model.topSlantLeftY == 0 &&
-        widget.model.topSlantRightY == 0) {
-      return topOffset + t;
-    }
-    double factor = 0.0;
-    if (widget.model.width > 2 * t) {
-      factor = ((x - t) / (widget.model.width - 2 * t)).clamp(0.0, 1.0);
-    }
-    double yL = topOffset + widget.model.topSlantLeftY + t;
-    double yR = topOffset + widget.model.topSlantRightY + t;
-    if (widget.model.archHeight > 0) {
-      double yC =
-          topOffset +
-          math.min(widget.model.topSlantLeftY, widget.model.topSlantRightY) -
-          (widget.model.archHeight * 2) +
-          t;
-      return (1.0 - factor) * (1.0 - factor) * yL +
-          2.0 * (1.0 - factor) * factor * yC +
-          factor * factor * yR;
-    } else {
-      return yL + factor * (yR - yL);
-    }
-  }
+  // Same head geometry as WindowPainter (model.headEdgeY), so hit tests on
+  // handles and divisions under a slanted or arched head match the drawing.
+  double getInnerTopY(double x, double t, double topOffset) =>
+      widget.model.headEdgeY(x, t, topOffset: topOffset);
 
   double getSashTopY(
     double x,
@@ -2712,20 +3125,32 @@ class _WindowViewState extends State<WindowView> {
     bool isTopBound,
   ) {
     if (!isTopBound) return sashTopFlat;
-    double clearance = sashTopFlat - (topOffset + t);
-    if (clearance < 0) clearance = 0;
-    return getInnerTopY(x, t, topOffset) + clearance;
+    return widget.model.headEdgeY(
+      x,
+      math.max(t, sashTopFlat - topOffset),
+      topOffset: topOffset,
+    );
   }
 
   void _showMullionResizeDialog(BuildContext context, int section) {
     bool isH = widget.model.selection.isHorizontalMullion!;
     double pos = widget.model.selection.mullionPosition!;
     final t = widget.model.profileThickness;
-    final sep = widget.model.mullionThickness / 2;
+    // Same separator as resizeMullionDimension: a coupled-frame joint is two
+    // frame bars wide, not one mullion, otherwise the shown clear size and
+    // the applied one disagree.
+    final sep = widget.model.isDoubleFrameMullionAt(isH, pos)
+        ? widget.model.frameProfileWidthAt(isH, pos)
+        : widget.model.mullionThickness / 2;
     final inset = t + sep;
-    double currentValue = isH
-        ? (section == 1 ? (pos - inset) : (widget.model.height - pos - inset))
-        : (section == 1 ? (pos - inset) : (widget.model.width - pos - inset));
+    double valueAt(double position) => isH
+        ? (section == 1
+              ? (position - inset)
+              : (widget.model.height - position - inset))
+        : (section == 1
+              ? (position - inset)
+              : (widget.model.width - position - inset));
+    double currentValue = valueAt(pos);
     final ctrl = TextEditingController(text: currentValue.toInt().toString());
     final lang = Provider.of<AppSettingsProvider>(
       context,
@@ -2791,8 +3216,27 @@ class _WindowViewState extends State<WindowView> {
               style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
               onPressed: () {
                 final val = double.tryParse(ctrl.text);
-                if (val != null && val > 0) {
-                  widget.model.resizeMullionDimension(section, val);
+                if (val == null || val <= 0) {
+                  _acceptDimension(null, 1, isH ? widget.model.height : widget.model.width);
+                  return;
+                }
+                widget.model.resizeMullionDimension(section, val);
+                // The model keeps every neighbouring zone above its minimum;
+                // tell the user when the typed size had to be adjusted.
+                final applied = widget.model.selection.mullionPosition;
+                if (applied != null && (valueAt(applied) - val).abs() > 1.0) {
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        _tr('تم ضبط القياس إلى {value} مم ليبقى كل جزء ضمن الحد الأدنى')
+                            .replaceAll(
+                              '{value}',
+                              valueAt(applied).round().toString(),
+                            ),
+                      ),
+                      backgroundColor: Colors.orange.shade800,
+                    ),
+                  );
                 }
                 Navigator.pop(context);
               },
@@ -3020,6 +3464,7 @@ class _WindowViewState extends State<WindowView> {
   void _startDrawingTimer() {
     _drawingTimer?.cancel();
     widget.model.setDrawingMode(true);
+    if (_isWindowsDesktop) return;
     _drawingTimer = Timer(const Duration(seconds: 10), () {
       if (mounted) {
         widget.model.setDrawingMode(false);
@@ -3029,16 +3474,20 @@ class _WindowViewState extends State<WindowView> {
 
   void _stopDrawingTimer() {
     _drawingTimer?.cancel();
-    widget.model.setDrawingMode(false);
+    // Windows has no move mode: the drawing stays editable.
+    widget.model.setDrawingMode(_isWindowsDesktop);
   }
 
   @override
   void initState() {
     super.initState();
+    HardwareKeyboard.instance.addHandler(_hingeKeyHandler);
     // Any model opened through the full design workspace must return here
     // when it is edited, including designs that use a tunnel box or wall.
     widget.model.isDesignDrawing = true;
-    widget.model.isMovementLocked = _isMovementLocked;
+    // Panels and toolbars open over the drawing: the camera keeps the
+    // drawing's size and place (see WindowModel.updateLayoutMetrics).
+    widget.model.isMovementLocked = true;
     _positionCtrl = TextEditingController(text: widget.model.position ?? '');
     widget.model.addListener(_onModelChanged);
     _syncDrawerGlassFromDrawing();
@@ -3095,8 +3544,8 @@ class _WindowViewState extends State<WindowView> {
         setState(() => _hidePresetCard = hidePreset);
       }
     });
-    // Activate drawing mode for 10 seconds when entering the screen
-    widget.model.setDrawingMode(false);
+    // Touch devices start in move mode; Windows is always editable.
+    widget.model.setDrawingMode(_isWindowsDesktop);
   }
 
   Offset _getModelPos(Offset screenPos) {
@@ -3115,35 +3564,7 @@ class _WindowViewState extends State<WindowView> {
     );
   }
 
-  void _toggleMovementLock() {
-    setState(() {
-      _isMovementLocked = !_isMovementLocked;
-      widget.model.isMovementLocked = _isMovementLocked;
-      if (!_isMovementLocked) {
-        widget.model.lastLayoutSize = null;
-      }
-    });
-    final lang = Provider.of<AppSettingsProvider>(
-      context,
-      listen: false,
-    ).language;
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          _isMovementLocked
-              ? Localization.translate('تم تثبيت الرسم ومنع حركته', lang)
-              : Localization.translate('تم تحرير حركة الرسم', lang),
-          style: const TextStyle(fontFamily: 'Cairo'),
-        ),
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
   void _changeDrawingZoom(double factor, Offset focalPoint) {
-    if (_isMovementLocked) return;
     final double nextScale = (_userScale * factor).clamp(
       _minUserScale,
       _maxUserScale,
@@ -3165,7 +3586,6 @@ class _WindowViewState extends State<WindowView> {
   }
 
   void _handleDrawingPointerSignal(PointerSignalEvent event) {
-    if (_isMovementLocked) return;
     if (!_isWindowsDesktop || event is! PointerScrollEvent) return;
     final verticalDelta = event.scrollDelta.dy;
     if (verticalDelta == 0) return;
@@ -3180,7 +3600,6 @@ class _WindowViewState extends State<WindowView> {
   }
 
   void _resetDrawingZoom() {
-    if (_isMovementLocked) return;
     setState(() {
       _userScale = 1.0;
       _userPan = Offset.zero;
@@ -4359,6 +4778,9 @@ class _WindowViewState extends State<WindowView> {
           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
         ),
       ),
+      // On Windows the drawing is always editable and the mouse pans
+      // (middle button or Space + drag): the mode switch is for touch only.
+      if (!_isWindowsDesktop)
       TextButton.icon(
         style: widget.model.isDrawingMode
             ? buttonStyle.copyWith(
@@ -4419,23 +4841,6 @@ class _WindowViewState extends State<WindowView> {
             ),
           ),
         ),
-      Semantics(
-        button: true,
-        label: _isMovementLocked ? 'تحرير حركة الرسم' : 'تثبيت الرسم',
-        child: IconButton(
-          icon: Icon(
-            _isMovementLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
-            color: _isMovementLocked ? Colors.amber.shade700 : null,
-          ),
-          tooltip: _isMovementLocked
-              ? Localization.translate(
-                  'تحرير حركة الرسم (الرسم مثبت حالياً)',
-                  lang,
-                )
-              : Localization.translate('تثبيت الرسم ومنع حركته', lang),
-          onPressed: _toggleMovementLock,
-        ),
-      ),
       iconButton(
         icon: Icons.center_focus_strong_outlined,
         tooltip: Localization.translate('توسيط الرسم', lang),
@@ -4560,8 +4965,6 @@ class _WindowViewState extends State<WindowView> {
                             ],
                           ),
                         ),
-                      if (!_isMovementLocked && activeTopToolbar != null)
-                        activeTopToolbar,
 
                       Expanded(
                         child: LayoutBuilder(
@@ -4577,6 +4980,44 @@ class _WindowViewState extends State<WindowView> {
                                     final modelPos = _getModelPos(
                                       details.localPosition,
                                     );
+                                    final tappedHinge = _hingeAt(
+                                      details.localPosition,
+                                    );
+                                    if (tappedHinge != null) {
+                                      _selectHinge(tappedHinge);
+                                      return;
+                                    }
+                                    if (widget.model.selectedHinge != null) {
+                                      widget.model.selectHinge(null);
+                                    }
+
+                                    // Slanted mullion: the first tap selects
+                                    // it (end handles appear), a tap on the
+                                    // selected one opens its editor.
+                                    final slantHit = widget.model
+                                        .slantedDividerAt(
+                                          modelPos,
+                                          slopMm:
+                                              8.0 /
+                                              (widget.model.canvasScale *
+                                                  _userScale),
+                                        );
+                                    if (slantHit != null) {
+                                      if (widget.model
+                                              .selectedSlantedDivider ==
+                                          slantHit) {
+                                        _showSlantedDividerDialog(slantHit);
+                                      } else {
+                                        widget.model.selectSlantedDivider(
+                                          slantHit,
+                                        );
+                                      }
+                                      return;
+                                    }
+                                    if (widget.model.selectedSlantedDivider !=
+                                        null) {
+                                      widget.model.selectSlantedDivider(null);
+                                    }
 
                                     // --- Individual frame dimension tap (coupled windows) ---
                                     // First check the number painted directly in
@@ -4584,185 +5025,19 @@ class _WindowViewState extends State<WindowView> {
                                     // narrower than the surrounding profile.
                                     InnerDimensionHit? individualTap =
                                         _frameProfileDimensionHit(modelPos);
-                                    final physicalFrames = widget.model
-                                        .getPhysicalFrameInfos();
-                                    if (physicalFrames.length > 1) {
-                                      final sorted =
-                                          List<PhysicalFrameInfo>.from(
-                                            physicalFrames,
-                                          )..sort(
-                                            (a, b) => a.rect.left != b.rect.left
-                                                ? a.rect.left.compareTo(
-                                                    b.rect.left,
-                                                  )
-                                                : a.rect.top.compareTo(
-                                                    b.rect.top,
-                                                  ),
-                                          );
-                                      final hasVaryingHeights = sorted.any(
-                                        (f) =>
-                                            (f.rect.height -
-                                                    sorted.first.rect.height)
-                                                .abs() >
-                                            1.0,
-                                      );
-
-                                      final double scW =
-                                          widget.model.sideCoverWidth;
-                                      double offsetDistTop = 105.0;
-                                      if (widget.model.hasShutter) {
-                                        offsetDistTop += 20.0;
-                                      }
-                                      if (widget.model.hasSideCovers &&
-                                          !widget.model.removedShutterSides
-                                              .contains('top')) {
-                                        offsetDistTop += scW + 15.0;
-                                      }
-                                      double offsetDistRight = 50.0;
-                                      if (widget.model.hasSideCovers &&
-                                          !widget.model.removedShutterSides
-                                              .contains('right')) {
-                                        offsetDistRight += scW + 15.0;
-                                      }
-                                      if (widget
-                                          .model
-                                          .shutterIsLongerThanWindow) {
-                                        offsetDistRight += 125.0;
-                                      }
-                                      double offsetDistLeft = 50.0;
-                                      if (widget.model.hasSideCovers &&
-                                          !widget.model.removedShutterSides
-                                              .contains('left')) {
-                                        offsetDistLeft += scW + 15.0;
-                                      }
-                                      double offsetDistBottom = 50.0;
-                                      if (widget.model.hasSideCovers &&
-                                          widget.model.hasBottomFrame &&
-                                          !widget.model.removedShutterSides
-                                              .contains('bottom')) {
-                                        offsetDistBottom += scW + 15.0;
-                                      }
-                                      final bool isSlantedOrArched =
-                                          widget.model.archHeight > 0 ||
-                                          widget.model.topSlantLeftY != 0 ||
-                                          widget.model.topSlantRightY != 0 ||
-                                          widget.model.bottomSlantLeftY != 0 ||
-                                          widget.model.bottomSlantRightY != 0;
-
-                                      // 1. Check individual frame widths (Layer 1)
-                                      if (individualTap == null) {
-                                        double layer1Y;
-                                        if (isSlantedOrArched) {
-                                          double maxBottomY = math.max(
-                                            widget.model.bottomSlantLeftY,
-                                            widget.model.bottomSlantRightY,
-                                          );
-                                          layer1Y =
-                                              widget.model.height +
-                                              maxBottomY +
-                                              offsetDistBottom;
-                                        } else {
-                                          double wY = -offsetDistTop;
-                                          if (widget.model.hasShutter &&
-                                              widget.model.isCaissonTunnel) {
-                                            wY -= widget.model.shutterBoxHeight;
-                                          }
-                                          layer1Y = wY + 70.0;
-                                        }
-                                        for (final f in sorted) {
-                                          final xCenter =
-                                              (f.rect.left + f.rect.right) / 2;
-                                          if ((modelPos.dx - xCenter).abs() <
-                                                  (f.rect.width / 2).clamp(
-                                                    30.0,
-                                                    90.0,
-                                                  ) &&
-                                              (modelPos.dy - layer1Y).abs() <
-                                                  28.0) {
-                                            individualTap = InnerDimensionHit(
-                                              f.primaryZoneId,
-                                              true,
-                                            );
-                                            break;
-                                          }
-                                        }
-                                      }
-
-                                      // 2. Check leftmost frame height
-                                      if (individualTap == null) {
-                                        final leftmost = sorted.first;
-                                        final leftYCenter =
-                                            (leftmost.rect.top +
-                                                leftmost.rect.bottom) /
-                                            2;
-                                        final leftDimX = -offsetDistLeft;
-                                        if ((modelPos.dx - leftDimX).abs() <
-                                                28.0 &&
-                                            (modelPos.dy - leftYCenter).abs() <
-                                                (leftmost.rect.height / 2)
-                                                    .clamp(30.0, 90.0)) {
-                                          individualTap = InnerDimensionHit(
-                                            leftmost.primaryZoneId,
-                                            false,
-                                          );
-                                        }
-                                      }
-
-                                      // 3. Check rightmost frame height
-                                      if (individualTap == null &&
-                                          sorted.length >= 2) {
-                                        final rightmost = sorted.last;
-                                        final rightYCenter =
-                                            (rightmost.rect.top +
-                                                rightmost.rect.bottom) /
-                                            2;
-                                        final rightDimX =
-                                            widget.model.width +
-                                            offsetDistRight;
-                                        if ((modelPos.dx - rightDimX).abs() <
-                                                28.0 &&
-                                            (modelPos.dy - rightYCenter).abs() <
-                                                (rightmost.rect.height / 2)
-                                                    .clamp(30.0, 90.0)) {
-                                          individualTap = InnerDimensionHit(
-                                            rightmost.primaryZoneId,
-                                            false,
-                                          );
-                                        }
-                                      }
-
-                                      // 4. Check intermediate frame heights
-                                      if (individualTap == null &&
-                                          sorted.length >= 3 &&
-                                          hasVaryingHeights) {
-                                        for (
-                                          int i = 1;
-                                          i < sorted.length - 1;
-                                          i++
-                                        ) {
-                                          final f = sorted[i];
-                                          final dimX =
-                                              f.rect.left +
-                                              math.min(
-                                                f.rect.width * 0.28,
-                                                65.0,
-                                              );
-                                          final yCenter =
-                                              (f.rect.top + f.rect.bottom) / 2;
-                                          if ((modelPos.dx - dimX).abs() <
-                                                  28.0 &&
-                                              (modelPos.dy - yCenter).abs() <
-                                                  (f.rect.height / 2).clamp(
-                                                    30.0,
-                                                    90.0,
-                                                  )) {
-                                            individualTap = InnerDimensionHit(
-                                              f.primaryZoneId,
-                                              false,
-                                            );
-                                            break;
-                                          }
-                                        }
+                                    // Each coupled frame's own width/height
+                                    // number, exactly where it was painted.
+                                    if (individualTap == null) {
+                                      final key = widget.model
+                                          .dimensionLabelAt(modelPos)
+                                          ?.key;
+                                      if (key != null &&
+                                          (key.startsWith('frameW:') ||
+                                              key.startsWith('frameH:'))) {
+                                        individualTap = InnerDimensionHit(
+                                          key.substring('frameW:'.length),
+                                          key.startsWith('frameW:'),
+                                        );
                                       }
                                     }
                                     if (individualTap != null) {
@@ -5244,6 +5519,15 @@ class _WindowViewState extends State<WindowView> {
                                       }
                                     }
 
+                                    final headDimension = widget.model
+                                        .dimensionLabelAt(modelPos)
+                                        ?.key;
+                                    if (headDimension == 'leftJamb' ||
+                                        headDimension == 'rightJamb' ||
+                                        headDimension == 'archRise') {
+                                      _showHeadDimensionDialog(headDimension!);
+                                      return;
+                                    }
                                     final outerTap = widget.model
                                         .checkOuterDimensionTap(modelPos);
                                     // The compact number inside each outer frame
@@ -5384,6 +5668,18 @@ class _WindowViewState extends State<WindowView> {
                                         outerTap == DimensionTap.none &&
                                         innerTap == null &&
                                         mullionDimTap == null) {
+                                      // Double click on empty canvas brings the
+                                      // drawing back to the centre (the band
+                                      // under the frame keeps toggling the
+                                      // bottom wall).
+                                      final belowFrame =
+                                          modelPos.dy >=
+                                              widget.model.height - 30.0 &&
+                                          modelPos.dy <=
+                                              widget.model.height + 250.0;
+                                      if (isDoubleTap && !belowFrame) {
+                                        _resetDrawingZoom();
+                                      }
                                       setState(() {
                                         _isDrawerOpen = false;
                                         _isLeftDrawerOpen = false;
@@ -5500,6 +5796,13 @@ class _WindowViewState extends State<WindowView> {
                                     }
                                   },
                                   onSecondaryTapDown: (details) async {
+                                    if (await _showHingeContextMenu(
+                                      details.globalPosition,
+                                      details.localPosition,
+                                    )) {
+                                      return;
+                                    }
+                                    if (!context.mounted) return;
                                     await _showDesktopContextMenu(
                                       context,
                                       details.globalPosition,
@@ -5710,7 +6013,7 @@ class _WindowViewState extends State<WindowView> {
                                       newRatio = newRatio.clamp(0.15, 0.85);
                                       widget.model.updateZoneDoubleSashRatio(
                                         zone.id,
-                                        newRatio,
+                                        _storedDoubleSashRatio(newRatio),
                                         saveHistory: false,
                                       );
                                     }
@@ -5732,10 +6035,43 @@ class _WindowViewState extends State<WindowView> {
                                     _baseUserPan = _userPan;
                                     _focalPointStart = details.localFocalPoint;
 
+                                    if (_isWindowsDesktop &&
+                                        HardwareKeyboard
+                                            .instance
+                                            .logicalKeysPressed
+                                            .contains(
+                                              LogicalKeyboardKey.space,
+                                            )) {
+                                      _isPanningCanvas = true;
+                                      return;
+                                    }
                                     if (details.pointerCount < 2) {
                                       final modelPos = _getModelPos(
                                         details.localFocalPoint,
                                       );
+
+                                      // Grabbing a dimension number moves its
+                                      // whole row away from (or back to) the
+                                      // frame; nothing in the design changes.
+                                      final grabbed = widget.model
+                                          .dimensionLabelAt(modelPos);
+                                      if (grabbed != null &&
+                                          grabbed.dragKey.isNotEmpty &&
+                                          grabbed.normal != Offset.zero) {
+                                        _draggedDimension = grabbed;
+                                        return;
+                                      }
+                                      // An end handle of the selected slanted
+                                      // mullion slides along the zone sides.
+                                      final slantEnd = _slantEndAt(
+                                        details.localFocalPoint,
+                                      );
+                                      if (slantEnd != null) {
+                                        _draggedSlantEnd = slantEnd;
+                                        return;
+                                      }
+
+                                      if (_startHingeDrag(details)) return;
 
                                       // Helper to map model coordinates to screen pixels for comfortable hit-testing
                                       Offset modelToScreen(Offset mPos) {
@@ -5751,15 +6087,19 @@ class _WindowViewState extends State<WindowView> {
                                           widget.model.topSlantRightY,
                                         ),
                                       );
+                                      // Grab the arch on its apex (the arc
+                                      // midpoint); a flat head offers the
+                                      // middle of the top edge.
                                       final tcScreen = modelToScreen(
-                                        Offset(
-                                          widget.model.width / 2,
-                                          math.min(
-                                                widget.model.topSlantLeftY,
-                                                widget.model.topSlantRightY,
-                                              ) -
-                                              (widget.model.archHeight * 2),
-                                        ),
+                                        widget.model.headArc()?.apex ??
+                                            Offset(
+                                              widget.model.width / 2,
+                                              (widget.model.topSlantLeftY +
+                                                      widget
+                                                          .model
+                                                          .topSlantRightY) /
+                                                  2,
+                                            ),
                                       );
                                       final touchScreen =
                                           details.localFocalPoint;
@@ -5814,7 +6154,6 @@ class _WindowViewState extends State<WindowView> {
                                             : 0.0;
 
                                         bool hitHandle = false;
-                                        bool hitHinge = false;
                                         final canInteractWithHardware =
                                             widget.model.isInternalView ||
                                             widget.model.showInternalHardware;
@@ -5936,113 +6275,6 @@ class _WindowViewState extends State<WindowView> {
                                             }
                                           }
 
-                                          // Precise hit testing for hinges
-                                          bool hingesOnLeft = false;
-                                          bool hingesOnRight = false;
-                                          bool hingesOnTop = false;
-                                          bool hingesOnBottom = false;
-
-                                          if (zone.content ==
-                                              ZoneContent.doubleSash) {
-                                            hingesOnLeft = !activeIsRight;
-                                            hingesOnRight = activeIsRight;
-                                          } else {
-                                            hingesOnLeft =
-                                                (zone.openDirection ==
-                                                OpenDirection.right);
-                                            hingesOnRight =
-                                                (zone.openDirection ==
-                                                OpenDirection.left);
-                                            hingesOnTop =
-                                                (zone.openDirection ==
-                                                OpenDirection.bottom);
-                                            hingesOnBottom =
-                                                (zone.openDirection ==
-                                                OpenDirection.top);
-                                          }
-
-                                          final hingeCount =
-                                              standardHingeCountForSash(
-                                                sashHeight: sashRect.height,
-                                                glassStructure:
-                                                    zone.glass.structure,
-                                              );
-
-                                          if (hingeCount >= 3 && !hitHandle) {
-                                            double hgX = 0;
-                                            double hgY = 0;
-                                            final hingeRevealOffset =
-                                                (widget.model.profileThickness *
-                                                        0.28)
-                                                    .clamp(9.0, 18.0)
-                                                    .toDouble();
-                                            if (hingesOnLeft || hingesOnRight) {
-                                              hgX = hingesOnRight
-                                                  ? sashRect.right +
-                                                        hingeRevealOffset
-                                                  : sashRect.left -
-                                                        hingeRevealOffset;
-                                              double startY =
-                                                  getSashTopY(
-                                                    hgX,
-                                                    sashRect.top,
-                                                    widget
-                                                        .model
-                                                        .profileThickness,
-                                                    topOffset,
-                                                    isTopBound,
-                                                  ) +
-                                                  100;
-                                              double step =
-                                                  (sashRect.bottom -
-                                                      100 -
-                                                      startY) /
-                                                  (hingeCount - 1);
-                                              hgY =
-                                                  startY +
-                                                  step +
-                                                  zone.middleHingeDragOffset;
-                                            } else if (hingesOnTop ||
-                                                hingesOnBottom) {
-                                              hgY = hingesOnBottom
-                                                  ? sashRect.bottom +
-                                                        hingeRevealOffset
-                                                  : sashRect.top -
-                                                        hingeRevealOffset;
-                                              double startX =
-                                                  sashRect.left + 100;
-                                              double step =
-                                                  (sashRect.right -
-                                                      100 -
-                                                      startX) /
-                                                  (hingeCount - 1);
-                                              hgX =
-                                                  startX +
-                                                  step +
-                                                  zone.middleHingeDragOffset;
-                                              if (hingesOnTop) {
-                                                hgY =
-                                                    getSashTopY(
-                                                      hgX,
-                                                      sashRect.top,
-                                                      widget
-                                                          .model
-                                                          .profileThickness,
-                                                      topOffset,
-                                                      isTopBound,
-                                                    ) -
-                                                    hingeRevealOffset;
-                                              }
-                                            }
-                                            final hingeScreenPos =
-                                                modelToScreen(Offset(hgX, hgY));
-                                            if ((touchScreen - hingeScreenPos)
-                                                    .distance <
-                                                45.0) {
-                                              _isDraggingHinge = true;
-                                              hitHinge = true;
-                                            }
-                                          }
                                         } else if (canInteractWithHardware &&
                                             zone.content ==
                                                 ZoneContent.slidingSash) {
@@ -6195,13 +6427,13 @@ class _WindowViewState extends State<WindowView> {
                                           }
                                         }
 
-                                        if (hitHandle || hitHinge) {
-                                          // Done, drag started for handle or hinge
+                                        if (hitHandle) {
+                                          // Done, drag started for the handle
                                         } else {
                                           final dividerX =
                                               bounds.left +
                                               bounds.width *
-                                                  zone.doubleSashRatio;
+                                                  _visualDoubleSashRatio(zone);
                                           final dividerTop = _modelToScreen(
                                             Offset(dividerX, bounds.top),
                                           );
@@ -6394,8 +6626,44 @@ class _WindowViewState extends State<WindowView> {
                                     }
                                   },
                                   onScaleUpdate: (details) {
+                                    final slantEnd = _draggedSlantEnd;
+                                    if (slantEnd != null) {
+                                      widget.model.previewSlantedDividerEnd(
+                                        slantEnd.zoneId,
+                                        slantEnd.dividerId,
+                                        atStart: slantEnd.atStart,
+                                        pointer: _getModelPos(
+                                          details.localFocalPoint,
+                                        ),
+                                      );
+                                      return;
+                                    }
+                                    if (_isPanningCanvas) {
+                                      setState(() {
+                                        _userPan += details.focalPointDelta;
+                                      });
+                                      return;
+                                    }
+                                    final draggedDimension = _draggedDimension;
+                                    if (draggedDimension != null) {
+                                      final delta =
+                                          details.focalPointDelta /
+                                          (_userScale *
+                                              widget.model.canvasScale);
+                                      widget.model.dragDimension(
+                                        draggedDimension.dragKey,
+                                        delta.dx * draggedDimension.normal.dx +
+                                            delta.dy *
+                                                draggedDimension.normal.dy,
+                                      );
+                                      return;
+                                    }
+                                    if (_draggedHingeEdge != null &&
+                                        details.pointerCount < 2) {
+                                      _dragHingeTo(details.localFocalPoint);
+                                      return;
+                                    }
                                     if (details.pointerCount >= 2) {
-                                      if (_isMovementLocked) return;
                                       setState(() {
                                         double newScale =
                                             (_baseUserScale * details.scale)
@@ -6513,35 +6781,16 @@ class _WindowViewState extends State<WindowView> {
                                               !_frameResizeHistorySaved,
                                         );
                                         _frameResizeHistorySaved = true;
-                                      } else if (_isDraggingSlantLeft) {
-                                        double dy =
-                                            details.focalPointDelta.dy /
-                                            (_userScale *
-                                                widget.model.canvasScale);
-                                        widget.model.updateTopSlantAndArch(
-                                          leftSlant:
-                                              (widget.model.topSlantLeftY + dy)
-                                                  .clamp(-500.0, 500.0),
-                                        );
-                                      } else if (_isDraggingSlantRight) {
-                                        double dy =
-                                            details.focalPointDelta.dy /
-                                            (_userScale *
-                                                widget.model.canvasScale);
-                                        widget.model.updateTopSlantAndArch(
-                                          rightSlant:
-                                              (widget.model.topSlantRightY + dy)
-                                                  .clamp(-500.0, 500.0),
-                                        );
-                                      } else if (_isDraggingArch) {
-                                        double dy =
-                                            details.focalPointDelta.dy /
-                                            (_userScale *
-                                                widget.model.canvasScale);
-                                        widget.model.updateTopSlantAndArch(
-                                          arch:
-                                              (widget.model.archHeight - dy / 2)
-                                                  .clamp(0.0, 800.0),
+                                      } else if (_isDraggingSlantLeft ||
+                                          _isDraggingSlantRight ||
+                                          _isDraggingArch) {
+                                        // Only the dashed ghost follows the
+                                        // pointer; the frame changes on
+                                        // release (_commitShapeDragPreview).
+                                        _updateShapeDragPreview(
+                                          details.focalPointDelta.dy /
+                                              (_userScale *
+                                                  widget.model.canvasScale),
                                         );
                                       } else if (widget.model.selection.type ==
                                           SelectionType.mullion) {
@@ -6647,7 +6896,7 @@ class _WindowViewState extends State<WindowView> {
                                         newRatio = newRatio.clamp(0.15, 0.85);
                                         widget.model.updateZoneDoubleSashRatio(
                                           zone.id,
-                                          newRatio,
+                                          _storedDoubleSashRatio(newRatio),
                                           saveHistory: false,
                                         );
                                       } else if (_isDraggingSashDivision &&
@@ -6715,14 +6964,6 @@ class _WindowViewState extends State<WindowView> {
                                               );
                                         }
                                       } else if (!_suppressHandleDragForLongPress &&
-                                          _isDraggingHinge &&
-                                          widget.model.selectedZone != null &&
-                                          widget.model.isDrawingMode) {
-                                        _handleHingeDrag(
-                                          details.focalPointDelta,
-                                          widget.model.selectedZone!,
-                                        );
-                                      } else if (!_suppressHandleDragForLongPress &&
                                           _isDraggingHandle &&
                                           widget.model.selectedZone != null &&
                                           !(widget
@@ -6738,7 +6979,6 @@ class _WindowViewState extends State<WindowView> {
                                           widget.model.selectedZone!,
                                         );
                                       } else if (!widget.model.isDrawingMode) {
-                                        if (_isMovementLocked) return;
                                         setState(() {
                                           _userPan =
                                               _baseUserPan +
@@ -6749,11 +6989,37 @@ class _WindowViewState extends State<WindowView> {
                                     }
                                   },
                                   onScaleEnd: (details) {
-                                    if (widget.model.drawingStart != null) {
-                                      widget.model.endDrawing();
+                                    try {
+                                      if (widget.model.drawingStart != null) {
+                                        widget.model.endDrawing();
+                                      }
+                                    } catch (error, stack) {
+                                      debugPrint('endDrawing failed: $error');
+                                      debugPrintStack(stackTrace: stack);
                                     }
+                                    final notice = widget.model.drawingNotice;
+                                    widget.model.drawingNotice = null;
+                                    if (notice != null) _showSlantNotice(notice);
+                                    if (_draggedSlantEnd != null) {
+                                      _draggedSlantEnd = null;
+                                      final error = widget.model
+                                          .commitSlantedDividerPreview();
+                                      if (error != null) {
+                                        _showSlantNotice(error);
+                                      }
+                                    }
+                                    // A sub-5px drag never started drawing;
+                                    // do not let it hijack the next drag.
+                                    widget.model.pendingDrawStart = null;
+                                    _isPanningCanvas = false;
+                                    _draggedDimension = null;
+                                    _commitShapeDragPreview();
                                     _isDraggingHandle = false;
                                     _isDraggingHinge = false;
+                                    if (_draggedHingeEdge != null) {
+                                      // Show the hinge toolbar again.
+                                      setState(() => _draggedHingeEdge = null);
+                                    }
                                     _suppressHandleDragForLongPress = false;
                                     _isDraggingSlantLeft = false;
                                     _isDraggingSlantRight = false;
@@ -6771,6 +7037,17 @@ class _WindowViewState extends State<WindowView> {
                                   child: Listener(
                                     onPointerSignal:
                                         _handleDrawingPointerSignal,
+                                    onPointerMove: (event) {
+                                      if (event.kind ==
+                                              PointerDeviceKind.mouse &&
+                                          (event.buttons &
+                                                  kMiddleMouseButton) !=
+                                              0) {
+                                        setState(() {
+                                          _userPan += event.delta;
+                                        });
+                                      }
+                                    },
                                     child: MouseRegion(
                                       cursor: _isWindowsDesktop
                                           ? SystemMouseCursors.precise
@@ -6798,6 +7075,10 @@ class _WindowViewState extends State<WindowView> {
                                                   model: widget.model,
                                                   userScale: _userScale,
                                                   userPan: _userPan,
+                                                  isDarkMode:
+                                                      Theme.of(context)
+                                                          .brightness ==
+                                                      Brightness.dark,
                                                 ),
                                               ),
                                             ),
@@ -6814,6 +7095,21 @@ class _WindowViewState extends State<WindowView> {
                                           ],
                                         ),
                                       ),
+                                    ),
+                                  ),
+                                ),
+                                // Follows the model (and the painted hinge
+                                // positions) without rebuilding the screen.
+                                Positioned.fill(
+                                  child: ListenableBuilder(
+                                    listenable: Listenable.merge([
+                                      widget.model,
+                                      widget.model.drawingRepaint,
+                                    ]),
+                                    builder: (context, _) => Stack(
+                                      children: [
+                                        ?_buildHingeToolbar(constraints),
+                                      ],
                                     ),
                                   ),
                                 ),
@@ -7201,8 +7497,7 @@ class _WindowViewState extends State<WindowView> {
                                       ),
                                     ),
                                   ),
-                                if (_isMovementLocked &&
-                                    activeTopToolbar != null)
+                                if (activeTopToolbar != null)
                                   Positioned(
                                     top: 0,
                                     left: 0,
@@ -7214,8 +7509,7 @@ class _WindowViewState extends State<WindowView> {
                                     duration: const Duration(milliseconds: 250),
                                     curve: Curves.easeOutCubic,
                                     top:
-                                        (_isMovementLocked &&
-                                            activeTopToolbar != null)
+                                        (activeTopToolbar != null)
                                         ? 62
                                         : 14,
                                     left: _isLeftDrawerOpen ? 342 : 12,
@@ -7228,8 +7522,7 @@ class _WindowViewState extends State<WindowView> {
                                 else
                                   Positioned(
                                     top:
-                                        (_isMovementLocked &&
-                                            activeTopToolbar != null)
+                                        (activeTopToolbar != null)
                                         ? 58
                                         : 12,
                                     left: 12,
@@ -7608,7 +7901,7 @@ class _WindowViewState extends State<WindowView> {
               return Padding(
                 padding: const EdgeInsets.all(8),
                 child: Text(
-                  widget.model.glazingFitMessage!,
+                  widget.model.localizedGlazingFitMessage(lang),
                   style: const TextStyle(fontSize: 11),
                 ),
               );
@@ -7661,18 +7954,59 @@ class _WindowViewState extends State<WindowView> {
             final hasSlidingSystem = widget.model.zones.any(
               (candidate) => candidate.content == ZoneContent.slidingSash,
             );
+            final seriesName = widget.model.activeSeries?.name ?? '';
             final openingPrefix = hasOpeningSystem && hasSlidingSystem
-                ? 'نظام الفتح (${widget.model.activeSeries?.name ?? ''}): '
+                ? (lang == AppLanguage.french
+                    ? 'Système ouvrant ($seriesName) : '
+                    : lang == AppLanguage.english
+                    ? 'Opening system ($seriesName): '
+                    : 'نظام الفتح ($seriesName): ')
                 : '';
-            final capacityLabel = usesParclose ? 'سعة البيركلوز' : 'سعة الضلفة';
+            final capacityLabel = usesParclose
+                ? (lang == AppLanguage.french
+                    ? 'la capacité parclose'
+                    : lang == AppLanguage.english
+                    ? 'glazing bead capacity'
+                    : 'سعة البيركلوز')
+                : (lang == AppLanguage.french
+                    ? 'la capacité ouvrant'
+                    : lang == AppLanguage.english
+                    ? 'sash capacity'
+                    : 'سعة الضلفة');
+            final capacityLabelPlain = usesParclose
+                ? (lang == AppLanguage.french
+                    ? 'Capacité parclose'
+                    : lang == AppLanguage.english
+                    ? 'Glazing bead capacity'
+                    : 'سعة البيركلوز')
+                : (lang == AppLanguage.french
+                    ? 'Capacité ouvrant'
+                    : lang == AppLanguage.english
+                    ? 'Sash capacity'
+                    : 'سعة الضلفة');
+
+            final unit = lang == AppLanguage.arabic ? 'مم' : 'mm';
+
             if (widget.model.isPVC || jointVitrage <= 0) {
-              message =
-                  openingPrefix +
-                  (isExact
-                      ? '${Localization.translate('سُمك الزجاج مطابق لسعة البيركلوز', lang).replaceAll('البيركلوز', usesParclose ? 'البيركلوز' : 'الضلفة')}: ${glassTotal.toStringAsFixed(0)} مم'
-                      : isAbove
-                      ? 'تنبيه: سُمك الزجاج ${glassTotal.toStringAsFixed(0)} مم أكبر من $capacityLabel ${maximum.toStringAsFixed(0)} مم'
-                      : 'تنبيه: سُمك الزجاج ${glassTotal.toStringAsFixed(0)} مم أصغر من $capacityLabel ${maximum.toStringAsFixed(0)} مم');
+              if (isExact) {
+                message = lang == AppLanguage.french
+                    ? '${openingPrefix}Épaisseur du vitrage conforme à $capacityLabel : ${glassTotal.toStringAsFixed(0)} $unit'
+                    : lang == AppLanguage.english
+                    ? '${openingPrefix}Glass thickness matches $capacityLabel: ${glassTotal.toStringAsFixed(0)} $unit'
+                    : '${openingPrefix}سُمك الزجاج مطابق لـ $capacityLabel: ${glassTotal.toStringAsFixed(0)} $unit';
+              } else if (isAbove) {
+                message = lang == AppLanguage.french
+                    ? '${openingPrefix}Attention : Épaisseur du vitrage ${glassTotal.toStringAsFixed(0)} $unit supérieure à $capacityLabel ${maximum.toStringAsFixed(0)} $unit'
+                    : lang == AppLanguage.english
+                    ? '${openingPrefix}Warning: Glass thickness ${glassTotal.toStringAsFixed(0)} $unit exceeds $capacityLabel ${maximum.toStringAsFixed(0)} $unit'
+                    : '${openingPrefix}تنبيه: سُمك الزجاج ${glassTotal.toStringAsFixed(0)} $unit أكبر من $capacityLabel ${maximum.toStringAsFixed(0)} $unit';
+              } else {
+                message = lang == AppLanguage.french
+                    ? '${openingPrefix}Attention : Épaisseur du vitrage ${glassTotal.toStringAsFixed(0)} $unit inférieure à $capacityLabel ${maximum.toStringAsFixed(0)} $unit'
+                    : lang == AppLanguage.english
+                    ? '${openingPrefix}Warning: Glass thickness ${glassTotal.toStringAsFixed(0)} $unit is less than $capacityLabel ${maximum.toStringAsFixed(0)} $unit'
+                    : '${openingPrefix}تنبيه: سُمك الزجاج ${glassTotal.toStringAsFixed(0)} $unit أصغر من $capacityLabel ${maximum.toStringAsFixed(0)} $unit';
+              }
             } else {
               final glassStr = glassTotal.toStringAsFixed(0);
               final jointStr = jointVitrage.toStringAsFixed(0);
@@ -7681,19 +8015,31 @@ class _WindowViewState extends State<WindowView> {
               final gapStr = remainingGap.abs().toStringAsFixed(0);
 
               if (isAbove) {
-                message =
-                    openingPrefix +
-                    'تنبيه: السُمك ($glassStr مم) + الجوانات ($jointStr مم) = $packStr مم يتجاوز $capacityLabel ($maxStr مم) بـ $gapStr مم.';
+                message = lang == AppLanguage.french
+                    ? '${openingPrefix}Attention : Épaisseur ($glassStr $unit) + joints ($jointStr $unit) = $packStr $unit dépasse $capacityLabel ($maxStr $unit) de $gapStr $unit.'
+                    : lang == AppLanguage.english
+                    ? '${openingPrefix}Warning: Thickness ($glassStr $unit) + gaskets ($jointStr $unit) = $packStr $unit exceeds $capacityLabel ($maxStr $unit) by $gapStr $unit.'
+                    : '${openingPrefix}تنبيه: السُمك ($glassStr $unit) + الجوانات ($jointStr $unit) = $packStr $unit يتجاوز $capacityLabel ($maxStr $unit) بـ $gapStr $unit.';
               } else if (remainingGap < 2.0) {
-                message = spec.fittedJoints.isNotEmpty && isExact
-                    ? openingPrefix +
-                          'السُمك ($glassStr مم) + الجوانات المختارة ($jointStr مم) = $packStr مم، مطابق لـ $capacityLabel ($maxStr مم).'
-                    : openingPrefix +
-                          'السُمك ($glassStr مم) + الجوانات ($jointStr مم) = $packStr مم ($capacityLabel: $maxStr مم). الفراغ المتبقي ضيق جداً ($gapStr مم).';
+                if (spec.fittedJoints.isNotEmpty && isExact) {
+                  message = lang == AppLanguage.french
+                      ? '${openingPrefix}Épaisseur ($glassStr $unit) + joints sélectionnés ($jointStr $unit) = $packStr $unit, conforme à $capacityLabel ($maxStr $unit).'
+                      : lang == AppLanguage.english
+                      ? '${openingPrefix}Thickness ($glassStr $unit) + selected gaskets ($jointStr $unit) = $packStr $unit, matches $capacityLabel ($maxStr $unit).'
+                      : '${openingPrefix}السُمك ($glassStr $unit) + الجوانات المختارة ($jointStr $unit) = $packStr $unit، مطابق لـ $capacityLabel ($maxStr $unit).';
+                } else {
+                  message = lang == AppLanguage.french
+                      ? '${openingPrefix}Épaisseur ($glassStr $unit) + joints ($jointStr $unit) = $packStr $unit ($capacityLabelPlain : $maxStr $unit). Espace restant très réduit ($gapStr $unit).'
+                      : lang == AppLanguage.english
+                      ? '${openingPrefix}Thickness ($glassStr $unit) + gaskets ($jointStr $unit) = $packStr $unit ($capacityLabelPlain: $maxStr $unit). Remaining gap is very tight ($gapStr $unit).'
+                      : '${openingPrefix}السُمك ($glassStr $unit) + الجوانات ($jointStr $unit) = $packStr $unit ($capacityLabelPlain: $maxStr $unit). الفراغ المتبقي ضيق جداً ($gapStr $unit).';
+                }
               } else {
-                message =
-                    openingPrefix +
-                    'سُمك الزجاج ($glassStr مم) + جوان الزجاج ($jointStr مم) = $packStr مم | $capacityLabel: $maxStr مم. إذاً الجوان المختار (Joint Bourrage) يجب أن يكون سُمكه $gapStr مم.';
+                message = lang == AppLanguage.french
+                    ? '${openingPrefix}Épaisseur vitrage ($glassStr $unit) + joint vitrage ($jointStr $unit) = $packStr $unit | $capacityLabelPlain : $maxStr $unit. Le joint de bourrage recommandé doit être de $gapStr $unit.'
+                    : lang == AppLanguage.english
+                    ? '${openingPrefix}Glass thickness ($glassStr $unit) + glass gasket ($jointStr $unit) = $packStr $unit | $capacityLabelPlain: $maxStr $unit. Recommended wedge gasket (Joint Bourrage) should be $gapStr $unit.'
+                    : '${openingPrefix}سُمك الزجاج ($glassStr $unit) + جوان الزجاج ($jointStr $unit) = $packStr $unit | $capacityLabelPlain: $maxStr $unit. إذاً الجوان المختار (Joint Bourrage) يجب أن يكون سُمكه $gapStr $unit.';
               }
             }
 
@@ -7764,12 +8110,46 @@ class _WindowViewState extends State<WindowView> {
             final glassStr = glassTotal.toStringAsFixed(0);
             final maxStr = maximum.toStringAsFixed(0);
             final jointStr = requiredPerSide.abs().toStringAsFixed(1);
-            final sideText = sides == 2 ? 'من جهتين' : 'من جهة واحدة';
+            final sideText = sides == 2
+                ? (lang == AppLanguage.french
+                    ? 'des deux côtés'
+                    : lang == AppLanguage.english
+                    ? 'on both sides'
+                    : 'من جهتين')
+                : (lang == AppLanguage.french
+                    ? 'd\'un seul côté'
+                    : lang == AppLanguage.english
+                    ? 'on one side'
+                    : 'من جهة واحدة');
             final seriesName = widget.model.activeSlidingSeries?.name ?? '';
-            final capacityLabel = usesParclose ? 'سعة البيركلوز' : 'سعة الضلفة';
+            final capacityLabel = usesParclose
+                ? (lang == AppLanguage.french
+                    ? 'la capacité parclose'
+                    : lang == AppLanguage.english
+                    ? 'glazing bead capacity'
+                    : 'سعة البيركلوز')
+                : (lang == AppLanguage.french
+                    ? 'la capacité ouvrant'
+                    : lang == AppLanguage.english
+                    ? 'sash capacity'
+                    : 'سعة الضلفة');
+            final slidingPrefix = lang == AppLanguage.french
+                ? 'Système coulissant ($seriesName) : '
+                : lang == AppLanguage.english
+                ? 'Sliding system ($seriesName): '
+                : 'نظام المنزلق ($seriesName): ';
+            final unit = lang == AppLanguage.arabic ? 'مم' : 'mm';
             final message = isAbove
-                ? 'نظام المنزلق ($seriesName): سُمك الزجاج $glassStr مم يتجاوز $capacityLabel $maxStr مم بـ $jointStr مم.'
-                : 'نظام المنزلق ($seriesName): سُمك الزجاج $glassStr مم، الجوان المطلوب $jointStr مم $sideText، و$capacityLabel $maxStr مم.';
+                ? (lang == AppLanguage.french
+                    ? '${slidingPrefix}Épaisseur vitrage $glassStr $unit dépasse $capacityLabel $maxStr $unit de $jointStr $unit.'
+                    : lang == AppLanguage.english
+                    ? '${slidingPrefix}Glass thickness $glassStr $unit exceeds $capacityLabel $maxStr $unit by $jointStr $unit.'
+                    : '${slidingPrefix}سُمك الزجاج $glassStr مم يتجاوز $capacityLabel $maxStr مم بـ $jointStr مم.')
+                : (lang == AppLanguage.french
+                    ? '${slidingPrefix}Épaisseur vitrage $glassStr $unit, joint requis $jointStr $unit $sideText, et $capacityLabel $maxStr $unit.'
+                    : lang == AppLanguage.english
+                    ? '${slidingPrefix}Glass thickness $glassStr $unit, required gasket $jointStr $unit $sideText, and $capacityLabel $maxStr $unit.'
+                    : '${slidingPrefix}سُمك الزجاج $glassStr مم، الجوان المطلوب $jointStr مم $sideText، و$capacityLabel $maxStr مم.');
 
             return Container(
               margin: const EdgeInsets.only(top: 8),
@@ -8383,7 +8763,7 @@ class _WindowViewState extends State<WindowView> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'اليسرى: ${(targetZone.doubleSashRatio * 100).toInt()}%',
+                              '${Localization.translate('اليسرى', lang)}: ${(_visualDoubleSashRatio(targetZone) * 100).round()}%',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 11,
@@ -8391,7 +8771,7 @@ class _WindowViewState extends State<WindowView> {
                               ),
                             ),
                             Text(
-                              'اليمنى: ${((1.0 - targetZone.doubleSashRatio) * 100).toInt()}%',
+                              '${Localization.translate('اليمنى', lang)}: ${((1.0 - _visualDoubleSashRatio(targetZone)) * 100).round()}%',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 11,
@@ -8401,16 +8781,24 @@ class _WindowViewState extends State<WindowView> {
                           ],
                         ),
                         Slider(
-                          value: targetZone.doubleSashRatio,
+                          // The slider follows the leaves as drawn: moving it
+                          // right always widens the leaf shown on the left.
+                          value: _visualDoubleSashRatio(
+                            targetZone,
+                          ).clamp(0.15, 0.85).toDouble(),
                           min: 0.15,
                           max: 0.85,
                           divisions: 70,
                           label:
-                              '${(targetZone.doubleSashRatio * 100).toInt()}%',
+                              '${(_visualDoubleSashRatio(targetZone) * 100).round()}%',
+                          // One undo step per drag instead of one per tick.
+                          onChangeStart: (_) =>
+                              widget.model.saveSnapshotOutside(),
                           onChanged: (val) {
                             widget.model.updateZoneDoubleSashRatio(
                               targetZone!.id,
-                              val,
+                              _storedDoubleSashRatio(val),
+                              saveHistory: false,
                             );
                           },
                         ),
@@ -8450,11 +8838,13 @@ class _WindowViewState extends State<WindowView> {
                         const SizedBox(height: 10),
                         Builder(
                           builder: (context) {
-                            final double totalWidth =
-                                targetZone!.boundary.width;
+                            // Same cutting size as the label drawn on the
+                            // left leaf (overlap added, PVC weld loss removed).
                             final currentLeftWidth =
-                                (targetZone.doubleSashRatio * totalWidth)
-                                    .toInt();
+                                _shownDoubleSashCuttingWidth(
+                                  targetZone!,
+                                  _visualDoubleSashRatio(targetZone),
+                                ).round();
                             if (!_leftSashFocusNode.hasFocus) {
                               _leftSashWidthController.text = currentLeftWidth
                                   .toString();
@@ -8476,36 +8866,27 @@ class _WindowViewState extends State<WindowView> {
                                 return;
                               }
 
-                              final double maxVal = totalWidth * 0.8;
-                              if (val > maxVal) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      'القياس لا يمكن أن يتجاوز 80% من مجموع عرض الضلفات (${maxVal.toInt()} مم)',
-                                    ),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
+                              // 15–85 % of the leaves' total cutting width,
+                              // the same range as the slider and the drag.
+                              final minVal = _shownDoubleSashCuttingWidth(
+                                targetZone!,
+                                0.15,
+                              );
+                              final maxVal = _shownDoubleSashCuttingWidth(
+                                targetZone,
+                                0.85,
+                              );
+                              if (!_acceptDimension(val, minVal, maxVal)) {
                                 return;
                               }
 
-                              final double minVal = totalWidth * 0.15;
-                              if (val < minVal) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      'القياس لا يمكن أن يقل عن 15% من مجموع عرض الضلفات (${minVal.toInt()} مم)',
-                                    ),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
-                                return;
-                              }
-
-                              final double ratio = val / totalWidth;
+                              final visualRatio = _visualRatioForLeftLeafCut(
+                                targetZone,
+                                val,
+                              ).clamp(0.15, 0.85).toDouble();
                               widget.model.updateZoneDoubleSashRatio(
-                                targetZone!.id,
-                                ratio.clamp(0.15, 0.85),
+                                targetZone.id,
+                                _storedDoubleSashRatio(visualRatio),
                               );
                               _leftSashFocusNode.unfocus();
                             }
@@ -8584,9 +8965,9 @@ class _WindowViewState extends State<WindowView> {
                                     foregroundColor: Colors.white,
                                   ),
                                   onPressed: applySashWidth,
-                                  child: const Text(
-                                    'تطبيق',
-                                    style: TextStyle(
+                                  child: Text(
+                                    Localization.translate('تطبيق', lang),
+                                    style: const TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -11186,13 +11567,16 @@ class _WindowViewState extends State<WindowView> {
               if (!widget.model.isShutterOnly)
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text(
-                    'الموستيكير (Moustiquaire)',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                  title: Text(
+                    Localization.translate('الموستيكير', lang),
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                   ),
-                  subtitle: const Text(
-                    'تظهر في الكمية والتكلفة فقط ولا تظهر في الرسم',
-                    style: TextStyle(fontSize: 11),
+                  subtitle: Text(
+                    Localization.translate(
+                      'تظهر في الكمية والتكلفة فقط ولا تظهر في الرسم',
+                      lang,
+                    ),
+                    style: const TextStyle(fontSize: 11),
                   ),
                   value: widget.model.hasMoustiquaireAddon,
                   activeThumbColor: Colors.green,
@@ -11956,6 +12340,11 @@ class _WindowViewState extends State<WindowView> {
                   ),
               ],
 
+              if (ParcloseCutModeSelector.isAvailableFor(widget.model)) ...[
+                const SizedBox(height: 8),
+                ParcloseCutModeSelector(model: widget.model),
+              ],
+
               if (!_pvcMontantReinforcementDisabled) ...[
                 const Divider(height: 30),
 
@@ -12296,6 +12685,382 @@ class _WindowViewState extends State<WindowView> {
   /// that differs by the PVC welding loss or by the series overlap.
   double _openingSashOverlapForDrawing() => widget.model.openingSashOverlap;
 
+  /// A slant corner or the arch dragged back within this distance of the
+  /// straight head snaps onto it (magnetic return).
+  static const double _shapeSnapMm = 50.0;
+  double? _shapeRawLeft;
+  double? _shapeRawRight;
+  double? _shapeRawArch;
+
+  /// Moves the dashed ghost of the head. The raw pointer values are kept
+  /// separately so the magnet does not make the handle sticky.
+  void _updateShapeDragPreview(double dy) {
+    final model = widget.model;
+    if (_isDraggingSlantLeft) {
+      _shapeRawLeft = (_shapeRawLeft ?? model.topSlantLeftY) + dy;
+    } else if (_isDraggingSlantRight) {
+      _shapeRawRight = (_shapeRawRight ?? model.topSlantRightY) + dy;
+    } else if (_isDraggingArch) {
+      // The handle sits on the apex, which moves one-to-one with the rise.
+      _shapeRawArch = (_shapeRawArch ?? model.archHeight) - dy;
+    }
+    double snap(double value) => value.abs() < _shapeSnapMm ? 0.0 : value;
+    model.setTopShapePreview(
+      model.clampTopShape(
+        leftSlant: _shapeRawLeft == null ? null : snap(_shapeRawLeft!),
+        rightSlant: _shapeRawRight == null ? null : snap(_shapeRawRight!),
+        arch: _shapeRawArch == null ? null : snap(_shapeRawArch!),
+      ),
+    );
+  }
+
+  /// Applies the ghost to the frame as one undo step.
+  void _commitShapeDragPreview() {
+    final preview = widget.model.topShapePreview;
+    _shapeRawLeft = null;
+    _shapeRawRight = null;
+    _shapeRawArch = null;
+    if (preview == null) return;
+    widget.model.setTopShapePreview(null);
+    widget.model.updateTopSlantAndArch(
+      leftSlant: preview.left,
+      rightSlant: preview.right,
+      arch: preview.arch,
+    );
+  }
+
+  /// WindowPainter mirrors the double-sash divider in the external view, so
+  /// hit tests, drags and editors must work with the ratio as it is seen.
+  double _visualDoubleSashRatio(WindowZone zone) => widget.model.isInternalView
+      ? zone.doubleSashRatio
+      : 1.0 - zone.doubleSashRatio;
+
+  double _storedDoubleSashRatio(double visualRatio) =>
+      widget.model.isInternalView ? visualRatio : 1.0 - visualRatio;
+
+  /// Inverse of [_shownDoubleSashCuttingWidth]: the visual left-leaf ratio
+  /// that makes the drawn cutting size equal [leftCut].
+  double _visualRatioForLeftLeafCut(WindowZone zone, double leftCut) {
+    final weldLoss = widget.model.isPVC ? 5.0 : 0.0;
+    final totalCutWidth =
+        zone.boundary.width + _openingSashOverlapForDrawing() * 2;
+    return (leftCut + weldLoss) / totalCutWidth;
+  }
+
+  /// Edits a jamb height or the arch rise of a slanted/arched head. A jamb
+  /// may rise above the overall height (up to one bar length) or drop until
+  /// the frame or a top zone reaches its minimum; the arch rises from zero to
+  /// a semicircle.
+  void _showHeadDimensionDialog(String key) {
+    final model = widget.model;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    final bool isArch = key == 'archRise';
+    final bool isLeft = key == 'leftJamb';
+    final double bottomSlant = isLeft
+        ? model.bottomSlantLeftY
+        : model.bottomSlantRightY;
+    final double base = model.height - bottomSlant;
+    final double maxRaise = math.max(
+      0.0,
+      model.maximumFrameBarLengthMm - model.height,
+    );
+    final double current = isArch
+        ? model.archHeight
+        : base - (isLeft ? model.topSlantLeftY : model.topSlantRightY);
+    final double minValue = isArch
+        ? 0.0
+        : base - model.maxTopSlantMm(left: isLeft);
+    final double maxValue = isArch ? model.width / 2 : base + maxRaise;
+    final String title = isArch
+        ? 'ذروة القوس (mm)'
+        : (isLeft ? 'ارتفاع القائم الأيسر (mm)' : 'ارتفاع القائم الأيمن (mm)');
+    final ctrl = TextEditingController(text: current.round().toString());
+
+    void apply(BuildContext dialogContext) {
+      final value = double.tryParse(ctrl.text.replaceAll(',', '.'));
+      if (!_acceptDimension(value, minValue, maxValue)) return;
+      if (isArch) {
+        model.updateTopSlantAndArch(arch: value);
+      } else if (isLeft) {
+        model.updateTopSlantAndArch(leftSlant: base - value!);
+      } else {
+        model.updateTopSlantAndArch(rightSlant: base - value!);
+      }
+      Navigator.pop(dialogContext);
+    }
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        final isDark = Theme.of(dialogContext).brightness == Brightness.dark;
+        return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
+          title: Text(
+            Localization.translate(title, lang),
+            style: TextStyle(
+              color: isDark ? Colors.white : Colors.black,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            onSubmitted: (_) => apply(dialogContext),
+            style: TextStyle(
+              color: isDark ? Colors.white : Colors.black,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+            decoration: InputDecoration(
+              labelText: Localization.translate(title, lang),
+              helperText: '${minValue.ceil()} – ${maxValue.floor()} mm',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(
+                Localization.translate('إلغاء', lang),
+                style: const TextStyle(color: Colors.grey),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => apply(dialogContext),
+              child: Text(
+                Localization.translate('تطبيق', lang),
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Shows a slanted-division rule (SlantedDivisionError key) to the user.
+  void _showSlantNotice(String key) {
+    final min = key == SlantedDivisionError.angleTooSharp
+        ? SlantedDivisionGeometry.minimumAngleDeg.round().toString()
+        : WindowModel.minimumSashCellMm.round().toString();
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_tr(key).replaceAll('{min}', min)),
+        backgroundColor: Colors.orange.shade800,
+      ),
+    );
+  }
+
+  /// End handle of the selected slanted mullion under a screen point.
+  ({String zoneId, String dividerId, bool atStart})? _slantEndAt(
+    Offset screenPoint,
+  ) {
+    final selected = widget.model.selectedSlantedDivider;
+    if (selected == null) return null;
+    WindowZone? zone;
+    for (final z in widget.model.zones) {
+      if (z.id == selected.zoneId) zone = z;
+    }
+    final divider = widget.model.slantedDividerById(
+      selected.zoneId,
+      selected.dividerId,
+    );
+    if (zone == null || divider == null) return null;
+    final (a, b) = widget.model.slantedGeometryFor(zone).centreLine(divider);
+    for (final (point, atStart) in [(a, true), (b, false)]) {
+      if ((_modelToScreen(point) - screenPoint).distance <= 18.0) {
+        return (
+          zoneId: selected.zoneId,
+          dividerId: selected.dividerId,
+          atStart: atStart,
+        );
+      }
+    }
+    return null;
+  }
+
+  /// Editor of one slanted mullion: each end as a distance from the outer
+  /// frame edge (left edge for top/bottom ends, top edge for side ends),
+  /// the angles shown on the drawing and the halved saw angles, the bar's
+  /// long-point length, and delete.
+  void _showSlantedDividerDialog(({String zoneId, String dividerId}) hit) {
+    final model = widget.model;
+    WindowZone? zone;
+    for (final z in model.zones) {
+      if (z.id == hit.zoneId) zone = z;
+    }
+    final divider = model.slantedDividerById(hit.zoneId, hit.dividerId);
+    if (zone == null || divider == null) return;
+    final z = zone;
+    final r = z.boundary;
+    final geometry = model.slantedGeometryFor(z);
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    String t(String key) => Localization.translate(key, lang);
+
+    bool horizontal(ZoneEdge e) => e == ZoneEdge.top || e == ZoneEdge.bottom;
+    double absolute(SlantedDividerAnchor a) => horizontal(a.edge)
+        ? r.left + a.ratio * r.width
+        : r.top + a.ratio * r.height;
+    String edgeName(ZoneEdge e) => t(switch (e) {
+      ZoneEdge.top => 'الضلع العلوي',
+      ZoneEdge.bottom => 'الضلع السفلي',
+      ZoneEdge.left => 'الضلع الأيسر',
+      ZoneEdge.right => 'الضلع الأيمن',
+    });
+    String fieldLabel(ZoneEdge e) =>
+        '${edgeName(e)} — ${t(horizontal(e) ? 'المسافة من يسار الإطار (mm)' : 'المسافة من أعلى الإطار (mm)')}';
+
+    final startCtrl = TextEditingController(
+      text: absolute(divider.start).toStringAsFixed(1),
+    );
+    final endCtrl = TextEditingController(
+      text: absolute(divider.end).toStringAsFixed(1),
+    );
+    String angles(bool atStart) {
+      final a = geometry.angleWithEdgeDeg(divider, atStart: atStart);
+      final cut = geometry.cutAngleDeg(divider, atStart: atStart);
+      return '${t('الزاوية')}: ${a.toStringAsFixed(2)}° · '
+          '${t('زاوية القص')}: ${cut.toStringAsFixed(2)}°';
+    }
+
+    SlantedDividerAnchor? anchorFrom(
+      SlantedDividerAnchor old,
+      String text,
+    ) {
+      final value = double.tryParse(text.replaceAll(',', '.'));
+      if (value == null) return null;
+      final start = horizontal(old.edge) ? r.left : r.top;
+      final length = horizontal(old.edge) ? r.width : r.height;
+      final ratio = (value - start) / length;
+      if (ratio < 0 || ratio > 1) return null;
+      return SlantedDividerAnchor(old.edge, ratio);
+    }
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        final isDark = Theme.of(dialogContext).brightness == Brightness.dark;
+        void apply() {
+          final start = anchorFrom(divider.start, startCtrl.text);
+          final end = anchorFrom(divider.end, endCtrl.text);
+          if (start == null || end == null) {
+            _acceptDimension(null, 0, 0);
+            return;
+          }
+          final error = model.setSlantedDivider(
+            hit.zoneId,
+            divider.copyWith(start: start, end: end),
+          );
+          if (error != null) {
+            _showSlantNotice(error);
+            return;
+          }
+          Navigator.pop(dialogContext);
+        }
+
+        Widget field(TextEditingController ctrl, String label) => Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: TextField(
+            controller: ctrl,
+            keyboardType: const TextInputType.numberWithOptions(
+              decimal: true,
+            ),
+            onSubmitted: (_) => apply(),
+            decoration: InputDecoration(labelText: label),
+          ),
+        );
+
+        return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
+          title: Text(t('تقسيم مائل')),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                field(startCtrl, fieldLabel(divider.start.edge)),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(angles(true), style: const TextStyle(fontSize: 12)),
+                ),
+                field(endCtrl, fieldLabel(divider.end.edge)),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(angles(false), style: const TextStyle(fontSize: 12)),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(
+                    '${t('طول القص')}: '
+                    '${geometry.cutLengthMm(divider).toStringAsFixed(1)} mm',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                model.removeSlantedDivider(hit.zoneId, hit.dividerId);
+                Navigator.pop(dialogContext);
+              },
+              child: Text(t('حذف'), style: const TextStyle(color: Colors.red)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(
+                t('إلغاء'),
+                style: const TextStyle(color: Colors.grey),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: apply,
+              child: Text(t('تطبيق')),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Rejects a typed size outside [min]–[max] with a translated message
+  /// instead of silently ignoring or clamping it.
+  bool _acceptDimension(double? value, double min, double max) {
+    if (value != null && value >= min - 0.5 && value <= max + 0.5) {
+      return true;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          value == null || !min.isFinite || !max.isFinite
+              ? _tr('يرجى إدخال قياس صحيح بالمليمتر')
+              : _tr('القياس المسموح به بين {min} و {max} مم')
+                    .replaceAll('{min}', min.ceil().toString())
+                    .replaceAll('{max}', max.floor().toString()),
+        ),
+        backgroundColor: Colors.red,
+      ),
+    );
+    return false;
+  }
+
   double _shownDoubleSashCuttingWidth(WindowZone zone, double ratio) {
     final weldLoss = widget.model.isPVC ? 5.0 : 0.0;
     final totalCutWidth =
@@ -12473,8 +13238,7 @@ class _WindowViewState extends State<WindowView> {
                 final val = double.tryParse(ctrl.text.replaceAll(',', '.'));
                 if (val != null) {
                   if (hit.isSashDivision) {
-                    if (val >= 50) {
-                      // الحد الأدنى 50 ملم
+                    {
                       final isRight = hit.isDoubleSashRight;
                       final sashT =
                           zone.sashThickness ??
@@ -12533,6 +13297,41 @@ class _WindowViewState extends State<WindowView> {
                         for (int i = 1; i <= innerV; i++) {
                           finalVPos.add((1.0 / (innerV + 1)) * i);
                         }
+                      }
+
+                      // Each cell keeps 80 mm of clear glass between
+                      // divisions; the neighbouring cell gives or takes the
+                      // difference, so the cells still add up to the leaf.
+                      final axisPositions = hit.isWidth ? finalVPos : finalHPos;
+                      final glassLength = hit.isWidth
+                          ? glassR.width
+                          : glassR.height;
+                      final cellCount = axisPositions.length + 1;
+                      double cellSize(int i) {
+                        final start = i == 0 ? 0.0 : axisPositions[i - 1];
+                        final end = i == cellCount - 1
+                            ? 1.0
+                            : axisPositions[i];
+                        return (end - start) * glassLength -
+                            (i > 0 ? dividerT / 2 : 0) -
+                            (i < cellCount - 1 ? dividerT / 2 : 0);
+                      }
+
+                      final cell = hit.divisionIndex.clamp(0, cellCount - 1);
+                      final neighbour = cell < cellCount - 1
+                          ? cell + 1
+                          : cell - 1;
+                      final maxCell = neighbour < 0
+                          ? cellSize(cell)
+                          : cellSize(cell) +
+                                cellSize(neighbour) -
+                                WindowModel.minimumSashCellMm;
+                      if (!_acceptDimension(
+                        val,
+                        WindowModel.minimumSashCellMm,
+                        maxCell,
+                      )) {
+                        return;
                       }
 
                       if (hit.isWidth) {
@@ -12629,22 +13428,47 @@ class _WindowViewState extends State<WindowView> {
                       }
                     }
                   } else if (hit.isDoubleSashLeft || hit.isDoubleSashRight) {
-                    final rawVisualSashSize =
-                        val + (widget.model.isPVC ? 5.0 : 0.0);
-                    final totalCutWidth =
-                        zone.boundary.width +
-                        _openingSashOverlapForDrawing() * 2;
+                    // Each leaf keeps 15–85 % of the leaves' cutting width;
+                    // the other leaf takes the rest so the sum stays equal.
+                    if (!_acceptDimension(
+                      val,
+                      _shownDoubleSashCuttingWidth(zone, 0.15),
+                      _shownDoubleSashCuttingWidth(zone, 0.85),
+                    )) {
+                      return;
+                    }
+                    final leafRatio = _visualRatioForLeftLeafCut(zone, val);
                     final visualLeftRatio =
-                        (hit.isDoubleSashLeft
-                                ? rawVisualSashSize / totalCutWidth
-                                : 1.0 - (rawVisualSashSize / totalCutWidth))
-                            .clamp(0.15, 0.85);
-                    final ratio = widget.model.isInternalView
-                        ? visualLeftRatio
-                        : 1.0 - visualLeftRatio;
-                    widget.model.updateZoneDoubleSashRatio(hit.zoneId, ratio);
+                        (hit.isDoubleSashLeft ? leafRatio : 1.0 - leafRatio)
+                            .clamp(0.15, 0.85)
+                            .toDouble();
+                    widget.model.updateZoneDoubleSashRatio(
+                      hit.zoneId,
+                      _storedDoubleSashRatio(visualLeftRatio),
+                    );
                   } else {
-                    if (val >= 50) {
+                    // The neighbour gives or takes the difference, so the
+                    // parts always add up to the frame's clear size.
+                    final limits = widget.model.innerSizeLimits(
+                      hit.zoneId,
+                      hit.isWidth,
+                    );
+                    if (limits == null) {
+                      ScaffoldMessenger.of(this.context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            _tr('هذا الجزء غير مقسّم: غيّر القياس الخارجي للإطار'),
+                          ),
+                          backgroundColor: Colors.orange.shade800,
+                        ),
+                      );
+                    } else if (!_acceptDimension(
+                      val,
+                      limits.min,
+                      limits.max,
+                    )) {
+                      return;
+                    } else {
                       widget.model.resizeZoneInner(
                         hit.zoneId,
                         hit.isWidth,
@@ -12652,6 +13476,9 @@ class _WindowViewState extends State<WindowView> {
                       );
                     }
                   }
+                } else {
+                  _acceptDimension(null, 1, double.infinity);
+                  return;
                 }
                 Navigator.pop(context);
               },
@@ -12744,7 +13571,16 @@ class _WindowViewState extends State<WindowView> {
               ),
               onPressed: () {
                 final val = double.tryParse(ctrl.text);
-                if (val != null && val >= 200) {
+                // Same range the model enforces: 380 mm (250 mm beside a
+                // side of one metre or more) up to one bar length.
+                final limits = widget.model.frameOuterLimits(
+                  hit.zoneId,
+                  isWidth: hit.isWidth,
+                );
+                if (!_acceptDimension(val, limits.min, limits.max)) {
+                  return;
+                }
+                if (val != null) {
                   widget.model.resizeFrameOuterDimensionForZone(
                     hit.zoneId,
                     isWidth: hit.isWidth,
@@ -12769,6 +13605,7 @@ class _WindowViewState extends State<WindowView> {
     Offset globalPosition,
     Offset localPosition,
   ) async {
+    if (_isContextMenuOpen) return;
     final modelPos = _getModelPos(localPosition);
 
     // 1. Check if shutter is clicked
@@ -12804,24 +13641,194 @@ class _WindowViewState extends State<WindowView> {
     final selectedZone = widget.model.selectedZone;
     final isFrame = widget.model.selection.type == SelectionType.frame;
 
-    final selectedValue = await showMenu<String>(
-      context: context,
-      position: RelativeRect.fromLTRB(
-        globalPosition.dx,
-        globalPosition.dy,
-        globalPosition.dx + 1,
-        globalPosition.dy + 1,
-      ),
-      color: isDark ? const Color(0xFF252536) : Colors.white,
-      elevation: 8,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(
-          color: isDark ? Colors.white24 : Colors.grey.shade300,
-          width: 0.8,
+    final menuItems = <PopupMenuEntry<String>>[
+      PopupMenuItem<String>(
+        enabled: false,
+        height: 32,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              _isShutterSelected
+                  ? Icons.menu_rounded
+                  : (isFrame
+                        ? Icons.crop_square_rounded
+                        : Icons.window_rounded),
+              size: 16,
+              color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _isShutterSelected
+                  ? 'خصائص الستار'
+                  : (isFrame ? 'خصائص الإطار' : 'خصائص المنطقة والضلفة'),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white70 : Colors.black87,
+              ),
+            ),
+          ],
         ),
       ),
-      items: <PopupMenuEntry<String>>[
+      const PopupMenuDivider(height: 1),
+
+      if (selectedZone != null && !_isShutterSelected && !isFrame) ...[
+        _buildContextMenuItem(
+          value: 'content_fixe',
+          icon: Icons.crop_landscape_rounded,
+          label: 'زجاج ثابت (Fixe)',
+          isDark: isDark,
+        ),
+        _buildContextMenuItem(
+          value: 'content_single_sash',
+          icon: Icons.sensor_door_outlined,
+          label: 'ضلفة عادية (Ouvrant Simple)',
+          isDark: isDark,
+        ),
+        _buildContextMenuItem(
+          value: 'content_double_sash',
+          icon: Icons.door_sliding_outlined,
+          label: 'ضلفة فرنسية مزدوجة (Double Ouvrant)',
+          isDark: isDark,
+        ),
+        _buildContextMenuItem(
+          value: 'content_sliding_2',
+          icon: Icons.compare_arrows_rounded,
+          label: 'منزلق 2 ضلف (Coulissant 2 Vantaux)',
+          isDark: isDark,
+        ),
+        _buildContextMenuItem(
+          value: 'content_sliding_3',
+          icon: Icons.view_column_rounded,
+          label: 'منزلق 3 ضلف (Coulissant 3 Vantaux)',
+          isDark: isDark,
+        ),
+        _buildContextMenuItem(
+          value: 'content_sliding_4',
+          icon: Icons.grid_view_rounded,
+          label: 'منزلق 4 ضلف (Coulissant 4 Vantaux)',
+          isDark: isDark,
+        ),
+        _buildContextMenuItem(
+          value: 'content_vide',
+          icon: Icons.check_box_outline_blank_rounded,
+          label: 'تفريغ (Vide)',
+          isDark: isDark,
+        ),
+        const PopupMenuDivider(height: 1),
+        _buildContextMenuItem(
+          value: 'add_h_division',
+          icon: Icons.border_horizontal_rounded,
+          label: 'إضافة قاطع أفقي (+ Traverse)',
+          isDark: isDark,
+        ),
+        _buildContextMenuItem(
+          value: 'add_v_division',
+          icon: Icons.border_vertical_rounded,
+          label: 'إضافة قاطع عمودي (+ Montant)',
+          isDark: isDark,
+        ),
+        _buildContextMenuItem(
+          value: 'clear_divisions',
+          icon: Icons.layers_clear_rounded,
+          label: 'مسح القواطع الداخلية',
+          isDark: isDark,
+        ),
+        const PopupMenuDivider(height: 1),
+        _buildContextMenuItem(
+          value: 'customize_glass',
+          icon: Icons.view_in_ar_rounded,
+          label: 'تخصيص نوع الزجاج والبانو...',
+          isDark: isDark,
+        ),
+        if (selectedZone.content == ZoneContent.singleSash) ...[
+          _buildContextMenuItem(
+            value: 'sash_dir_right',
+            icon: Icons.arrow_forward_rounded,
+            label: 'فتح إلى اليمين (Droite)',
+            isDark: isDark,
+          ),
+          _buildContextMenuItem(
+            value: 'sash_dir_left',
+            icon: Icons.arrow_back_rounded,
+            label: 'فتح إلى اليسار (Gauche)',
+            isDark: isDark,
+          ),
+          _buildContextMenuItem(
+            value: 'sash_dir_top',
+            icon: Icons.arrow_upward_rounded,
+            label: 'سوفلي / فتح لأعلى (Vasistas/Haut)',
+            isDark: isDark,
+          ),
+          _buildContextMenuItem(
+            value: 'sash_dir_bottom',
+            icon: Icons.arrow_downward_rounded,
+            label: 'فتح لأسفل (Bas)',
+            isDark: isDark,
+          ),
+        ],
+      ],
+      if (isFrame)
+        _buildContextMenuItem(
+          value: 'frame_delete',
+          icon: Icons.delete_outline_rounded,
+          label: 'حذف هذا الإطار',
+          color: Colors.redAccent,
+          isDark: isDark,
+        ),
+      if (_isShutterSelected)
+        _buildContextMenuItem(
+          value: 'shutter_open_options',
+          icon: Icons.tune_rounded,
+          label: 'إعدادات الستار والمحرك...',
+          isDark: isDark,
+        ),
+      const PopupMenuDivider(height: 1),
+      _buildContextMenuItem(
+        value: 'undo',
+        icon: Icons.undo_rounded,
+        label: 'تراجع (Undo)',
+        enabled: widget.model.canUndo,
+        isDark: isDark,
+      ),
+      _buildContextMenuItem(
+        value: 'redo',
+        icon: Icons.redo_rounded,
+        label: 'إعادة (Redo)',
+        enabled: widget.model.canRedo,
+        isDark: isDark,
+      ),
+    ];
+
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    String? selectedValue;
+    _isContextMenuOpen = true;
+    try {
+      selectedValue = await showMenu<String>(
+        context: context,
+        position: RelativeRect.fromRect(
+          Rect.fromLTWH(globalPosition.dx, globalPosition.dy, 1, 1),
+          Offset.zero & overlay.size,
+        ),
+        constraints: const BoxConstraints(maxWidth: 420, maxHeight: 560),
+        color: isDark ? const Color(0xFF252536) : Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(
+            color: isDark ? Colors.white24 : Colors.grey.shade300,
+            width: 0.8,
+          ),
+        ),
+        items: menuItems,
+      );
+    } finally {
+      _isContextMenuOpen = false;
+    }
+
+    /* Previous pointer-anchored popup intentionally replaced by the centered
+       dialog above so editing actions remain readable on phones and desktops.
         PopupMenuItem<String>(
           enabled: false,
           height: 32,
@@ -12988,7 +13995,7 @@ class _WindowViewState extends State<WindowView> {
           isDark: isDark,
         ),
       ],
-    );
+    ); */
 
     if (selectedValue == null) return;
 
@@ -13126,8 +14133,10 @@ class _WindowViewState extends State<WindowView> {
       height: 36,
       child: Row(
         children: [
-          Icon(icon, size: 18, color: itemColor),
-          const SizedBox(width: 10),
+          SizedBox(
+            width: 28,
+            child: Icon(icon, size: 18, color: itemColor),
+          ),
           Expanded(
             child: Text(
               Localization.translate(
@@ -13137,6 +14146,7 @@ class _WindowViewState extends State<WindowView> {
                   listen: false,
                 ).language,
               ),
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
                 color: itemColor,
@@ -13144,6 +14154,7 @@ class _WindowViewState extends State<WindowView> {
               ),
             ),
           ),
+          const SizedBox(width: 28),
         ],
       ),
     );
@@ -13167,12 +14178,21 @@ class _WindowViewState extends State<WindowView> {
     void apply() {
       final w = double.tryParse(widthCtrl.text);
       final h = double.tryParse(heightCtrl.text);
-      if (w == null ||
-          h == null ||
-          w < widget.model.profileThickness * 3 ||
-          h < widget.model.profileThickness * 3)
+      // The layout decides the minimum (frame bars, mullions and the sash
+      // bars of every zone); one bar length is the maximum.
+      final wLimits = widget.model.outerDimensionLimits(
+        isWidth: true,
+        otherSide: h,
+      );
+      final hLimits = widget.model.outerDimensionLimits(
+        isWidth: false,
+        otherSide: w,
+      );
+      if (!_acceptDimension(w, wLimits.min, wLimits.max) ||
+          !_acceptDimension(h, hLimits.min, hLimits.max)) {
         return;
-      widget.model.resizeWindow(w, h);
+      }
+      widget.model.resizeWindow(w!, h!);
       // `context` here belongs to the drawing route. Popping it returns the
       // user to the system selector instead of dismissing this dialog.
       final activeDialogContext = dialogContext;
@@ -15200,7 +16220,9 @@ class _WindowViewState extends State<WindowView> {
                   : null,
               icon: const Icon(Icons.undo_rounded),
               tooltip: Localization.translate('تراجع', lang),
-              color: widget.model.canUndo ? Colors.black87 : Colors.black26,
+              color: widget.model.canUndo
+                  ? (isDark ? Colors.white : Colors.black87)
+                  : (isDark ? Colors.white38 : Colors.black26),
             ),
 
             // 🟢 زر الإعادة (Redo)
@@ -15219,7 +16241,9 @@ class _WindowViewState extends State<WindowView> {
                   : null,
               icon: const Icon(Icons.redo_rounded),
               tooltip: Localization.translate('إعادة', lang),
-              color: widget.model.canRedo ? Colors.black87 : Colors.black26,
+              color: widget.model.canRedo
+                  ? (isDark ? Colors.white : Colors.black87)
+                  : (isDark ? Colors.white38 : Colors.black26),
             ),
 
             // When enabled, every new outer frame copies its neighbour's
@@ -15230,8 +16254,8 @@ class _WindowViewState extends State<WindowView> {
               icon: Icon(
                 Icons.copy_all_rounded,
                 color: widget.model.copyPreviousFrameSize
-                    ? Colors.blue.shade700
-                    : Colors.black54,
+                    ? (isDark ? Colors.lightBlueAccent : Colors.blue.shade700)
+                    : (isDark ? Colors.white70 : Colors.black54),
               ),
               tooltip: widget.model.copyPreviousFrameSize
                   ? Localization.translate(
@@ -15452,7 +16476,8 @@ class _WindowViewState extends State<WindowView> {
               ),
             ),
             const SizedBox(width: 8),
-            // زر التبديل بين الأوضاع
+            // زر التبديل بين الأوضاع (اللمس فقط)
+            if (!_isWindowsDesktop)
             InkWell(
               onTap: () {
                 if (widget.model.isDrawingMode) {
@@ -18300,10 +19325,10 @@ class _WindowViewState extends State<WindowView> {
               _buildTier1TabBar(isMullionSelected),
               const Divider(height: 1, thickness: 0.5),
               Container(
-                height: 110,
+                height: 128,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
-                  vertical: 8,
+                  vertical: 6,
                 ),
                 child: _HorizontalWheelScrollArea(
                   builder: (context, controller) => SingleChildScrollView(
@@ -22131,43 +23156,8 @@ class _WindowViewState extends State<WindowView> {
       );
 
       final prefs = await SharedPreferences.getInstance();
-      final applyPurchasePrices =
-          prefs.getBool('app_apply_purchase_prices_to_cost_table') ?? false;
-      if (applyPurchasePrices) {
-        final updatedBom = <BomItem>[];
-        for (final item in bom) {
-          final itemId = item.catalogItemId;
-          if (itemId == null || itemId <= 0) {
-            updatedBom.add(item);
-            continue;
-          }
-          String itemType;
-          if (item.category == 'profile') {
-            itemType = 'Sections';
-          } else if (item.category == 'accessory') {
-            itemType = 'Accessories';
-          } else if (item.category == 'shutter') {
-            itemType = 'ShutterComponents';
-          } else if (item.category == 'joint') {
-            itemType = 'Joints';
-          } else if (item.category == 'glass') {
-            itemType = 'Glass';
-          } else {
-            itemType = item.inventoryItemType ?? 'Accessories';
-          }
-          final purchasePrice = await dbInstance.getLatestPurchasePrice(
-            itemId: itemId,
-            itemType: itemType,
-            colorId: item.colorId,
-          );
-          if (purchasePrice != null && purchasePrice > 0) {
-            updatedBom.add(item.copyWith(unitPrice: purchasePrice));
-          } else {
-            updatedBom.add(item);
-          }
-        }
-        bom = updatedBom;
-      }
+      // Purchase prices are already the weighted average cost stored in the
+      // price tables the BOM reads, so no extra override is needed here.
       var method =
           CostMethod.values[prefs.getInt('app_cost_method') ??
               CostMethod.percentage.index];
@@ -22827,11 +23817,96 @@ class WorkspaceSelectionPainter extends CustomPainter {
   final double userScale;
   final Offset userPan;
 
+  /// Outlines the selected hinge and shows its centre distance from the
+  /// start of the edge (bottom of the sash, or inside-left end).
+  void _paintSelectedHinge(Canvas canvas, double scale) {
+    final selected = model.selectedHinge;
+    if (selected == null) return;
+    final edge = model.hingeEdgeOf(selected.zoneId, selected.leaf);
+    if (edge == null) return;
+    WindowZone? zone;
+    for (final z in model.zones) {
+      if (z.id == edge.zoneId) zone = z;
+    }
+    if (zone == null) return;
+    final positions = model.hingePositionsFor(zone, edge.leaf, edge.length);
+    if (selected.index >= positions.length) return;
+    final position = positions[selected.index];
+    final center = edge.pointAt(position);
+    final color = edge.editable ? Colors.blue.shade600 : Colors.grey.shade600;
+
+    final rect = edge.vertical
+        ? Rect.fromCenter(center: center, width: 16, height: 80)
+        : Rect.fromCenter(center: center, width: 80, height: 16);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect.inflate(6 / scale), Radius.circular(4 / scale)),
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5 / scale,
+    );
+
+    // Dashed measuring line over the nearest span: to the next hinge or to
+    // the end of the sash, whichever is closer, read from the bottom up.
+    final gap = SashHingeRules.nearestGap(
+      positions,
+      selected.index,
+      edge.length,
+    );
+    final dash = Paint()
+      ..color = color.withValues(alpha: 0.8)
+      ..strokeWidth = 1.5 / scale;
+    final step = 10 / scale;
+    for (var d = gap.from; d < gap.to; d += step * 2) {
+      canvas.drawLine(
+        edge.pointAt(d),
+        edge.pointAt(math.min(gap.to, d + step)),
+        dash,
+      );
+    }
+    for (final end in [gap.from, gap.to]) {
+      // Small ticks at both ends of the measured span.
+      final tick = edge.vertical
+          ? Offset(8 / scale, 0)
+          : Offset(0, 8 / scale);
+      canvas.drawLine(edge.pointAt(end) - tick, edge.pointAt(end) + tick, dash);
+    }
+
+    final tp = TextPainter(
+      text: TextSpan(
+        text: '${(gap.to - gap.from).round()}',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 13 / scale,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final pad = 4 / scale;
+    final spanMid = edge.pointAt((gap.from + gap.to) / 2);
+    final labelCenter = edge.vertical
+        ? Offset(spanMid.dx + 8 / scale + tp.width / 2 + 16, spanMid.dy)
+        : Offset(spanMid.dx, spanMid.dy - 8 / scale - tp.height / 2 - 16);
+    final box = Rect.fromCenter(
+      center: labelCenter,
+      width: tp.width + pad * 2,
+      height: tp.height + pad * 2,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(box, Radius.circular(4 / scale)),
+      Paint()..color = color,
+    );
+    tp.paint(canvas, box.topLeft + Offset(pad, pad));
+  }
+
   WorkspaceSelectionPainter({
     required this.model,
     this.userScale = 1.0,
     this.userPan = Offset.zero,
-  }) : super(repaint: model);
+    // drawingRepaint also carries the head-drag ghost, so the handles move
+    // with it without a full model notification on every pointer event.
+  }) : super(repaint: Listenable.merge([model, model.drawingRepaint]));
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -22840,6 +23915,8 @@ class WorkspaceSelectionPainter extends CustomPainter {
     canvas.save();
     canvas.translate(model.canvasDx + userPan.dx, model.canvasDy + userPan.dy);
     canvas.scale(scale);
+
+    _paintSelectedHinge(canvas, scale);
 
     final selection = model.selection;
     final fill = Paint()
@@ -22906,14 +23983,28 @@ class WorkspaceSelectionPainter extends CustomPainter {
           canvas.drawCircle(center, radius, whiteBorder);
         }
 
-        handle(Offset(0, model.topSlantLeftY));
-        handle(Offset(model.width, model.topSlantRightY));
+        // Handles follow the dashed ghost while a head drag is in progress.
+        final shape =
+            model.topShapePreview ??
+            (
+              left: model.topSlantLeftY,
+              right: model.topSlantRightY,
+              arch: model.archHeight,
+            );
+        handle(Offset(0, shape.left));
+        handle(Offset(model.width, shape.right));
+        // The arch handle sits on the apex (arc midpoint), where the hit
+        // test in the gesture handler looks for it.
         handle(
-          Offset(
-            model.width / 2,
-            math.min(model.topSlantLeftY, model.topSlantRightY) -
-                model.archHeight * 2,
-          ),
+          model.headArc(
+                left: shape.left,
+                right: shape.right,
+                arch: shape.arch,
+              )?.apex ??
+              Offset(
+                model.width / 2,
+                (shape.left + shape.right) / 2,
+              ),
         );
       }
     } else if (selection.type == SelectionType.zone ||
@@ -22955,6 +24046,34 @@ class WorkspaceSelectionPainter extends CustomPainter {
       canvas.drawRect(rect, outline);
     }
 
+    // Selected slanted mullion: green outline and a handle on each end.
+    final slanted = model.selectedSlantedDivider;
+    if (slanted != null) {
+      for (final zone in model.zones) {
+        if (zone.id != slanted.zoneId) continue;
+        final geometry = model.slantedGeometryFor(
+          zone,
+          dividers: model.slantedDividersShownFor(zone),
+        );
+        for (final d in geometry.dividers) {
+          if (d.id != slanted.dividerId) continue;
+          canvas.drawPath(Path()..addPolygon(geometry.band(d), true), outline);
+          final (a, b) = geometry.centreLine(d);
+          for (final end in [a, b]) {
+            canvas.drawCircle(end, 9.0 / scale, Paint()..color = Colors.green.shade700);
+            canvas.drawCircle(
+              end,
+              9.0 / scale,
+              Paint()
+                ..color = Colors.white
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 2.0 / scale,
+            );
+          }
+        }
+      }
+    }
+
     canvas.restore();
   }
 
@@ -22966,16 +24085,118 @@ class WorkspaceSelectionPainter extends CustomPainter {
   }
 }
 
+/// Dashed ghost of the frame head while a slant/arch handle is dragged, with
+/// the live jamb heights and arch rise. [scale] is the total canvas scale so
+/// strokes and text keep a constant on-screen size.
+void _paintTopShapePreview(
+  Canvas canvas,
+  WindowModel model,
+  ({double left, double right, double arch}) shape,
+  double scale,
+) {
+  final w = model.width;
+  final h = model.height;
+  final path = Path()
+    ..moveTo(0, h - model.bottomSlantLeftY)
+    ..lineTo(0, shape.left);
+  final arc = model.headArc(
+    left: shape.left,
+    right: shape.right,
+    arch: shape.arch,
+  );
+  if (arc != null) {
+    path.arcToPoint(
+      Offset(w, shape.right),
+      radius: Radius.circular(arc.radius),
+      clockwise: true,
+    );
+  } else {
+    path.lineTo(w, shape.right);
+  }
+  path.lineTo(w, h - model.bottomSlantRightY);
+
+  final stroke = Paint()
+    ..color = const Color(0xFF1565C0)
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1.6 / scale;
+  final dash = 10.0 / scale;
+  final gap = 6.0 / scale;
+  for (final metric in path.computeMetrics()) {
+    var distance = 0.0;
+    while (distance < metric.length) {
+      canvas.drawPath(
+        metric.extractPath(
+          distance,
+          math.min(distance + dash, metric.length),
+        ),
+        stroke,
+      );
+      distance += dash + gap;
+    }
+  }
+
+  void label(double value, Offset anchor, Alignment align) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: value.round().toString(),
+        style: TextStyle(
+          color: const Color(0xFF1565C0),
+          fontSize: 15 / scale,
+          fontWeight: FontWeight.w600,
+          backgroundColor: Colors.white.withValues(alpha: 0.85),
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final offset = Offset(
+      anchor.dx - painter.width * (align.x + 1) / 2,
+      anchor.dy - painter.height * (align.y + 1) / 2,
+    );
+    painter.paint(canvas, offset);
+  }
+
+  final pad = 14.0 / scale;
+  label(
+    h - model.bottomSlantLeftY - shape.left,
+    Offset(-pad, shape.left),
+    Alignment.centerRight,
+  );
+  label(
+    h - model.bottomSlantRightY - shape.right,
+    Offset(w + pad, shape.right),
+    Alignment.centerLeft,
+  );
+  if (arc != null) {
+    label(
+      shape.arch,
+      Offset(arc.apex.dx, arc.apex.dy - pad),
+      Alignment.bottomCenter,
+    );
+  }
+}
+
 class AppWorkspacePainter extends CustomPainter {
   final WindowModel model;
   final double userScale;
   final Offset userPan;
+  final bool isDarkMode;
 
   AppWorkspacePainter({
     required this.model,
     this.userScale = 1.0,
     this.userPan = Offset.zero,
+    this.isDarkMode = false,
   }) : super(repaint: model.drawingRepaint);
+
+  Color get _dimensionTextColor =>
+      isDarkMode ? const Color(0xFFF1F5F9) : const Color(0xFF1F2937);
+
+  Color get _dimensionLineColor =>
+      isDarkMode ? const Color(0xFFCBD5E1) : Colors.blueGrey.shade700;
+
+  Color get _dimensionWitnessColor => isDarkMode
+      ? const Color(0xFF94A3B8).withValues(alpha: 0.9)
+      : Colors.blueGrey.shade400.withValues(alpha: 0.6);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -22990,14 +24211,25 @@ class AppWorkspacePainter extends CustomPainter {
         model: model,
         showDrawingDimensions: true,
         showSelection: false,
+        recordHitTargets: true,
       );
       painter.paint(canvas, size);
       // Keep the exterior dimensions outside the frame, then add compact
       // editable region labels and profile cut labels inside the drawing.
+      model.dimensionLabelHits = [];
       _paintDimensions(canvas, model, Offset.zero);
       if (!model.isShutterOnly) {
         _paintZoneRegionDimensions(canvas, model);
         _paintDrawingProfileDimensions(canvas, model);
+      }
+      final shapePreview = model.topShapePreview;
+      if (shapePreview != null) {
+        _paintTopShapePreview(
+          canvas,
+          model,
+          shapePreview,
+          model.canvasScale * userScale,
+        );
       }
     }
 
@@ -23081,15 +24313,7 @@ class AppWorkspacePainter extends CustomPainter {
           style: TextStyle(
             color: editable ? const Color(0xFF0F172A) : Colors.grey.shade700,
             fontSize: fontSize,
-            fontWeight: FontWeight.w800,
-            shadows: const [
-              Shadow(color: Color(0xCCFFFFFF), blurRadius: 2.5),
-              Shadow(
-                color: Color(0x55000000),
-                blurRadius: 1.5,
-                offset: Offset(0, 0.7),
-              ),
-            ],
+            fontWeight: FontWeight.w400,
           ),
         ),
         textDirection: TextDirection.ltr,
@@ -23336,15 +24560,7 @@ class AppWorkspacePainter extends CustomPainter {
           style: TextStyle(
             color: const Color(0xFF0F172A),
             fontSize: fontSize,
-            fontWeight: FontWeight.w800,
-            shadows: const [
-              Shadow(color: Color(0xCCFFFFFF), blurRadius: 2.5),
-              Shadow(
-                color: Color(0x55000000),
-                blurRadius: 1.5,
-                offset: Offset(0, 0.7),
-              ),
-            ],
+            fontWeight: FontWeight.w400,
           ),
         ),
         textDirection: TextDirection.ltr,
@@ -23385,40 +24601,121 @@ class AppWorkspacePainter extends CustomPainter {
     canvas.restore();
   }
 
+  /// Millimetres per screen pixel at the current zoom.
+  double get _mmPerPx => 1 / math.max(1e-6, model.canvasScale * userScale);
+
+  /// Outer dimensions are laid out in screen pixels (converted to mm) so
+  /// they keep one readable size whatever the window size or zoom, never
+  /// collide, and can be dragged away from the frame by the user.
   void _paintDimensions(Canvas canvas, WindowModel model, Offset pos) {
+    double px(double value) => value * _mmPerPx;
+    double dragged(String key) => model.dimensionOffsets[key] ?? 0.0;
     final double scW = model.sideCoverWidth;
+
+    // Ends of slanted mullions on the outer sides, measured from the outer
+    // frame edge like the reference workshop drawings (e.g. 437 | 1670).
+    final topPts = <double>[];
+    final bottomPts = <double>[];
+    final leftPts = <double>[];
+    final rightPts = <double>[];
+    if (model.zones.isNotEmpty) {
+      final minTop = model.zones.map((z) => z.boundary.top).reduce(math.min);
+      final maxBottom = model.zones
+          .map((z) => z.boundary.bottom)
+          .reduce(math.max);
+      final minLeft = model.zones.map((z) => z.boundary.left).reduce(math.min);
+      final maxRight = model.zones
+          .map((z) => z.boundary.right)
+          .reduce(math.max);
+      for (final zone in model.zones) {
+        if (zone.slantedDividers.isEmpty) continue;
+        final g = model.slantedGeometryFor(
+          zone,
+          dividers: model.slantedDividersShownFor(zone),
+        );
+        for (final d in g.dividers) {
+          final (a, b) = g.centreLine(d);
+          for (final (anchor, p) in [(d.start, a), (d.end, b)]) {
+            switch (anchor.edge) {
+              case ZoneEdge.top:
+                if ((zone.boundary.top - minTop).abs() < 2) topPts.add(p.dx);
+              case ZoneEdge.bottom:
+                if ((zone.boundary.bottom - maxBottom).abs() < 2) {
+                  bottomPts.add(p.dx);
+                }
+              case ZoneEdge.left:
+                if ((zone.boundary.left - minLeft).abs() < 2) leftPts.add(p.dy);
+              case ZoneEdge.right:
+                if ((zone.boundary.right - maxRight).abs() < 2) {
+                  rightPts.add(p.dy);
+                }
+            }
+          }
+        }
+      }
+    }
+
+    void segmentRow(
+      List<double> points, {
+      required bool horizontal,
+      required double at,
+      required double start,
+      required double end,
+      required double edge,
+    }) {
+      if (points.isEmpty) return;
+      final stops = <double>[start, ...points..sort(), end];
+      for (var i = 0; i < stops.length - 1; i++) {
+        final gap = stops[i + 1] - stops[i];
+        if (gap < 1.0) continue;
+        final text = '${(gap * 100).round() / 100}';
+        _drawDimension(
+          canvas,
+          text,
+          horizontal
+              ? Offset(pos.dx + stops[i], at)
+              : Offset(at, pos.dy + stops[i]),
+          horizontal
+              ? Offset(pos.dx + stops[i + 1], at)
+              : Offset(at, pos.dy + stops[i + 1]),
+          isVerticalLine: !horizontal,
+          isSmall: true,
+        );
+      }
+      for (final p in points) {
+        _drawWitnessLine(
+          canvas,
+          horizontal ? Offset(pos.dx + p, edge) : Offset(edge, pos.dy + p),
+          horizontal
+              ? Offset(pos.dx + p, at + (at < edge ? -px(5) : px(5)))
+              : Offset(at + (at < edge ? -px(5) : px(5)), pos.dy + p),
+        );
+      }
+    }
     final physicalFrames = model.getPhysicalFrameInfos();
     final bool isMultiFrame = physicalFrames.length > 1;
-    final sortedFrames = List<PhysicalFrameInfo>.from(physicalFrames)
-      ..sort(
-        (a, b) => a.rect.left != b.rect.left
-            ? a.rect.left.compareTo(b.rect.left)
-            : a.rect.top.compareTo(b.rect.top),
-      );
 
-    final bool hasVaryingHeights =
-        isMultiFrame &&
-        sortedFrames.any(
-          (f) => (f.rect.height - sortedFrames.first.rect.height).abs() > 1.0,
-        );
-
-    double offsetDistTop = isMultiFrame ? 105.0 : 60.0;
+    double offsetDistTop = px(isMultiFrame ? 92.0 : 44.0);
+    // A row of slanted-mullion ends sits between the frame and the total.
+    if (topPts.isNotEmpty) offsetDistTop += px(44.0);
     if (model.hasShutter) {
-      offsetDistTop += 20.0;
+      offsetDistTop += px(16.0);
     }
     if (model.hasSideCovers && !model.removedShutterSides.contains('top')) {
       offsetDistTop += scW + 15.0;
     }
-    double offsetDistLeft = 50.0;
+    double offsetDistLeft =
+        px(leftPts.isEmpty ? 44.0 : 88.0) + dragged('left');
     if (model.hasSideCovers && !model.removedShutterSides.contains('left')) {
       offsetDistLeft += scW + 15.0;
     }
-    double offsetDistRight = 50.0;
+    double offsetDistRight =
+        px(rightPts.isEmpty ? 44.0 : 88.0) + dragged('right');
     if (model.hasSideCovers && !model.removedShutterSides.contains('right')) {
       offsetDistRight += scW + 15.0;
     }
     if (model.shutterIsLongerThanWindow) {
-      final shutterDimX = pos.dx + model.width + offsetDistRight + 75.0;
+      final shutterDimX = pos.dx + model.width + offsetDistRight + px(60.0);
       _drawDimension(
         canvas,
         'V ${model.shutterDrawingHeight.toInt()} mm',
@@ -23430,14 +24727,14 @@ class AppWorkspacePainter extends CustomPainter {
       _drawWitnessLine(
         canvas,
         Offset(pos.dx + model.width, pos.dy),
-        Offset(shutterDimX + 6.0, pos.dy),
+        Offset(shutterDimX + px(5.0), pos.dy),
       );
       _drawWitnessLine(
         canvas,
         Offset(pos.dx + model.width, pos.dy + model.shutterDrawingHeight),
-        Offset(shutterDimX + 6.0, pos.dy + model.shutterDrawingHeight),
+        Offset(shutterDimX + px(5.0), pos.dy + model.shutterDrawingHeight),
       );
-      offsetDistRight += 125.0;
+      offsetDistRight += px(56.0);
     }
 
     final bool isSlantedOrArched =
@@ -23449,7 +24746,7 @@ class AppWorkspacePainter extends CustomPainter {
 
     double widthY;
     if (isSlantedOrArched) {
-      double offsetDistBottom = 50.0;
+      double offsetDistBottom = px(bottomPts.isEmpty ? 44.0 : 88.0);
       if (model.hasSideCovers &&
           model.hasBottomFrame &&
           !model.removedShutterSides.contains('bottom')) {
@@ -23466,6 +24763,12 @@ class AppWorkspacePainter extends CustomPainter {
         widthY -= model.shutterBoxHeight;
       }
     }
+    // A shaped head moves the overall width below the frame.
+    final double widthSide = isSlantedOrArched ? 1.0 : -1.0;
+    widthY += widthSide * dragged('width');
+    final double widthAnchorY = isSlantedOrArched
+        ? pos.dy + model.height
+        : pos.dy;
 
     // --- Width Dimensions ---
     final bool hasAngleJunction =
@@ -23479,57 +24782,158 @@ class AppWorkspacePainter extends CustomPainter {
       Offset(pos.dx, widthY),
       Offset(pos.dx + model.width, widthY),
       isVerticalLine: false,
+      tapKey: 'width',
+      dragKey: 'width',
+      normal: Offset(0, widthSide),
     );
-    // Witness lines for total width
+    // Witness lines for total width, from the frame edge they measure.
     _drawWitnessLine(
       canvas,
-      Offset(pos.dx, pos.dy),
-      Offset(pos.dx, widthY - 8.0),
+      Offset(pos.dx, widthAnchorY),
+      Offset(pos.dx, widthY + widthSide * px(6.0)),
     );
     _drawWitnessLine(
       canvas,
-      Offset(pos.dx + model.width, pos.dy),
-      Offset(pos.dx + model.width, widthY - 8.0),
+      Offset(pos.dx + model.width, widthAnchorY),
+      Offset(pos.dx + model.width, widthY + widthSide * px(6.0)),
     );
 
-    // If multi-frame, draw individual frame widths on Layer 1
-    if (isMultiFrame) {
-      // Keep individual frame dimensions close to the drawing, directly
-      // below the overall width dimension.
-      double layer1Y = widthY + 38.0;
-      for (int fi = 0; fi < sortedFrames.length; fi++) {
-        final f = sortedFrames[fi];
+    final double coverTop =
+        model.hasSideCovers && !model.removedShutterSides.contains('top')
+        ? scW + 15.0
+        : 0.0;
+    final double coverBottom =
+        model.hasSideCovers && !model.removedShutterSides.contains('bottom')
+        ? scW + 15.0
+        : 0.0;
+    final double coverLeft =
+        model.hasSideCovers && !model.removedShutterSides.contains('left')
+        ? scW + 15.0
+        : 0.0;
+    final double coverRight =
+        model.hasSideCovers && !model.removedShutterSides.contains('right')
+        ? scW + 15.0
+        : 0.0;
+    segmentRow(
+      topPts,
+      horizontal: true,
+      at: pos.dy - coverTop - px(44.0),
+      start: 0,
+      end: model.width,
+      edge: pos.dy,
+    );
+    segmentRow(
+      bottomPts,
+      horizontal: true,
+      // Coupled frames keep their own width chain right under the frame.
+      at: pos.dy + model.height + coverBottom + px(isMultiFrame ? 88.0 : 44.0),
+      start: 0,
+      end: model.width,
+      edge: pos.dy + model.height,
+    );
+    segmentRow(
+      leftPts,
+      horizontal: false,
+      at: pos.dx - coverLeft - px(44.0),
+      start: 0,
+      end: model.height,
+      edge: pos.dx,
+    );
+    segmentRow(
+      rightPts,
+      horizontal: false,
+      at: pos.dx + model.width + coverRight + px(44.0),
+      start: 0,
+      end: model.height,
+      edge: pos.dx + model.width,
+    );
+
+    // Coupled frames: every frame gets its own dimension, in chains along
+    // the outline (see WindowModel.frameDimensionChains); each number opens
+    // that frame's own resize dialog.
+    final chains = model.frameDimensionChains();
+    if (isMultiFrame && !isSlantedOrArched) {
+      double bottomY = pos.dy + model.height + px(44.0) + dragged('bottom');
+      if (model.hasSideCovers &&
+          model.hasBottomFrame &&
+          !model.removedShutterSides.contains('bottom')) {
+        bottomY += scW + 15.0;
+      }
+      for (final f in chains.bottom) {
         final double x0 = pos.dx + f.rect.left;
         final double x1 = pos.dx + f.rect.right;
         _drawDimension(
           canvas,
-          '${f.rect.width.toInt()} mm',
+          '${f.rect.width.round()} mm',
+          Offset(x0, bottomY),
+          Offset(x1, bottomY),
+          isSmall: true,
+          tapKey: 'frameW:${f.primaryZoneId}',
+        );
+        _drawWitnessLine(
+          canvas,
+          Offset(x0, pos.dy + f.rect.bottom),
+          Offset(x0, bottomY + px(5.0)),
+        );
+        _drawWitnessLine(
+          canvas,
+          Offset(x1, pos.dy + f.rect.bottom),
+          Offset(x1, bottomY + px(5.0)),
+        );
+      }
+      for (final f in chains.innerWidths) {
+        // A middle row: its width inside the frame, under its head.
+        final y =
+            pos.dy + f.rect.top + math.min(f.rect.height * 0.28, px(40.0));
+        _drawDimension(
+          canvas,
+          '${f.rect.width.round()} mm',
+          Offset(pos.dx + f.rect.left, y),
+          Offset(pos.dx + f.rect.right, y),
+          isSmall: true,
+          tapKey: 'frameW:${f.primaryZoneId}',
+        );
+      }
+    }
+    if (isMultiFrame && chains.top.isNotEmpty) {
+      // Keep individual frame dimensions close to the drawing, directly
+      // below the overall width dimension.
+      double layer1Y = widthY + px(40.0);
+      final topChain = chains.top;
+      for (int fi = 0; fi < topChain.length; fi++) {
+        final f = topChain[fi];
+        final double x0 = pos.dx + f.rect.left;
+        final double x1 = pos.dx + f.rect.right;
+        _drawDimension(
+          canvas,
+          '${f.rect.width.round()} mm',
           Offset(x0, layer1Y),
           Offset(x1, layer1Y),
           isVerticalLine: false,
           isSmall: true,
+          tapKey: 'frameW:${f.primaryZoneId}',
         );
         // Vertical witness ticks connecting to frame
         _drawWitnessLine(
           canvas,
           Offset(x0, pos.dy + f.rect.top),
-          Offset(x0, layer1Y - 6.0),
+          Offset(x0, layer1Y - px(5.0)),
         );
         _drawWitnessLine(
           canvas,
           Offset(x1, pos.dy + f.rect.top),
-          Offset(x1, layer1Y - 6.0),
+          Offset(x1, layer1Y - px(5.0)),
         );
 
-        if (hasAngleJunction && fi < sortedFrames.length - 1) {
+        if (hasAngleJunction && fi < topChain.length - 1) {
           // Draw 90° angle symbol at the junction point
           final jX = x1;
           final angleTextPainter = TextPainter(
-            text: const TextSpan(
+            text: TextSpan(
               text: '∟ 90°',
               style: TextStyle(
-                color: Color(0xFF1E88E5),
-                fontSize: 13,
+                color: const Color(0xFF1E88E5),
+                fontSize: px(12.0),
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -23537,7 +24941,7 @@ class AppWorkspacePainter extends CustomPainter {
           )..layout();
           angleTextPainter.paint(
             canvas,
-            Offset(jX - angleTextPainter.width / 2, layer1Y - 24),
+            Offset(jX - angleTextPainter.width / 2, layer1Y - px(20.0)),
           );
         }
       }
@@ -23554,99 +24958,88 @@ class AppWorkspacePainter extends CustomPainter {
           Offset(pos.dx - offsetDistLeft, pos.dy + boxSize),
           isVerticalLine: true,
           isSmall: true,
+          labelOffset: Offset(-px(18.0), 0),
         );
       }
 
-      // Leftmost frame height on the left
-      final leftmost = sortedFrames.first;
-      final double leftStartY = pos.dy + leftmost.rect.top;
-      final double leftEndY = pos.dy + leftmost.rect.bottom;
-      final double leftDimX = pos.dx - offsetDistLeft;
-      _drawDimension(
-        canvas,
-        '${leftmost.rect.height.toInt()} mm',
-        Offset(leftDimX, leftStartY),
-        Offset(leftDimX, leftEndY),
-        isVerticalLine: true,
-      );
-      // Witness lines for leftmost frame
-      _drawWitnessLine(
-        canvas,
-        Offset(pos.dx + leftmost.rect.left, leftStartY),
-        Offset(leftDimX - 10.0, leftStartY),
-      );
-      _drawWitnessLine(
-        canvas,
-        Offset(pos.dx + leftmost.rect.left, leftEndY),
-        Offset(leftDimX - 10.0, leftEndY),
-      );
-
-      // If leftmost frame is shorter than overall window height, show overall height on outer tier
-      if (hasVaryingHeights && model.height > leftmost.rect.height + 1.0) {
-        final double totalDimX = leftDimX - 50.0;
-        _drawDimension(
-          canvas,
-          '${model.height.toInt()} mm',
-          Offset(totalDimX, pos.dy),
-          Offset(totalDimX, pos.dy + model.height),
-          isVerticalLine: true,
-        );
-        _drawWitnessLine(
-          canvas,
-          Offset(pos.dx, pos.dy),
-          Offset(totalDimX - 10.0, pos.dy),
-        );
-        _drawWitnessLine(
-          canvas,
-          Offset(pos.dx, pos.dy + model.height),
-          Offset(totalDimX - 10.0, pos.dy + model.height),
-        );
-      }
-
-      // Rightmost frame height on the right
-      final rightmost = sortedFrames.last;
-      final double rightStartY = pos.dy + rightmost.rect.top;
-      final double rightEndY = pos.dy + rightmost.rect.bottom;
-      final double rightDimX = pos.dx + model.width + offsetDistRight;
-      _drawDimension(
-        canvas,
-        '${rightmost.rect.height.toInt()} mm',
-        Offset(rightDimX, rightStartY),
-        Offset(rightDimX, rightEndY),
-        isVerticalLine: true,
-      );
-      // Witness lines for rightmost frame
-      _drawWitnessLine(
-        canvas,
-        Offset(pos.dx + rightmost.rect.right, rightStartY),
-        Offset(rightDimX + 10.0, rightStartY),
-      );
-      _drawWitnessLine(
-        canvas,
-        Offset(pos.dx + rightmost.rect.right, rightEndY),
-        Offset(rightDimX + 10.0, rightEndY),
-      );
-
-      // Intermediate frames (index 1 to length - 2):
-      // Draw vertical dimension line with start-to-end arrows inside the frame, off-center
-      if (sortedFrames.length >= 3 && hasVaryingHeights) {
-        for (int i = 1; i < sortedFrames.length - 1; i++) {
-          final fInfo = sortedFrames[i];
-          final double dimX =
-              pos.dx +
-              fInfo.rect.left +
-              math.min(fInfo.rect.width * 0.28, 65.0);
-          final double startY = pos.dy + fInfo.rect.top;
-          final double endY = pos.dy + fInfo.rect.bottom;
+      void frameHeightChain(
+        List<PhysicalFrameInfo> chain,
+        double dimX,
+        double side,
+      ) {
+        for (final f in chain) {
+          final double startY = pos.dy + f.rect.top;
+          final double endY = pos.dy + f.rect.bottom;
+          final double edgeX = pos.dx + (side < 0 ? f.rect.left : f.rect.right);
           _drawDimension(
             canvas,
-            '${fInfo.rect.height.toInt()} mm',
+            '${f.rect.height.round()} mm',
             Offset(dimX, startY),
             Offset(dimX, endY),
             isVerticalLine: true,
             isSmall: true,
+            tapKey: 'frameH:${f.primaryZoneId}',
+          );
+          _drawWitnessLine(
+            canvas,
+            Offset(edgeX, startY),
+            Offset(dimX + side * px(8.0), startY),
+          );
+          _drawWitnessLine(
+            canvas,
+            Offset(edgeX, endY),
+            Offset(dimX + side * px(8.0), endY),
           );
         }
+      }
+
+      // Frames along the left outline, then the overall height outside them.
+      final double leftDimX = pos.dx - offsetDistLeft;
+      frameHeightChain(chains.left, leftDimX, -1.0);
+      final double totalDimX = chains.left.isEmpty
+          ? leftDimX
+          : leftDimX - px(44.0);
+      _drawDimension(
+        canvas,
+        '${model.height.round()} mm',
+        Offset(totalDimX, pos.dy),
+        Offset(totalDimX, pos.dy + model.height),
+        isVerticalLine: true,
+        tapKey: 'height',
+        dragKey: 'left',
+        normal: const Offset(-1, 0),
+      );
+      _drawWitnessLine(
+        canvas,
+        Offset(pos.dx, pos.dy),
+        Offset(totalDimX - px(8.0), pos.dy),
+      );
+      _drawWitnessLine(
+        canvas,
+        Offset(pos.dx, pos.dy + model.height),
+        Offset(totalDimX - px(8.0), pos.dy + model.height),
+      );
+
+      // Frames along the right outline (when not already measured left).
+      frameHeightChain(
+        chains.right,
+        pos.dx + model.width + offsetDistRight,
+        1.0,
+      );
+
+      // A middle column: its height inside the frame, off-centre.
+      for (final f in chains.innerHeights) {
+        final double dimX =
+            pos.dx + f.rect.left + math.min(f.rect.width * 0.28, 65.0);
+        _drawDimension(
+          canvas,
+          '${f.rect.height.round()} mm',
+          Offset(dimX, pos.dy + f.rect.top),
+          Offset(dimX, pos.dy + f.rect.bottom),
+          isVerticalLine: true,
+          isSmall: true,
+          tapKey: 'frameH:${f.primaryZoneId}',
+        );
       }
     } else {
       // --- Single Frame Height (Existing behavior) ---
@@ -23660,6 +25053,7 @@ class AppWorkspacePainter extends CustomPainter {
             Offset(pos.dx - offsetDistLeft, pos.dy),
             isVerticalLine: true,
             isSmall: true,
+            labelOffset: Offset(-px(18.0), 0),
           );
 
           double windowHeight = model.height;
@@ -23669,6 +25063,9 @@ class AppWorkspacePainter extends CustomPainter {
             Offset(pos.dx - offsetDistLeft, pos.dy),
             Offset(pos.dx - offsetDistLeft, pos.dy + model.height),
             isVerticalLine: true,
+            tapKey: 'height',
+            dragKey: 'left',
+            normal: const Offset(-1, 0),
           );
         } else {
           _drawDimension(
@@ -23678,6 +25075,7 @@ class AppWorkspacePainter extends CustomPainter {
             Offset(pos.dx - offsetDistLeft, pos.dy + boxSize),
             isVerticalLine: true,
             isSmall: true,
+            labelOffset: Offset(-px(18.0), 0),
           );
 
           double windowHeight = model.height - boxSize;
@@ -23687,6 +25085,9 @@ class AppWorkspacePainter extends CustomPainter {
             Offset(pos.dx - offsetDistLeft, pos.dy + boxSize),
             Offset(pos.dx - offsetDistLeft, pos.dy + model.height),
             isVerticalLine: true,
+            tapKey: 'height',
+            dragKey: 'left',
+            normal: const Offset(-1, 0),
           );
         }
       } else {
@@ -23701,31 +25102,122 @@ class AppWorkspacePainter extends CustomPainter {
         double rightH =
             model.height - model.topSlantRightY - model.bottomSlantRightY;
 
-        double startY = pos.dy + model.topSlantLeftY;
-        double endY = pos.dy + model.height - model.bottomSlantLeftY;
+        // Left jamb (the whole height on a plain frame).
+        final double leftDimX = pos.dx - offsetDistLeft;
+        final double startY = pos.dy + model.topSlantLeftY;
+        final double endY = pos.dy + model.height - model.bottomSlantLeftY;
         _drawDimension(
           canvas,
-          '${leftH.toInt()} mm',
-          Offset(pos.dx - offsetDistLeft, startY),
-          Offset(pos.dx - offsetDistLeft, endY),
+          '${leftH.round()} mm',
+          Offset(leftDimX, startY),
+          Offset(leftDimX, endY),
           isVerticalLine: true,
+          tapKey: isSlantedOrArched ? 'leftJamb' : 'height',
+          dragKey: 'left',
+          normal: const Offset(-1, 0),
         );
+        if (isSlantedOrArched) {
+          _drawWitnessLine(
+            canvas,
+            Offset(pos.dx, startY),
+            Offset(leftDimX - px(6.0), startY),
+          );
+          _drawWitnessLine(
+            canvas,
+            Offset(pos.dx, endY),
+            Offset(leftDimX - px(6.0), endY),
+          );
+        }
 
+        // Right jamb whenever it differs from the left one.
         if (isSlanted) {
-          double offsetDistRight = 50.0;
-          if (model.hasSideCovers &&
-              !model.removedShutterSides.contains('right')) {
-            offsetDistRight += scW + 15.0;
-          }
-          double startYRight = pos.dy + model.topSlantRightY;
-          double endYRight = pos.dy + model.height - model.bottomSlantRightY;
+          final double rightDimX = pos.dx + model.width + offsetDistRight;
+          final double startYRight = pos.dy + model.topSlantRightY;
+          final double endYRight =
+              pos.dy + model.height - model.bottomSlantRightY;
           _drawDimension(
             canvas,
-            '${rightH.toInt()} mm',
-            Offset(pos.dx + model.width + offsetDistRight, startYRight),
-            Offset(pos.dx + model.width + offsetDistRight, endYRight),
+            '${rightH.round()} mm',
+            Offset(rightDimX, startYRight),
+            Offset(rightDimX, endYRight),
             isVerticalLine: true,
+            tapKey: 'rightJamb',
+            dragKey: 'right',
+            normal: const Offset(1, 0),
           );
+          _drawWitnessLine(
+            canvas,
+            Offset(pos.dx + model.width, startYRight),
+            Offset(rightDimX + px(6.0), startYRight),
+          );
+          _drawWitnessLine(
+            canvas,
+            Offset(pos.dx + model.width, endYRight),
+            Offset(rightDimX + px(6.0), endYRight),
+          );
+        }
+
+        final arc = model.headArc(topOffset: pos.dy);
+        final chordStart = Offset(pos.dx, pos.dy + model.topSlantLeftY);
+        final chordEnd = Offset(
+          pos.dx + model.width,
+          pos.dy + model.topSlantRightY,
+        );
+        final chord = chordEnd - chordStart;
+        if (arc != null) {
+          // Arch rise, measured from the springing line up to the apex. It
+          // stacks on the left jamb when the springing line is level.
+          if ((model.topSlantLeftY - model.topSlantRightY).abs() < 1.0) {
+            final apexY = arc.apex.dy;
+            _drawDimension(
+              canvas,
+              '${model.archHeight.round()} mm',
+              Offset(leftDimX, apexY),
+              Offset(leftDimX, startY),
+              isVerticalLine: true,
+              tapKey: 'archRise',
+              dragKey: 'left',
+              normal: const Offset(-1, 0),
+            );
+            _drawWitnessLine(
+              canvas,
+              arc.apex,
+              Offset(leftDimX - px(6.0), apexY),
+            );
+          } else {
+            _drawAlignedDimension(
+              canvas,
+              '${model.archHeight.round()} mm',
+              (chordStart + chordEnd) / 2,
+              arc.apex,
+              tapKey: 'archRise',
+              dragKey: 'archRise',
+              normal: Offset.zero,
+            );
+          }
+        } else if (chord.distance > 0 &&
+            (model.topSlantLeftY - model.topSlantRightY).abs() >= 1.0) {
+          // Slanted head: its true length, parallel to it and outside it.
+          final d = chord / chord.distance;
+          final outward = Offset(d.dy, -d.dx);
+          double dist = px(44.0) + dragged('slant');
+          if (model.hasSideCovers &&
+              !model.removedShutterSides.contains('top')) {
+            dist += scW + 15.0;
+          }
+          final q1 = chordStart + outward * dist;
+          final q2 = chordEnd + outward * dist;
+          _drawAlignedDimension(
+            canvas,
+            '${chord.distance.round()} mm',
+            q1,
+            q2,
+            tapKey: 'slant',
+            dragKey: 'slant',
+            normal: outward,
+          );
+          _drawWitnessLine(canvas, chordStart, q1 + outward * px(6.0));
+          _drawWitnessLine(canvas, chordEnd, q2 + outward * px(6.0));
         }
       }
     }
@@ -23733,9 +25225,34 @@ class AppWorkspacePainter extends CustomPainter {
 
   void _drawWitnessLine(Canvas canvas, Offset p1, Offset p2) {
     final p = Paint()
-      ..color = Colors.blueGrey.shade400.withOpacity(0.55)
-      ..strokeWidth = 1.2;
+      ..color = _dimensionWitnessColor
+      ..strokeWidth = 0.9 * _mmPerPx;
     canvas.drawLine(p1, p2, p);
+  }
+
+  /// Records a painted label so taps (edit) and drags (move) hit it.
+  void _recordDimensionHit(
+    String? tapKey,
+    String? dragKey,
+    Offset center,
+    Size textSize,
+    double angle,
+    Offset normal,
+  ) {
+    if (tapKey == null && dragKey == null) return;
+    final c = math.cos(angle).abs();
+    final s = math.sin(angle).abs();
+    final w = textSize.width * c + textSize.height * s;
+    final h = textSize.width * s + textSize.height * c;
+    model.dimensionLabelHits.add(
+      DimensionLabelHit(
+        tapKey ?? '',
+        dragKey ?? '',
+        Rect.fromCenter(center: center, width: w, height: h)
+            .inflate(10.0 * _mmPerPx),
+        normal,
+      ),
+    );
   }
 
   void _drawDimension(
@@ -23745,17 +25262,30 @@ class AppWorkspacePainter extends CustomPainter {
     Offset p2, {
     bool isVerticalLine = false,
     bool isSmall = false,
+    String? tapKey,
+    String? dragKey,
+    Offset normal = Offset.zero,
+    Offset labelOffset = Offset.zero,
   }) {
     final double midX = (p1.dx + p2.dx) / 2;
     final double midY = (p1.dy + p2.dy) / 2;
-    final Offset center = Offset(midX, midY);
+    final Offset lineCenter = Offset(midX, midY);
+    final Offset labelCenter = lineCenter + labelOffset;
 
-    final double textWidth = _drawText(
+    final Size textSize = _drawText(
       canvas,
       text,
-      center,
+      labelCenter,
       isVertical: isVerticalLine,
       isSmall: isSmall,
+    );
+    _recordDimensionHit(
+      tapKey,
+      dragKey,
+      labelCenter,
+      textSize,
+      isVerticalLine ? -math.pi / 2 : 0.0,
+      normal,
     );
 
     _drawArrow(
@@ -23763,42 +25293,123 @@ class AppWorkspacePainter extends CustomPainter {
       p1,
       p2,
       isVerticalLine: isVerticalLine,
-      textGap: textWidth + 60.0,
+      textGap: labelOffset == Offset.zero
+          ? textSize.width + 16.0 * _mmPerPx
+          : 0.0,
     );
   }
 
-  double _drawText(
+  /// Dimension along any direction (slanted head, arch rise): line with
+  /// perpendicular ticks and arrowheads, text kept upright along the line.
+  void _drawAlignedDimension(
+    Canvas canvas,
+    String text,
+    Offset p1,
+    Offset p2, {
+    String? tapKey,
+    String? dragKey,
+    Offset normal = Offset.zero,
+  }) {
+    final delta = p2 - p1;
+    final length = delta.distance;
+    if (length <= 0) return;
+    final d = delta / length;
+    var angle = math.atan2(d.dy, d.dx);
+    if (angle > math.pi / 2) angle -= math.pi;
+    if (angle < -math.pi / 2) angle += math.pi;
+    final center = (p1 + p2) / 2;
+
+    final tp = _dimensionTextPainter(text, isSmall: false);
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(angle);
+    tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
+    canvas.restore();
+    _recordDimensionHit(tapKey, dragKey, center, tp.size, angle, normal);
+
+    final paint = Paint()
+      ..color = _dimensionLineColor
+      ..strokeWidth = 1.2 * _mmPerPx;
+    final halfGap = math.min(length / 2, (tp.width + 16.0 * _mmPerPx) / 2);
+    canvas.drawLine(p1, center - d * halfGap, paint);
+    canvas.drawLine(center + d * halfGap, p2, paint);
+    final n = Offset(-d.dy, d.dx);
+    final tick = 7.0 * _mmPerPx;
+    canvas.drawLine(p1 - n * tick, p1 + n * tick, paint);
+    canvas.drawLine(p2 - n * tick, p2 + n * tick, paint);
+    final arrowLen = 9.0 * _mmPerPx;
+    final arrowW = 3.5 * _mmPerPx;
+    final fill = Paint()
+      ..color = paint.color
+      ..style = PaintingStyle.fill;
+    canvas.drawPath(
+      Path()
+        ..moveTo(p1.dx, p1.dy)
+        ..lineTo(
+          (p1 + d * arrowLen + n * arrowW).dx,
+          (p1 + d * arrowLen + n * arrowW).dy,
+        )
+        ..lineTo(
+          (p1 + d * arrowLen - n * arrowW).dx,
+          (p1 + d * arrowLen - n * arrowW).dy,
+        )
+        ..close(),
+      fill,
+    );
+    canvas.drawPath(
+      Path()
+        ..moveTo(p2.dx, p2.dy)
+        ..lineTo(
+          (p2 - d * arrowLen + n * arrowW).dx,
+          (p2 - d * arrowLen + n * arrowW).dy,
+        )
+        ..lineTo(
+          (p2 - d * arrowLen - n * arrowW).dx,
+          (p2 - d * arrowLen - n * arrowW).dy,
+        )
+        ..close(),
+      fill,
+    );
+  }
+
+  /// Plain, large, constant-size digits (no heavy weight or shadow).
+  TextPainter _dimensionTextPainter(String text, {required bool isSmall}) {
+    return TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: _dimensionTextColor,
+          fontWeight: isDarkMode ? FontWeight.w600 : FontWeight.w500,
+          fontSize: (isSmall ? 16.0 : 21.0) * _mmPerPx,
+          shadows: isDarkMode
+              ? const [
+                  Shadow(
+                    color: Color(0x99000000),
+                    blurRadius: 2.0,
+                    offset: Offset(0, 0.8),
+                  ),
+                ]
+              : null,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+  }
+
+  Size _drawText(
     Canvas canvas,
     String text,
     Offset center, {
     bool isVertical = false,
     bool isSmall = false,
   }) {
-    final tp = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: TextStyle(
-          color: const Color(0xFF0F172A),
-          fontWeight: FontWeight.w800,
-          fontSize: isSmall ? 46 : 66,
-          shadows: const [
-            Shadow(color: Color(0xCCFFFFFF), blurRadius: 3),
-            Shadow(
-              color: Color(0x55000000),
-              blurRadius: 1.5,
-              offset: Offset(0, 1),
-            ),
-          ],
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
+    final tp = _dimensionTextPainter(text, isSmall: isSmall);
     canvas.save();
     canvas.translate(center.dx, center.dy);
     if (isVertical) canvas.rotate(-math.pi / 2);
     tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
     canvas.restore();
-    return tp.width;
+    return tp.size;
   }
 
   void _drawArrow(
@@ -23809,10 +25420,10 @@ class AppWorkspacePainter extends CustomPainter {
     double textGap = 100.0,
   }) {
     final p = Paint()
-      ..color = Colors.blueGrey.shade700
-      ..strokeWidth = 2.2;
+      ..color = _dimensionLineColor
+      ..strokeWidth = 1.2 * _mmPerPx;
 
-    double tickSize = 15.0;
+    double tickSize = 7.0 * _mmPerPx;
 
     if (isVerticalLine) {
       final double minY = math.min(p1.dy, p2.dy);
@@ -23842,8 +25453,8 @@ class AppWorkspacePainter extends CustomPainter {
       );
 
       // Arrowheads pointing to ends
-      const double arrowLen = 12.0;
-      const double arrowW = 4.5;
+      final double arrowLen = 9.0 * _mmPerPx;
+      final double arrowW = 3.5 * _mmPerPx;
       final arrowPaint = Paint()
         ..color = p.color
         ..style = PaintingStyle.fill;
@@ -23887,8 +25498,8 @@ class AppWorkspacePainter extends CustomPainter {
       );
 
       // Arrowheads pointing to ends
-      const double arrowLen = 12.0;
-      const double arrowW = 4.5;
+      final double arrowLen = 9.0 * _mmPerPx;
+      final double arrowW = 3.5 * _mmPerPx;
       final arrowPaint = Paint()
         ..color = p.color
         ..style = PaintingStyle.fill;
@@ -23911,7 +25522,8 @@ class AppWorkspacePainter extends CustomPainter {
   bool shouldRepaint(covariant AppWorkspacePainter oldDelegate) {
     return oldDelegate.model != model ||
         oldDelegate.userScale != userScale ||
-        oldDelegate.userPan != userPan;
+        oldDelegate.userPan != userPan ||
+        oldDelegate.isDarkMode != isDarkMode;
   }
 }
 

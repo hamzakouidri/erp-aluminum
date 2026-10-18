@@ -95,6 +95,11 @@ class ResizableColumnsTable extends StatefulWidget {
   /// while keeping the table header and filter search rows visible.
   final Widget? emptyPlaceholder;
 
+  /// Adds a fixed visual sequence column at the far left of the table.
+  /// The number follows the current displayed order after filtering, sorting
+  /// and row reordering; it is deliberately excluded from persisted layout.
+  final bool showRowNumbers;
+
   const ResizableColumnsTable({
     super.key,
     required this.columns,
@@ -120,6 +125,7 @@ class ResizableColumnsTable extends StatefulWidget {
     this.onFocusedRowChanged,
     this.revealRowId,
     this.emptyPlaceholder,
+    this.showRowNumbers = true,
   });
 
   /// The shared visual language used by every interactive table in the app.
@@ -139,6 +145,7 @@ class ResizableColumnsTable extends StatefulWidget {
 }
 
 class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
+  static const double _rowNumberWidth = 58.0;
   final Map<String, double> _widths = {};
   String? _hoveredHandleColumnId;
   String? _draggingHandleColumnId;
@@ -415,10 +422,12 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
     ];
   }
 
-  double get _tableWidth => _orderedColumns().fold<double>(
-    0,
-    (sum, column) => sum + _widthFor(column),
-  );
+  double get _tableWidth =>
+      _orderedColumns().fold<double>(
+        0,
+        (sum, column) => sum + _widthFor(column),
+      ) +
+      (widget.showRowNumbers ? _rowNumberWidth : 0.0);
 
   void _toggleColumnVisibility(String columnId) {
     final isHidden = _hiddenColumnIds.contains(columnId);
@@ -786,11 +795,23 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        if (widget.showRowNumbers &&
+                            Directionality.of(context) == TextDirection.ltr)
+                          _buildNumberCell(
+                            const SizedBox.shrink(),
+                            borderColor,
+                          ),
                         for (final column in _orderedColumns())
                           _buildCell(
                             widget.footerCells![column.id] ??
                                 const SizedBox.shrink(),
                             column,
+                            borderColor,
+                          ),
+                        if (widget.showRowNumbers &&
+                            Directionality.of(context) == TextDirection.rtl)
+                          _buildNumberCell(
+                            const SizedBox.shrink(),
                             borderColor,
                           ),
                       ],
@@ -852,13 +873,44 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (widget.showRowNumbers &&
+                Directionality.of(context) == TextDirection.ltr)
+              _buildNumberHeaderCell(borderColor),
             for (var i = 0; i < columns.length; i++)
               _buildHeaderCell(
                 columns[i],
                 borderColor,
-                isLast: i == columns.length - 1,
+                isLast:
+                    i == columns.length - 1 &&
+                    (!widget.showRowNumbers ||
+                        Directionality.of(context) == TextDirection.ltr),
               ),
+            if (widget.showRowNumbers &&
+                Directionality.of(context) == TextDirection.rtl)
+              _buildNumberHeaderCell(borderColor),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNumberHeaderCell(Color borderColor) {
+    return Container(
+      width: _rowNumberWidth,
+      constraints: BoxConstraints(minHeight: widget.headerMinHeight),
+      padding: widget.cellPadding,
+      decoration: BoxDecoration(
+        border: BorderDirectional(
+          bottom: BorderSide(color: borderColor, width: 1.0),
+        ),
+      ),
+      alignment: Alignment.center,
+      child: const Text(
+        'N°',
+        style: TextStyle(
+          fontFamily: 'Cairo',
+          fontSize: 13.5,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
@@ -1095,6 +1147,9 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (widget.showRowNumbers &&
+                Directionality.of(context) == TextDirection.ltr)
+              _buildNumberFilterCell(borderColor),
             for (var i = 0; i < columns.length; i++)
               Container(
                 key: ValueKey('filter_col_' + columns[i].id),
@@ -1116,7 +1171,22 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
                       )
                     : const SizedBox.shrink(),
               ),
+            if (widget.showRowNumbers &&
+                Directionality.of(context) == TextDirection.rtl)
+              _buildNumberFilterCell(borderColor),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNumberFilterCell(Color borderColor) {
+    return Container(
+      width: _rowNumberWidth,
+      constraints: BoxConstraints(minHeight: widget.filterRowMinHeight),
+      decoration: BoxDecoration(
+        border: BorderDirectional(
+          bottom: BorderSide(color: borderColor, width: 1.0),
         ),
       ),
     );
@@ -1174,6 +1244,12 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (widget.showRowNumbers &&
+                    Directionality.of(context) == TextDirection.ltr)
+                  _buildNumberCell(
+                    Text('${index + 1}'),
+                    borderColor,
+                  ),
                 for (final column in columns)
                   _buildCell(
                     (() {
@@ -1186,6 +1262,12 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
                       return const SizedBox.shrink();
                     })(),
                     column,
+                    borderColor,
+                  ),
+                if (widget.showRowNumbers &&
+                    Directionality.of(context) == TextDirection.rtl)
+                  _buildNumberCell(
+                    Text('${index + 1}'),
                     borderColor,
                   ),
               ],
@@ -1319,6 +1401,28 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
       alignment: column.alignment,
       child: DefaultTextStyle.merge(
         style: const TextStyle(fontFamily: 'Cairo', fontSize: 12.5),
+        child: ClipRect(child: child),
+      ),
+    );
+  }
+
+  Widget _buildNumberCell(Widget child, Color borderColor) {
+    return Container(
+      width: _rowNumberWidth,
+      constraints: BoxConstraints(minHeight: widget.rowMinHeight),
+      padding: widget.cellPadding,
+      decoration: BoxDecoration(
+        border: BorderDirectional(
+          bottom: BorderSide(color: borderColor, width: 1.0),
+        ),
+      ),
+      alignment: Alignment.center,
+      child: DefaultTextStyle.merge(
+        style: const TextStyle(
+          fontFamily: 'Cairo',
+          fontSize: 12.5,
+          fontWeight: FontWeight.w600,
+        ),
         child: ClipRect(child: child),
       ),
     );

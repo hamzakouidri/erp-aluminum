@@ -1,4 +1,5 @@
 import 'package:database_data/widgets/app_material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
@@ -11,7 +12,6 @@ import 'cutting_settings_screen.dart';
 import 'keyboard_shortcuts_screen.dart';
 import 'selected_systems_screen.dart';
 import 'notification_settings_screen.dart';
-import 'standard_sheets_screen.dart';
 import 'package:flutter/services.dart';
 import '../sql_database.dart';
 
@@ -395,6 +395,11 @@ class SettingsScreen extends StatelessWidget {
     final isAllowed = settings.isManager || settings.canAccessSettings();
     final lang = settings.language;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDesktopPlatform =
+        !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.linux ||
+            defaultTargetPlatform == TargetPlatform.macOS);
     final showLegacyFirebaseCloudSync = bool.fromEnvironment(
       'SHOW_LEGACY_FIREBASE_SYNC',
     );
@@ -419,9 +424,11 @@ class SettingsScreen extends StatelessWidget {
             child: ListTile(
               leading: const Icon(Icons.notifications_active_outlined),
               title: Text(
-                Localization.translate('إعدادات الإشعارات', settings.language),
+                Localization.translate('الإشعارات', settings.language),
                 style: TextStyle(
-                  fontFamily: settings.language == AppLanguage.arabic ? 'Cairo' : null,
+                  fontFamily: settings.language == AppLanguage.arabic
+                      ? 'Cairo'
+                      : null,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -436,128 +443,91 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           // Workshop Profile Settings
-            if (settings.hasWorkshop) ...[
-              Card(
-                elevation: 2,
-                child: ListTile(
-                  leading: const Icon(
-                    Icons.storefront_rounded,
-                    color: Colors.blue,
-                  ),
-                  title: Text(
-                    Localization.translate('معلومات الورشة', lang),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Cairo',
-                    ),
-                  ),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const WorkshopProfileScreen(),
-                      ),
-                    );
-                  },
+          if (settings.hasWorkshop) ...[
+            Card(
+              elevation: 2,
+              child: ListTile(
+                leading: const Icon(
+                  Icons.storefront_rounded,
+                  color: Colors.blue,
                 ),
-              ),
-              const SizedBox(height: 10),
-              Card(
-                elevation: 2,
-                child: ListTile(
-                  leading: const Icon(
-                    Icons.content_cut_rounded,
-                    color: Colors.orange,
+                title: Text(
+                  Localization.translate('معلومات الورشة', lang),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Cairo',
                   ),
-                  title: Text(
-                    Localization.translate('إعدادات القص والفضلات', lang),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Cairo',
-                    ),
-                  ),
-                  subtitle: Text(
-                    Localization.translate(
-                      'فاقد المنشار والحد الأدنى للفضلات حسب نوع القطعة.',
-                      lang,
-                    ),
-                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
-                  ),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const CuttingSettingsScreen(),
-                      ),
-                    );
-                  },
                 ),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const WorkshopProfileScreen(),
+                    ),
+                  );
+                },
               ),
-              const SizedBox(height: 10),
-
-              // Standard Sheets Formats & Prices
-              Card(
-                elevation: 2,
-                child: ListTile(
-                  leading: const Icon(
-                    Icons.layers_outlined,
-                    color: Colors.blueAccent,
-                  ),
-                  title: Text(
-                    lang == AppLanguage.arabic
-                        ? 'أبعاد وأسعار الألواح والصفائح'
-                        : 'Formats et prix des feuilles & panneaux',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontFamily: lang == AppLanguage.arabic ? 'Cairo' : null,
-                    ),
-                  ),
-                  subtitle: Text(
-                    lang == AppLanguage.arabic
-                        ? 'مقاسات فايات الريزين، الأليكوبوند، البانو ساندويتش، البيكسي جلاس والزجاج.'
-                        : 'Tailles et prix des panneaux (Résine, Alucobond, Sandwich, Plexi, Verre).',
-                    style: TextStyle(
-                      fontFamily: lang == AppLanguage.arabic ? 'Cairo' : null,
-                      fontSize: 12,
-                    ),
-                  ),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const StandardSheetsScreen(),
-                      ),
-                    );
-                  },
+            ),
+            const SizedBox(height: 10),
+            Card(
+              elevation: 2,
+              child: ListTile(
+                leading: const Icon(
+                  Icons.content_cut_rounded,
+                  color: Colors.orange,
                 ),
+                title: Text(
+                  Localization.translate('القص والفضلات', lang),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Cairo',
+                  ),
+                ),
+                subtitle: Text(
+                  Localization.translate(
+                    'فاقد المنشار والحد الأدنى للفضلات حسب نوع القطعة.',
+                    lang,
+                  ),
+                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const CuttingSettingsScreen(),
+                    ),
+                  );
+                },
               ),
-            ],
+            ),
+            const SizedBox(height: 10),
+          ],
 
           // Display Settings
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.keyboard),
-              title: Text(
-                Localization.translate('اختصارات لوحة المفاتيح', lang),
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const KeyboardShortcutsScreen(),
+          if (isDesktopPlatform)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.keyboard),
+                title: Text(
+                  Localization.translate('اختصارات لوحة المفاتيح', lang),
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const KeyboardShortcutsScreen(),
+                  ),
                 ),
               ),
             ),
-          ),
           Card(
             elevation: 2,
             child: ListTile(
               leading: const Icon(Icons.display_settings, color: Colors.blue),
               title: Text(
-                Localization.translate('إعدادات الشاشة والمظهر', lang),
+                Localization.translate('الشاشة والمظهر', lang),
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontFamily: 'Cairo',
@@ -576,8 +546,23 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 10),
 
-          // App Update Settings (تحديث التطبيق: آلي / يدوي)
-          _buildAppUpdateCard(context, settings, lang, isDark),
+          Card(
+            elevation: 2,
+            child: ListTile(
+              leading: const Icon(Icons.system_update_alt, color: Colors.blue),
+              title: Text(
+                Localization.translate('تحديث التطبيق', lang),
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const AppUpdateSettingsScreen(),
+                ),
+              ),
+            ),
+          ),
           const SizedBox(height: 10),
 
           // Selected Systems Management Settings
@@ -615,780 +600,835 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 10),
 
-          // Cloud Sync Backup/Restore
-          if (showLegacyFirebaseCloudSync &&
-              (settings.isManager || settings.canBackupToCloud())) ...[
-            Card(
-              elevation: 2,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ListTile(
-                      leading: Icon(Icons.cloud_sync, color: Colors.blue),
-                      title: Text(
-                        Localization.translate(
-                          'النسخ الاحتياطي (Cloud Sync)',
-                          lang,
-                        ),
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'Cairo',
-                        ),
-                      ),
-                      subtitle: Text(
-                        Localization.translate(
-                          'لحفظ بياناتك واسترجاعها عند تغيير الهاتف أو مسح التطبيق.',
-                          lang,
-                        ),
-                        style: TextStyle(fontFamily: 'Cairo'),
-                      ),
-                    ),
-                    Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16.0,
-                          vertical: 8.0,
-                        ),
-                        child: Wrap(
-                          spacing: 16.0,
-                          runSpacing: 12.0,
-                          alignment: WrapAlignment.center,
-                          children: [
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: isDark
-                                    ? Colors.black
-                                    : Colors.blue,
-                                foregroundColor: Colors.white,
-                                side: isDark
-                                    ? const BorderSide(
-                                        color: Colors.white,
-                                        width: 1.5,
-                                      )
-                                    : BorderSide.none,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 14,
-                                ),
-                                shape: isDark
-                                    ? RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      )
-                                    : null,
+          Card(
+            elevation: 2,
+            child: ExpansionTile(
+              leading: const Icon(Icons.backup_rounded, color: Colors.green),
+              title: Text(
+                Localization.translate(
+                  'النسخ الاحتياطي واسترجاع البيانات',
+                  lang,
+                ),
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: Text(
+                Localization.translate(
+                  'رفع البيانات وتنزيلها أو تصدير نسخة محلية واستيرادها.',
+                  lang,
+                ),
+              ),
+              children: [
+                // Cloud Sync Backup/Restore
+                if (showLegacyFirebaseCloudSync &&
+                    (settings.isManager || settings.canBackupToCloud())) ...[
+                  Card(
+                    elevation: 2,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ListTile(
+                            leading: Icon(Icons.cloud_sync, color: Colors.blue),
+                            title: Text(
+                              Localization.translate(
+                                'النسخ الاحتياطي (Cloud Sync)',
+                                lang,
                               ),
-                              icon: const Icon(Icons.cloud_upload),
-                              label: Text(
-                                Localization.translate('رفع للسحابة', lang),
-                                style: const TextStyle(
-                                  fontFamily: 'Cairo',
-                                  fontSize: 13,
-                                ),
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'Cairo',
                               ),
-                              onPressed: () async {
-                                showDialog(
-                                  context: context,
-                                  useRootNavigator: true,
-                                  barrierDismissible: false,
-                                  builder: (dialogContext) => const Center(
-                                    child: CircularProgressIndicator(),
-                                  ),
-                                );
-                                bool success = false;
-                                String errorMsg = '';
-                                try {
-                                  final cloudSync = CloudSyncService();
-                                  cloudSync.lastBackupUploadSummary = '';
-                                  cloudSync.lastCatalogUploadSummary = '';
-                                  await cloudSync.backupToCloud();
-                                  if (isAdmin) {
-                                    await cloudSync.backupGlobalCatalog();
-                                  }
-                                  success = true;
-                                } catch (e) {
-                                  errorMsg = e.toString().replaceAll(
-                                    'Exception: ',
-                                    '',
-                                  );
-                                } finally {
-                                  if (context.mounted) {
-                                    Navigator.of(
-                                      context,
-                                      rootNavigator: true,
-                                    ).pop();
-                                    if (success) {
-                                      final backupSummary = CloudSyncService()
-                                          .lastBackupUploadSummary;
-                                      final catalogSummary = CloudSyncService()
-                                          .lastCatalogUploadSummary;
-                                      final summary =
-                                          [backupSummary, catalogSummary]
-                                              .where(
-                                                (value) => value.isNotEmpty,
-                                              )
-                                              .join(' — ');
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            summary.isEmpty
-                                                ? Localization.translate(
-                                                    'تم الرفع إلى السحابة بنجاح!',
-                                                    lang,
-                                                  )
-                                                : 'تم الرفع إلى السحابة بنجاح. $summary',
-                                            style: const TextStyle(
-                                              fontFamily: 'Cairo',
-                                            ),
-                                          ),
-                                          backgroundColor: Colors.green,
-                                        ),
-                                      );
-                                    } else {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            'حدث خطأ: $errorMsg',
-                                            style: const TextStyle(
-                                              fontFamily: 'Cairo',
-                                            ),
-                                          ),
-                                          backgroundColor: Colors.red,
-                                        ),
-                                      );
-                                    }
-                                  }
-                                }
-                              },
                             ),
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: isDark
-                                    ? Colors.black
-                                    : Colors.orange,
-                                foregroundColor: Colors.white,
-                                side: isDark
-                                    ? const BorderSide(
-                                        color: Colors.white,
-                                        width: 1.5,
-                                      )
-                                    : BorderSide.none,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 14,
-                                ),
-                                shape: isDark
-                                    ? RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      )
-                                    : null,
+                            subtitle: Text(
+                              Localization.translate(
+                                'لحفظ بياناتك واسترجاعها عند تغيير الهاتف أو مسح التطبيق.',
+                                lang,
                               ),
-                              icon: const Icon(Icons.cloud_download),
-                              label: Text(
-                                Localization.translate(
-                                  'استعادة البيانات',
-                                  lang,
-                                ),
-                                style: const TextStyle(
-                                  fontFamily: 'Cairo',
-                                  fontSize: 13,
-                                ),
+                              style: TextStyle(fontFamily: 'Cairo'),
+                            ),
+                          ),
+                          Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16.0,
+                                vertical: 8.0,
                               ),
-                              onPressed: () async {
-                                bool? confirm = await showDialog<bool>(
-                                  context: context,
-                                  builder: (ctx) => AlertDialog(
-                                    title: Text(
+                              child: Wrap(
+                                spacing: 16.0,
+                                runSpacing: 12.0,
+                                alignment: WrapAlignment.center,
+                                children: [
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: isDark
+                                          ? Colors.black
+                                          : Colors.blue,
+                                      foregroundColor: Colors.white,
+                                      side: isDark
+                                          ? const BorderSide(
+                                              color: Colors.white,
+                                              width: 1.5,
+                                            )
+                                          : BorderSide.none,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 14,
+                                      ),
+                                      shape: isDark
+                                          ? RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            )
+                                          : null,
+                                    ),
+                                    icon: const Icon(Icons.cloud_upload),
+                                    label: Text(
+                                      Localization.translate(
+                                        'رفع للسحابة',
+                                        lang,
+                                      ),
+                                      style: const TextStyle(
+                                        fontFamily: 'Cairo',
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    onPressed: () async {
+                                      showDialog(
+                                        context: context,
+                                        useRootNavigator: true,
+                                        barrierDismissible: false,
+                                        builder: (dialogContext) =>
+                                            const Center(
+                                              child:
+                                                  CircularProgressIndicator(),
+                                            ),
+                                      );
+                                      bool success = false;
+                                      String errorMsg = '';
+                                      try {
+                                        final cloudSync = CloudSyncService();
+                                        cloudSync.lastBackupUploadSummary = '';
+                                        cloudSync.lastCatalogUploadSummary = '';
+                                        await cloudSync.backupToCloud();
+                                        if (isAdmin) {
+                                          await cloudSync.backupGlobalCatalog();
+                                        }
+                                        success = true;
+                                      } catch (e) {
+                                        errorMsg = e.toString().replaceAll(
+                                          'Exception: ',
+                                          '',
+                                        );
+                                      } finally {
+                                        if (context.mounted) {
+                                          Navigator.of(
+                                            context,
+                                            rootNavigator: true,
+                                          ).pop();
+                                          if (success) {
+                                            final backupSummary =
+                                                CloudSyncService()
+                                                    .lastBackupUploadSummary;
+                                            final catalogSummary =
+                                                CloudSyncService()
+                                                    .lastCatalogUploadSummary;
+                                            final summary =
+                                                [backupSummary, catalogSummary]
+                                                    .where(
+                                                      (value) =>
+                                                          value.isNotEmpty,
+                                                    )
+                                                    .join(' — ');
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  summary.isEmpty
+                                                      ? Localization.translate(
+                                                          'تم الرفع إلى السحابة بنجاح!',
+                                                          lang,
+                                                        )
+                                                      : 'تم الرفع إلى السحابة بنجاح. $summary',
+                                                  style: const TextStyle(
+                                                    fontFamily: 'Cairo',
+                                                  ),
+                                                ),
+                                                backgroundColor: Colors.green,
+                                              ),
+                                            );
+                                          } else {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  'حدث خطأ: $errorMsg',
+                                                  style: const TextStyle(
+                                                    fontFamily: 'Cairo',
+                                                  ),
+                                                ),
+                                                backgroundColor: Colors.red,
+                                              ),
+                                            );
+                                          }
+                                        }
+                                      }
+                                    },
+                                  ),
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: isDark
+                                          ? Colors.black
+                                          : Colors.orange,
+                                      foregroundColor: Colors.white,
+                                      side: isDark
+                                          ? const BorderSide(
+                                              color: Colors.white,
+                                              width: 1.5,
+                                            )
+                                          : BorderSide.none,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 14,
+                                      ),
+                                      shape: isDark
+                                          ? RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            )
+                                          : null,
+                                    ),
+                                    icon: const Icon(Icons.cloud_download),
+                                    label: Text(
                                       Localization.translate(
                                         'استعادة البيانات',
                                         lang,
                                       ),
-                                      style: TextStyle(fontFamily: 'Cairo'),
+                                      style: const TextStyle(
+                                        fontFamily: 'Cairo',
+                                        fontSize: 13,
+                                      ),
                                     ),
-                                    content: Text(
-                                      Localization.translate(
-                                        'سيتم مسح البيانات الحالية بالكامل واستبدالها بالنسخة السحابية المحفوظة. هل أنت متأكد؟',
-                                        lang,
-                                      ),
-                                      style: TextStyle(fontFamily: 'Cairo'),
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () =>
-                                            Navigator.pop(ctx, false),
-                                        child: Text(
-                                          Localization.translate('إلغاء', lang),
-                                          style: TextStyle(fontFamily: 'Cairo'),
-                                        ),
-                                      ),
-                                      ElevatedButton(
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.red,
-                                        ),
-                                        onPressed: () =>
-                                            Navigator.pop(ctx, true),
-                                        child: Text(
-                                          Localization.translate(
-                                            'استعادة',
-                                            lang,
+                                    onPressed: () async {
+                                      bool? confirm = await showDialog<bool>(
+                                        context: context,
+                                        builder: (ctx) => AlertDialog(
+                                          title: Text(
+                                            Localization.translate(
+                                              'استعادة البيانات',
+                                              lang,
+                                            ),
+                                            style: TextStyle(
+                                              fontFamily: 'Cairo',
+                                            ),
                                           ),
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontFamily: 'Cairo',
+                                          content: Text(
+                                            Localization.translate(
+                                              'سيتم مسح البيانات الحالية بالكامل واستبدالها بالنسخة السحابية المحفوظة. هل أنت متأكد؟',
+                                              lang,
+                                            ),
+                                            style: TextStyle(
+                                              fontFamily: 'Cairo',
+                                            ),
                                           ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(ctx, false),
+                                              child: Text(
+                                                Localization.translate(
+                                                  'إلغاء',
+                                                  lang,
+                                                ),
+                                                style: TextStyle(
+                                                  fontFamily: 'Cairo',
+                                                ),
+                                              ),
+                                            ),
+                                            ElevatedButton(
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: Colors.red,
+                                              ),
+                                              onPressed: () =>
+                                                  Navigator.pop(ctx, true),
+                                              child: Text(
+                                                Localization.translate(
+                                                  'استعادة',
+                                                  lang,
+                                                ),
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontFamily: 'Cairo',
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                      ),
-                                    ],
+                                      );
+                                      if (confirm == true) {
+                                        showDialog(
+                                          context: context,
+                                          useRootNavigator: true,
+                                          barrierDismissible: false,
+                                          builder: (_) => const Center(
+                                            child: CircularProgressIndicator(),
+                                          ),
+                                        );
+                                        bool success = false;
+                                        String errorMsg = '';
+                                        try {
+                                          await CloudSyncService().init();
+                                          await CloudSyncService()
+                                              .restoreFromCloud();
+                                          success = true;
+                                        } catch (e) {
+                                          errorMsg = e.toString().replaceAll(
+                                            'Exception: ',
+                                            '',
+                                          );
+                                        } finally {
+                                          if (context.mounted) {
+                                            Navigator.of(
+                                              context,
+                                              rootNavigator: true,
+                                            ).pop();
+                                            if (success) {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    Localization.translate(
+                                                      'تمت الاستعادة بنجاح! يرجى إعادة تشغيل التطبيق.',
+                                                      lang,
+                                                    ),
+                                                    style: const TextStyle(
+                                                      fontFamily: 'Cairo',
+                                                    ),
+                                                  ),
+                                                  backgroundColor: Colors.green,
+                                                ),
+                                              );
+                                            } else {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    'حدث خطأ أثناء الاستعادة: $errorMsg',
+                                                    style: const TextStyle(
+                                                      fontFamily: 'Cairo',
+                                                    ),
+                                                  ),
+                                                  backgroundColor: Colors.red,
+                                                ),
+                                              );
+                                            }
+                                          }
+                                        }
+                                      }
+                                    },
                                   ),
-                                );
-                                if (confirm == true) {
-                                  showDialog(
-                                    context: context,
-                                    useRootNavigator: true,
-                                    barrierDismissible: false,
-                                    builder: (_) => const Center(
-                                      child: CircularProgressIndicator(),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+
+                if (settings.isManager || settings.canAccessSettings()) ...[
+                  Card(
+                    elevation: 2,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ListTile(
+                            leading: const Icon(
+                              Icons.lock_clock_rounded,
+                              color: Colors.deepPurple,
+                            ),
+                            title: Text(
+                              Localization.translate('جلسة الورشة', lang),
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'Cairo',
+                              ),
+                            ),
+                            subtitle: Text(
+                              Localization.translate(
+                                'سجّل جلسة Supabase مرة واحدة عند الحاجة، وبعدها تعمل المزامنة تلقائياً في الخلفية.',
+                                lang,
+                              ),
+                              style: TextStyle(fontFamily: 'Cairo'),
+                            ),
+                          ),
+                          Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16.0,
+                                vertical: 8.0,
+                              ),
+                              child: ElevatedButton.icon(
+                                icon: const Icon(Icons.login_rounded),
+                                label: Text(
+                                  Localization.translate(
+                                    SupabaseCatalogSyncService().isSignedIn
+                                        ? 'جلسة الورشة مسجلة'
+                                        : 'تسجيل جلسة الورشة',
+                                    lang,
+                                  ),
+                                  style: const TextStyle(fontFamily: 'Cairo'),
+                                ),
+                                onPressed:
+                                    SupabaseCatalogSyncService().isSignedIn
+                                    ? null
+                                    : () => _registerWorkshopSession(context),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  Card(
+                    elevation: 2,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ListTile(
+                            leading: const Icon(
+                              Icons.cloud_sync_rounded,
+                              color: Colors.indigo,
+                            ),
+                            title: Text(
+                              Localization.translate(
+                                'بيانات الورشة في Supabase',
+                                lang,
+                              ),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'Cairo',
+                              ),
+                            ),
+                            subtitle: Text(
+                              Localization.translate(
+                                'ارفع بيانات هذا الجهاز إلى الورشة، أو نزّل بيانات الورشة على هذا الجهاز.',
+                                lang,
+                              ),
+                              style: const TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsetsDirectional.fromSTEB(
+                              16,
+                              0,
+                              16,
+                              8,
+                            ),
+                            child: Wrap(
+                              spacing: 10,
+                              runSpacing: 8,
+                              children: [
+                                FilledButton.icon(
+                                  onPressed: () => _runWorkshopUpload(context),
+                                  icon: const Icon(
+                                    Icons.cloud_upload_rounded,
+                                    size: 18,
+                                  ),
+                                  label: Text(
+                                    Localization.translate(
+                                      'رفع بيانات الورشة',
+                                      lang,
                                     ),
-                                  );
-                                  bool success = false;
-                                  String errorMsg = '';
-                                  try {
-                                    await CloudSyncService().init();
-                                    await CloudSyncService().restoreFromCloud();
-                                    success = true;
-                                  } catch (e) {
-                                    errorMsg = e.toString().replaceAll(
-                                      'Exception: ',
-                                      '',
-                                    );
-                                  } finally {
-                                    if (context.mounted) {
-                                      Navigator.of(
-                                        context,
-                                        rootNavigator: true,
-                                      ).pop();
-                                      if (success) {
-                                        ScaffoldMessenger.of(
+                                    style: const TextStyle(fontFamily: 'Cairo'),
+                                  ),
+                                ),
+                                OutlinedButton.icon(
+                                  onPressed: () =>
+                                      _runWorkshopDownload(context),
+                                  icon: const Icon(
+                                    Icons.download_rounded,
+                                    size: 18,
+                                  ),
+                                  label: Text(
+                                    Localization.translate('تنزيل الآن', lang),
+                                    style: const TextStyle(fontFamily: 'Cairo'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+
+                // Local Backup/Restore
+                if (settings.isManager ||
+                    settings.canBackupToCloud() ||
+                    settings.canAccessLocalJsonBackup()) ...[
+                  Card(
+                    elevation: 2,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ListTile(
+                            leading: const Icon(
+                              Icons.storage,
+                              color: Colors.green,
+                            ),
+                            title: Text(
+                              Localization.translate(
+                                'النسخ الاحتياطي المحلي (Local Backup)',
+                                lang,
+                              ),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'Cairo',
+                              ),
+                            ),
+                            subtitle: Text(
+                              Localization.translate(
+                                'حفظ نسخة احتياطية مباشرة على جهازك كملف خارجي أو استيرادها.',
+                                lang,
+                              ),
+                              style: const TextStyle(fontFamily: 'Cairo'),
+                            ),
+                          ),
+                          Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16.0,
+                                vertical: 8.0,
+                              ),
+                              child: Wrap(
+                                spacing: 16.0,
+                                runSpacing: 12.0,
+                                alignment: WrapAlignment.center,
+                                children: [
+                                  if (settings.isManager ||
+                                      settings.canBackupToCloud()) ...[
+                                    ElevatedButton.icon(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: isDark
+                                            ? Colors.black
+                                            : Colors.teal,
+                                        foregroundColor: Colors.white,
+                                        side: isDark
+                                            ? const BorderSide(
+                                                color: Colors.white,
+                                                width: 1.5,
+                                              )
+                                            : BorderSide.none,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                          vertical: 14,
+                                        ),
+                                        shape: isDark
+                                            ? RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              )
+                                            : null,
+                                      ),
+                                      icon: const Icon(Icons.folder_shared),
+                                      label: Text(
+                                        Localization.translate(
+                                          'تصدير ملف .db',
+                                          lang,
+                                        ),
+                                        style: const TextStyle(
+                                          fontFamily: 'Cairo',
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      onPressed: () async {
+                                        await SqlDatabase().exportDatabaseFile(
                                           context,
-                                        ).showSnackBar(
-                                          SnackBar(
-                                            content: Text(
+                                        );
+                                      },
+                                    ),
+                                    ElevatedButton.icon(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: isDark
+                                            ? Colors.black
+                                            : Colors.blueGrey,
+                                        foregroundColor: Colors.white,
+                                        side: isDark
+                                            ? const BorderSide(
+                                                color: Colors.white,
+                                                width: 1.5,
+                                              )
+                                            : BorderSide.none,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                          vertical: 14,
+                                        ),
+                                        shape: isDark
+                                            ? RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              )
+                                            : null,
+                                      ),
+                                      icon: const Icon(Icons.file_open),
+                                      label: Text(
+                                        Localization.translate(
+                                          'استيراد ملف .db',
+                                          lang,
+                                        ),
+                                        style: const TextStyle(
+                                          fontFamily: 'Cairo',
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      onPressed: () async {
+                                        bool? confirm = await showDialog<bool>(
+                                          context: context,
+                                          builder: (ctx) => AlertDialog(
+                                            title: Text(
                                               Localization.translate(
-                                                'تمت الاستعادة بنجاح! يرجى إعادة تشغيل التطبيق.',
+                                                'استيراد قاعدة البيانات',
                                                 lang,
                                               ),
                                               style: const TextStyle(
                                                 fontFamily: 'Cairo',
                                               ),
                                             ),
-                                            backgroundColor: Colors.green,
-                                          ),
-                                        );
-                                      } else {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          SnackBar(
                                             content: Text(
-                                              'حدث خطأ أثناء الاستعادة: $errorMsg',
+                                              Localization.translate(
+                                                'سيتم استبدال قاعدة البيانات الحالية بالكامل بالملف المختار. هل أنت متأكد؟',
+                                                lang,
+                                              ),
                                               style: const TextStyle(
                                                 fontFamily: 'Cairo',
                                               ),
                                             ),
-                                            backgroundColor: Colors.red,
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () =>
+                                                    Navigator.pop(ctx, false),
+                                                child: Text(
+                                                  Localization.translate(
+                                                    'إلغاء',
+                                                    lang,
+                                                  ),
+                                                  style: const TextStyle(
+                                                    fontFamily: 'Cairo',
+                                                  ),
+                                                ),
+                                              ),
+                                              ElevatedButton(
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: Colors.red,
+                                                ),
+                                                onPressed: () =>
+                                                    Navigator.pop(ctx, true),
+                                                child: Text(
+                                                  Localization.translate(
+                                                    'استيراد',
+                                                    lang,
+                                                  ),
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontFamily: 'Cairo',
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         );
-                                      }
-                                    }
-                                  }
-                                }
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-          ],
-
-          if (settings.isManager || settings.canAccessSettings()) ...[
-            Card(
-              elevation: 2,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ListTile(
-                      leading: const Icon(
-                        Icons.lock_clock_rounded,
-                        color: Colors.deepPurple,
-                      ),
-                      title: Text(
-                        Localization.translate('جلسة الورشة', lang),
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'Cairo',
-                        ),
-                      ),
-                      subtitle: Text(
-                        Localization.translate(
-                          'سجّل جلسة Supabase مرة واحدة عند الحاجة، وبعدها تعمل المزامنة تلقائياً في الخلفية.',
-                          lang,
-                        ),
-                        style: TextStyle(fontFamily: 'Cairo'),
-                      ),
-                    ),
-                    Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16.0,
-                          vertical: 8.0,
-                        ),
-                        child: ElevatedButton.icon(
-                          icon: const Icon(Icons.login_rounded),
-                          label: Text(
-                            Localization.translate(
-                              SupabaseCatalogSyncService().isSignedIn
-                                  ? 'جلسة الورشة مسجلة'
-                                  : 'تسجيل جلسة الورشة',
-                              lang,
-                            ),
-                            style: const TextStyle(fontFamily: 'Cairo'),
-                          ),
-                          onPressed: SupabaseCatalogSyncService().isSignedIn
-                              ? null
-                              : () => _registerWorkshopSession(context),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            Card(
-              elevation: 2,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ListTile(
-                      leading: const Icon(
-                        Icons.cloud_sync_rounded,
-                        color: Colors.indigo,
-                      ),
-                      title: Text(
-                        Localization.translate(
-                          'بيانات الورشة في Supabase',
-                          lang,
-                        ),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'Cairo',
-                        ),
-                      ),
-                      subtitle: Text(
-                        Localization.translate(
-                          'ارفع بيانات هذا الجهاز إلى الورشة، أو نزّل بيانات الورشة على هذا الجهاز.',
-                          lang,
-                        ),
-                        style: const TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsetsDirectional.fromSTEB(
-                        16,
-                        0,
-                        16,
-                        8,
-                      ),
-                      child: Wrap(
-                        spacing: 10,
-                        runSpacing: 8,
-                        children: [
-                          FilledButton.icon(
-                            onPressed: () => _runWorkshopUpload(context),
-                            icon: const Icon(
-                              Icons.cloud_upload_rounded,
-                              size: 18,
-                            ),
-                            label: Text(
-                              Localization.translate('رفع بيانات الورشة', lang),
-                              style: const TextStyle(fontFamily: 'Cairo'),
-                            ),
-                          ),
-                          OutlinedButton.icon(
-                            onPressed: () => _runWorkshopDownload(context),
-                            icon: const Icon(Icons.download_rounded, size: 18),
-                            label: Text(
-                              Localization.translate('تنزيل الآن', lang),
-                              style: const TextStyle(fontFamily: 'Cairo'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-          ],
-
-          // Local Backup/Restore
-          if (settings.isManager ||
-              settings.canBackupToCloud() ||
-              settings.canAccessLocalJsonBackup()) ...[
-            Card(
-              elevation: 2,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ListTile(
-                      leading: const Icon(Icons.storage, color: Colors.green),
-                      title: Text(
-                        Localization.translate(
-                          'النسخ الاحتياطي المحلي (Local Backup)',
-                          lang,
-                        ),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'Cairo',
-                        ),
-                      ),
-                      subtitle: Text(
-                        Localization.translate(
-                          'حفظ نسخة احتياطية مباشرة على جهازك كملف خارجي أو استيرادها.',
-                          lang,
-                        ),
-                        style: const TextStyle(fontFamily: 'Cairo'),
-                      ),
-                    ),
-                    Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16.0,
-                          vertical: 8.0,
-                        ),
-                        child: Wrap(
-                          spacing: 16.0,
-                          runSpacing: 12.0,
-                          alignment: WrapAlignment.center,
-                          children: [
-                            if (settings.isManager ||
-                                settings.canBackupToCloud()) ...[
-                              ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: isDark
-                                      ? Colors.black
-                                      : Colors.teal,
-                                  foregroundColor: Colors.white,
-                                  side: isDark
-                                      ? const BorderSide(
-                                          color: Colors.white,
-                                          width: 1.5,
-                                        )
-                                      : BorderSide.none,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 14,
-                                  ),
-                                  shape: isDark
-                                      ? RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                        )
-                                      : null,
-                                ),
-                                icon: const Icon(Icons.folder_shared),
-                                label: Text(
-                                  Localization.translate('تصدير ملف .db', lang),
-                                  style: const TextStyle(
-                                    fontFamily: 'Cairo',
-                                    fontSize: 13,
-                                  ),
-                                ),
-                                onPressed: () async {
-                                  await SqlDatabase().exportDatabaseFile(
-                                    context,
-                                  );
-                                },
-                              ),
-                              ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: isDark
-                                      ? Colors.black
-                                      : Colors.blueGrey,
-                                  foregroundColor: Colors.white,
-                                  side: isDark
-                                      ? const BorderSide(
-                                          color: Colors.white,
-                                          width: 1.5,
-                                        )
-                                      : BorderSide.none,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 14,
-                                  ),
-                                  shape: isDark
-                                      ? RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                        )
-                                      : null,
-                                ),
-                                icon: const Icon(Icons.file_open),
-                                label: Text(
-                                  Localization.translate(
-                                    'استيراد ملف .db',
-                                    lang,
-                                  ),
-                                  style: const TextStyle(
-                                    fontFamily: 'Cairo',
-                                    fontSize: 13,
-                                  ),
-                                ),
-                                onPressed: () async {
-                                  bool? confirm = await showDialog<bool>(
-                                    context: context,
-                                    builder: (ctx) => AlertDialog(
-                                      title: Text(
-                                        Localization.translate(
-                                          'استيراد قاعدة البيانات',
-                                          lang,
-                                        ),
-                                        style: const TextStyle(
-                                          fontFamily: 'Cairo',
-                                        ),
-                                      ),
-                                      content: Text(
-                                        Localization.translate(
-                                          'سيتم استبدال قاعدة البيانات الحالية بالكامل بالملف المختار. هل أنت متأكد؟',
-                                          lang,
-                                        ),
-                                        style: const TextStyle(
-                                          fontFamily: 'Cairo',
-                                        ),
-                                      ),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () =>
-                                              Navigator.pop(ctx, false),
-                                          child: Text(
-                                            Localization.translate(
-                                              'إلغاء',
+                                        if (confirm == true) {
+                                          if (!context.mounted) return;
+                                          await SqlDatabase().importDatabaseFile(
+                                            context,
+                                            successMessage: Localization.translate(
+                                              'تم استيراد قاعدة البيانات بنجاح! يرجى إعادة تشغيل التطبيق لتحديث كافة الشاشات.',
                                               lang,
                                             ),
-                                            style: const TextStyle(
-                                              fontFamily: 'Cairo',
-                                            ),
-                                          ),
-                                        ),
-                                        ElevatedButton(
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: Colors.red,
-                                          ),
-                                          onPressed: () =>
-                                              Navigator.pop(ctx, true),
-                                          child: Text(
-                                            Localization.translate(
-                                              'استيراد',
-                                              lang,
-                                            ),
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontFamily: 'Cairo',
-                                            ),
-                                          ),
-                                        ),
-                                      ],
+                                            failurePrefix:
+                                                Localization.translate(
+                                                  'فشل استيراد قاعدة البيانات',
+                                                  lang,
+                                                ),
+                                          );
+                                        }
+                                      },
                                     ),
-                                  );
-                                  if (confirm == true) {
-                                    if (!context.mounted) return;
-                                    await SqlDatabase().importDatabaseFile(
-                                      context,
-                                      successMessage: Localization.translate(
-                                        'تم استيراد قاعدة البيانات بنجاح! يرجى إعادة تشغيل التطبيق لتحديث كافة الشاشات.',
-                                        lang,
+                                  ],
+                                  if (settings.canAccessLocalJsonBackup()) ...[
+                                    ElevatedButton.icon(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: isDark
+                                            ? Colors.black
+                                            : Colors.green,
+                                        foregroundColor: Colors.white,
+                                        side: isDark
+                                            ? const BorderSide(
+                                                color: Colors.white,
+                                                width: 1.5,
+                                              )
+                                            : BorderSide.none,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                          vertical: 14,
+                                        ),
+                                        shape: isDark
+                                            ? RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              )
+                                            : null,
                                       ),
-                                      failurePrefix: Localization.translate(
-                                        'فشل استيراد قاعدة البيانات',
-                                        lang,
+                                      icon: const Icon(Icons.download),
+                                      label: Text(
+                                        Localization.translate(
+                                          'تصدير نسخة JSON',
+                                          lang,
+                                        ),
+                                        style: const TextStyle(
+                                          fontFamily: 'Cairo',
+                                          fontSize: 13,
+                                        ),
                                       ),
-                                    );
-                                  }
-                                },
-                              ),
-                            ],
-                            if (settings.canAccessLocalJsonBackup()) ...[
-                              ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: isDark
-                                      ? Colors.black
-                                      : Colors.green,
-                                  foregroundColor: Colors.white,
-                                  side: isDark
-                                      ? const BorderSide(
-                                          color: Colors.white,
-                                          width: 1.5,
-                                        )
-                                      : BorderSide.none,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 14,
-                                  ),
-                                  shape: isDark
-                                      ? RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                        )
-                                      : null,
-                                ),
-                                icon: const Icon(Icons.download),
-                                label: Text(
-                                  Localization.translate(
-                                    'تصدير نسخة JSON',
-                                    lang,
-                                  ),
-                                  style: const TextStyle(
-                                    fontFamily: 'Cairo',
-                                    fontSize: 13,
-                                  ),
-                                ),
-                                onPressed: () async {
-                                  await SqlDatabase().exportJsonBackup(context);
-                                },
-                              ),
-                              ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: isDark
-                                      ? Colors.black
-                                      : Colors.amber[800],
-                                  foregroundColor: Colors.white,
-                                  side: isDark
-                                      ? const BorderSide(
-                                          color: Colors.white,
-                                          width: 1.5,
-                                        )
-                                      : BorderSide.none,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 14,
-                                  ),
-                                  shape: isDark
-                                      ? RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                        )
-                                      : null,
-                                ),
-                                icon: const Icon(Icons.upload),
-                                label: Text(
-                                  Localization.translate(
-                                    'استيراد نسخة JSON',
-                                    lang,
-                                  ),
-                                  style: const TextStyle(
-                                    fontFamily: 'Cairo',
-                                    fontSize: 13,
-                                  ),
-                                ),
-                                onPressed: () async {
-                                  bool? confirm = await showDialog<bool>(
-                                    context: context,
-                                    builder: (ctx) => AlertDialog(
-                                      title: Text(
+                                      onPressed: () async {
+                                        await SqlDatabase().exportJsonBackup(
+                                          context,
+                                        );
+                                      },
+                                    ),
+                                    ElevatedButton.icon(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: isDark
+                                            ? Colors.black
+                                            : Colors.amber[800],
+                                        foregroundColor: Colors.white,
+                                        side: isDark
+                                            ? const BorderSide(
+                                                color: Colors.white,
+                                                width: 1.5,
+                                              )
+                                            : BorderSide.none,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                          vertical: 14,
+                                        ),
+                                        shape: isDark
+                                            ? RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              )
+                                            : null,
+                                      ),
+                                      icon: const Icon(Icons.upload),
+                                      label: Text(
                                         Localization.translate(
                                           'استيراد نسخة JSON',
                                           lang,
                                         ),
                                         style: const TextStyle(
                                           fontFamily: 'Cairo',
+                                          fontSize: 13,
                                         ),
                                       ),
-                                      content: Text(
-                                        Localization.translate(
-                                          'سيتم دمج وتحديث البيانات الحالية بالبيانات المكتوبة بملف JSON. هل أنت متأكد؟',
-                                          lang,
-                                        ),
-                                        style: const TextStyle(
-                                          fontFamily: 'Cairo',
-                                        ),
-                                      ),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () =>
-                                              Navigator.pop(ctx, false),
-                                          child: Text(
-                                            Localization.translate(
-                                              'إلغاء',
-                                              lang,
+                                      onPressed: () async {
+                                        bool? confirm = await showDialog<bool>(
+                                          context: context,
+                                          builder: (ctx) => AlertDialog(
+                                            title: Text(
+                                              Localization.translate(
+                                                'استيراد نسخة JSON',
+                                                lang,
+                                              ),
+                                              style: const TextStyle(
+                                                fontFamily: 'Cairo',
+                                              ),
                                             ),
-                                            style: const TextStyle(
-                                              fontFamily: 'Cairo',
+                                            content: Text(
+                                              Localization.translate(
+                                                'سيتم دمج وتحديث البيانات الحالية بالبيانات المكتوبة بملف JSON. هل أنت متأكد؟',
+                                                lang,
+                                              ),
+                                              style: const TextStyle(
+                                                fontFamily: 'Cairo',
+                                              ),
                                             ),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () =>
+                                                    Navigator.pop(ctx, false),
+                                                child: Text(
+                                                  Localization.translate(
+                                                    'إلغاء',
+                                                    lang,
+                                                  ),
+                                                  style: const TextStyle(
+                                                    fontFamily: 'Cairo',
+                                                  ),
+                                                ),
+                                              ),
+                                              ElevatedButton(
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: Colors.red,
+                                                ),
+                                                onPressed: () =>
+                                                    Navigator.pop(ctx, true),
+                                                child: Text(
+                                                  Localization.translate(
+                                                    'استيراد',
+                                                    lang,
+                                                  ),
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontFamily: 'Cairo',
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
-                                        ),
-                                        ElevatedButton(
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: Colors.red,
-                                          ),
-                                          onPressed: () =>
-                                              Navigator.pop(ctx, true),
-                                          child: Text(
-                                            Localization.translate(
-                                              'استيراد',
-                                              lang,
-                                            ),
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontFamily: 'Cairo',
-                                            ),
-                                          ),
-                                        ),
-                                      ],
+                                        );
+                                        if (confirm == true) {
+                                          if (!context.mounted) return;
+                                          await SqlDatabase().importJsonBackup(
+                                            context,
+                                          );
+                                        }
+                                      },
                                     ),
-                                  );
-                                  if (confirm == true) {
-                                    if (!context.mounted) return;
-                                    await SqlDatabase().importJsonBackup(
-                                      context,
-                                    );
-                                  }
-                                },
+                                  ],
+                                ],
                               ),
-                            ],
-                          ],
-                        ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                ),
-              ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+              ],
             ),
-            const SizedBox(height: 10),
-          ],
+          ),
+          const SizedBox(height: 10),
 
           // Global Catalog Sync
           if (settings.canSyncGlobalCatalog())
@@ -1709,64 +1749,6 @@ class SettingsScreen extends StatelessWidget {
 
           const SizedBox(height: 10),
 
-          // Gemini API Key Setting
-          if (settings.isManager)
-            Card(
-              elevation: 2,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16.0,
-                  vertical: 8.0,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.smart_toy, color: Colors.purple),
-                      title: Text(
-                        Localization.translate(
-                          'مفتاح الذكاء الاصطناعي (Gemini API Key)',
-                          lang,
-                        ),
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'Cairo',
-                        ),
-                      ),
-                      subtitle: Text(
-                        Localization.translate(
-                          'مطلوب لعمل المساعد الصوتي الذكي',
-                          lang,
-                        ),
-                        style: TextStyle(fontFamily: 'Cairo'),
-                      ),
-                    ),
-                    TextFormField(
-                      initialValue: settings.geminiApiKey,
-                      decoration: InputDecoration(
-                        hintText: Localization.translate(
-                          'ألصق المفتاح هنا...',
-                          lang,
-                        ),
-                        hintStyle: const TextStyle(fontFamily: 'Cairo'),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                      ),
-                      onChanged: (val) {
-                        settings.setGeminiApiKey(val);
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                ),
-              ),
-            ),
           Card(
             elevation: 2,
             child: ListTile(
@@ -1979,6 +1961,37 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
+class AppUpdateSettingsScreen extends StatelessWidget {
+  const AppUpdateSettingsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = Provider.of<AppSettingsProvider>(context);
+    final lang = settings.language;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(Localization.translate('تحديث التطبيق', lang)),
+        backgroundColor: isDark
+            ? Theme.of(context).appBarTheme.backgroundColor
+            : Colors.blue,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const SettingsScreen()._buildAppUpdateCard(
+            context,
+            settings,
+            lang,
+            isDark,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Opens the one-time Supabase workshop-session dialog for any screen that
 /// needs to guide the user to the automatic workshop synchronization.
 Future<bool> openSupabaseWorkshopSession(BuildContext context) {
@@ -1996,7 +2009,7 @@ class DisplaySettingsScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          Localization.translate('إعدادات الشاشة والمظهر', lang),
+          Localization.translate('الشاشة والمظهر', lang),
           style: TextStyle(fontFamily: 'Cairo'),
         ),
         backgroundColor: Theme.of(context).brightness == Brightness.dark
@@ -2016,7 +2029,10 @@ class DisplaySettingsScreen extends StatelessWidget {
                   padding: const EdgeInsets.all(16.0),
                   child: Row(
                     children: [
-                      const Icon(Icons.business_center_rounded, color: Colors.blue),
+                      const Icon(
+                        Icons.business_center_rounded,
+                        color: Colors.blue,
+                      ),
                       const SizedBox(width: 10),
                       Text(
                         Localization.translate('نوع النشاط', lang),
@@ -2047,7 +2063,10 @@ class DisplaySettingsScreen extends StatelessWidget {
                 RadioListTile<BusinessActivityType>(
                   title: Text(
                     Localization.translate('ورشة فقط', lang),
-                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   subtitle: Text(
                     Localization.translate(
@@ -2065,7 +2084,10 @@ class DisplaySettingsScreen extends StatelessWidget {
                 RadioListTile<BusinessActivityType>(
                   title: Text(
                     Localization.translate('محل بيع مواد فقط', lang),
-                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   subtitle: Text(
                     Localization.translate(
@@ -2083,7 +2105,10 @@ class DisplaySettingsScreen extends StatelessWidget {
                 RadioListTile<BusinessActivityType>(
                   title: Text(
                     Localization.translate('ورشة + محل بيع مواد', lang),
-                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   subtitle: Text(
                     Localization.translate(
@@ -2163,27 +2188,6 @@ class DisplaySettingsScreen extends StatelessWidget {
                   },
                 ),
               ],
-            ),
-          ),
-          const SizedBox(height: 10),
-
-          Card(
-            elevation: 2,
-            child: SwitchListTile(
-              secondary: const Icon(Icons.price_check, color: Colors.blue),
-              title: Text(
-                Localization.translate('تطبيق أسعار الشراء على جدول الكمية والتكلفة', lang),
-                style: const TextStyle(fontFamily: 'Cairo'),
-              ),
-              subtitle: Text(
-                Localization.translate(
-                  'يظهر آخر سعر شراء في الفاتورة دائماً، ويُحتسب في جدول التكلفة عند التفعيل فقط',
-                  lang,
-                ),
-                style: const TextStyle(fontFamily: 'Cairo'),
-              ),
-              value: settings.applyPurchasePricesToCostTable,
-              onChanged: settings.setApplyPurchasePricesToCostTable,
             ),
           ),
           const SizedBox(height: 10),

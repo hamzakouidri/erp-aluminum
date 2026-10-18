@@ -1,11 +1,16 @@
 import 'package:database_data/widgets/app_material.dart';
+import 'package:database_data/sql_database.dart';
 import 'package:provider/provider.dart';
 
 import '../settings/app_settings.dart';
-import '../sql_database.dart';
 
 class StandardSheetsScreen extends StatefulWidget {
-  const StandardSheetsScreen({super.key});
+  final bool catalogMode;
+
+  const StandardSheetsScreen({
+    super.key,
+    this.catalogMode = false,
+  });
 
   @override
   State<StandardSheetsScreen> createState() => _StandardSheetsScreenState();
@@ -21,7 +26,7 @@ class _StandardSheetsScreenState extends State<StandardSheetsScreen> {
   static const List<Map<String, String>> _materialTypes = [
     {'key': 'resine', 'label_ar': 'ريزين (Résine / HPL)', 'label_fr': 'Résine / HPL'},
     {'key': 'alucobond', 'label_ar': 'أليكوبوند (Alucobond)', 'label_fr': 'Alucobond'},
-    {'key': 'panneau_sandwich', 'label_ar': 'بانو ساندويتش (Panneau Sandwich)', 'label_fr': 'Panneau Sandwich'},
+    {'key': 'panneau_sandwich', 'label_ar': 'ألواح البانوهات (Panneau Sandwich)', 'label_fr': 'Panneaux sandwich'},
     {'key': 'plexyglass', 'label_ar': 'بيكسي جلاس (Plexiglas)', 'label_fr': 'Plexiglas'},
     {'key': 'glass', 'label_ar': 'زجاج (Verre)', 'label_fr': 'Verre (Vitrage)'},
   ];
@@ -237,34 +242,37 @@ class _StandardSheetsScreenState extends State<StandardSheetsScreen> {
                     ),
                     const SizedBox(height: 14),
 
-                    // السعر: باللوح لباقي المواد، وبالمتر المربع للزجاج
-                    if (isGlass)
-                      TextField(
-                        controller: priceSqmCtrl,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          labelText: isArabic ? 'السعر بالمتر المربع (DA / m²)' : 'Prix par m² (DA / m²)',
-                          helperText: isArabic
-                              ? 'الزجاج يُحتسب ويباع دائماً بالمتر المربع'
-                              : 'Le vitrage est toujours tarifé au m²',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                          prefixIcon: const Icon(Icons.attach_money),
-                        ),
-                      )
-                    else
+                    if (!widget.catalogMode) ...[
                       TextField(
                         controller: priceSheetCtrl,
                         keyboardType: TextInputType.number,
                         decoration: InputDecoration(
-                          labelText: isArabic ? 'سعر اللوح الكامل (DA / Feuille)' : 'Prix par feuille complète (DA)',
-                          helperText: isArabic
-                              ? 'سعر الفاية الكاملة لاحتساب تكلفة الطلبية بعدد الألواح'
-                              : 'Prix de la plaque entière pour le calcul au panneau',
+                          labelText: isArabic
+                              ? 'سعر اللوح الكامل (DA / لوح)'
+                              : 'Prix de la feuille complète (DA)',
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                           prefixIcon: const Icon(Icons.payments_outlined),
                         ),
                       ),
-                    const SizedBox(height: 14),
+                      if (isGlass) ...[
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: priceSqmCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            labelText: isArabic
+                                ? 'سعر المتر المربع للزجاج (DA / m²)'
+                                : 'Prix du vitrage par m² (DA / m²)',
+                            helperText: isArabic
+                                ? 'يمكن إدخال سعر اللوح الكامل وسعر المتر المربع معًا'
+                                : 'Le prix de la feuille et le prix au m² peuvent être saisis',
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            prefixIcon: const Icon(Icons.attach_money),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+                    ],
 
                     // السماح بالتدوير 90 درجة
                     SwitchListTile(
@@ -396,7 +404,13 @@ class _StandardSheetsScreenState extends State<StandardSheetsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          isArabic ? 'أبعاد وأسعار الألواح والصفائح' : 'Formats et prix des feuilles & panneaux',
+          widget.catalogMode
+              ? (isArabic
+                  ? 'منتجات ألواح البانوهات والزجاج'
+                  : 'Produits panneaux et feuilles de verre')
+              : (isArabic
+                  ? 'أسعار ألواح البانوهات والزجاج'
+                  : 'Prix des panneaux et feuilles de verre'),
           style: TextStyle(
             fontFamily: isArabic ? 'Cairo' : null,
             fontWeight: FontWeight.bold,
@@ -413,6 +427,29 @@ class _StandardSheetsScreenState extends State<StandardSheetsScreen> {
       ),
       body: Column(
         children: [
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blue.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue.withValues(alpha: 0.25)),
+            ),
+            child: Text(
+              widget.catalogMode
+                  ? (isArabic
+                      ? 'أدخل هنا اسم اللوح ونوعه وأبعاده وسماكته. تُضبط أسعاره لاحقًا من صفحة إدارة الأسعار.'
+                      : 'Saisissez ici le nom, le type, les dimensions et l’épaisseur. Les prix sont gérés séparément.')
+                  : (isArabic
+                      ? 'هذه صفحة الأسعار المستقلة للألواح والبانوهات والزجاج. الأصناف والأبعاد تأتي من صفحة المنتجات.'
+                      : 'Page indépendante des prix des panneaux et feuilles de verre.'),
+              style: TextStyle(
+                fontFamily: isArabic ? 'Cairo' : null,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
           // شريط أزرار الفلترة العلوية
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -575,16 +612,17 @@ class _StandardSheetsScreenState extends State<StandardSheetsScreen> {
                                           ),
                                         ),
                                         const SizedBox(height: 4),
-                                        Text(
-                                          isGlass
-                                              ? '${isArabic ? 'السعر:' : 'Prix:'} ${priceSqm.toStringAsFixed(2)} DA / m²'
-                                              : '${isArabic ? 'سعر اللوح الكامل:' : 'Prix par feuille:'} ${priceSheet.toStringAsFixed(2)} DA',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.teal,
-                                            fontSize: 13,
+                                        if (!widget.catalogMode)
+                                          Text(
+                                            isGlass
+                                                ? '${isArabic ? 'اللوح:' : 'Feuille:'} ${priceSheet.toStringAsFixed(2)} DA · ${priceSqm.toStringAsFixed(2)} DA / m²'
+                                                : '${isArabic ? 'سعر اللوح الكامل:' : 'Prix par feuille:'} ${priceSheet.toStringAsFixed(2)} DA',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.teal,
+                                              fontSize: 13,
+                                            ),
                                           ),
-                                        ),
                                       ],
                                     ),
                                   ),

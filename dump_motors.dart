@@ -18,11 +18,13 @@ void main() async {
     // Query ShutterComponents
     final list = await db.query('ShutterComponents');
     print('Total components in ShutterComponents: ${list.length}');
-    
+
     final motors = list.where((row) {
       final type = row['component_type']?.toString().toLowerCase() ?? '';
       final name = row['name']?.toString().toLowerCase() ?? '';
-      return type == 'moteur' || name.contains('moteur') || name.contains('محرك');
+      return type == 'moteur' ||
+          name.contains('moteur') ||
+          name.contains('محرك');
     }).toList();
 
     print('=== Motors found (${motors.length}) ===');

@@ -2768,6 +2768,11 @@ class CloudSyncService {
   /// also mirrored to the current workshop for its other phones.
   Future<void> notifyCatalogChange({bool uploadImmediately = false}) async {
     _dbUpdateController.add('catalog_changed');
+    // Price screens report through this method, but the colour prices,
+    // shutter m² prices, box limits and caisson prices they write are
+    // workshop tables. Without this they waited for the 3-minute retry
+    // cycle before reaching the other devices.
+    SupabaseWorkshopSyncService().notifyLocalChange();
 
     final catalogSync = SupabaseCatalogSyncService();
     if (!catalogSync.isSignedIn) {

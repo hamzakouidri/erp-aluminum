@@ -19,6 +19,8 @@ import 'series_accessories_screen.dart';
 import 'series_table_config_screen.dart';
 import 'tempered_glass_items_screen.dart';
 import 'glass_systems_rules_screen.dart';
+import '../widgets/price_sync_banner.dart';
+import '../Screen/standard_sheets_screen.dart';
 
 class ProductsMenuScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -164,6 +166,11 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
         centerTitle: true,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.price_change_outlined),
+            tooltip: Localization.translate('مزامنة الأسعار', lang),
+            onPressed: () => showPriceSyncSettingsDialog(context),
+          ),
           if (settings.canSyncGlobalCatalog())
             _isSyncing
                 ? const Padding(
@@ -278,6 +285,26 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
                   const SizedBox(height: 16),
                 ],
                 if (settings.canViewGlass()) ...[
+                  _buildMenuCard(
+                    context,
+                    title: switch (lang) {
+                      AppLanguage.french => 'Panneaux et feuilles de verre',
+                      AppLanguage.english => 'Panel and glass sheets',
+                      _ => 'ألواح البانوهات والألواح الزجاجية',
+                    },
+                    icon: Icons.layers_outlined,
+                    color: Colors.blueAccent,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              const StandardSheetsScreen(catalogMode: true),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
                   _buildMenuCard(
                     context,
                     title: Localization.translate(

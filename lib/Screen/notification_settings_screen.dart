@@ -31,6 +31,7 @@ class _NotificationSettingsScreenState
     'invoices': 'الفواتير',
     'deliveries': 'التسليمات ووصول السلع',
     'inventory': 'دخول المواد إلى الورشة',
+    'prices': 'إضافة وتحديث الأسعار',
   };
 
   @override
@@ -73,7 +74,7 @@ class _NotificationSettingsScreenState
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          Localization.translate('إعدادات الإشعارات', lang),
+          Localization.translate('الإشعارات', lang),
           style: TextStyle(
             fontFamily: isArabic ? 'Cairo' : null,
             fontWeight: FontWeight.bold,

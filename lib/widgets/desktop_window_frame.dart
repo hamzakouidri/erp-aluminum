@@ -150,8 +150,11 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
   Future<void> _signOut() async {
     try {
       final workspace = context.read<WorkspaceController>();
-      workspace.resetForSignedOut();
+      // Switch the auth gate to LoginScreen first, then reset the workspace
+      // once the old navigators have been disposed.
       await AppAuthService().signOut();
+      await WidgetsBinding.instance.endOfFrame;
+      workspace.resetForSignedOut();
       await AppAuthService().signOutGoogleSession();
       CloudSyncService().reset();
       SupabaseWorkshopSyncService().stop();

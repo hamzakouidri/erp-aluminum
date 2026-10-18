@@ -515,8 +515,9 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
       int h = origH;
       int w = origW;
       if (i < initialMeasures.length) {
-        h = (initialMeasures[i]['hauteur'] ?? origH) as int;
-        w = (initialMeasures[i]['largeur'] ?? origW) as int;
+        final m = initialMeasures[i];
+        h = num.tryParse('${m['hauteur'] ?? m['height']}')?.toInt() ?? origH;
+        w = num.tryParse('${m['largeur'] ?? m['width']}')?.toInt() ?? origW;
       }
       heightCtrls.add(TextEditingController(text: h.toString()));
       widthCtrls.add(TextEditingController(text: w.toString()));
@@ -627,22 +628,41 @@ class _OrderAllocationScreenState extends State<OrderAllocationScreen> {
             ),
             ElevatedButton.icon(
               onPressed: () async {
-                final List<Map<String, dynamic>> resultList = [];
+                // Same shape as the measurement confirmation screen: one
+                // confirmed row per window plus the grouped instances that
+                // this screen, the cutting sheet and the stickers read first.
+                final confirmed = <Map<String, dynamic>>[];
+                final grouped = <String, Map<String, dynamic>>{};
                 for (int i = 0; i < qty; i++) {
                   final h = int.tryParse(heightCtrls[i].text.trim()) ?? origH;
                   final w = int.tryParse(widthCtrls[i].text.trim()) ?? origW;
-                  resultList.add({'index': i + 1, 'hauteur': h, 'largeur': w});
-                }
-                final jsonString = jsonEncode(resultList);
-                final db = await widget.db.db;
-                if (db != null) {
-                  await db.update(
-                    'Commandes_details',
-                    {'confirmed_mesures_json': jsonString},
-                    where: 'id = ?',
-                    whereArgs: [detailId],
+                  final position = i < initialMeasures.length
+                      ? initialMeasures[i]['position']?.toString() ?? ''
+                      : '';
+                  confirmed.add({
+                    'index': i + 1,
+                    'largeur': w,
+                    'hauteur': h,
+                    'width': w,
+                    'height': h,
+                    'position': position,
+                  });
+                  final group = grouped.putIfAbsent(
+                    '$w|$h|$position',
+                    () => {
+                      'width': w,
+                      'height': h,
+                      'qty': 0,
+                      'position': position,
+                    },
                   );
+                  group['qty'] = (group['qty'] as int) + 1;
                 }
+                await widget.db.updateCommandeDetailConfirmedMesures(
+                  detailId,
+                  jsonEncode(grouped.values.toList()),
+                  jsonEncode(confirmed),
+                );
                 if (mounted) {
                   Navigator.pop(context);
                   _loadData();

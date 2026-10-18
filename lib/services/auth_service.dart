@@ -36,6 +36,24 @@ class AppAuthService {
 
   static final AppAuthService _instance = AppAuthService._();
   Stream<AppAuthUser?>? _cachedAuthStateChanges;
+
+  /// While the login screen is still validating a new session (Google
+  /// signup, workshop join, membership lookup), the provider's raw sign-in
+  /// event must not switch the root gate to the application. Doing so
+  /// disposed the login screen mid-flow and let the subscription gate delete
+  /// the not-yet-linked account as an orphan.
+  int _interactiveSignInDepth = 0;
+
+  void beginInteractiveSignIn() => _interactiveSignInDepth++;
+
+  /// Releases the hold. A session that survived the flow is published; a
+  /// failed flow has already signed out, so nothing is emitted.
+  void endInteractiveSignIn() {
+    if (_interactiveSignInDepth > 0) _interactiveSignInDepth--;
+    if (_interactiveSignInDepth == 0 && currentUser != null) {
+      publishCurrentSession();
+    }
+  }
   final StreamController<AppAuthUser?> _authStateController =
       StreamController<AppAuthUser?>.broadcast(sync: true);
 
@@ -70,11 +88,14 @@ class AppAuthService {
     if (usesSupabase) {
       _supabaseAuth.onAuthStateChange.listen((state) {
         final user = _fromSupabaseUser(state.session?.user);
+        if (user != null && _interactiveSignInDepth > 0) return;
         _authStateController.add(user);
       });
     } else {
       _firebaseAuth.authStateChanges().listen((user) {
-        _authStateController.add(_fromFirebaseUser(user));
+        final appUser = _fromFirebaseUser(user);
+        if (appUser != null && _interactiveSignInDepth > 0) return;
+        _authStateController.add(appUser);
       });
     }
     // Replay the provider's current value to every new listener. Supabase can

@@ -376,6 +376,9 @@ class _CommandePageState extends State<CommandePage> {
   // edited. Recreating rows with new IDs makes cloud sync reintroduce an old
   // copy of the same window (often with its former colour).
   final Map<WindowModel, int> _persistedDetailIds = {};
+  // Drawing fingerprint of each product as it was last persisted. Saving
+  // re-renders (2400 px PNG + base64) only the drawings whose model changed.
+  final Map<WindowModel, String> _persistedDrawingFingerprints = {};
   final ScrollController _scrollController = ScrollController();
   Timer? _reorderAutoScrollTimer;
   bool _reorderDragActive = false;
@@ -1122,6 +1125,7 @@ class _CommandePageState extends State<CommandePage> {
         setState(() {
           if (detailId != null) {
             _persistedDetailIds[model] = detailId;
+            _persistedDrawingFingerprints[model] = _drawingFingerprint(model);
           }
           addedProducts.add(model);
           _editProductsLoaded = addedProducts.length;
@@ -1356,6 +1360,21 @@ class _CommandePageState extends State<CommandePage> {
     await Future.delayed(const Duration(milliseconds: 100));
 
     final syncService = CloudSyncService();
+    var localWriteOpen = false;
+    // Releases the cloud-sync write lock exactly once. The upload it triggers
+    // (Supabase upsert of every detail row with its drawing, up to 20 s) runs
+    // in the background: the order is already committed in SQLite and its rows
+    // stay marked as pending, so a failed upload is retried by the sync loop.
+    void releaseLocalWrite() {
+      if (!localWriteOpen) return;
+      localWriteOpen = false;
+      unawaited(
+        syncService.endLocalWrite().catchError((Object error) {
+          debugPrint('Background order upload failed: $error');
+        }),
+      );
+    }
+
     try {
       // Final safety net for users who save/reserve the order without ever
       // opening the quantity-and-cost table.
@@ -1387,6 +1406,7 @@ class _CommandePageState extends State<CommandePage> {
         }
         return;
       }
+      localWriteOpen = true;
       await syncService.beginLocalWrite().timeout(
         const Duration(seconds: 3),
         onTimeout: () {
@@ -1411,12 +1431,15 @@ class _CommandePageState extends State<CommandePage> {
       final double calculatedRemise = isRemisePercentage
           ? ((total * remiseInput) / 100).clamp(0.0, total)
           : remiseInput.clamp(0.0, total);
+      // TVA applies to the amount after the discount, exactly like the
+      // printed invoice (devis_builder): net = (total - remise) × (1 + tva%).
+      final double taxableAmount = total - calculatedRemise;
       final double calculatedTax = isTaxPercentage
-          ? ((total * taxInput) / 100)
+          ? ((taxableAmount * taxInput) / 100)
           : taxInput;
       final double effectiveTaxPercent = isTaxPercentage
           ? taxInput
-          : (total > 0 ? ((taxInput / total) * 100) : 0.0);
+          : (taxableAmount > 0 ? ((taxInput / taxableAmount) * 100) : 0.0);
 
       final existingDetails = widget.editCommandeId == null
           ? <Map<String, dynamic>>[]
@@ -1430,15 +1453,26 @@ class _CommandePageState extends State<CommandePage> {
         if (detailId != null) existingDetailsById[detailId] = detail;
       }
 
-      final imagePaths = <String>[];
+      Map<String, dynamic>? previousDetailFor(int index) {
+        final persistedDetailId = _persistedDetailIds[addedProducts[index]];
+        return persistedDetailId == null
+            ? (index < existingDetails.length ? existingDetails[index] : null)
+            : existingDetailsById[persistedDetailId];
+      }
+
       // Store a production-quality drawing. The quotation's full-width image
       // mode must not upscale the old 420/600 px preview.
       final imageMaxSide = (Platform.isAndroid || Platform.isIOS) ? 1800 : 2400;
+      // An empty path keeps the previous drawing (and its base64 copy).
+      final imagePaths = List<String>.filled(addedProducts.length, '');
+      final fingerprints = List<String>.generate(
+        addedProducts.length,
+        (index) => _drawingFingerprint(addedProducts[index]),
+      );
+      final toRender = <int>[];
       for (var index = 0; index < addedProducts.length; index++) {
         final p = addedProducts[index];
-        final previous = index < existingDetails.length
-            ? existingDetails[index]
-            : null;
+        final previous = previousDetailFor(index);
         final selectedGlassImagePath =
             p.glassWorkPayload?['imagePath']?.toString() ?? '';
         final mustKeepSyncedGlassImage =
@@ -1446,31 +1480,50 @@ class _CommandePageState extends State<CommandePage> {
             selectedGlassImagePath.isNotEmpty &&
             !File(selectedGlassImagePath).existsSync() &&
             (previous?['drawing_image_base64']?.toString().isNotEmpty ?? false);
-        if (mustKeepSyncedGlassImage) {
-          imagePaths.add('');
-          continue;
-        }
-        try {
-          imagePaths.add(
-            await saveWindowImageToDisk(
-              p,
-              maxSide: imageMaxSide,
-            ).timeout(const Duration(seconds: 10), onTimeout: () => ''),
-          );
-        } catch (error) {
-          debugPrint('Skipping order preview image: $error');
-          imagePaths.add('');
-        }
-        await Future.delayed(Duration.zero);
+        if (mustKeepSyncedGlassImage) continue;
+        // Rendering + PNG encoding every drawing at 2400 px was the slowest
+        // part of saving an edited order. An unchanged drawing whose stored
+        // image already has the required resolution is kept as is.
+        final unchanged =
+            _persistedDetailIds[p] != null &&
+            _persistedDrawingFingerprints[p] == fingerprints[index] &&
+            _hasStoredDrawing(previous, imageMaxSide);
+        if (!unchanged) toRender.add(index);
       }
+
+      // Rendering happens on engine threads, so a few drawings can be
+      // encoded at the same time without blocking the UI.
+      const renderConcurrency = 3;
+      var nextToRender = 0;
+      Future<void> renderWorker() async {
+        while (nextToRender < toRender.length) {
+          final index = toRender[nextToRender++];
+          try {
+            imagePaths[index] = await saveWindowImageToDisk(
+              addedProducts[index],
+              maxSide: imageMaxSide,
+            ).timeout(const Duration(seconds: 10), onTimeout: () => '');
+          } catch (error) {
+            debugPrint('Skipping order preview image: $error');
+          }
+          await Future.delayed(Duration.zero);
+        }
+      }
+
+      await Future.wait(
+        List.generate(
+          toRender.length < renderConcurrency
+              ? toRender.length
+              : renderConcurrency,
+          (_) => renderWorker(),
+        ),
+      );
 
       final preparedDetails = <Map<String, dynamic>>[];
       for (var index = 0; index < addedProducts.length; index++) {
         final p = addedProducts[index];
         final persistedDetailId = _persistedDetailIds[p];
-        final previous = persistedDetailId == null
-            ? (index < existingDetails.length ? existingDetails[index] : null)
-            : existingDetailsById[persistedDetailId];
+        final previous = previousDetailFor(index);
         final newImagePath = imagePaths[index];
         final drawingPath = newImagePath.isNotEmpty
             ? newImagePath
@@ -1499,33 +1552,39 @@ class _CommandePageState extends State<CommandePage> {
                     ? 'Volet roulant'
                     : (p.manualNameOverride ?? '')),
           'quantity': p.quantity,
-          'glass': p.isGlassWork
-              ? '${p.glassWorkPayload?['glassTypeLabel'] ?? p.glassWorkPayload?['glassFinishLabel'] ?? 'شفاف'} '
-                    '${((p.glassWorkPayload?['glassThicknessMm'] ?? p.glassWorkPayload?['thicknessMm'] as num?)?.toDouble() ?? 10).toStringAsFixed(0)} مم'
-              : (p.zones.isNotEmpty &&
-                        p.zones.first.glass.structure == GlassStructure.double
-                    ? 'Double'
-                    : 'Single'),
+          'glass': p.isCustomProduct
+              ? ''
+              : (p.isGlassWork
+                    ? '${p.glassWorkPayload?['glassTypeLabel'] ?? p.glassWorkPayload?['glassFinishLabel'] ?? 'شفاف'} '
+                          '${((p.glassWorkPayload?['glassThicknessMm'] ?? p.glassWorkPayload?['thicknessMm'] as num?)?.toDouble() ?? 10).toStringAsFixed(0)} مم'
+                    : (p.zones.isNotEmpty &&
+                              p.zones.first.glass.structure == GlassStructure.double
+                          ? 'Double'
+                          : 'Single')),
           'color': selectedColorName != null && selectedColorName.isNotEmpty
               ? selectedColorName
-              : (p.isGlassWork
-                    ? (p.glassWorkPayload?['sablageMode']?.toString() == 'full'
-                          ? 'سابلاج كامل'
-                          : (p.glassWorkPayload?['sablageMode']?.toString() ==
-                                    'decorative'
-                                ? 'سابلاج ديكور'
-                                : 'بدون سابلاج'))
-                    : p.frameColor.toString().split('.').last),
-          'volet': p.hasShutter ? 'Yes' : 'No',
+              : (p.isCustomProduct
+                    ? ''
+                    : (p.isGlassWork
+                          ? (p.glassWorkPayload?['sablageMode']?.toString() == 'full'
+                                ? 'سابلاج كامل'
+                                : (p.glassWorkPayload?['sablageMode']?.toString() ==
+                                          'decorative'
+                                      ? 'سابلاج ديكور'
+                                      : 'بدون سابلاج'))
+                          : p.frameColor.toString().split('.').last)),
+          'volet': p.isCustomProduct ? 'No' : (p.hasShutter ? 'Yes' : 'No'),
           'accessories': '',
           'description': p.description ?? '',
           'price': p.manualPriceOverride ?? p.totalCost,
-          'window_type': p.isGlassWork
-              ? (p.glassWorkPayload?['workTypeLabel']?.toString() ??
-                    'كابين دوش')
-              : (p.zones.any((z) => z.content == ZoneContent.doubleSash)
-                    ? 'Double Sash'
-                    : 'Single Sash'),
+          'window_type': p.isCustomProduct
+              ? 'custom_product'
+              : (p.isGlassWork
+                    ? (p.glassWorkPayload?['workTypeLabel']?.toString() ??
+                          'كابين دوش')
+                    : (p.zones.any((z) => z.content == ZoneContent.doubleSash)
+                          ? 'Double Sash'
+                          : 'Single Sash')),
           'partitions_json': () {
             try {
               return jsonEncode(persistedModel);
@@ -1556,10 +1615,16 @@ class _CommandePageState extends State<CommandePage> {
         details: preparedDetails,
       );
 
-      // Flush the complete order and all of its detail rows before reporting
-      // success. Previously the upload was only scheduled after this screen
-      // closed, which could leave another phone waiting for a recovery cycle.
-      await syncService.endLocalWrite();
+      // Start uploading the complete order immediately (not on a debounce),
+      // but do not keep the user waiting for the network.
+      releaseLocalWrite();
+      for (var index = 0; index < addedProducts.length; index++) {
+        final p = addedProducts[index];
+        if (_persistedDetailIds[p] != null &&
+            (imagePaths[index].isNotEmpty || !toRender.contains(index))) {
+          _persistedDrawingFingerprints[p] = fingerprints[index];
+        }
+      }
 
       if (widget.editCommandeId != null && mounted) {
         final fresh = await widget.db.readCommandeWithClientById(
@@ -1617,7 +1682,7 @@ class _CommandePageState extends State<CommandePage> {
         ),
       );
     } finally {
-      await syncService.endLocalWrite();
+      releaseLocalWrite();
       if (mounted) setState(() => _isSaving = false);
     }
   }
@@ -2038,6 +2103,51 @@ class _CommandePageState extends State<CommandePage> {
       // keeping the old override would make the invoice display stale data.
       product.manualPriceOverride = null;
       product.totalCost = unitPrice;
+    }
+  }
+
+  /// Serialized model without the fields that never appear on the drawing,
+  /// so a price/quantity/description change does not force a re-render.
+  String _drawingFingerprint(WindowModel product) {
+    try {
+      final map = product.toMap()
+        ..remove('totalCost')
+        ..remove('manualPriceOverride')
+        ..remove('quantity')
+        ..remove('description');
+      return jsonEncode(map);
+    } catch (_) {
+      // A unique value: an unserializable model is always re-rendered.
+      return 'unserializable-${identityHashCode(product)}-'
+          '${DateTime.now().microsecondsSinceEpoch}';
+    }
+  }
+
+  /// Whether [detail] already points to a stored PNG drawing that is at
+  /// least [minSide] px on its longest side (read from the PNG header).
+  bool _hasStoredDrawing(Map<String, dynamic>? detail, int minSide) {
+    final path = detail?['drawing_image_path']?.toString() ?? '';
+    if (path.isEmpty) return false;
+    RandomAccessFile? file;
+    try {
+      file = File(path).openSync();
+      final header = file.readSync(24);
+      if (header.length < 24 ||
+          header[1] != 0x50 ||
+          header[2] != 0x4E ||
+          header[3] != 0x47) {
+        return false;
+      }
+      final data = ByteData.sublistView(header);
+      final width = data.getUint32(16);
+      final height = data.getUint32(20);
+      return (width > height ? width : height) >= minSide;
+    } catch (_) {
+      return false;
+    } finally {
+      try {
+        file?.closeSync();
+      } catch (_) {}
     }
   }
 
@@ -3163,8 +3273,10 @@ class _CommandePageState extends State<CommandePage> {
         ? ((finalTotal * remiseInput) / 100).clamp(0.0, finalTotal)
         : remiseInput.clamp(0.0, finalTotal);
     final double taxInput = double.tryParse(taxController.text) ?? 0.0;
+    // Same rule as the saved order and the printed invoice: TVA on the
+    // amount after the discount.
     final double calculatedTax = isTaxPercentage
-        ? ((finalTotal * taxInput) / 100)
+        ? (((finalTotal - calculatedRemise) * taxInput) / 100)
         : taxInput;
     final double totalWithRemiseTax =
         finalTotal - calculatedRemise + calculatedTax;
@@ -3679,7 +3791,7 @@ class _CommandePageState extends State<CommandePage> {
                     '${Localization.translate('Tax Tva', Provider.of<AppSettingsProvider>(context).language)} (${isTaxPercentage ? "%" : "DZD"})',
                 controller: taxController,
                 icon: isTaxPercentage ? Icons.percent : Icons.payments_outlined,
-                onIconTap: () => _toggleTaxType(rawTotal),
+                onIconTap: () => _toggleTaxType(rawTotal - calculatedRemise),
                 iconTooltip: isTaxPercentage
                     ? (Provider.of<AppSettingsProvider>(context).language ==
                               'ar'
@@ -3696,7 +3808,8 @@ class _CommandePageState extends State<CommandePage> {
                     children: [
                       InkWell(
                         borderRadius: BorderRadius.circular(8),
-                        onTap: () => _toggleTaxType(rawTotal),
+                        onTap: () =>
+                            _toggleTaxType(rawTotal - calculatedRemise),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10,
@@ -3804,31 +3917,31 @@ class _CommandePageState extends State<CommandePage> {
                       ),
                     ],
                   ),
-                  if (calculatedRemise > 0) ...[
-                    const SizedBox(height: 10),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '${Localization.translate('Remise', Provider.of<AppSettingsProvider>(context).language)} (${isRemisePercentage ? "${remiseInput.toStringAsFixed(1)}%" : "DZD"}) :',
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: isDark ? Colors.white70 : Colors.black87,
-                            ),
-                          ),
-                        ),
-                        Text(
-                          "- ${calculatedRemise.toStringAsFixed(2)} DZD",
-                          style: const TextStyle(
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${Localization.translate('Remise', Provider.of<AppSettingsProvider>(context).language)} (${isRemisePercentage ? "${remiseInput.toStringAsFixed(1)}%" : "DZD"}) :',
+                          style: TextStyle(
                             fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.orangeAccent,
+                            color: isDark ? Colors.white70 : Colors.black87,
                           ),
                         ),
-                      ],
-                    ),
-                  ],
+                      ),
+                      Text(
+                        "${calculatedRemise > 0 ? "- " : ""}${calculatedRemise.toStringAsFixed(2)} DZD",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: calculatedRemise > 0
+                              ? Colors.orangeAccent
+                              : (isDark ? Colors.white : Colors.black87),
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 10),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -4086,7 +4199,17 @@ class _CommandePageState extends State<CommandePage> {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => ChooseSysteme(initialSettings: _lastUsedSettings),
+        // A product added from the system chooser is an independent drawing.
+        // Reusing `_lastUsedSettings` here also reused the previous catalogue
+        // series, frame/sash overrides, glass and accessories.  The following
+        // drawing could therefore display its newly selected series name while
+        // its drawer and BOM still belonged to the preceding item (for example
+        // BS 90 leaking into a PVC drawing).
+        //
+        // Cloning remains the explicit way to reuse an existing drawing.  A
+        // normal "add product" must start from the configured application
+        // defaults and let WindowModel load only the chosen series catalogue.
+        builder: (context) => const ChooseSysteme(),
       ),
     );
     if (!mounted) return;
@@ -4193,126 +4316,223 @@ class _CommandePageState extends State<CommandePage> {
       text: existingProduct?.description ?? '',
     );
 
+    Map<String, dynamic>? selectedCustomColor = existingProduct?.selectedDbColor;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: Text(
-          existingProduct == null
-              ? Localization.translate('إضافة منتج خاص', lang)
-              : Localization.translate('تعديل المنتج الخاص', lang),
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: InputDecoration(
-                  labelText: Localization.translate('اسم المنتج', lang) + ' *',
-                  border: const OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: purchaseController,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: InputDecoration(
-                  labelText: Localization.translate(
-                    'سعر الشراء (اختياري)',
-                    lang,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDlgState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          title: Text(
+            existingProduct == null
+                ? Localization.translate('إضافة منتج خاص', lang)
+                : Localization.translate('تعديل المنتج الخاص', lang),
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: InputDecoration(
+                    labelText: Localization.translate('اسم المنتج', lang) + ' *',
+                    border: const OutlineInputBorder(),
                   ),
-                  border: const OutlineInputBorder(),
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: sellController,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
+                const SizedBox(height: 12),
+                // حقل اللون الاختياري
+                FutureBuilder<List<Map<String, dynamic>>>(
+                  future: widget.db.readColors(),
+                  builder: (context, snapshot) {
+                    final allColors = snapshot.data ?? [];
+                    final currentColorName =
+                        selectedCustomColor?['name']?.toString() ??
+                        selectedCustomColor?['color_name']?.toString() ??
+                        '';
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade400),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.palette_outlined, color: Colors.blue.shade700),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              currentColorName.isNotEmpty
+                                  ? '${Localization.translate('اللون', lang)}: $currentColorName'
+                                  : Localization.translate('بدون لون (اختياري)', lang),
+                              style: TextStyle(
+                                color: currentColorName.isNotEmpty
+                                    ? Colors.black87
+                                    : Colors.grey.shade600,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                          if (currentColorName.isNotEmpty)
+                            IconButton(
+                              icon: const Icon(Icons.clear, size: 20, color: Colors.red),
+                              onPressed: () {
+                                setDlgState(() {
+                                  selectedCustomColor = null;
+                                });
+                              },
+                            ),
+                          TextButton(
+                            onPressed: () {
+                              if (allColors.isEmpty) return;
+                              showDialog(
+                                context: context,
+                                builder: (cCtx) => AlertDialog(
+                                  title: Text(Localization.translate('اختر اللون', lang)),
+                                  content: SizedBox(
+                                    width: double.maxFinite,
+                                    child: ListView.builder(
+                                      shrinkWrap: true,
+                                      itemCount: allColors.length,
+                                      itemBuilder: (ctx, i) {
+                                        final c = allColors[i];
+                                        final cName = c['name']?.toString() ?? '';
+                                        return ListTile(
+                                          leading: Container(
+                                            width: 28,
+                                            height: 28,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              gradient: LinearGradient(
+                                                colors: realGradientColors(c),
+                                              ),
+                                              image: realColorTextureImage(c),
+                                              border: Border.all(color: Colors.black26),
+                                            ),
+                                          ),
+                                          title: Text(cName),
+                                          onTap: () {
+                                            setDlgState(() {
+                                              selectedCustomColor = Map<String, dynamic>.from(c);
+                                            });
+                                            Navigator.pop(cCtx);
+                                          },
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                            child: Text(Localization.translate('تحديد اللون', lang)),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
-                decoration: InputDecoration(
-                  labelText: Localization.translate('سعر البيع', lang) + ' *',
-                  border: const OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: descController,
-                maxLines: 3,
-                decoration: InputDecoration(
-                  labelText: Localization.translate('الوصف', lang),
-                  border: const OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(Localization.translate('إلغاء', lang)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final name = nameController.text.trim();
-              if (name.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      Localization.translate('يرجى إدخال اسم المنتج', lang),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: purchaseController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: Localization.translate(
+                      'سعر الشراء (اختياري)',
+                      lang,
                     ),
+                    border: const OutlineInputBorder(),
                   ),
-                );
-                return;
-              }
-              final sellPrice = double.tryParse(sellController.text.trim());
-              if (sellPrice == null || sellPrice <= 0) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      Localization.translate('يرجى إدخال سعر بيع صحيح', lang),
-                    ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: sellController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
                   ),
-                );
-                return;
-              }
-              final purchasePrice =
-                  double.tryParse(purchaseController.text.trim()) ?? 0.0;
-
-              if (existingProduct == null) {
-                final newProduct = WindowModel(db: widget.db);
-                newProduct.isCustomProduct = true;
-                newProduct.manualNameOverride = name;
-                newProduct.totalCost = purchasePrice;
-                newProduct.manualPriceOverride = sellPrice;
-                newProduct.description = descController.text.trim();
-                newProduct.width = 0.0;
-                newProduct.height = 0.0;
-                setState(() {
-                  addedProducts.add(newProduct);
-                  _highlightedProduct = newProduct;
-                });
-                _scrollToHighlightedProduct();
-              } else {
-                setState(() {
-                  existingProduct.manualNameOverride = name;
-                  existingProduct.totalCost = purchasePrice;
-                  existingProduct.manualPriceOverride = sellPrice;
-                  existingProduct.description = descController.text.trim();
-                  _highlightedProduct = existingProduct;
-                });
-                _scrollToHighlightedProduct();
-              }
-
-              Navigator.pop(context);
-            },
-            child: Text(Localization.translate('حفظ', lang)),
+                  decoration: InputDecoration(
+                    labelText: Localization.translate('سعر البيع', lang) + ' *',
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: descController,
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    labelText: Localization.translate('الوصف / ملاحظة', lang),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(Localization.translate('إلغاء', lang)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final name = nameController.text.trim();
+                if (name.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        Localization.translate('يرجى إدخال اسم المنتج', lang),
+                      ),
+                    ),
+                  );
+                  return;
+                }
+                final sellPrice = double.tryParse(sellController.text.trim());
+                if (sellPrice == null || sellPrice <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        Localization.translate('يرجى إدخال سعر بيع صحيح', lang),
+                      ),
+                    ),
+                  );
+                  return;
+                }
+                final purchasePrice =
+                    double.tryParse(purchaseController.text.trim()) ?? 0.0;
+
+                if (existingProduct == null) {
+                  final newProduct = WindowModel(db: widget.db);
+                  newProduct.isCustomProduct = true;
+                  newProduct.manualNameOverride = name;
+                  newProduct.totalCost = purchasePrice;
+                  newProduct.manualPriceOverride = sellPrice;
+                  newProduct.description = descController.text.trim();
+                  newProduct.selectedDbColor = selectedCustomColor;
+                  newProduct.width = 0.0;
+                  newProduct.height = 0.0;
+                  setState(() {
+                    addedProducts.add(newProduct);
+                    _highlightedProduct = newProduct;
+                  });
+                  _scrollToHighlightedProduct();
+                } else {
+                  setState(() {
+                    existingProduct.manualNameOverride = name;
+                    existingProduct.totalCost = purchasePrice;
+                    existingProduct.manualPriceOverride = sellPrice;
+                    existingProduct.description = descController.text.trim();
+                    existingProduct.selectedDbColor = selectedCustomColor;
+                    _highlightedProduct = existingProduct;
+                  });
+                  _scrollToHighlightedProduct();
+                }
+
+                Navigator.pop(context);
+              },
+              child: Text(Localization.translate('حفظ', lang)),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -4435,6 +4655,37 @@ class _CommandePageState extends State<CommandePage> {
                       color: Colors.green,
                     ),
                   ),
+                  if (p.selectedDbColor != null) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Text(
+                          '${t('اللون')}: ',
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                        ),
+                        Container(
+                          width: 18,
+                          height: 18,
+                          margin: const EdgeInsets.only(right: 6),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              colors: realGradientColors(p.selectedDbColor!),
+                            ),
+                            image: realColorTextureImage(p.selectedDbColor!),
+                            border: Border.all(color: Colors.black26),
+                          ),
+                        ),
+                        Text(
+                          p.selectedDbColor!['name']?.toString() ?? '',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: isDark ? Colors.white70 : Colors.black87,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                   if (desc.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Text(

@@ -97,6 +97,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
   static const _purple = Color(0xFF8B5CF6);
 
   String _workshopName = '';
+  String _userDisplayName = '';
   String _userEmail = 'جاري التحميل...';
   String _workshopPhone = '';
   String? _logoUrl;
@@ -107,6 +108,20 @@ class _WelcomScreenState extends State<WelcomScreen> {
   int _statsLoadToken = 0;
   Future<void>? _statsLoadInFlight;
   bool _statsReloadQueued = false;
+
+  String get _visibleUserName {
+    final saved = _userDisplayName.trim();
+    if (saved.isNotEmpty && saved != _workshopName.trim()) return saved;
+    final authName = AppAuthService().currentUser?.displayName?.trim() ?? '';
+    if (authName.isNotEmpty && authName != _workshopName.trim()) {
+      return authName;
+    }
+    final email = _userEmail.trim();
+    if (email.contains('@')) return email.split('@').first;
+    return email.isNotEmpty && email != 'جاري التحميل...'
+        ? email
+        : 'المستخدم';
+  }
 
   // إحصائيات
   String _commandesCount = '—';
@@ -963,6 +978,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final savedName = (prefs.getString('workshop_name') ?? '').trim();
+      final savedUserName = (prefs.getString('user_display_name') ?? '')
+          .trim();
       final savedCode = (prefs.getString('workshop_code') ?? '').trim();
       final account = await SupabaseAccountService().loadCurrentAccount();
       final accountName = account?.workshopName.trim() ?? '';
@@ -984,6 +1001,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
       if (mounted) {
         setState(() {
           if (name.isNotEmpty) _workshopName = name;
+          if (savedUserName.isNotEmpty) {
+            _userDisplayName = savedUserName;
+          }
           if (savedPhone.isNotEmpty) _workshopPhone = savedPhone;
         });
         _updateLogo(savedLogo);
@@ -999,6 +1019,8 @@ class _WelcomScreenState extends State<WelcomScreen> {
       await _userSub?.cancel();
       setState(() {
         _userEmail = user.email ?? 'لا يوجد بريد';
+        final authName = user.displayName?.trim() ?? '';
+        if (authName.isNotEmpty) _userDisplayName = authName;
       });
       // Supabase is loaded once below after the provider-specific user data.
       // Calling it here as well caused two identical account/profile reads on
@@ -1046,11 +1068,15 @@ class _WelcomScreenState extends State<WelcomScreen> {
                   final nextPhone = (data['phone'] ?? data['phoneNumber'] ?? '')
                       .toString();
                   final nextEmail = data['email']?.toString() ?? _userEmail;
+                  final nextUserName =
+                      data['displayName']?.toString().trim() ?? '';
 
                   final hasChanged =
                       _workshopName != nextName ||
                       _workshopPhone != nextPhone ||
                       _userEmail != nextEmail ||
+                      (nextUserName.isNotEmpty &&
+                          _userDisplayName != nextUserName) ||
                       _logoUrl != newLogoUrl;
 
                   if (hasChanged) {
@@ -1058,6 +1084,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
                       _workshopName = nextName;
                       _workshopPhone = nextPhone;
                       _userEmail = nextEmail;
+                      if (nextUserName.isNotEmpty) {
+                        _userDisplayName = nextUserName;
+                      }
                       _updateLogo(newLogoUrl);
                     });
                   }
@@ -1211,6 +1240,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
           return;
         }
         // نحن في أسفل الـ stack — نسأل المستخدم إذا أراد الخروج
+        final currentLang = context.read<AppSettingsProvider>().language;
         final shouldExit = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
@@ -1218,33 +1248,21 @@ class _WelcomScreenState extends State<WelcomScreen> {
               borderRadius: BorderRadius.circular(16),
             ),
             title: Text(
-              lang == AppLanguage.arabic
-                  ? 'الخروج من التطبيق'
-                  : lang == AppLanguage.french
-                  ? 'Quitter l\'application'
-                  : 'Exit App',
+              Localization.translate('الخروج من التطبيق', currentLang),
               style: const TextStyle(
                 fontFamily: 'Cairo',
                 fontWeight: FontWeight.bold,
               ),
             ),
             content: Text(
-              lang == AppLanguage.arabic
-                  ? 'هل تريد الخروج من التطبيق؟'
-                  : lang == AppLanguage.french
-                  ? 'Voulez-vous quitter l\'application ?'
-                  : 'Do you want to exit the application?',
+              Localization.translate('هل تريد الخروج من التطبيق؟', currentLang),
               style: const TextStyle(fontFamily: 'Cairo'),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(ctx).pop(false),
                 child: Text(
-                  lang == AppLanguage.arabic
-                      ? 'لا'
-                      : lang == AppLanguage.french
-                      ? 'Non'
-                      : 'No',
+                  Localization.translate('لا', currentLang),
                   style: const TextStyle(fontFamily: 'Cairo'),
                 ),
               ),
@@ -1255,11 +1273,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
                   foregroundColor: Colors.white,
                 ),
                 child: Text(
-                  lang == AppLanguage.arabic
-                      ? 'خروج'
-                      : lang == AppLanguage.french
-                      ? 'Quitter'
-                      : 'Exit',
+                  Localization.translate('خروج', currentLang),
                   style: const TextStyle(
                     fontFamily: 'Cairo',
                     fontWeight: FontWeight.bold,
@@ -2854,10 +2868,85 @@ class _WelcomScreenState extends State<WelcomScreen> {
         color: const Color(0xFFF59E0B),
       );
     }
+    // Clients are listed by code, not by date: scan them all, they are light.
+    for (final client in _desktopClients) {
+      final id = (client['id'] as num?)?.toInt() ?? 0;
+      final name = '${client['firstname'] ?? ''} ${client['lastname'] ?? ''}'
+          .trim();
+      final document = '#${client['display_number'] ?? id}';
+      add(
+        type: 'client_added',
+        id: id,
+        document: document,
+        party: name,
+        date: client['created_at'],
+        user: client['creation_platform'],
+        icon: Icons.person_add_alt_1_rounded,
+        color: const Color(0xFF0EA5E9),
+      );
+      final created = DateTime.tryParse((client['created_at'] ?? '').toString());
+      final updated = DateTime.tryParse((client['updated_at'] ?? '').toString());
+      if (created != null &&
+          updated != null &&
+          updated.difference(created).abs() > const Duration(seconds: 5)) {
+        add(
+          type: 'client_updated',
+          id: id,
+          document: document,
+          party: name,
+          date: updated,
+          user: '',
+          icon: Icons.manage_accounts_rounded,
+          color: const Color(0xFF0EA5E9),
+        );
+      }
+    }
+    if (settings.canAccessTreasury()) {
+      for (final row in _desktopTreasury.take(24)) {
+        final isOut = _isTreasuryExpense(row);
+        final amount = (row['amount'] as num?)?.toDouble() ?? 0.0;
+        add(
+          type: isOut ? 'payment_out' : 'payment_in',
+          id: (row['id'] as num?)?.toInt() ?? 0,
+          document: '${amount.toStringAsFixed(2)} DA',
+          party: (row['description'] ?? '').toString().trim(),
+          date: row['created_at'],
+          user: row['recorded_by'],
+          icon: isOut ? Icons.north_east_rounded : Icons.south_west_rounded,
+          color: isOut ? const Color(0xFFDC2626) : const Color(0xFF16A34A),
+        );
+      }
+    }
     activities.sort(
       (a, b) => (b['date'] as DateTime).compareTo(a['date'] as DateTime),
     );
     return activities.take(12).toList(growable: false);
+  }
+
+  /// Newest 12 activities from the stored DashboardActivities journal merged
+  /// with activities derived from the loaded business rows. The journal is
+  /// local-only, capped at 12 and fed by a few write paths, so on its own it
+  /// stays empty for synced/restored data, clients and payments.
+  List<Map<String, dynamic>> _mergedDashboardActivities(
+    AppSettingsProvider settings,
+  ) {
+    final byKey = <String, Map<String, dynamic>>{};
+    for (final activity in [
+      ..._storedDashboardActivities,
+      ..._recentDashboardActivities(settings),
+    ]) {
+      final key = '${activity['type']}:${activity['id']}';
+      final existing = byKey[key];
+      if (existing == null ||
+          (activity['date'] as DateTime).isAfter(existing['date'] as DateTime)) {
+        byKey[key] = activity;
+      }
+    }
+    final merged = byKey.values.toList()
+      ..sort(
+        (a, b) => (b['date'] as DateTime).compareTo(a['date'] as DateTime),
+      );
+    return merged.take(12).toList(growable: false);
   }
 
   void _openDashboardActivity(Map<String, dynamic> activity) {
@@ -2866,6 +2955,14 @@ class _WelcomScreenState extends State<WelcomScreen> {
     final id = activity['id'] as int? ?? 0;
     if (id <= 0) return;
     final type = activity['type']?.toString() ?? '';
+    if (type == 'client_added' || type == 'client_updated') {
+      _openClients();
+      return;
+    }
+    if (type == 'payment_in' || type == 'payment_out') {
+      _openTreasury();
+      return;
+    }
     if (type == 'order_added' || type == 'order_updated') {
       openAdaptiveScreen(
         context,
@@ -2931,51 +3028,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
   }
 
   String _dashboardActivityLabel(String type, AppLanguage lang) {
-    return switch (type) {
-      'order_added' => _desktopText(
-        lang,
-        'إضافة طلبية',
-        'Commande ajoutée',
-        'Order added',
-      ),
-      'order_updated' => _desktopText(
-        lang,
-        'تعديل طلبية',
-        'Commande modifiée',
-        'Order updated',
-      ),
-      'delivery_added' => _desktopText(
-        lang,
-        'إضافة وصل تسليم',
-        'Bon de livraison ajouté',
-        'Delivery note added',
-      ),
-      'sale_added' => _desktopText(
-        lang,
-        'إضافة بيع',
-        'Vente ajoutée',
-        'Sale added',
-      ),
-      'purchase_added' => _desktopText(
-        lang,
-        'إضافة شراء',
-        'Achat ajouté',
-        'Purchase added',
-      ),
-      'purchase_updated' => _desktopText(
-        lang,
-        'تعديل شراء',
-        'Achat modifié',
-        'Purchase updated',
-      ),
-      'sale_updated' => _desktopText(
-        lang,
-        'تعديل بيع',
-        'Vente modifiée',
-        'Sale updated',
-      ),
-      _ => type,
-    };
+    final key = 'dashboard_activity_$type';
+    final label = Localization.translate(key, lang);
+    return label == key ? type : label;
   }
 
   List<Map<String, dynamic>> get _storedDashboardActivities {
@@ -3026,21 +3081,11 @@ class _WelcomScreenState extends State<WelcomScreen> {
   ) {
     final settings = Provider.of<AppSettingsProvider>(context);
     final lang = settings.language;
-    final activities = _storedDashboardActivities;
+    final activities = _mergedDashboardActivities(settings);
     return _desktopPanel(
       context: context,
-      title: _desktopText(
-        lang,
-        'آخر النشاطات',
-        'Activités récentes',
-        'Recent activity',
-      ),
-      subtitle: _desktopText(
-        lang,
-        'آخر 12 عملية في المبيعات والمشتريات والطلبيات والتسليم',
-        'Les 12 dernières opérations de vente, achat, commande et livraison',
-        'Latest 12 sales, purchases, orders, and deliveries',
-      ),
+      title: Localization.translate('dashboard_activity_title', lang),
+      subtitle: Localization.translate('dashboard_activity_subtitle', lang),
       icon: Icons.history_rounded,
       color: const Color(0xFF2563EB),
       backgroundColor: cardColor,
@@ -3051,12 +3096,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
         child: activities.isEmpty
             ? Center(
                 child: Text(
-                  _desktopText(
-                    lang,
-                    'لا توجد نشاطات حديثة',
-                    'Aucune activité récente',
-                    'No recent activity',
-                  ),
+                  Localization.translate('dashboard_activity_empty', lang),
                   style: TextStyle(color: mutedColor, fontFamily: 'Cairo'),
                 ),
               )
@@ -5402,12 +5442,23 @@ class _WelcomScreenState extends State<WelcomScreen> {
     _markOrdersAsRead();
     openAdaptiveScreen(
       context,
-      title: _desktopText(lang, 'الطلبيات', 'Commandes', 'Orders'),
+      title: openOrdersOnly
+          ? _desktopText(
+              lang,
+              'الطلبيات المفتوحة',
+              'Commandes ouvertes',
+              'Open orders',
+            )
+          : _desktopText(lang, 'الطلبيات', 'Commandes', 'Orders'),
       icon: Icons.receipt_long_rounded,
       screen: Commande(
         openAddOrderOnStart: openAddOrderOnStart,
         openOrdersOnly: openOrdersOnly,
       ),
+      // The workspace reuses pages by title/id. Give the filtered list its
+      // own identity so an already-open unfiltered Orders tab cannot swallow
+      // the dashboard card's filter request.
+      entryId: openOrdersOnly ? 'commandes_open' : 'commandes_all',
     );
   }
 
@@ -5808,7 +5859,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
         title: isDesktop
             ? null
             : Text(
-                _workshopName,
+                _visibleUserName,
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 16,

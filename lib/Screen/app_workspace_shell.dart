@@ -38,18 +38,41 @@ Future<void> _confirmHomeExit(BuildContext context) async {
     final exit = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(Localization.translate('الخروج من التطبيق', lang)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Text(
+          Localization.translate('الخروج من التطبيق', lang),
+          style: const TextStyle(
+            fontFamily: 'Cairo',
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         content: Text(
           Localization.translate('هل تريد الخروج من التطبيق؟', lang),
+          style: const TextStyle(fontFamily: 'Cairo'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text(Localization.translate('لا', lang)),
+            child: Text(
+              Localization.translate('لا', lang),
+              style: const TextStyle(fontFamily: 'Cairo'),
+            ),
           ),
-          TextButton(
+          ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(Localization.translate('خروج', lang)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: Text(
+              Localization.translate('خروج', lang),
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),

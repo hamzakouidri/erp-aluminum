@@ -99,7 +99,28 @@ class WindowsGoogleSignIn {
   static const _authorizationEndpoint =
       'https://accounts.google.com/o/oauth2/v2/auth';
   static const _tokenEndpoint = 'https://oauth2.googleapis.com/token';
-  static const _callbackTimeout = Duration(seconds: 45);
+  // Account selection, 2-step verification and consent screens can easily
+  // take longer than a minute; a short timeout made every slow login fail.
+  static const _callbackTimeout = Duration(minutes: 3);
+
+  // Fixed loopback ports so the exact redirect URLs can be registered in
+  // Supabase (Authentication > URL Configuration > Redirect URLs).
+  static const _preferredLoopbackPorts = [53682, 53683, 53684];
+
+  static Future<HttpServer> _bindLoopbackServer() async {
+    for (final port in _preferredLoopbackPorts) {
+      try {
+        return await HttpServer.bind(
+          InternetAddress.loopbackIPv4,
+          port,
+          shared: false,
+        );
+      } on SocketException {
+        // Port busy (e.g. a previous attempt still closing); try the next.
+      }
+    }
+    return HttpServer.bind(InternetAddress.loopbackIPv4, 0, shared: false);
+  }
 
   static HttpServer? _activeCallbackServer;
 
@@ -119,11 +140,8 @@ class WindowsGoogleSignIn {
   Future<AppAuthUser> signInWithSupabase() async {
     HttpServer? callbackServer;
     try {
-      callbackServer = await HttpServer.bind(
-        InternetAddress.loopbackIPv4,
-        0,
-        shared: false,
-      );
+      cancelActiveSignIn();
+      callbackServer = await _bindLoopbackServer();
       _activeCallbackServer = callbackServer;
 
       final redirectUri =
@@ -344,7 +362,9 @@ class WindowsGoogleSignIn {
       rethrow;
     } on TimeoutException {
       throw const WindowsGoogleSignInException(
-        'انتهت مهلة تسجيل الدخول عبر المتصفح. إذا ظهرت رسالة خطأ في المتصفح، تأكد من إعدادات Supabase أو أعد المحاولة.',
+        'انتهت مهلة تسجيل الدخول عبر المتصفح. إذا فُتحت صفحة أخرى بدل صفحة '
+        'التطبيق بعد اختيار الحساب، أضف http://127.0.0.1:*/** إلى Redirect URLs '
+        'في إعدادات Supabase ثم أعد المحاولة.',
       );
     } on SocketException {
       throw const WindowsGoogleSignInException(
@@ -374,14 +394,21 @@ class WindowsGoogleSignIn {
         'Desktop app عند بناء نسخة الكمبيوتر.',
       );
     }
+    // Google requires the client secret of a "Desktop app" OAuth client in
+    // the token exchange even with PKCE ("client_secret is missing"). Fail
+    // before opening the browser instead of after the user picks an account.
+    if (_desktopClientSecret.isEmpty) {
+      throw const WindowsGoogleSignInException(
+        'إنشاء حساب Google على الكمبيوتر يحتاج إلى Client secret الخاص بعميل '
+        'OAuth من نوع Desktop app. أضفه في GOOGLE_WINDOWS_OAUTH_CLIENT_SECRET '
+        'ثم أعد بناء التطبيق، أو أنشئ الحساب من الهاتف ثم سجّل الدخول هنا.',
+      );
+    }
 
     HttpServer? callbackServer;
     try {
-      callbackServer = await HttpServer.bind(
-        InternetAddress.loopbackIPv4,
-        0,
-        shared: false,
-      );
+      cancelActiveSignIn();
+      callbackServer = await _bindLoopbackServer();
       _activeCallbackServer = callbackServer;
 
       final state = _randomUrlSafeValue();

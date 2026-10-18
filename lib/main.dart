@@ -1,4 +1,4 @@
-import 'dart:async' show unawaited;
+import 'dart:async' show Timer, unawaited;
 import 'Screen/app_workspace_shell.dart';
 import 'settings/shortcut_bindings.dart';
 import 'dart:io' show Platform;
@@ -11,6 +11,7 @@ import 'package:firebase_core/firebase_core.dart' as firebase_core;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
 import 'package:provider/provider.dart';
+import 'package:database_data/widgets/price_publication_prompt.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/app_theme.dart';
@@ -374,6 +375,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final navigator = _navigatorKey.currentState;
         if (navigator == null || AppAuthService().currentUser == null) return;
+        if (eventType == 'price_publication') {
+          unawaited(showPendingPricePublications(navigator.context));
+          return;
+        }
         if ((eventType == 'payments' || eventType == 'cashbox') &&
             treasuryId != null &&
             treasuryId > 0) {
@@ -406,6 +411,27 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         debugPrint('CloudSyncService post frame init error: $e');
       }
     });
+
+    // Workshop managers are asked about new shared prices shortly after the
+    // app opens and periodically, even if the push notification was missed.
+    _pricePublicationTimer = Timer.periodic(
+      const Duration(minutes: 15),
+      (_) => _checkPricePublications(),
+    );
+    Future<void>.delayed(
+      const Duration(seconds: 12),
+      _checkPricePublications,
+    );
+  }
+
+  Timer? _pricePublicationTimer;
+
+  void _checkPricePublications() {
+    final context = _navigatorKey.currentContext;
+    if (!mounted || context == null || AppAuthService().currentUser == null) {
+      return;
+    }
+    unawaited(showPendingPricePublications(context));
   }
 
   @override
@@ -416,6 +442,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       );
     }
     WidgetsBinding.instance.removeObserver(this);
+    _pricePublicationTimer?.cancel();
     super.dispose();
   }
 
