@@ -11545,92 +11545,27 @@ class SqlDatabase {
     }
   }
 
+  /// Permanently removes a purchase document. Its stock is first reversed
+  /// by moving it to the trash (when that has not happened yet); the
+  /// movements stay in the product history, which keeps the invoice code.
   Future<int> deleteAchat(int id) async {
     Database? myDb = await db;
     if (myDb == null) return 0;
+    await _ensureAchatTrashInfrastructure(myDb);
 
-    // Check inventory usage before deletion
-    final items = await myDb.query(
-      'Achat_items',
-      where: 'achat_id = ?',
+    final rows = await myDb.query(
+      'Achats',
+      columns: const ['is_deleted'],
+      where: 'id = ?',
       whereArgs: [id],
+      limit: 1,
     );
-
-    // 1. Verify quantities
-    for (var item in items) {
-      double qty = (item['quantity'] as num).toDouble();
-
-      final invRows = await myDb.query(
-        'Inventory',
-        where:
-            'item_id = ? AND item_type = ? AND (color_id = ? OR (color_id IS NULL AND ? IS NULL)) AND location_id = ?',
-        whereArgs: [
-          item['item_id'],
-          item['item_type'],
-          item['color_id'],
-          item['color_id'],
-          1,
-        ],
-      );
-
-      double currentQty = 0;
-      if (invRows.isNotEmpty) {
-        currentQty = (invRows.first['quantity'] as num).toDouble();
-      }
-
-      if (currentQty < qty) {
-        throw Exception(
-          "?? ???? ??? ???????? ???? ?? ??????? ??? ??????? ???? ?? ??????? ?? ????????.",
-        );
-      }
+    if (rows.isEmpty) return 0;
+    if ((rows.first['is_deleted'] as num?)?.toInt() != 1) {
+      await deleteAchatToTrash(id);
     }
 
-    // 2. Silent deletion (as if it never existed)
     await myDb.transaction((txn) async {
-      for (var item in items) {
-        double qty = (item['quantity'] as num).toDouble();
-
-        final invRows = await txn.query(
-          'Inventory',
-          where:
-              'item_id = ? AND item_type = ? AND (color_id = ? OR (color_id IS NULL AND ? IS NULL)) AND location_id = ?',
-          whereArgs: [
-            item['item_id'],
-            item['item_type'],
-            item['color_id'],
-            item['color_id'],
-            1,
-          ],
-        );
-
-        if (invRows.isNotEmpty) {
-          double currentQty = (invRows.first['quantity'] as num).toDouble();
-          double newQty = currentQty - qty;
-
-          if (newQty <= 0) {
-            await txn.delete(
-              'Inventory',
-              where: 'id = ?',
-              whereArgs: [invRows.first['id']],
-            );
-          } else {
-            await txn.update(
-              'Inventory',
-              {'quantity': newQty},
-              where: 'id = ?',
-              whereArgs: [invRows.first['id']],
-            );
-          }
-        }
-
-        await txn.delete(
-          'InventoryTransactions',
-          where:
-              'reference_id = ? AND transaction_type = ? AND item_id = ? AND item_type = ?',
-          whereArgs: [id, 'Purchase', item['item_id'], item['item_type']],
-        );
-      }
-
       await txn.delete('Achat_items', where: 'achat_id = ?', whereArgs: [id]);
       await txn.delete(
         'Treasury',
@@ -11720,6 +11655,7 @@ class SqlDatabase {
         previousStatus == 'Confirmed' || previousStatus == 'Partial Returned';
     final now = DateTime.now().toUtc().toIso8601String();
     final deletedBy = await _currentOrderEditor();
+    final actor = await _currentStockActor();
     await snapshotAchat(id, actionType: 'DELETE');
     final res = await myDb.transaction<int>((txn) async {
       if (reversesStock) {
@@ -11734,54 +11670,23 @@ class SqlDatabase {
           final itemType = item['item_type']?.toString() ?? '';
           final colorId = (item['color_id'] as num?)?.toInt();
           final qty = (item['quantity'] as num?)?.toDouble() ?? 0;
-          final where = colorId == null
-              ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
-              : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
-          final args = colorId == null
-              ? [itemId, itemType, locationId]
-              : [itemId, itemType, colorId, locationId];
-          final stock = await txn.query(
-            'CurrentStock',
-            where: where,
-            whereArgs: args,
-            limit: 1,
-          );
-          final available = stock.isEmpty
-              ? 0.0
-              : (stock.first['quantity'] as num?)?.toDouble() ?? 0;
-          if (available + 0.000001 < qty) {
-            throw StateError(
-              'لا يمكن حذف فاتورة الشراء لأن جزءاً من مخزون ${item['item_name'] ?? item['item_code'] ?? 'العنصر'} قد تم استهلاكه.',
-            );
-          }
-          await _ensureUnreservedStock(
+          if (itemId <= 0 || qty <= 0) continue;
+          await _postStockMovement(
             txn,
             itemId: itemId,
             itemType: itemType,
             colorId: colorId,
             locationId: locationId,
-            quantity: qty,
-            currentQuantity: available,
+            quantity: -qty,
+            transactionType: 'Purchase Soft Delete Reversal',
+            movementType: movementReturn,
+            actor: actor,
+            timestamp: now,
+            unitCost: (item['price'] as num?)?.toDouble(),
+            documentType: 'purchase',
+            documentId: id,
+            reason: 'إلغاء فاتورة الشراء (نقلها إلى سلة المحذوفات)',
             label: (item['item_name'] ?? item['item_code'])?.toString(),
-          );
-          await txn.update(
-            'CurrentStock',
-            {'quantity': available - qty, 'updated_at': now},
-            where: where,
-            whereArgs: args,
-          );
-          await txn.insert(
-            'InventoryTransactions',
-            _withDistributedId({
-              'item_id': itemId,
-              'item_type': itemType,
-              'color_id': colorId,
-              'location_id': locationId,
-              'quantity': -qty,
-              'transaction_type': 'Purchase Soft Delete Reversal',
-              'reference_id': id,
-              'created_at': now,
-            }),
           );
         }
       }
@@ -11828,6 +11733,8 @@ class SqlDatabase {
     final previousStatus =
         achat['status_before_delete']?.toString() ?? 'Active';
     final now = DateTime.now().toUtc().toIso8601String();
+    await _ensureRemnantInventorySchema(myDb);
+    final actor = await _currentStockActor();
     final res = await myDb.transaction<int>((txn) async {
       if (restoreStock) {
         final items = await txn.query(
@@ -11841,51 +11748,22 @@ class SqlDatabase {
           final itemType = item['item_type']?.toString() ?? '';
           final colorId = (item['color_id'] as num?)?.toInt();
           final qty = (item['quantity'] as num?)?.toDouble() ?? 0;
-          final where = colorId == null
-              ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
-              : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
-          final args = colorId == null
-              ? [itemId, itemType, locationId]
-              : [itemId, itemType, colorId, locationId];
-          final stock = await txn.query(
-            'CurrentStock',
-            where: where,
-            whereArgs: args,
-            limit: 1,
-          );
-          if (stock.isEmpty) {
-            await txn.insert(
-              'CurrentStock',
-              _withDistributedId({
-                'item_id': itemId,
-                'item_type': itemType,
-                'color_id': colorId,
-                'location_id': locationId,
-                'quantity': qty,
-                'updated_at': now,
-              }),
-            );
-          } else {
-            final current = (stock.first['quantity'] as num?)?.toDouble() ?? 0;
-            await txn.update(
-              'CurrentStock',
-              {'quantity': current + qty, 'updated_at': now},
-              where: where,
-              whereArgs: args,
-            );
-          }
-          await txn.insert(
-            'InventoryTransactions',
-            _withDistributedId({
-              'item_id': itemId,
-              'item_type': itemType,
-              'color_id': colorId,
-              'location_id': locationId,
-              'quantity': qty,
-              'transaction_type': 'Purchase Restore',
-              'reference_id': id,
-              'created_at': now,
-            }),
+          if (itemId <= 0 || qty <= 0) continue;
+          await _postStockMovement(
+            txn,
+            itemId: itemId,
+            itemType: itemType,
+            colorId: colorId,
+            locationId: locationId,
+            quantity: qty,
+            transactionType: 'Purchase Restore',
+            movementType: movementPurchaseReceipt,
+            actor: actor,
+            timestamp: now,
+            unitCost: (item['price'] as num?)?.toDouble(),
+            documentType: 'purchase',
+            documentId: id,
+            reason: 'استرجاع فاتورة الشراء من سلة المحذوفات',
           );
         }
       }
@@ -12071,6 +11949,7 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return;
     await _ensureRemnantInventorySchema(myDb);
+    final actor = await _currentStockActor();
     await snapshotAchat(
       achatId,
       actionType: 'RETURN',
@@ -12121,55 +12000,22 @@ class SqlDatabase {
           final itemType = line['item_type']?.toString() ?? 'Other';
           final colorId = (line['color_id'] as num?)?.toInt();
           final label = (line['item_name'] ?? line['item_code'])?.toString();
-          final where = colorId == null
-              ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
-              : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
-          final args = colorId == null
-              ? [itemId, itemType, locationId]
-              : [itemId, itemType, colorId, locationId];
-          final stock = await txn.query(
-            'CurrentStock',
-            columns: const ['quantity'],
-            where: where,
-            whereArgs: args,
-            limit: 1,
-          );
-          final current = stock.isEmpty
-              ? 0.0
-              : (_readStoredNumber(stock.first['quantity']) ?? 0);
-          if (current + 0.000001 < returnQty) {
-            throw StateError(
-              'لا يمكن إرجاع $label: المتوفر في المخزن $current والمطلوب إرجاعه $returnQty.',
-            );
-          }
-          await _ensureUnreservedStock(
+          await _postStockMovement(
             txn,
             itemId: itemId,
             itemType: itemType,
             colorId: colorId,
             locationId: locationId,
-            quantity: returnQty,
-            currentQuantity: current,
+            quantity: -returnQty,
+            transactionType: 'Return to Supplier',
+            movementType: movementReturn,
+            actor: actor,
+            timestamp: now,
+            unitCost: (line['price'] as num?)?.toDouble(),
+            documentType: 'purchase',
+            documentId: achatId,
+            reason: 'مرتجع للمورد',
             label: label,
-          );
-          await txn.update(
-            'CurrentStock',
-            {'quantity': current - returnQty, 'updated_at': now},
-            where: where,
-            whereArgs: args,
-          );
-          await txn.insert(
-            'InventoryTransactions',
-            _withDistributedId({
-              'item_id': itemId,
-              'item_type': itemType,
-              'color_id': colorId,
-              'location_id': locationId,
-              'quantity': -returnQty,
-              'transaction_type': 'Return to Supplier',
-              'reference_id': achatId,
-              'created_at': now,
-            }),
           );
         }
 
@@ -16993,6 +16839,67 @@ class SqlDatabase {
         updated_at TEXT NOT NULL
       )
     ''');
+    // Traceability of every stock movement (بطاقة حركة المنتج). The ids are
+    // the reference; names are read from the documents when displayed.
+    for (final column in const [
+      'occurred_at TEXT',
+      'movement_type TEXT',
+      'unit TEXT',
+      'balance_before REAL',
+      'balance_after REAL',
+      'unit_cost REAL',
+      'total_cost REAL',
+      'from_location_id INTEGER',
+      'to_location_id INTEGER',
+      'transfer_id TEXT',
+      'document_type TEXT',
+      'document_id INTEGER',
+      'document_code TEXT',
+      'linked_document_type TEXT',
+      'linked_document_id INTEGER',
+      'supplier_id INTEGER',
+      'client_id INTEGER',
+      'order_id INTEGER',
+      'work_order_id INTEGER',
+      'reverses_transaction_id INTEGER',
+      'reason TEXT',
+      'performed_by TEXT',
+      'performed_by_uid TEXT',
+      'attachment_path TEXT',
+    ]) {
+      try {
+        await db.execute(
+          'ALTER TABLE InventoryTransactions ADD COLUMN $column;',
+        );
+      } catch (_) {}
+    }
+    try {
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_inventory_transactions_item '
+        'ON InventoryTransactions(item_type, item_id, color_id, occurred_at)',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_inventory_transactions_transfer '
+        'ON InventoryTransactions(transfer_id)',
+      );
+      // A posted movement is never edited; a correction is a new reverse
+      // movement. Cloud imports run with tombstones suppressed and may still
+      // replace rows they own.
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS inventory_transactions_immutable
+        BEFORE UPDATE ON InventoryTransactions
+        WHEN COALESCE(
+          (SELECT suppress_tombstones FROM _sync_runtime_flags WHERE id = 1),
+          0
+        ) = 0
+        BEGIN
+          SELECT RAISE(ABORT, 'لا يمكن تعديل حركة مخزون معتمدة؛ سجّل حركة عكسية.');
+        END
+      ''');
+    } catch (error) {
+      debugPrint('Could not prepare stock movement history: $error');
+    }
+
     // Quantities held for an order (حجز السلع). An active row lowers the
     // stock that every other order, sale or transfer may take from the same
     // CurrentStock balance until the order issues it or the hold is released.
@@ -17748,6 +17655,7 @@ class SqlDatabase {
     await _ensureRemnantInventorySchema(myDb);
     await _ensureOrderInventoryIssueSchema(myDb);
     await _ensureOrderStockReservationInfrastructure(myDb);
+    final actor = await _currentStockActor();
     final uniqueRemnantIds = remnantIds.toSet().toList();
     var consumedRemnants = 0;
     var deductedRows = 0;
@@ -17877,6 +17785,15 @@ class SqlDatabase {
         }),
       );
 
+      final order = await txn.query(
+        'Commandes',
+        where: 'id = ?',
+        whereArgs: [orderId],
+        limit: 1,
+      );
+      final orderCode = order.isEmpty
+          ? 0
+          : (order.first['order_code'] as num?)?.toInt() ?? 0;
       for (final row in remnantRows) {
         final id = (row['id'] as num).toInt();
         consumedRemnants += await txn.update(
@@ -17892,6 +17809,8 @@ class SqlDatabase {
               "(status = 'reserved' AND reserved_order_id = ?))",
           whereArgs: [id, orderId],
         );
+        // Remnants are tracked in MaterialRemnants, not CurrentStock, so
+        // this movement records the issue without changing a balance.
         await txn.insert(
           'InventoryTransactions',
           _withDistributedId({
@@ -17900,58 +17819,46 @@ class SqlDatabase {
             'color_id': row['color_id'],
             'location_id': row['location_id'],
             'quantity': -((_readStoredNumber(row['length_mm']) ?? 0) / 1000),
+            'unit': 'm',
             'transaction_type': 'order_issue_remnant',
+            'movement_type': movementRemnant,
+            'from_location_id': row['location_id'],
             'reference_id': orderId,
+            'document_type': 'order',
+            'document_id': orderId,
+            'document_code': orderCode > 0 ? '$orderCode' : '$orderId',
+            'order_id': orderId,
+            'client_id': order.isEmpty ? null : order.first['client_id'],
+            'performed_by': actor.name,
+            'performed_by_uid': actor.uid,
             'note':
                 'صرف فضلة ${row['ticket_code'] ?? ''} للطلبية #$orderId${customerName == null || customerName.trim().isEmpty ? '' : ' - ${customerName.trim()}'}',
+            'occurred_at': timestamp,
             'created_at': timestamp,
           }),
         );
       }
 
       for (final row in validatedDeductions) {
-        final itemId = row['item_id'] as int;
-        final itemType = row['item_type'] as String;
-        final locationId = row['location_id'] as int;
-        final quantity = _readStoredNumber(row['quantity']) ?? 0;
-        final where = row['_where'] as String;
-        final whereArgs = row['_whereArgs'] as List<Object?>;
-        final currentRows = await txn.query(
-          'CurrentStock',
-          columns: const ['quantity'],
-          where: where,
-          whereArgs: whereArgs,
-          limit: 1,
+        await _postStockMovement(
+          txn,
+          itemId: row['item_id'] as int,
+          itemType: row['item_type'] as String,
+          colorId: row['color_id'] as int?,
+          locationId: row['location_id'] as int,
+          quantity: -(_readStoredNumber(row['quantity']) ?? 0),
+          transactionType: 'order_issue',
+          movementType: movementProductionIssue,
+          actor: actor,
+          timestamp: timestamp,
+          documentType: 'order',
+          documentId: orderId,
+          workOrderId: (row['work_order_id'] as num?)?.toInt(),
+          reservationOrderId: orderId,
+          note:
+              'صرف تلقائي للطلبية #$orderId${customerName == null || customerName.trim().isEmpty ? '' : ' - ${customerName.trim()}'}',
         );
-        final current = currentRows.isEmpty
-            ? 0.0
-            : (_readStoredNumber(currentRows.first['quantity']) ?? 0);
-        if (current + 0.000001 < quantity) {
-          throw StateError(
-            'تغير رصيد المخزون أثناء اعتماد الصرف للصنف $itemId ($itemType). حاول مجددًا.',
-          );
-        }
-        deductedRows += await txn.update(
-          'CurrentStock',
-          {'quantity': current - quantity, 'updated_at': timestamp},
-          where: where,
-          whereArgs: whereArgs,
-        );
-        await txn.insert(
-          'InventoryTransactions',
-          _withDistributedId({
-            'item_id': itemId,
-            'item_type': itemType,
-            'color_id': row['color_id'],
-            'location_id': locationId,
-            'quantity': -quantity,
-            'transaction_type': 'order_issue',
-            'reference_id': orderId,
-            'note':
-                'صرف تلقائي للطلبية #$orderId${customerName == null || customerName.trim().isEmpty ? '' : ' - ${customerName.trim()}'}',
-            'created_at': timestamp,
-          }),
-        );
+        deductedRows++;
       }
 
       // The issue replaces the order's hold: the stock it reserved has just
@@ -18188,21 +18095,28 @@ class SqlDatabase {
     if (myDb == null) return 0;
     await _ensureRemnantInventorySchema(myDb);
     final timestamp = DateTime.now().toUtc().toIso8601String();
+    final actor = await _currentStockActor();
     var createdRemnantId = 0;
 
     await myDb.transaction((txn) async {
-      // 1. تسجيل سحب بارة إضافية بسبب الخطأ
-      await txn.insert('InventoryTransactions', {
-        'item_id': sectionId,
-        'item_type': 'Section',
-        'color_id': colorId,
-        'location_id': locationId,
-        'transaction_type': 'cutting_error_extra_bar',
-        'quantity': 1.0,
-        'reference_id': orderId,
-        'notes': note ?? 'سحب بارة إضافية لتعويض خطأ في القص',
-        'created_at': timestamp,
-      });
+      // 1. تسجيل سحب بارة إضافية بسبب الخطأ: a bar leaves the stock.
+      await _postStockMovement(
+        txn,
+        itemId: sectionId,
+        itemType: 'Section',
+        colorId: colorId,
+        locationId: locationId,
+        quantity: -1.0,
+        transactionType: 'cutting_error_extra_bar',
+        movementType: movementDamage,
+        actor: actor,
+        timestamp: timestamp,
+        documentType: 'order',
+        documentId: orderId,
+        reservationOrderId: orderId,
+        reason: 'خطأ في القص',
+        note: note ?? 'سحب بارة إضافية لتعويض خطأ في القص',
+      );
 
       // 2. إذا كانت هناك فضلة متبقية من البارة الإضافية، نسجلها كفضلة متاحة
       if (newRemnantLengthMm != null && newRemnantLengthMm > 50) {
@@ -18491,6 +18405,257 @@ class SqlDatabase {
     return res;
   }
 
+  /// Normalised movement kinds shown on the product card.
+  static const String movementPurchaseReceipt = 'purchase_receipt';
+  static const String movementSaleIssue = 'sale_issue';
+  static const String movementInternalTransfer = 'internal_transfer';
+  static const String movementProductionIssue = 'production_issue';
+  static const String movementReturn = 'return';
+  static const String movementAdjustment = 'adjustment';
+  static const String movementRemnant = 'remnant';
+  static const String movementDamage = 'damage';
+
+  /// Maps the free-text `transaction_type` written by older code and screens
+  /// to a [movement_type]. Used for new rows and to read old ones.
+  static String movementTypeForTransaction(String transactionType) {
+    final type = transactionType.toLowerCase();
+    if (type.contains('internal transfer') || type.contains('internal return')) {
+      return movementInternalTransfer;
+    }
+    if (type.contains('return') || type.contains('reversal')) {
+      return movementReturn;
+    }
+    if (type.startsWith('purchase')) return movementPurchaseReceipt;
+    if (type.contains('material sale')) return movementSaleIssue;
+    if (type == 'order_issue_remnant') return movementRemnant;
+    if (type.startsWith('order_issue')) return movementProductionIssue;
+    if (type.contains('cutting_error') || type.contains('scrap')) {
+      return movementDamage;
+    }
+    return movementAdjustment;
+  }
+
+  /// The account a stock movement is attributed to.
+  Future<({String? uid, String name})> _currentStockActor() async =>
+      (uid: currentEditorUid(), name: await _currentOrderEditor());
+
+  /// Posts one movement on one CurrentStock balance inside [txn]: checks the
+  /// balance (and, for an outgoing movement, other orders' reservations),
+  /// updates CurrentStock and writes the InventoryTransactions row with the
+  /// balance before and after. Returns the movement id.
+  ///
+  /// [quantity] is signed: positive enters [locationId], negative leaves it.
+  /// The supplier, client, order and code are read from the document when
+  /// not given, so the movement keeps ids and the card shows current names.
+  /// Callers must have run [_ensureRemnantInventorySchema].
+  Future<int> _postStockMovement(
+    DatabaseExecutor txn, {
+    required int itemId,
+    required String itemType,
+    int? colorId,
+    required int locationId,
+    required double quantity,
+    required String transactionType,
+    required ({String? uid, String name}) actor,
+    String? movementType,
+    String? timestamp,
+    String? unit,
+    double? unitCost,
+    int? fromLocationId,
+    int? toLocationId,
+    String? transferId,
+    String? documentType,
+    int? documentId,
+    String? documentCode,
+    String? linkedDocumentType,
+    int? linkedDocumentId,
+    int? supplierId,
+    int? clientId,
+    int? orderId,
+    int? workOrderId,
+    int? reversesTransactionId,
+    String? reason,
+    String? note,
+    int? referenceId,
+    int? reservationOrderId,
+    bool checkReservations = true,
+    String? label,
+  }) async {
+    final now = timestamp ?? DateTime.now().toUtc().toIso8601String();
+    final where = colorId == null
+        ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
+        : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
+    final whereArgs = colorId == null
+        ? <Object?>[itemId, itemType, locationId]
+        : <Object?>[itemId, itemType, colorId, locationId];
+    final stockRows = await txn.query(
+      'CurrentStock',
+      columns: const ['quantity'],
+      where: where,
+      whereArgs: whereArgs,
+      limit: 1,
+    );
+    final before = stockRows.isEmpty
+        ? 0.0
+        : (_readStoredNumber(stockRows.first['quantity']) ?? 0);
+    final name = label ?? '$itemId ($itemType)';
+    if (quantity < 0) {
+      if (stockRows.isEmpty || before + 0.000001 < -quantity) {
+        throw StateError(
+          'الرصيد غير كافٍ للصنف $name: المتوفر $before والمطلوب ${-quantity}.',
+        );
+      }
+      if (checkReservations) {
+        await _ensureUnreservedStock(
+          txn,
+          itemId: itemId,
+          itemType: itemType,
+          colorId: colorId,
+          locationId: locationId,
+          quantity: -quantity,
+          currentQuantity: before,
+          excludeOrderId: reservationOrderId,
+          label: label,
+        );
+      }
+    }
+    final after = before + quantity;
+    if (stockRows.isEmpty) {
+      await txn.insert(
+        'CurrentStock',
+        _withDistributedId({
+          'item_id': itemId,
+          'item_type': itemType,
+          'color_id': colorId,
+          'location_id': locationId,
+          'quantity': after,
+          'updated_at': now,
+        }),
+      );
+    } else {
+      await txn.update(
+        'CurrentStock',
+        {'quantity': after, 'updated_at': now},
+        where: where,
+        whereArgs: whereArgs,
+      );
+    }
+
+    // Fill the parties from the document itself.
+    var code = documentCode;
+    var supplier = supplierId;
+    var client = clientId;
+    var order = orderId;
+    Future<Map<String, Object?>?> readDocument(String table) async {
+      if (documentId == null) return null;
+      try {
+        final rows = await txn.query(
+          table,
+          where: 'id = ?',
+          whereArgs: [documentId],
+          limit: 1,
+        );
+        return rows.isEmpty ? null : rows.first;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    switch (documentType) {
+      case 'purchase':
+        final row = await readDocument('Achats');
+        supplier ??= (row?['supplier_id'] as num?)?.toInt();
+        code ??= row?['invoice_number']?.toString();
+      case 'sale':
+        final row = await readDocument('MaterialSales');
+        client ??= (row?['client_id'] as num?)?.toInt();
+        code ??= row?['sale_code']?.toString();
+      case 'order':
+        final row = await readDocument('Commandes');
+        order ??= documentId;
+        client ??= (row?['client_id'] as num?)?.toInt();
+        final orderCode = (row?['order_code'] as num?)?.toInt() ?? 0;
+        code ??= orderCode > 0 ? '$orderCode' : '$documentId';
+    }
+
+    return txn.insert(
+      'InventoryTransactions',
+      _withDistributedId({
+        'item_id': itemId,
+        'item_type': itemType,
+        'color_id': colorId,
+        'location_id': locationId,
+        'transaction_type': transactionType,
+        'movement_type':
+            movementType ?? movementTypeForTransaction(transactionType),
+        'quantity': quantity,
+        'unit': unit,
+        'balance_before': before,
+        'balance_after': after,
+        'unit_cost': unitCost,
+        'total_cost': unitCost == null ? null : unitCost * quantity.abs(),
+        'from_location_id': quantity < 0 ? locationId : fromLocationId,
+        'to_location_id': quantity > 0 ? locationId : toLocationId,
+        'transfer_id': transferId,
+        'reference_id': referenceId ?? documentId,
+        'document_type': documentType,
+        'document_id': documentId,
+        'document_code': code,
+        'linked_document_type': linkedDocumentType,
+        'linked_document_id': linkedDocumentId,
+        'supplier_id': supplier,
+        'client_id': client,
+        'order_id': order,
+        'work_order_id': workOrderId,
+        'reverses_transaction_id': reversesTransactionId,
+        'reason': reason,
+        'note': note,
+        'performed_by': actor.name,
+        'performed_by_uid': actor.uid,
+        'occurred_at': now,
+        'created_at': now,
+      }),
+    );
+  }
+
+  /// The latest movement written by a document for one balance, so a
+  /// reversal can point at the movement it cancels.
+  Future<int?> _originalMovementId(
+    DatabaseExecutor txn, {
+    required int referenceId,
+    required String transactionType,
+    required int itemId,
+    required String itemType,
+    int? colorId,
+    required int locationId,
+  }) async {
+    final rows = await txn.query(
+      'InventoryTransactions',
+      columns: const ['id'],
+      where:
+          'reference_id = ? AND transaction_type = ? AND item_id = ? '
+          'AND item_type = ? AND location_id = ? '
+          'AND (color_id = ? OR (color_id IS NULL AND ? IS NULL))',
+      whereArgs: [
+        referenceId,
+        transactionType,
+        itemId,
+        itemType,
+        locationId,
+        colorId,
+        colorId,
+      ],
+      orderBy: 'created_at DESC',
+      limit: 1,
+    );
+    return rows.isEmpty ? null : (rows.first['id'] as num?)?.toInt();
+  }
+
+  /// A new id shared by the two legs of one transfer.
+  static String _newTransferId() =>
+      'TRF-${DateTime.now().toUtc().microsecondsSinceEpoch}-'
+      '${Random().nextInt(1 << 20)}';
+
   Future<void> updateInventory({
     required int itemId,
     required String itemType,
@@ -18500,204 +18665,260 @@ class SqlDatabase {
     required String transactionType,
     int? referenceId,
     double? unitPrice,
+    String? note,
+    String? reason,
   }) async {
     Database? myDb = await db;
     if (myDb == null) return;
     await _ensureRemnantInventorySchema(myDb);
+    final actor = await _currentStockActor();
+    await myDb.transaction(
+      (txn) => _applyInventoryChange(
+        txn,
+        actor: actor,
+        itemId: itemId,
+        itemType: itemType,
+        colorId: colorId,
+        locationId: locationId,
+        quantityChange: quantityChange,
+        transactionType: transactionType,
+        referenceId: referenceId,
+        unitPrice: unitPrice,
+        note: note,
+        reason: reason,
+      ),
+    );
+    CloudSyncService().notifyChange();
+  }
 
+  /// Receives every line of a purchase invoice into its warehouse and marks
+  /// it [status] in one transaction, so an invoice is never half received.
+  Future<void> receiveAchatStock(
+    int achatId, {
+    String status = 'Confirmed',
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureRemnantInventorySchema(myDb);
+    final actor = await _currentStockActor();
+    final editor = await _currentOrderEditor();
+    await snapshotAchat(
+      achatId,
+      actionType: 'UPDATE',
+      afterHeader: {'status': status},
+    );
     await myDb.transaction((txn) async {
-      // 1. Record the transaction
-      await txn.insert(
-        'InventoryTransactions',
-        _withDistributedId({
-          'item_id': itemId,
-          'item_type': itemType,
-          'color_id': colorId,
-          'location_id': locationId,
-          'quantity': quantityChange,
-          'transaction_type': transactionType,
-          'reference_id': referenceId,
-          'created_at': DateTime.now().toUtc().toIso8601String(),
-        }),
+      final achats = await txn.query(
+        'Achats',
+        where: 'id = ?',
+        whereArgs: [achatId],
+        limit: 1,
       );
-
-      // 2. Update current stock and recalculate Weighted Average Cost (WAC / CMP) if incoming purchase
-      final String where;
-      final List<Object?> whereArgs;
-
-      if (colorId == null) {
-        where =
-            'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?';
-        whereArgs = [itemId, itemType, locationId];
-      } else {
-        where =
-            'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
-        whereArgs = [itemId, itemType, colorId, locationId];
-      }
-
-      final stockRows = await txn.query(
-        'CurrentStock',
-        where: where,
-        whereArgs: whereArgs,
+      if (achats.isEmpty) throw StateError('فاتورة الشراء غير موجودة.');
+      final locationId = (achats.first['location_id'] as num?)?.toInt() ?? 1;
+      final lines = await txn.query(
+        'Achat_items',
+        where: 'achat_id = ?',
+        whereArgs: [achatId],
       );
-
-      double currentQty = 0.0;
-      if (stockRows.isNotEmpty) {
-        currentQty = (stockRows.first['quantity'] as num).toDouble();
-        double newQty = currentQty + quantityChange;
-        if (newQty < -0.000001) {
-          throw StateError(
-            'الرصيد غير كافٍ. المتوفر $currentQty والمطلوب ${quantityChange.abs()}.',
-          );
-        }
-        if (quantityChange < 0) {
-          await _ensureUnreservedStock(
-            txn,
-            itemId: itemId,
-            itemType: itemType,
-            colorId: colorId,
-            locationId: locationId,
-            quantity: -quantityChange,
-            currentQuantity: currentQty,
-          );
-        }
-        await txn.update(
-          'CurrentStock',
-          {
-            'quantity': newQty,
-            'updated_at': DateTime.now().toUtc().toIso8601String(),
-          },
-          where: where,
-          whereArgs: whereArgs,
-        );
-      } else {
-        if (quantityChange < -0.000001) {
-          throw StateError('لا يوجد رصيد متاح لهذا العنصر في المخزن المحدد.');
-        }
-        await txn.insert(
-          'CurrentStock',
-          _withDistributedId({
-            'item_id': itemId,
-            'item_type': itemType,
-            'color_id': colorId,
-            'location_id': locationId,
-            'quantity': quantityChange,
-            'updated_at': DateTime.now().toUtc().toIso8601String(),
-          }),
+      for (final line in lines) {
+        final quantity = (line['quantity'] as num?)?.toDouble() ?? 0.0;
+        final itemId = (line['item_id'] as num?)?.toInt() ?? 0;
+        if (quantity <= 0 || itemId <= 0) continue;
+        final unitPrice = (line['price'] as num?)?.toDouble() ?? 0.0;
+        await _applyInventoryChange(
+          txn,
+          actor: actor,
+          itemId: itemId,
+          itemType: line['item_type']?.toString() ?? 'Other',
+          colorId: (line['color_id'] as num?)?.toInt(),
+          locationId: locationId,
+          quantityChange: quantity,
+          transactionType: 'Purchase',
+          referenceId: achatId,
+          unitPrice: unitPrice > 0 ? unitPrice : null,
         );
       }
+      await txn.update(
+        'Achats',
+        {
+          'status': status,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+          'updated_by': editor,
+        },
+        where: 'id = ?',
+        whereArgs: [achatId],
+      );
+    });
+    CloudSyncService().notifyChange();
+  }
 
-      // 3. Auto-update catalog price using Weighted Average Cost (CMP / WAC)
-      // When incoming quantityChange > 0 and unitPrice is provided
-      if (quantityChange > 0 && unitPrice != null && unitPrice > 0) {
-        double oldPrice = 0.0;
-        final normType = itemType.toLowerCase().trim();
+  /// Body of [updateInventory]: one movement plus, for a priced receipt,
+  /// the weighted average cost of the catalogue item.
+  Future<void> _applyInventoryChange(
+    DatabaseExecutor txn, {
+    required ({String? uid, String name}) actor,
+    required int itemId,
+    required String itemType,
+    int? colorId,
+    required int locationId,
+    required double quantityChange,
+    required String transactionType,
+    int? referenceId,
+    double? unitPrice,
+    String? note,
+    String? reason,
+  }) async {
+    final type = transactionType.toLowerCase();
+    // Purchase screens pass the invoice id as the reference.
+    final isPurchaseDocument =
+        referenceId != null &&
+        referenceId > 0 &&
+        (type.startsWith('purchase') || type.contains('supplier'));
+    final where = colorId == null
+        ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
+        : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
+    final whereArgs = colorId == null
+        ? [itemId, itemType, locationId]
+        : [itemId, itemType, colorId, locationId];
+    final stockRows = await txn.query(
+      'CurrentStock',
+      columns: const ['quantity'],
+      where: where,
+      whereArgs: whereArgs,
+      limit: 1,
+    );
+    final double currentQty = stockRows.isEmpty
+        ? 0.0
+        : (_readStoredNumber(stockRows.first['quantity']) ?? 0);
 
+    // 1-2. Movement and balance, validated together.
+    await _postStockMovement(
+      txn,
+      itemId: itemId,
+      itemType: itemType,
+      colorId: colorId,
+      locationId: locationId,
+      quantity: quantityChange,
+      transactionType: transactionType,
+      actor: actor,
+      unitCost: unitPrice,
+      documentType: isPurchaseDocument ? 'purchase' : null,
+      documentId: isPurchaseDocument ? referenceId : null,
+      referenceId: referenceId,
+      note: note,
+      reason: reason,
+    );
+
+    // 3. Auto-update catalog price using Weighted Average Cost (CMP / WAC)
+    // When incoming quantityChange > 0 and unitPrice is provided
+    if (quantityChange > 0 && unitPrice != null && unitPrice > 0) {
+      double oldPrice = 0.0;
+      final normType = itemType.toLowerCase().trim();
+
+      if (normType == 'section' ||
+          normType == 'sections' ||
+          normType == 'profile') {
+        if (colorId != null) {
+          final pRows = await txn.query(
+            'SectionColorPrices',
+            where: 'section_id = ? AND color_id = ?',
+            whereArgs: [itemId, colorId],
+          );
+          if (pRows.isNotEmpty) {
+            oldPrice = (pRows.first['price'] as num?)?.toDouble() ?? 0.0;
+          }
+        }
+      } else if (normType == 'accessory' || normType == 'accessories') {
+        if (colorId != null) {
+          final pRows = await txn.query(
+            'AccessoryColorPrices',
+            where: 'accessory_id = ? AND color_id = ?',
+            whereArgs: [itemId, colorId],
+          );
+          if (pRows.isNotEmpty) {
+            oldPrice = (pRows.first['price'] as num?)?.toDouble() ?? 0.0;
+          }
+        }
+        if (oldPrice <= 0) {
+          final aRows = await txn.query(
+            'Accessories',
+            columns: ['price'],
+            where: 'id = ?',
+            whereArgs: [itemId],
+          );
+          if (aRows.isNotEmpty) {
+            oldPrice = (aRows.first['price'] as num?)?.toDouble() ?? 0.0;
+          }
+        }
+      }
+
+      // Calculate Weighted Average Price (CMP)
+      // If no prior stock or old price is 0, adopt the new purchase price directly
+      double updatedAvgPrice = unitPrice;
+      if (currentQty > 0 && oldPrice > 0) {
+        final totalUnits = currentQty + quantityChange;
+        if (totalUnits > 0) {
+          updatedAvgPrice =
+              ((currentQty * oldPrice) + (quantityChange * unitPrice)) /
+              totalUnits;
+        }
+      }
+
+      // Apply updated price into the catalog
+      if (updatedAvgPrice > 0) {
         if (normType == 'section' ||
             normType == 'sections' ||
             normType == 'profile') {
           if (colorId != null) {
-            final pRows = await txn.query(
+            await txn.execute('''
+              CREATE TABLE IF NOT EXISTS SectionColorPrices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                section_id INTEGER NOT NULL,
+                color_id INTEGER NOT NULL,
+                price REAL NOT NULL DEFAULT 0.0,
+                UNIQUE(section_id, color_id)
+              )
+            ''');
+            final updated = await txn.update(
               'SectionColorPrices',
+              {'price': updatedAvgPrice},
               where: 'section_id = ? AND color_id = ?',
               whereArgs: [itemId, colorId],
             );
-            if (pRows.isNotEmpty) {
-              oldPrice = (pRows.first['price'] as num?)?.toDouble() ?? 0.0;
-            }
-          }
-        } else if (normType == 'accessory' || normType == 'accessories') {
-          if (colorId != null) {
-            final pRows = await txn.query(
-              'AccessoryColorPrices',
-              where: 'accessory_id = ? AND color_id = ?',
-              whereArgs: [itemId, colorId],
-            );
-            if (pRows.isNotEmpty) {
-              oldPrice = (pRows.first['price'] as num?)?.toDouble() ?? 0.0;
-            }
-          }
-          if (oldPrice <= 0) {
-            final aRows = await txn.query(
-              'Accessories',
-              columns: ['price'],
-              where: 'id = ?',
-              whereArgs: [itemId],
-            );
-            if (aRows.isNotEmpty) {
-              oldPrice = (aRows.first['price'] as num?)?.toDouble() ?? 0.0;
-            }
-          }
-        }
-
-        // Calculate Weighted Average Price (CMP)
-        // If no prior stock or old price is 0, adopt the new purchase price directly
-        double updatedAvgPrice = unitPrice;
-        if (currentQty > 0 && oldPrice > 0) {
-          final totalUnits = currentQty + quantityChange;
-          if (totalUnits > 0) {
-            updatedAvgPrice =
-                ((currentQty * oldPrice) + (quantityChange * unitPrice)) /
-                totalUnits;
-          }
-        }
-
-        // Apply updated price into the catalog
-        if (updatedAvgPrice > 0) {
-          if (normType == 'section' ||
-              normType == 'sections' ||
-              normType == 'profile') {
-            if (colorId != null) {
-              await txn.execute('''
-                CREATE TABLE IF NOT EXISTS SectionColorPrices (
-                  id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  section_id INTEGER NOT NULL,
-                  color_id INTEGER NOT NULL,
-                  price REAL NOT NULL DEFAULT 0.0,
-                  UNIQUE(section_id, color_id)
-                )
-              ''');
-              final updated = await txn.update(
-                'SectionColorPrices',
-                {'price': updatedAvgPrice},
-                where: 'section_id = ? AND color_id = ?',
-                whereArgs: [itemId, colorId],
-              );
-              if (updated == 0) {
-                await txn.insert(
-                  'SectionColorPrices',
-                  {
-                    'section_id': itemId,
-                    'color_id': colorId,
-                    'price': updatedAvgPrice,
-                  },
-                  conflictAlgorithm: ConflictAlgorithm.replace,
-                );
-              }
-            }
-          } else if (normType == 'accessory' || normType == 'accessories') {
-            if (colorId != null) {
+            if (updated == 0) {
               await txn.insert(
-                'AccessoryColorPrices',
+                'SectionColorPrices',
                 {
-                  'accessory_id': itemId,
+                  'section_id': itemId,
                   'color_id': colorId,
                   'price': updatedAvgPrice,
                 },
                 conflictAlgorithm: ConflictAlgorithm.replace,
               );
             }
-            await txn.update(
-              'Accessories',
-              {'price': updatedAvgPrice},
-              where: 'id = ?',
-              whereArgs: [itemId],
+          }
+        } else if (normType == 'accessory' || normType == 'accessories') {
+          if (colorId != null) {
+            await txn.insert(
+              'AccessoryColorPrices',
+              {
+                'accessory_id': itemId,
+                'color_id': colorId,
+                'price': updatedAvgPrice,
+              },
+              conflictAlgorithm: ConflictAlgorithm.replace,
             );
           }
+          await txn.update(
+            'Accessories',
+            {'price': updatedAvgPrice},
+            where: 'id = ?',
+            whereArgs: [itemId],
+          );
         }
       }
-    });
-    CloudSyncService().notifyChange();
+    }
   }
 
   Future<List<Map<String, dynamic>>> readAllPossibleStock(
@@ -19130,6 +19351,244 @@ class SqlDatabase {
     return enrichedStock;
   }
 
+  /// Everything the product movement card shows for one item (and colour)
+  /// across every warehouse of the store and the workshop.
+  ///
+  /// `movements` are in chronological order. The two legs of a transfer are
+  /// merged into one row from the source to the destination. Each row has
+  /// the document, party and order resolved from their ids (older rows
+  /// without those columns are resolved from `reference_id`), and
+  /// `running_balance`: the total over all warehouses after the movement.
+  /// `balances` are the current per-warehouse quantities with their
+  /// reservations; `last_purchase` and `average_cost` come from the
+  /// purchase receipts.
+  Future<Map<String, dynamic>> readProductMovementCard({
+    required int itemId,
+    required String itemType,
+    int? colorId,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return const {};
+    await _ensureRemnantInventorySchema(myDb);
+    await _ensureOrderCodeInfrastructure(myDb);
+
+    final rows = await myDb.rawQuery(
+      '''
+      WITH m AS (
+        SELECT t.*,
+               COALESCE(t.occurred_at, t.created_at) AS moved_at,
+               COALESCE(t.document_type, CASE
+                 WHEN t.transaction_type LIKE 'Purchase%'
+                   OR t.transaction_type = 'Return to Supplier'
+                   OR t.transaction_type LIKE 'Internal Transfer In%'
+                   OR t.transaction_type = 'Reversal: Internal Return Out of Workshop'
+                   THEN 'purchase'
+                 WHEN t.transaction_type LIKE 'Material Sale%'
+                   OR t.transaction_type LIKE 'Internal Transfer Out%'
+                   OR t.transaction_type LIKE 'Reversal: Internal Return (%'
+                   THEN 'sale'
+                 WHEN t.transaction_type LIKE 'order_issue%'
+                   OR t.transaction_type = 'cutting_error_extra_bar'
+                   THEN 'order'
+               END) AS doc_type,
+               COALESCE(t.document_id, t.reference_id) AS doc_id
+        FROM InventoryTransactions t
+        WHERE t.item_id = ? AND t.item_type = ?
+          AND (t.color_id = ? OR (t.color_id IS NULL AND ? IS NULL))
+      )
+      SELECT m.*,
+             l.name AS location_name,
+             lf.name AS from_location_name,
+             lt.name AS to_location_name,
+             COALESCE(m.supplier_id, a.supplier_id) AS party_supplier_id,
+             COALESCE(s.name, a.supplier_name) AS supplier_name,
+             COALESCE(m.client_id, ms.client_id, cmd.client_id) AS party_client_id,
+             COALESCE(
+               NULLIF(TRIM(COALESCE(c.firstname, '') || ' ' ||
+                           COALESCE(c.lastname, '')), ''),
+               NULLIF(ms.client_name, '')
+             ) AS client_name,
+             COALESCE(m.order_id,
+                      CASE WHEN m.doc_type = 'order' THEN m.doc_id END)
+               AS resolved_order_id,
+             cmd.order_code AS order_code,
+             COALESCE(m.document_code, a.invoice_number, ms.sale_code,
+                      CAST(cmd.order_code AS TEXT)) AS doc_code
+      FROM m
+      LEFT JOIN Locations l ON l.id = m.location_id
+      LEFT JOIN Locations lf ON lf.id = m.from_location_id
+      LEFT JOIN Locations lt ON lt.id = m.to_location_id
+      LEFT JOIN Achats a ON m.doc_type = 'purchase' AND a.id = m.doc_id
+      LEFT JOIN MaterialSales ms ON m.doc_type = 'sale' AND ms.id = m.doc_id
+      LEFT JOIN Commandes cmd ON cmd.id = COALESCE(m.order_id,
+               CASE WHEN m.doc_type = 'order' THEN m.doc_id END)
+      LEFT JOIN Suppliers s
+        ON s.id = COALESCE(m.supplier_id, a.supplier_id)
+      LEFT JOIN Client c
+        ON c.id = COALESCE(m.client_id, ms.client_id, cmd.client_id)
+      ORDER BY m.moved_at ASC, m.id ASC
+      ''',
+      [itemId, itemType, colorId, colorId],
+    );
+
+    // Normalise every row, then merge transfer legs.
+    final normalised = <Map<String, dynamic>>[];
+    for (final raw in rows) {
+      final row = Map<String, dynamic>.from(raw);
+      final quantity = _readStoredNumber(row['quantity']) ?? 0;
+      final transactionType = row['transaction_type']?.toString() ?? '';
+      final movementType =
+          (row['movement_type']?.toString().isNotEmpty ?? false)
+          ? row['movement_type'].toString()
+          : movementTypeForTransaction(transactionType);
+      row['movement_type'] = movementType;
+      row['quantity'] = quantity;
+      row['from_location_id'] ??= quantity < 0 ? row['location_id'] : null;
+      row['from_location_name'] ??= quantity < 0 ? row['location_name'] : null;
+      row['to_location_id'] ??= quantity > 0 ? row['location_id'] : null;
+      row['to_location_name'] ??= quantity > 0 ? row['location_name'] : null;
+      // Remnant issues are recorded in metres from MaterialRemnants; they
+      // never changed a CurrentStock balance.
+      row['affects_balance'] = movementType != movementRemnant;
+      normalised.add(row);
+    }
+
+    String? transferKey(Map<String, dynamic> row) {
+      if (row['movement_type'] != movementInternalTransfer) return null;
+      final id = row['transfer_id']?.toString() ?? '';
+      if (id.isNotEmpty) return id;
+      // Older transfers wrote both legs with one timestamp.
+      return 'legacy|${row['moved_at']}|${row['doc_type']}';
+    }
+
+    final movements = <Map<String, dynamic>>[];
+    final openTransfers = <String, Map<String, dynamic>>{};
+    for (final row in normalised) {
+      final key = transferKey(row);
+      final quantity = row['quantity'] as double;
+      if (key == null) {
+        movements.add(row);
+        continue;
+      }
+      final open = openTransfers.remove(key);
+      if (open == null) {
+        final merged = Map<String, dynamic>.from(row)
+          ..['is_transfer'] = true
+          ..['transfer_quantity'] = quantity.abs()
+          ..['legs'] = [row];
+        openTransfers[key] = merged;
+        movements.add(merged);
+        continue;
+      }
+      final out = quantity < 0 ? row : (open['legs'] as List).first as Map;
+      final inbound = quantity < 0
+          ? (open['legs'] as List).first as Map
+          : row;
+      open
+        ..['legs'] = [out, inbound]
+        ..['from_location_id'] = out['location_id']
+        ..['from_location_name'] = out['location_name']
+        ..['to_location_id'] = inbound['location_id']
+        ..['to_location_name'] = inbound['location_name']
+        ..['quantity'] = 0.0
+        ..['transfer_quantity'] = (inbound['quantity'] as double).abs()
+        ..['out_document_type'] = out['doc_type']
+        ..['out_document_id'] = out['doc_id']
+        ..['out_document_code'] = out['doc_code']
+        ..['in_document_type'] = inbound['doc_type']
+        ..['in_document_id'] = inbound['doc_id']
+        ..['in_document_code'] = inbound['doc_code'];
+    }
+    // A single unmatched leg still moves stock in or out.
+    for (final open in openTransfers.values) {
+      final leg = (open['legs'] as List).first as Map;
+      open['quantity'] = leg['quantity'];
+    }
+
+    var running = 0.0;
+    for (final row in movements) {
+      if (row['affects_balance'] == true) {
+        running += row['quantity'] as double;
+      }
+      row['running_balance'] = running;
+    }
+
+    // Current balances and reservations per warehouse.
+    final balanceRows = await myDb.rawQuery(
+      '''
+      SELECT cs.location_id, l.name AS location_name,
+             COALESCE(l.is_workshop, 0) AS is_workshop,
+             cs.quantity,
+             COALESCE((
+               SELECT SUM(r.quantity) FROM StockReservations r
+               WHERE r.status = 'active'
+                 AND r.item_id = cs.item_id AND r.item_type = cs.item_type
+                 AND (r.color_id = cs.color_id
+                      OR (r.color_id IS NULL AND cs.color_id IS NULL))
+                 AND r.location_id = cs.location_id
+             ), 0) AS reserved_quantity
+      FROM CurrentStock cs
+      LEFT JOIN Locations l ON l.id = cs.location_id
+      WHERE cs.item_id = ? AND cs.item_type = ?
+        AND (cs.color_id = ? OR (cs.color_id IS NULL AND ? IS NULL))
+      ORDER BY cs.location_id
+      ''',
+      [itemId, itemType, colorId, colorId],
+    ).catchError((_) async {
+      // Old databases may not have Locations.is_workshop yet.
+      return myDb.rawQuery(
+        '''
+        SELECT cs.location_id, l.name AS location_name, 0 AS is_workshop,
+               cs.quantity, 0 AS reserved_quantity
+        FROM CurrentStock cs
+        LEFT JOIN Locations l ON l.id = cs.location_id
+        WHERE cs.item_id = ? AND cs.item_type = ?
+          AND (cs.color_id = ? OR (cs.color_id IS NULL AND ? IS NULL))
+        ''',
+        [itemId, itemType, colorId, colorId],
+      );
+    });
+    final balances = [
+      for (final row in balanceRows)
+        {
+          ...row,
+          'quantity': _readStoredNumber(row['quantity']) ?? 0,
+          'reserved_quantity': _readStoredNumber(row['reserved_quantity']) ?? 0,
+        },
+    ];
+
+    final receipts = movements
+        .where(
+          (row) =>
+              row['movement_type'] == movementPurchaseReceipt &&
+              (row['quantity'] as double) > 0,
+        )
+        .toList();
+    var costQuantity = 0.0;
+    var costTotal = 0.0;
+    for (final row in receipts) {
+      final cost = _readStoredNumber(row['unit_cost']);
+      if (cost == null || cost <= 0) continue;
+      costQuantity += row['quantity'] as double;
+      costTotal += cost * (row['quantity'] as double);
+    }
+
+    return {
+      'movements': movements,
+      'balances': balances,
+      'total_quantity': balances.fold<double>(
+        0,
+        (sum, row) => sum + (row['quantity'] as double),
+      ),
+      'reserved_quantity': balances.fold<double>(
+        0,
+        (sum, row) => sum + (row['reserved_quantity'] as double),
+      ),
+      'last_purchase': receipts.isEmpty ? null : receipts.last,
+      'average_cost': costQuantity > 0 ? costTotal / costQuantity : null,
+    };
+  }
+
   Future<List<Map<String, dynamic>>> readInventoryTransactions({
     required int itemId,
     required String itemType,
@@ -19323,30 +19782,54 @@ class SqlDatabase {
     return fallbackPrice;
   }
 
+  /// Zeroes stock balances. For one location or item type this posts an
+  /// adjustment movement for every balance (refused while a balance is
+  /// reserved for an order), so the product history still explains the
+  /// zero. Without an argument the whole inventory and its history are
+  /// reset, which is the workshop reset, not a stock operation.
   Future<void> emptyInventory([dynamic idOrType]) async {
     final database = await db;
     if (database == null) return;
 
-    if (idOrType != null) {
-      if (idOrType is int) {
-        await database.delete(
-          'CurrentStock',
-          where: 'location_id = ?',
-          whereArgs: [idOrType],
-        );
-      } else if (idOrType is String && idOrType.isNotEmpty) {
-        await database.delete(
-          'CurrentStock',
-          where: 'item_type = ?',
-          whereArgs: [idOrType],
+    if (idOrType == null) {
+      await database.delete('CurrentStock');
+      await database.delete('InventoryTransactions');
+      return;
+    }
+    final String where;
+    if (idOrType is int) {
+      where = 'location_id = ?';
+    } else if (idOrType is String && idOrType.isNotEmpty) {
+      where = 'item_type = ?';
+    } else {
+      return;
+    }
+    await _ensureRemnantInventorySchema(database);
+    final actor = await _currentStockActor();
+    await database.transaction((txn) async {
+      final rows = await txn.query(
+        'CurrentStock',
+        where: '$where AND quantity > 0',
+        whereArgs: [idOrType],
+      );
+      final now = DateTime.now().toUtc().toIso8601String();
+      for (final row in rows) {
+        await _postStockMovement(
+          txn,
+          itemId: (row['item_id'] as num).toInt(),
+          itemType: row['item_type'].toString(),
+          colorId: (row['color_id'] as num?)?.toInt(),
+          locationId: (row['location_id'] as num).toInt(),
+          quantity: -(_readStoredNumber(row['quantity']) ?? 0),
+          transactionType: 'Adjustment',
+          movementType: movementAdjustment,
+          actor: actor,
+          timestamp: now,
+          reason: 'تصفير المخزون',
         );
       }
-    } else {
-      await database.delete('CurrentStock');
-    }
-    if (idOrType == null) {
-      await database.delete('InventoryTransactions');
-    }
+    });
+    CloudSyncService().notifyChange();
   }
 
   static bool _auditLogsInfrastructureReady = false;
@@ -23288,11 +23771,12 @@ class SqlDatabase {
     await snapshotMaterialSale(saleId, actionType: 'before_delete');
     final isInternal = (sale['is_internal'] as num?)?.toInt() == 1;
     final deletedBy = await _currentOrderEditor();
+    final actor = await _currentStockActor();
     // The stock reversal and the soft delete succeed or fail together, so a
     // failed reversal never leaves a cancelled document with stock still out.
     await myDb.transaction((txn) async {
       if (isInternal && (sale['stock_deducted'] as num?)?.toInt() == 1) {
-        await _reverseInternalMaterialSaleTransfer(txn, saleId);
+        await _reverseInternalMaterialSaleTransfer(txn, saleId, actor);
       } else if ((sale['stock_deducted'] as num?)?.toInt() == 1) {
         final items = await txn.query(
           'MaterialSaleItems',
@@ -23306,53 +23790,31 @@ class SqlDatabase {
           final itemType = item['item_type']?.toString() ?? '';
           final colorId = (item['color_id'] as num?)?.toInt();
           final qty = (item['quantity'] as num?)?.toDouble() ?? 0.0;
-          final where = colorId == null
-              ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
-              : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
-          final args = colorId == null
-              ? [itemId, itemType, locationId]
-              : [itemId, itemType, colorId, locationId];
-          final stock = await txn.query(
-            'CurrentStock',
-            where: where,
-            whereArgs: args,
-            limit: 1,
-          );
-          final current = stock.isEmpty
-              ? 0.0
-              : (stock.first['quantity'] as num?)?.toDouble() ?? 0.0;
-          if (stock.isEmpty) {
-            await txn.insert(
-              'CurrentStock',
-              _withDistributedId({
-                'item_id': itemId,
-                'item_type': itemType,
-                'color_id': colorId,
-                'location_id': locationId,
-                'quantity': qty,
-                'updated_at': now,
-              }),
-            );
-          } else {
-            await txn.update(
-              'CurrentStock',
-              {'quantity': current + qty, 'updated_at': now},
-              where: where,
-              whereArgs: args,
-            );
-          }
-          await txn.insert(
-            'InventoryTransactions',
-            _withDistributedId({
-              'item_id': itemId,
-              'item_type': itemType,
-              'color_id': colorId,
-              'location_id': locationId,
-              'quantity': qty,
-              'transaction_type': 'Material Sale Reversal',
-              'reference_id': saleId,
-              'created_at': now,
-            }),
+          if (itemId <= 0 || qty <= 0) continue;
+          await _postStockMovement(
+            txn,
+            itemId: itemId,
+            itemType: itemType,
+            colorId: colorId,
+            locationId: locationId,
+            quantity: qty,
+            transactionType: 'Material Sale Reversal',
+            movementType: movementReturn,
+            actor: actor,
+            timestamp: now,
+            unitCost: (item['unit_price'] as num?)?.toDouble(),
+            documentType: 'sale',
+            documentId: saleId,
+            reversesTransactionId: await _originalMovementId(
+              txn,
+              referenceId: saleId,
+              transactionType: 'Material Sale',
+              itemId: itemId,
+              itemType: itemType,
+              colorId: colorId,
+              locationId: locationId,
+            ),
+            reason: 'إلغاء وثيقة البيع',
           );
         }
       }
@@ -23756,6 +24218,7 @@ class SqlDatabase {
     if (myDb == null || returnedItems.isEmpty) return 0;
     await _ensureRemnantInventorySchema(myDb);
     final editor = await _currentOrderEditor();
+    final actor = await _currentStockActor();
     final now = DateTime.now().toUtc().toIso8601String();
     final returnId = await myDb.transaction<int>((txn) async {
       final sourceRows = await txn.query(
@@ -23841,52 +24304,26 @@ class SqlDatabase {
           'total_price': qty * unitPrice,
           'notes': 'Returned from sale ${source['sale_code']}',
         });
-        final colorId = (original['color_id'] as num?)?.toInt();
-        final where = colorId == null
-            ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
-            : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
-        final args = colorId == null
-            ? [original['item_id'], original['item_type'], locationId]
-            : [original['item_id'], original['item_type'], colorId, locationId];
-        final stock = await txn.query(
-          'CurrentStock',
-          where: where,
-          whereArgs: args,
-          limit: 1,
-        );
-        if (stock.isEmpty) {
-          await txn.insert(
-            'CurrentStock',
-            _withDistributedId({
-              'item_id': original['item_id'],
-              'item_type': original['item_type'],
-              'color_id': colorId,
-              'location_id': locationId,
-              'quantity': qty,
-              'updated_at': now,
-            }),
-          );
-        } else {
-          final current = (stock.first['quantity'] as num?)?.toDouble() ?? 0.0;
-          await txn.update(
-            'CurrentStock',
-            {'quantity': current + qty, 'updated_at': now},
-            where: where,
-            whereArgs: args,
-          );
-        }
-        await txn.insert(
-          'InventoryTransactions',
-          _withDistributedId({
-            'item_id': original['item_id'],
-            'item_type': original['item_type'],
-            'color_id': colorId,
-            'location_id': locationId,
-            'quantity': qty,
-            'transaction_type': 'Material Sale Return',
-            'reference_id': id,
-            'created_at': now,
-          }),
+        // The customer's goods re-enter the store, linked to the return
+        // document and to the sale it reverses.
+        await _postStockMovement(
+          txn,
+          itemId: (original['item_id'] as num).toInt(),
+          itemType: original['item_type'].toString(),
+          colorId: (original['color_id'] as num?)?.toInt(),
+          locationId: locationId,
+          quantity: qty,
+          transactionType: 'Material Sale Return',
+          movementType: movementReturn,
+          actor: actor,
+          timestamp: now,
+          unit: original['unit']?.toString(),
+          unitCost: unitPrice,
+          documentType: 'sale',
+          documentId: id,
+          linkedDocumentType: 'sale',
+          linkedDocumentId: sourceSaleId,
+          reason: 'مرتجع زبون',
         );
       }
       final remaining = await _readReturnableMaterialSaleItemsWith(
@@ -24078,6 +24515,7 @@ class SqlDatabase {
     final myDb = await db;
     if (myDb == null) return;
     await _ensureRemnantInventorySchema(myDb);
+    final actor = await _currentStockActor();
     await myDb.transaction((txn) async {
       final saleRows = await txn.query(
         'MaterialSales',
@@ -24149,37 +24587,24 @@ class SqlDatabase {
         final itemId = (item['item_id'] as num).toInt();
         final colorId = (item['color_id'] as num?)?.toInt();
         final qty = (item['quantity'] as num).toDouble();
-        final where = colorId == null
-            ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
-            : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
-        final args = colorId == null
-            ? [itemId, itemType, locationId]
-            : [itemId, itemType, colorId, locationId];
-        final stock = await txn.query(
-          'CurrentStock',
-          where: where,
-          whereArgs: args,
-          limit: 1,
-        );
-        final available = (stock.first['quantity'] as num).toDouble();
-        await txn.update(
-          'CurrentStock',
-          {'quantity': available - qty, 'updated_at': now},
-          where: where,
-          whereArgs: args,
-        );
-        await txn.insert(
-          'InventoryTransactions',
-          _withDistributedId({
-            'item_id': itemId,
-            'item_type': itemType,
-            'color_id': colorId,
-            'location_id': locationId,
-            'quantity': -qty,
-            'transaction_type': 'Material Sale',
-            'reference_id': saleId,
-            'created_at': now,
-          }),
+        // Already validated above, reservations included.
+        await _postStockMovement(
+          txn,
+          itemId: itemId,
+          itemType: itemType,
+          colorId: colorId,
+          locationId: locationId,
+          quantity: -qty,
+          transactionType: 'Material Sale',
+          movementType: movementSaleIssue,
+          actor: actor,
+          timestamp: now,
+          unit: item['unit']?.toString(),
+          unitCost: (item['unit_price'] as num?)?.toDouble(),
+          documentType: 'sale',
+          documentId: saleId,
+          checkReservations: false,
+          label: item['item_name']?.toString(),
         );
       }
       await txn.update(
@@ -24201,6 +24626,8 @@ class SqlDatabase {
     final myDb = await db;
     if (myDb == null) return 0;
     await _ensureRemnantInventorySchema(myDb);
+    final actor = await _currentStockActor();
+    final transferId = _newTransferId();
 
     final createdAchatId = await myDb.transaction<int>((txn) async {
       final saleRows = await txn.query(
@@ -24268,106 +24695,49 @@ class SqlDatabase {
         final itemName = item['item_name']?.toString() ?? '';
 
         if (itemId > 0 && qty > 0) {
-          // 1. Deduct from store warehouse
-          await txn.insert(
-            'InventoryTransactions',
-            _withDistributedId({
-              'item_id': itemId,
-              'item_type': itemType,
-              'color_id': colorId,
-              'location_id': storeLocationId,
-              'quantity': -qty,
-              'transaction_type': 'Internal Transfer Out (Store -> Workshop)',
-              'reference_id': saleId,
-              'created_at': now,
-            }),
+          // 1-2. Both legs of the transfer, written together and sharing
+          // one transfer id: out of the store, into the workshop.
+          final label = itemCode.isEmpty ? itemName : itemCode;
+          await _postStockMovement(
+            txn,
+            itemId: itemId,
+            itemType: itemType,
+            colorId: colorId,
+            locationId: storeLocationId,
+            quantity: -qty,
+            transactionType: 'Internal Transfer Out (Store -> Workshop)',
+            movementType: movementInternalTransfer,
+            actor: actor,
+            timestamp: now,
+            unitCost: unitPrice,
+            toLocationId: destLocationId,
+            transferId: transferId,
+            documentType: 'sale',
+            documentId: saleId,
+            linkedDocumentType: 'purchase',
+            linkedDocumentId: achatId,
+            label: label,
           );
-
-          final storeStockWhere = colorId == null
-              ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
-              : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
-          final storeStockArgs = colorId == null
-              ? [itemId, itemType, storeLocationId]
-              : [itemId, itemType, colorId, storeLocationId];
-          final storeStock = await txn.query(
-            'CurrentStock',
-            where: storeStockWhere,
-            whereArgs: storeStockArgs,
+          await _postStockMovement(
+            txn,
+            itemId: itemId,
+            itemType: itemType,
+            colorId: colorId,
+            locationId: destLocationId,
+            quantity: qty,
+            transactionType: 'Internal Transfer In (Store -> Workshop)',
+            movementType: movementInternalTransfer,
+            actor: actor,
+            timestamp: now,
+            unitCost: unitPrice,
+            fromLocationId: storeLocationId,
+            transferId: transferId,
+            documentType: 'purchase',
+            documentId: achatId,
+            linkedDocumentType: 'sale',
+            linkedDocumentId: saleId,
+            label: label,
           );
-          if (storeStock.isNotEmpty) {
-            final curQty = (storeStock.first['quantity'] as num).toDouble();
-            if (curQty + 0.000001 < qty) {
-              throw StateError(
-                'الرصيد غير كافٍ للعنصر $itemCode. المتوفر $curQty والمطلوب $qty.',
-              );
-            }
-            await _ensureUnreservedStock(
-              txn,
-              itemId: itemId,
-              itemType: itemType,
-              colorId: colorId,
-              locationId: storeLocationId,
-              quantity: qty,
-              currentQuantity: curQty,
-              label: itemCode.isEmpty ? itemName : itemCode,
-            );
-            await txn.update(
-              'CurrentStock',
-              {'quantity': curQty - qty, 'updated_at': now},
-              where: storeStockWhere,
-              whereArgs: storeStockArgs,
-            );
-          } else {
-            throw StateError('لا يوجد رصيد للعنصر $itemCode في مخزن المحل.');
-          }
-
-          // 2. Add to workshop warehouse
-          await txn.insert(
-            'InventoryTransactions',
-            _withDistributedId({
-              'item_id': itemId,
-              'item_type': itemType,
-              'color_id': colorId,
-              'location_id': destLocationId,
-              'quantity': qty,
-              'transaction_type': 'Internal Transfer In (Store -> Workshop)',
-              'reference_id': achatId,
-              'created_at': now,
-            }),
-          );
-
-          final wsStockWhere = colorId == null
-              ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
-              : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
-          final wsStockArgs = colorId == null
-              ? [itemId, itemType, destLocationId]
-              : [itemId, itemType, colorId, destLocationId];
-          final wsStock = await txn.query(
-            'CurrentStock',
-            where: wsStockWhere,
-            whereArgs: wsStockArgs,
-          );
-          if (wsStock.isNotEmpty) {
-            final curQty = (wsStock.first['quantity'] as num).toDouble();
-            await txn.update(
-              'CurrentStock',
-              {'quantity': curQty + qty, 'updated_at': now},
-              where: wsStockWhere,
-              whereArgs: wsStockArgs,
-            );
-          } else {
-            await txn.insert(
-              'CurrentStock',
-              _withDistributedId({
-                'item_id': itemId,
-                'item_type': itemType,
-                'color_id': colorId,
-                'location_id': destLocationId,
-                'quantity': qty,
-                'updated_at': now,
-              }),
-            );
-          }
 
           // 3. Insert into Achat_items for workshop
           await txn.insert(
@@ -24418,8 +24788,9 @@ class SqlDatabase {
     final myDb = await db;
     if (myDb == null) return;
     await _ensureRemnantInventorySchema(myDb);
+    final actor = await _currentStockActor();
     await myDb.transaction(
-      (txn) => _reverseInternalMaterialSaleTransfer(txn, saleId),
+      (txn) => _reverseInternalMaterialSaleTransfer(txn, saleId, actor),
     );
     CloudSyncService().notifyChange();
   }
@@ -24429,6 +24800,7 @@ class SqlDatabase {
   Future<void> _reverseInternalMaterialSaleTransfer(
     DatabaseExecutor txn,
     int saleId,
+    ({String? uid, String name}) actor,
   ) async {
     final saleRows = await txn.query(
       'MaterialSales',
@@ -24456,105 +24828,55 @@ class SqlDatabase {
         final qty = (item['quantity'] as num?)?.toDouble() ?? 0.0;
 
         if (itemId > 0 && qty > 0) {
-          // Return to store warehouse
-          await txn.insert(
-            'InventoryTransactions',
-            _withDistributedId({
-              'item_id': itemId,
-              'item_type': itemType,
-              'color_id': colorId,
-              'location_id': storeLocationId,
-              'quantity': qty,
-              'transaction_type':
-                  'Reversal: Internal Return (Workshop -> Store)',
-              'reference_id': saleId,
-              'created_at': now,
-            }),
-          );
-
-          final storeWhere = colorId == null
-              ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
-              : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
-          final storeArgs = colorId == null
-              ? [itemId, itemType, storeLocationId]
-              : [itemId, itemType, colorId, storeLocationId];
-          final storeRows = await txn.query(
-            'CurrentStock',
-            where: storeWhere,
-            whereArgs: storeArgs,
-          );
-          final storeQty = storeRows.isEmpty
-              ? 0.0
-              : (storeRows.first['quantity'] as num).toDouble();
-          if (storeRows.isEmpty) {
-            await txn.insert(
-              'CurrentStock',
-              _withDistributedId({
-                'item_id': itemId,
-                'item_type': itemType,
-                'color_id': colorId,
-                'location_id': storeLocationId,
-                'quantity': qty,
-                'updated_at': now,
-              }),
+          // Both reverse legs share a new transfer id: out of the workshop
+          // first (it must still hold the quantity), back into the store.
+          final transferId = _newTransferId();
+          final label = (item['item_code'] ?? item['item_name'])?.toString();
+          try {
+            await _postStockMovement(
+              txn,
+              itemId: itemId,
+              itemType: itemType,
+              colorId: colorId,
+              locationId: destLocationId,
+              quantity: -qty,
+              transactionType: 'Reversal: Internal Return Out of Workshop',
+              movementType: movementInternalTransfer,
+              actor: actor,
+              timestamp: now,
+              toLocationId: storeLocationId,
+              transferId: transferId,
+              documentType: linkedAchatId == null ? 'sale' : 'purchase',
+              documentId: linkedAchatId ?? saleId,
+              linkedDocumentType: 'sale',
+              linkedDocumentId: saleId,
+              reason: 'إلغاء التحويل الداخلي',
+              label: label,
             );
-          } else {
-            await txn.update(
-              'CurrentStock',
-              {'quantity': storeQty + qty, 'updated_at': now},
-              where: storeWhere,
-              whereArgs: storeArgs,
-            );
-          }
-
-          final workshopWhere = colorId == null
-              ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
-              : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
-          final workshopArgs = colorId == null
-              ? [itemId, itemType, destLocationId]
-              : [itemId, itemType, colorId, destLocationId];
-          final workshopRows = await txn.query(
-            'CurrentStock',
-            where: workshopWhere,
-            whereArgs: workshopArgs,
-          );
-          final workshopQty = workshopRows.isEmpty
-              ? 0.0
-              : (workshopRows.first['quantity'] as num).toDouble();
-          if (workshopQty + 0.000001 < qty) {
+          } on StateError catch (error) {
             throw StateError(
-              'لا يمكن إلغاء التحويل لأن الورشة استهلكت جزءاً من الكمية.',
+              'لا يمكن إلغاء التحويل لأن الورشة استهلكت جزءاً من الكمية أو حجزته. ${error.message}',
             );
           }
-          await _ensureUnreservedStock(
+          await _postStockMovement(
             txn,
             itemId: itemId,
             itemType: itemType,
             colorId: colorId,
-            locationId: destLocationId,
+            locationId: storeLocationId,
             quantity: qty,
-            currentQuantity: workshopQty,
-          );
-          await txn.update(
-            'CurrentStock',
-            {'quantity': workshopQty - qty, 'updated_at': now},
-            where: workshopWhere,
-            whereArgs: workshopArgs,
-          );
-
-          // Deduct from workshop warehouse
-          await txn.insert(
-            'InventoryTransactions',
-            _withDistributedId({
-              'item_id': itemId,
-              'item_type': itemType,
-              'color_id': colorId,
-              'location_id': destLocationId,
-              'quantity': -qty,
-              'transaction_type': 'Reversal: Internal Return Out of Workshop',
-              'reference_id': linkedAchatId,
-              'created_at': now,
-            }),
+            transactionType: 'Reversal: Internal Return (Workshop -> Store)',
+            movementType: movementInternalTransfer,
+            actor: actor,
+            timestamp: now,
+            fromLocationId: destLocationId,
+            transferId: transferId,
+            documentType: 'sale',
+            documentId: saleId,
+            linkedDocumentType: linkedAchatId == null ? null : 'purchase',
+            linkedDocumentId: linkedAchatId,
+            reason: 'إلغاء التحويل الداخلي',
+            label: label,
           );
         }
       }
