@@ -90,22 +90,24 @@ class RoleWindow extends WindowModel {
     String roleKey, {
     bool? useSlidingSeries,
   }) {
-    if (![
+    const roles = [
       'seuil',
       'cache_dormant',
       'cache_rail',
       'cache_rainure',
       'profile_angle',
       'face_to_face',
-    ].contains(roleKey))
-      return null;
+    ];
+    if (!roles.contains(roleKey)) return null;
     if (roleKey == 'cache_rail' && useSlidingSeries != true) return null;
     if (roleKey == 'cache_rainure' &&
         !cacheRainureScopes.contains(useSlidingSeries == true)) {
       return null;
     }
+    // Each role is a distinct catalogue section (and distinct per series),
+    // as in a real catalogue; identical sections are merged in the BOM.
     return AluminumSection(
-      id: 100,
+      id: 100 + roles.indexOf(roleKey) * 2 + (useSlidingSeries == true ? 1 : 0),
       seriesId: useSlidingSeries == true ? 2 : 1,
       name: roleKey,
       code: roleKey,
@@ -557,8 +559,9 @@ void main() {
       final bom = ComponentCalculator.generateBom(model, {});
       final ftfItem = bom.firstWhere((i) => i.roleKey == 'face_to_face');
       expect(ftfItem, isNotNull);
-      // 4 sashes meeting in the center requires 1 face-to-face piece
-      expect(ftfItem.pieces, hasLength(1));
+      // Four leaves on two tracks meet with two opposing face-to-face
+      // profiles.
+      expect(ftfItem.pieces, hasLength(2));
       expect(ftfItem.selectorType, 'face_to_face');
       model.dispose();
     },
@@ -684,6 +687,11 @@ void main() {
     model
       ..zones = [zone]
       ..selection = SelectionInfo.zone(zone.id);
+    // Entrematique is emitted only for a selected catalogue product.
+    model.componentOverrides['أونتروماتيك (Entrematique)'] = {
+      'id': 77,
+      'name': 'Entrematique',
+    };
 
     var bom = ComponentCalculator.generateBom(model, {});
     expect(
@@ -780,6 +788,8 @@ void main() {
       // 1. All simple (2 sashes = 2 lateral, 2 central)
       final allSimpleDrawing = {
         'hasShutter': false,
+        // Montant counts are described for three-piece sash series only.
+        'hasThreePieceSash': true,
         'zones': [
           {
             'content': 'slidingSash',
@@ -829,6 +839,8 @@ void main() {
       // 2. Mixed (1 reinforced, 1 simple)
       final mixedDrawing = {
         'hasShutter': false,
+        // Montant counts are described for three-piece sash series only.
+        'hasThreePieceSash': true,
         'zones': [
           {
             'content': 'slidingSash',
@@ -950,7 +962,10 @@ void main() {
       expect(lateralNormal.first.pieces, hasLength(1));
       expect(lateralRenforced.first.pieces, hasLength(1));
       expect(centralNormal.first.pieces, hasLength(1));
-      expect(centralRenforced.first.pieces, hasLength(1));
+      // Full substitution also cuts the two reinforced chicane pieces of the
+      // meeting; with no own chicane profile they use the same reinforced
+      // section and are merged into its row: 1 montant + 2 chicane pieces.
+      expect(centralRenforced.first.pieces, hasLength(3));
 
       model.dispose();
     },

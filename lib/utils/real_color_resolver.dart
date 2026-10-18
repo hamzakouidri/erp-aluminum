@@ -94,13 +94,16 @@ DecorationImage? realColorTextureImage(Map<String, dynamic>? colorData) {
       name.contains('ديزر') ||
       name.contains('ديزير')) {
     assetPath = 'assets/images/wood_texture_d0.png';
+  } else if (_isFauxBoisMarron(name)) {
+    // The faux-bois grain, lighter: not the aged grey antique.
+    return const DecorationImage(
+      image: AssetImage('assets/images/wood_texture.png'),
+      fit: BoxFit.cover,
+      colorFilter: ColorFilter.mode(Color(0x5CFFD9B0), BlendMode.screen),
+    );
   } else if (name.contains('antique') ||
       name.contains('انتيك') ||
-      name.contains('onteak') ||
-      name.contains('faux bois marron') ||
-      name.contains('marron faux bois') ||
-      (name.contains('marron') && name.contains('bois')) ||
-      (name.contains('بني') && name.contains('خشب'))) {
+      name.contains('onteak')) {
     assetPath = 'assets/images/wood_texture_antique.png';
   } else if (name.contains('grey') ||
       name.contains('gray') ||
@@ -117,8 +120,68 @@ DecorationImage? realColorTextureImage(Map<String, dynamic>? colorData) {
   return DecorationImage(image: AssetImage(assetPath), fit: BoxFit.cover);
 }
 
+bool _isFauxBoisMarron(String name) =>
+    name.contains('faux bois marron') ||
+    name.contains('marron faux bois') ||
+    (name.contains('marron') &&
+        (name.contains('bois') ||
+            name.contains('faux') ||
+            name.contains('خشب'))) ||
+    (name.contains('بني') && (name.contains('خشب') || name.contains('خشبي')));
+
+/// Brushed-metal gradients with a highlight band: a flat hex cannot show the
+/// shine of gold, silver or champagne anodising.
+List<Color>? _metallicGradient(String name) {
+  final isGold =
+      name.contains('gold') ||
+      name.contains('ذهب') ||
+      name.contains('doré') ||
+      name.contains('dore') ||
+      RegExp(r'(^|[\s/(_-])or($|[\s/)_-])').hasMatch(name);
+  if (isGold) {
+    return const [
+      Color(0xFF8A6A1F),
+      Color(0xFFD9B44A),
+      Color(0xFFFFF3B0),
+      Color(0xFFD4AF37),
+      Color(0xFF94721F),
+    ];
+  }
+  if (name.contains('silver') ||
+      name.contains('argent') ||
+      name.contains('فضي') ||
+      name.contains('inox')) {
+    return const [
+      Color(0xFF7B8086),
+      Color(0xFFC3C7CC),
+      Color(0xFFF5F7F9),
+      Color(0xFFB9BEC3),
+      Color(0xFF858A90),
+    ];
+  }
+  if (name.contains('champagne') ||
+      name.contains('chompagne') ||
+      name.contains('شامبان') ||
+      name.contains('شمبان') ||
+      name.contains('شومبان')) {
+    return const [
+      Color(0xFFA08A68),
+      Color(0xFFD8C6A2),
+      Color(0xFFF7EDD8),
+      Color(0xFFCDB892),
+      Color(0xFFA48D6A),
+    ];
+  }
+  return null;
+}
+
 List<Color>? _namedGradient(Object? rawName) {
   final name = normalizeColorName(rawName);
+  if (_isFauxBoisMarron(name)) {
+    return const [Color(0xFFC79566), Color(0xFFA9774E), Color(0xFF85593A)];
+  }
+  final metallic = _metallicGradient(name);
+  if (metallic != null) return metallic;
 
   if (name.contains('white') ||
       name.contains('blanc') ||
@@ -181,44 +244,6 @@ List<Color>? _namedGradient(Object? rawName) {
       Colors.orange.shade700,
     ];
   }
-  final isGold =
-      name.contains('gold') ||
-      name.contains('ذهب') ||
-      name.contains('doré') ||
-      name.contains('dore') ||
-      RegExp(r'(^|[\s/(_-])or($|[\s/)_-])').hasMatch(name);
-  if (isGold) {
-    return const [Color(0xFFF1D675), Color(0xFFD4AF37), Color(0xFF9C7616)];
-  }
-  if (name.contains('silver') ||
-      name.contains('argent') ||
-      name.contains('فضي')) {
-    return const [Color(0xFFF5F5F7), Color(0xFFC0C0C0), Color(0xFF7D7D80)];
-  }
-  if (name.contains('champagne') ||
-      name.contains('chompagne') ||
-      name.contains('شامبان') ||
-      name.contains('شمبان') ||
-      name.contains('شومبان') ||
-      name.contains('شامباني') ||
-      name.contains('شمباني') ||
-      name.contains('شومباني')) {
-    return const [Color(0xFFFFF4DF), Color(0xFFF7E7CE), Color(0xFFC9AE86)];
-  }
-  if (name.contains('faux bois marron') ||
-      name.contains('marron faux bois') ||
-      (name.contains('marron') &&
-          (name.contains('bois') ||
-              name.contains('faux') ||
-              name.contains('خشب'))) ||
-      (name.contains('بني') &&
-          (name.contains('خشب') || name.contains('خشبي')))) {
-    return const [
-      Color(0xFFA86F44),
-      Color(0xFF8D5B4C),
-      Color(0xFF6E4032),
-    ];
-  }
   if (isWoodColorName(name)) {
     return [
       Colors.brown.shade300,
@@ -251,6 +276,10 @@ List<Color> realGradientColors(
       colorData?['hex_code'] ?? colorData?['hex'] ?? colorData?['color_hex'];
   final parsed = parseRealHexColor(hex);
   final named = _namedGradient(colorData?['name'] ?? colorData?['color_name']);
+  final metallic = _metallicGradient(
+    normalizeColorName(colorData?['name'] ?? colorData?['color_name']),
+  );
+  if (metallic != null) return metallic;
 
   if (parsed != null && !_isDefaultPlaceholderHex(hex)) {
     return gradientFromColor(parsed);

@@ -11,16 +11,26 @@ class FakeSqlDatabase extends SqlDatabase {
   Future<List<Map<String, dynamic>>> readGlass() async => [];
 }
 
+/// The reinforcement mode follows the catalogue series (its
+/// `reinforcement_type` or its sections); it is not a per-drawing setting.
+AluminumSeries _seriesWithReinforcement(String type) => AluminumSeries(
+  id: 42,
+  profileId: 1,
+  name: 'BS90 Sliding',
+  type: 'sliding',
+  reinforcementType: type,
+);
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
   });
 
   group('Reinforcement Modes and Sliding Series Tests', () {
-    test('ReinforcementMode serializes and deserializes properly', () {
+    test('the reinforcement mode follows the series across save and load', () {
       final fakeDb = FakeSqlDatabase();
       final model = WindowModel(db: fakeDb);
-      model.reinforcementMode = ReinforcementMode.chicaneCombination;
+      model.activeSlidingSeries = _seriesWithReinforcement('chicane_combination');
       model.loadedSlidingSeriesId = 42;
       model.loadedSlidingSeriesName = 'BS90 Sliding';
 
@@ -31,25 +41,22 @@ void main() {
 
       final target = WindowModel(db: fakeDb);
       applyWindowModelFromMap(target, map);
+      target.activeSlidingSeries = _seriesWithReinforcement('chicane_combination');
       expect(target.reinforcementMode, equals(ReinforcementMode.chicaneCombination));
       expect(target.loadedSlidingSeriesId, equals(42));
       expect(target.loadedSlidingSeriesName, equals('BS90 Sliding'));
     });
 
-    test('ReinforcementMode.independentScrewed serializes and deserializes properly', () {
+    test('an independent screwed series is saved as independentScrewed', () {
       final fakeDb = FakeSqlDatabase();
       final model = WindowModel(db: fakeDb);
-      model.reinforcementMode = ReinforcementMode.independentScrewed;
+      model.activeSlidingSeries = _seriesWithReinforcement('independent_screwed');
 
-      final map = model.toMap();
-      expect(map['reinforcementMode'], equals('independentScrewed'));
-
-      final target = WindowModel(db: fakeDb);
-      applyWindowModelFromMap(target, map);
-      expect(target.reinforcementMode, equals(ReinforcementMode.independentScrewed));
+      expect(model.reinforcementMode, equals(ReinforcementMode.independentScrewed));
+      expect(model.toMap()['reinforcementMode'], equals('independentScrewed'));
     });
 
-    test('Adjacent coupled frames create physical gap for tube carré angle profile', () {
+    test('Adjacent coupled frames share one seam with a tube carré angle profile', () {
       final fakeDb = FakeSqlDatabase();
       final model = WindowModel(db: fakeDb, width: 2200, height: 1200);
       model.coupleFrames = true;
@@ -77,16 +84,16 @@ void main() {
       final r1 = rects[0];
       final r2 = rects[1];
 
-      // Physical gap between r1.right and r2.left should equal profileAngleTubeWidth
-      final gap = r2.left - r1.right;
-      expect(gap, closeTo(model.profileAngleTubeWidth, 0.001));
+      // The profile-angle tube sits behind the 90° corner, so coupled frames
+      // share one seam instead of leaving a tube-wide gap between them.
+      expect(r2.left - r1.right, closeTo(0, 0.001));
     });
 
     test('BOM in independentScrewed generates independent profile, screws and caps', () {
       final fakeDb = FakeSqlDatabase();
       final model = WindowModel(db: fakeDb, width: 1500, height: 1200);
       model.systemMode = 'sliding';
-      model.reinforcementMode = ReinforcementMode.independentScrewed;
+      model.activeSlidingSeries = _seriesWithReinforcement('independent_screwed');
 
       final zone = WindowZone(
         id: 'z1',
@@ -128,7 +135,7 @@ void main() {
       final fakeDb = FakeSqlDatabase();
       final model = WindowModel(db: fakeDb, width: 1500, height: 1200);
       model.systemMode = 'sliding';
-      model.reinforcementMode = ReinforcementMode.chicaneCombination;
+      model.activeSlidingSeries = _seriesWithReinforcement('chicane_combination');
 
       final zone = WindowZone(
         id: 'z1',

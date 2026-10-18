@@ -13,78 +13,71 @@ class _Settings extends AppSettingsProvider {
   bool canViewCostPrice() => true;
 }
 
-class _CannedCard extends SqlDatabase {
-  @override
-  Future<Map<String, dynamic>> readProductMovementCard({
-    required int itemId,
-    required String itemType,
-    int? colorId,
-  }) async => {
-    'movements': <Map<String, dynamic>>[
-      {
-        'moved_at': '2026-10-18T08:20:00Z',
-        'movement_type': SqlDatabase.movementPurchaseReceipt,
-        'quantity': 100.0,
-        'to_location_id': 1,
-        'to_location_name': 'مستودع المحل',
-        'party_supplier_id': 3,
-        'supplier_name': 'مورد الألمنيوم',
-        'doc_type': 'purchase',
-        'doc_id': 45,
-        'doc_code': 'ACH-45',
-        'performed_by': 'أحمد',
-        'running_balance': 100.0,
-      },
-      {
-        'moved_at': '2026-10-18T10:30:00Z',
-        'movement_type': SqlDatabase.movementInternalTransfer,
-        'is_transfer': true,
-        'legs': [{}, {}],
-        'quantity': 0.0,
-        'transfer_quantity': 20.0,
-        'from_location_id': 1,
-        'from_location_name': 'مستودع المحل',
-        'to_location_id': 2,
-        'to_location_name': 'مستودع الورشة',
-        'out_document_code': 'INT-12',
-        'performed_by': 'أحمد',
-        'running_balance': 100.0,
-      },
-      {
-        'moved_at': '2026-10-20T15:00:00Z',
-        'movement_type': SqlDatabase.movementSaleIssue,
-        'quantity': -5.0,
-        'from_location_id': 1,
-        'from_location_name': 'مستودع المحل',
-        'party_client_id': 5,
-        'client_name': 'زبون البيع',
-        'doc_type': 'sale',
-        'doc_id': 91,
-        'doc_code': 'MAT-91',
-        'performed_by': 'سمير',
-        'running_balance': 95.0,
-      },
-    ],
-    'balances': <Map<String, dynamic>>[
-      {
-        'location_id': 1,
-        'location_name': 'مستودع المحل',
-        'quantity': 75.0,
-        'reserved_quantity': 10.0,
-      },
-      {
-        'location_id': 2,
-        'location_name': 'مستودع الورشة',
-        'quantity': 20.0,
-        'reserved_quantity': 0.0,
-      },
-    ],
-    'total_quantity': 95.0,
-    'reserved_quantity': 10.0,
-    'last_purchase': null,
-    'average_cost': null,
-  };
-}
+Future<Map<String, dynamic>> _cannedCard() async => {
+  'movements': <Map<String, dynamic>>[
+    {
+      'moved_at': '2026-10-18T08:20:00Z',
+      'movement_type': SqlDatabase.movementPurchaseReceipt,
+      'quantity': 100.0,
+      'to_location_id': 1,
+      'to_location_name': 'مستودع المحل',
+      'party_supplier_id': 3,
+      'supplier_name': 'مورد الألمنيوم',
+      'doc_type': 'purchase',
+      'doc_id': 45,
+      'doc_code': 'ACH-45',
+      'performed_by': 'أحمد',
+      'running_balance': 100.0,
+    },
+    {
+      'moved_at': '2026-10-18T10:30:00Z',
+      'movement_type': SqlDatabase.movementInternalTransfer,
+      'is_transfer': true,
+      'legs': [{}, {}],
+      'quantity': 0.0,
+      'transfer_quantity': 20.0,
+      'from_location_id': 1,
+      'from_location_name': 'مستودع المحل',
+      'to_location_id': 2,
+      'to_location_name': 'مستودع الورشة',
+      'out_document_code': 'INT-12',
+      'performed_by': 'أحمد',
+      'running_balance': 100.0,
+    },
+    {
+      'moved_at': '2026-10-20T15:00:00Z',
+      'movement_type': SqlDatabase.movementSaleIssue,
+      'quantity': -5.0,
+      'from_location_id': 1,
+      'from_location_name': 'مستودع المحل',
+      'party_client_id': 5,
+      'client_name': 'زبون البيع',
+      'doc_type': 'sale',
+      'doc_id': 91,
+      'doc_code': 'MAT-91',
+      'performed_by': 'سمير',
+      'running_balance': 95.0,
+    },
+  ],
+  'balances': <Map<String, dynamic>>[
+    {
+      'location_id': 1,
+      'location_name': 'مستودع المحل',
+      'quantity': 75.0,
+      'reserved_quantity': 10.0,
+    },
+    {
+      'location_id': 2,
+      'location_name': 'مستودع الورشة',
+      'quantity': 20.0,
+      'reserved_quantity': 0.0,
+    },
+  ],
+  'total_quantity': 95.0,
+  'reserved_quantity': 10.0,
+  'last_purchase': null,
+  'average_cost': null,
+};
 
 void main() {
   testWidgets('the card lists movements and filters them by type', (
@@ -101,7 +94,8 @@ void main() {
         value: settings,
         child: MaterialApp(
           home: InventoryItemHistoryScreen(
-            db: _CannedCard(),
+            db: SqlDatabase(),
+            loadCard: _cannedCard,
             itemId: 7,
             itemType: 'Section',
             itemName: 'Frame 40',

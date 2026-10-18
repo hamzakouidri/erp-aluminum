@@ -55,11 +55,6 @@ final Map<String, Map<AppLanguage, String>> measurementKeys = {
     AppLanguage.french: 'Hauteur / Longueur (mm)',
     AppLanguage.english: 'Height / Length (mm)',
   },
-  'العرض (مم)': {
-    AppLanguage.arabic: 'العرض (مم)',
-    AppLanguage.french: 'Largeur (mm)',
-    AppLanguage.english: 'Width (mm)',
-  },
   'مطلوب': {
     AppLanguage.arabic: 'مطلوب',
     AppLanguage.french: 'Obligatoire',
@@ -160,11 +155,6 @@ final Map<String, Map<AppLanguage, String>> measurementKeys = {
     AppLanguage.french: 'Non',
     AppLanguage.english: 'No',
   },
-  'جهة الستار': {
-    AppLanguage.arabic: 'جهة الستار',
-    AppLanguage.french: 'Emplacement du volet',
-    AppLanguage.english: 'Shutter Side',
-  },
   'داخل / Inside': {
     AppLanguage.arabic: 'داخل / Inside',
     AppLanguage.french: 'Intérieur',
@@ -204,11 +194,6 @@ final Map<String, Map<AppLanguage, String>> measurementKeys = {
     AppLanguage.arabic: 'لا',
     AppLanguage.french: 'Non',
     AppLanguage.english: 'No',
-  },
-  'نوع الزجاج': {
-    AppLanguage.arabic: 'نوع الزجاج',
-    AppLanguage.french: 'Type de vitrage',
-    AppLanguage.english: 'Glass Type',
   },
   'مزدوج / Double': {
     AppLanguage.arabic: 'مزدوج / Double',
@@ -290,20 +275,10 @@ final Map<String, Map<AppLanguage, String>> measurementKeys = {
     AppLanguage.french: 'Aucune mesure enregistrée pour le moment.',
     AppLanguage.english: 'No measurements saved yet.',
   },
-  'مم': {
-    AppLanguage.arabic: 'مم',
-    AppLanguage.french: 'mm',
-    AppLanguage.english: 'mm',
-  },
   'نظام': {
     AppLanguage.arabic: 'نظام',
     AppLanguage.french: 'Système',
     AppLanguage.english: 'System',
-  },
-  'ستار': {
-    AppLanguage.arabic: 'ستار',
-    AppLanguage.french: 'Volet',
-    AppLanguage.english: 'Shutter',
   },
   'نعم': {
     AppLanguage.arabic: 'نعم',
@@ -314,11 +289,6 @@ final Map<String, Map<AppLanguage, String>> measurementKeys = {
     AppLanguage.arabic: 'لا',
     AppLanguage.french: 'Non',
     AppLanguage.english: 'No',
-  },
-  'ملاحظة': {
-    AppLanguage.arabic: 'ملاحظة',
-    AppLanguage.french: 'Note',
-    AppLanguage.english: 'Note',
   },
   'تخصيص جدول الكمية والتكلفة': {
     AppLanguage.arabic: 'تخصيص جدول الكمية والتكلفة',
@@ -350,11 +320,6 @@ final Map<String, Map<AppLanguage, String>> measurementKeys = {
     AppLanguage.french: 'Liste des accessoires autorisés',
     AppLanguage.english: 'Allowed Specific Accessories',
   },
-  'حفظ الإعدادات': {
-    AppLanguage.arabic: 'حفظ الإعدادات',
-    AppLanguage.french: 'Enregistrer les paramètres',
-    AppLanguage.english: 'Save Settings',
-  },
   'تم حفظ إعدادات جدول الكمية والتكلفة بنجاح': {
     AppLanguage.arabic: 'تم حفظ إعدادات جدول الكمية والتكلفة بنجاح',
     AppLanguage.french: 'Paramètres enregistrés avec succès',
@@ -364,11 +329,6 @@ final Map<String, Map<AppLanguage, String>> measurementKeys = {
     AppLanguage.arabic: 'لا توجد سلاسل مسجلة لهذا البروفيل',
     AppLanguage.french: 'Aucune gamme pour ce profil',
     AppLanguage.english: 'No series found for this profile',
-  },
-  'تحديد الكل': {
-    AppLanguage.arabic: 'تحديد الكل',
-    AppLanguage.french: 'Tout sélectionner',
-    AppLanguage.english: 'Select All',
   },
   'إلغاء الكل': {
     AppLanguage.arabic: 'إلغاء الكل',

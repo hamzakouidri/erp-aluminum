@@ -44,6 +44,7 @@ GlassPackFit? fitGlassPack({
   required List<double> spacers,
   required List<double> outerPanes,
   required List<double> innerPanes,
+  bool lockSpacer = false,
 }) {
   List<double> nearest(List<double> values, double current) =>
       values.where((v) => v > 0).toSet().toList()
@@ -64,11 +65,22 @@ GlassPackFit? fitGlassPack({
   }
   final exact = attempt(outer, inner, spacer);
   if (exact != null) return exact;
+  // A spacer chosen by the user is kept: the caller reports the conflict and
+  // suggests a fitting spacer instead of silently replacing it.
+  if (lockSpacer) return null;
   final gaps = doubleGlass ? nearest(spacers, spacer) : <double>[0];
+  // Among the spacers that fit, prefer the tightest pack (an exact fit before
+  // the tolerated +1 mm); `gaps` is ordered by closeness to the requested
+  // spacer, so ties keep the spacer nearest to the user's choice.
+  GlassPackFit? bestGap;
   for (final gap in gaps) {
     final result = attempt(outer, inner, gap);
-    if (result != null) return result;
+    if (result != null &&
+        (bestGap == null || result.total < bestGap.total - 0.000001)) {
+      bestGap = result;
+    }
   }
+  if (bestGap != null) return bestGap;
   final panes = <(double, double)>[
     for (final out in {outer, ...nearest(outerPanes, outer)})
       for (final inside in doubleGlass ? {inner, ...nearest(innerPanes, inner)} : {0.0})
@@ -82,4 +94,49 @@ GlassPackFit? fitGlassPack({
     }
   }
   return null;
+}
+
+/// Thickest glazing gasket (per side) assumed when sizing a bead before the
+/// catalogue gaskets are known.
+const double kMaxGlazingGasketMm = 6.0;
+
+/// The smallest glazing bead that can hold a pack of [requiredPack] (its
+/// thinnest build-up). The pack may exceed the capacity by at most 1 mm (the
+/// gasket compresses) but never fall short of it, so a bead holds it when
+/// `capacity + 1 >= requiredPack`. A bead larger than [maximumPack] (the
+/// thickest build-up) cannot be filled and is never used: a simple pane is
+/// not glazed in a double bead. When the glass is too thick for every usable
+/// bead, the largest is returned so the overflow is reported against a real
+/// profile; when every bead is too large, there is none.
+T? smallestFittingGlazingBead<T>(
+  Iterable<T> beads,
+  double Function(T bead) capacityOf, {
+  required double requiredPack,
+  double? maximumPack,
+  bool Function(T bead)? preferred,
+}) {
+  final sorted =
+      beads
+          .where(
+            (bead) =>
+                capacityOf(bead) > 0 &&
+                (maximumPack == null ||
+                    capacityOf(bead) <= maximumPack + 0.000001),
+          )
+          .toList()
+        ..sort((a, b) => capacityOf(a).compareTo(capacityOf(b)));
+  if (sorted.isEmpty) return null;
+  for (final bead in sorted) {
+    if (capacityOf(bead) + 1.000001 < requiredPack) continue;
+    if (preferred != null) {
+      final sameCapacity = sorted.where(
+        (other) => (capacityOf(other) - capacityOf(bead)).abs() < 0.000001,
+      );
+      for (final other in sameCapacity) {
+        if (preferred(other)) return other;
+      }
+    }
+    return bead;
+  }
+  return sorted.last;
 }

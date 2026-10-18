@@ -28,6 +28,10 @@ class InventoryItemHistoryScreen extends StatefulWidget {
   final int locationId;
   final String locationName;
 
+  /// Replaces [SqlDatabase.readProductMovementCard] in tests.
+  @visibleForTesting
+  final Future<Map<String, dynamic>> Function()? loadCard;
+
   const InventoryItemHistoryScreen({
     super.key,
     required this.db,
@@ -38,6 +42,7 @@ class InventoryItemHistoryScreen extends StatefulWidget {
     required this.colorName,
     required this.locationId,
     required this.locationName,
+    this.loadCard,
   });
 
   @override
@@ -98,11 +103,13 @@ class _InventoryItemHistoryScreenState
   }
 
   void _load() {
-    _cardFuture = widget.db.readProductMovementCard(
-      itemId: widget.itemId,
-      itemType: widget.itemType,
-      colorId: widget.colorId,
-    );
+    _cardFuture =
+        widget.loadCard?.call() ??
+        widget.db.readProductMovementCard(
+          itemId: widget.itemId,
+          itemType: widget.itemType,
+          colorId: widget.colorId,
+        );
   }
 
   AppLanguage get _lang =>

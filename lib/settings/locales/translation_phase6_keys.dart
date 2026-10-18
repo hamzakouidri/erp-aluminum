@@ -23,30 +23,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase6Keys = {
     AppLanguage.french: 'Erreur lors du chargement des données',
     AppLanguage.english: 'Error loading data',
   },
-  'تعذر حفظ الصلاحية في السحابة؛ لم يتم تغييرها.': {
-    AppLanguage.arabic: 'تعذر حفظ الصلاحية في السحابة؛ لم يتم تغييرها.',
-    AppLanguage.french:
-        'Impossible d’enregistrer la permission dans le cloud ; aucune modification n’a été effectuée.',
-    AppLanguage.english:
-        'Could not save the permission to the cloud; no changes were made.',
-  },
-  'تعذر حفظ الصلاحيات في السحابة؛ لم يتم تغييرها.': {
-    AppLanguage.arabic: 'تعذر حفظ الصلاحيات في السحابة؛ لم يتم تغييرها.',
-    AppLanguage.french:
-        'Impossible d’enregistrer les permissions dans le cloud ; aucune modification n’a été effectuée.',
-    AppLanguage.english:
-        'Could not save the permissions to the cloud; no changes were made.',
-  },
-  '0555 123 456 أو +213555123456': {
-    AppLanguage.arabic: '0555 123 456 أو +213555123456',
-    AppLanguage.french: '0555 123 456 ou +213555123456',
-    AppLanguage.english: '0555 123 456 or +213555123456',
-  },
-  'تعذر تحميل بيانات الاشتراك': {
-    AppLanguage.arabic: 'تعذر تحميل بيانات الاشتراك',
-    AppLanguage.french: 'Impossible de charger les données de l’abonnement',
-    AppLanguage.english: 'Could not load subscription data',
-  },
   'تاريخ الاشتراك:': {
     AppLanguage.arabic: 'تاريخ الاشتراك:',
     AppLanguage.french: 'Début de l’abonnement :',
@@ -92,11 +68,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase6Keys = {
     AppLanguage.french: 'Impossible d’enregistrer l’accessoire : identifiant invalide.',
     AppLanguage.english: 'Could not save the accessory: invalid identifier.',
   },
-  'مربع صغير': {
-    AppLanguage.arabic: 'مربع صغير',
-    AppLanguage.french: 'Réduire la fenêtre',
-    AppLanguage.english: 'Restore window',
-  },
   'ملء شاشة الهاتف': {
     AppLanguage.arabic: 'ملء شاشة الهاتف',
     AppLanguage.french: 'Plein écran mobile',
@@ -106,21 +77,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase6Keys = {
     AppLanguage.arabic: 'إغلاق ملء الشاشة',
     AppLanguage.french: 'Quitter le plein écran',
     AppLanguage.english: 'Exit full screen',
-  },
-  'فتح القائمة': {
-    AppLanguage.arabic: 'فتح القائمة',
-    AppLanguage.french: 'Ouvrir le menu',
-    AppLanguage.english: 'Open menu',
-  },
-  'إغلاق القائمة': {
-    AppLanguage.arabic: 'إغلاق القائمة',
-    AppLanguage.french: 'Fermer le menu',
-    AppLanguage.english: 'Close menu',
-  },
-  'نظام النوافذ': {
-    AppLanguage.arabic: 'نظام النوافذ',
-    AppLanguage.french: 'Système de fenêtres',
-    AppLanguage.english: 'Window system',
   },
   'الشريط العلوي ثابت وواضح والنوافذ تظهر تحته': {
     AppLanguage.arabic: 'الشريط العلوي ثابت وواضح والنوافذ تظهر تحته',
@@ -161,11 +117,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase6Keys = {
     AppLanguage.arabic: 'رقم الطلبية:',
     AppLanguage.french: 'N° de commande :',
     AppLanguage.english: 'Order no.:',
-  },
-  'التاريخ:': {
-    AppLanguage.arabic: 'التاريخ:',
-    AppLanguage.french: 'Date :',
-    AppLanguage.english: 'Date:',
   },
   'غير محدد': {
     AppLanguage.arabic: 'غير محدد',

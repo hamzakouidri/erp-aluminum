@@ -64,15 +64,10 @@ void main() {
       );
       expect(bom.any((item) => item.originalName == 'الإطار (Frame)'), isFalse);
 
-      // 2. Verify 'براغي التجميع' is present instead of 'براغي الإكسسوارات'
-      // slidingTotalRoulettes = sashes * 2. With 1 sliding zone, usually sashes = 2.
-      // So assembly screws quantity = 2 sashes * 4 = 8.
-      final screwsItem = bom.firstWhere(
-        (item) => item.originalName == 'براغي التجميع',
-        orElse: () => throw Exception('Assembly screws not found'),
-      );
-      expect(screwsItem.category, equals('accessory'));
-      expect(screwsItem.quantity, equals(8.0));
+      // 2. Assembly screws are rebuilt by BomEngineV2 from the series
+      // assembly rules (see assembly_rule_authority_test), so the raw BOM
+      // emits neither a hard-coded assembly screw nor generic screws.
+      expect(bom.any((item) => item.originalName == 'براغي التجميع'), isFalse);
 
       // Verify there are no 'براغي الإكسسوارات'
       final hasGenericScrews = bom.any(
