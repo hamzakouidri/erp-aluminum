@@ -383,8 +383,12 @@ class BomItem {
       return 'الضلفة (Ouvrant)';
     }
 
+    // 'الظلفة المنزلقة (Sliding Sash)' is the BOM key itself; it reached the
+    // generic replacement below and was shown as "Sliding Ouvrant".
     if (original == 'الظلفة المنزلقة' ||
         original == 'الضلفة المنزلقة' ||
+        original == 'الظلفة المنزلقة (Sliding Sash)' ||
+        original == 'الضلفة المنزلقة (Sliding Sash)' ||
         original.toLowerCase() == 'sliding sash') {
       if (lang == 'fr') return 'Ouvrant Coulissant';
       if (lang == 'en') return 'Sliding Sash';
@@ -9666,7 +9670,19 @@ class ComponentCalculator {
                 name.contains('باكيت'));
       }
 
+      final bool beadSliding = window.activeSlidingSeries?.id == series.id;
       AluminumSection? findSimpleParclose() {
+        // The bead the drawer shows: the smallest one holding the pack.
+        final fitted = window.glazingBeadForGlass(
+          const GlassSpecification(structure: GlassStructure.simple),
+          sliding: beadSliding,
+          glassThickness: beadSliding
+              ? null
+              : (maxOpeningSimpleGlassPackThickness > 0
+                    ? maxOpeningSimpleGlassPackThickness
+                    : null),
+        );
+        if (fitted != null) return fitted;
         final allowedIds = configuredSimpleSections
             .map((section) => section.id)
             .toSet();
@@ -9691,6 +9707,14 @@ class ComponentCalculator {
       }
 
       AluminumSection? findDoubleParclose() {
+        final fitted = window.glazingBeadForGlass(
+          const GlassSpecification(structure: GlassStructure.double),
+          sliding: beadSliding,
+          glassThickness: requiredDoubleThickness > 0
+              ? requiredDoubleThickness
+              : null,
+        );
+        if (fitted != null) return fitted;
         final minimumCapacity = math.max(10.0, requiredDoubleThickness);
         final allowedIds = configuredDoubleSections
             .map((section) => section.id)
@@ -9760,7 +9784,12 @@ class ComponentCalculator {
         final double maxG =
             (chosenParclose['max_glass_thickness'] as num?)?.toDouble() ?? 0.0;
         if (maxG > 10.0 && maxG >= requiredDoubleThickness) {
-          doubled = pricedOverride(chosenParclose);
+          // A saved bead is used for double glazing only when it is the bead
+          // that holds the double pack; a large simple bead is not a double.
+          final doubleSection = findDoubleParclose();
+          doubled = doubleSection == null
+              ? pricedOverride(chosenParclose)
+              : pricedMap(doubleSection);
           final simpleSection = findSimpleParclose();
           simple = simpleSection == null
               ? pricedOverride(chosenParclose)
@@ -10199,6 +10228,10 @@ class ComponentCalculator {
             unit: 'قطعة',
             overrideMap: pricedOverride,
             preferOverrideMap: true,
+            // pricedOverride is the saved bardage selection with this
+            // colour's price. Merging the saved selection over it again
+            // restored one colour's price on every colour row.
+            ignoreSavedOverride: usesSpecificBardageRole,
             priceByWholeBar: true,
             roleKey: usesSpecificBardageRole ? 'bardage' : 'panneau',
             selectorType: usesSpecificBardageRole ? 'bardage' : 'panneau',

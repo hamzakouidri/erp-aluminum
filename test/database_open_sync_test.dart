@@ -29,7 +29,7 @@ void main() {
     final connection = await SqlDatabase().initDb();
     addTearDown(connection.close);
     expect(await connection.rawQuery('PRAGMA user_version'), [
-      {'user_version': 67},
+      {'user_version': 71},
     ]);
     expect(await connection.rawQuery('PRAGMA quick_check'), [
       {'quick_check': 'ok'},

@@ -14,16 +14,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase5Keys = {
     AppLanguage.french: 'avec succès',
     AppLanguage.english: 'successfully',
   },
-  'الطلبية لم تعد موجودة في قاعدة البيانات.': {
-    AppLanguage.arabic: 'الطلبية لم تعد موجودة في قاعدة البيانات.',
-    AppLanguage.french: 'La commande n’existe plus dans la base de données.',
-    AppLanguage.english: 'The order no longer exists in the database.',
-  },
-  'تم حذف الطلبية بنجاح.': {
-    AppLanguage.arabic: 'تم حذف الطلبية بنجاح.',
-    AppLanguage.french: 'La commande a été supprimée avec succès.',
-    AppLanguage.english: 'The order was deleted successfully.',
-  },
   'تعذر حذف الطلبية:': {
     AppLanguage.arabic: 'تعذر حذف الطلبية:',
     AppLanguage.french: 'Impossible de supprimer la commande :',
@@ -84,20 +74,10 @@ const Map<String, Map<AppLanguage, String>> translationPhase5Keys = {
     AppLanguage.french: 'Échec de la génération du fichier PDF',
     AppLanguage.english: 'Failed to generate the PDF file',
   },
-  'فريق العمل': {
-    AppLanguage.arabic: 'فريق العمل',
-    AppLanguage.french: 'Équipe de travail',
-    AppLanguage.english: 'Team',
-  },
   'الطلبات والمبيعات': {
     AppLanguage.arabic: 'الطلبات والمبيعات',
     AppLanguage.french: 'Commandes et ventes',
     AppLanguage.english: 'Orders and sales',
-  },
-  'المخزون والمنتجات': {
-    AppLanguage.arabic: 'المخزون والمنتجات',
-    AppLanguage.french: 'Stock et produits',
-    AppLanguage.english: 'Inventory and products',
   },
   'الصندوق والحسابات': {
     AppLanguage.arabic: 'الصندوق والحسابات',
@@ -140,55 +120,10 @@ const Map<String, Map<AppLanguage, String>> translationPhase5Keys = {
     AppLanguage.english:
         'The workshop session is registered. Synchronization will run automatically in the background.',
   },
-  'إظهار القائمة': {
-    AppLanguage.arabic: 'إظهار القائمة',
-    AppLanguage.french: 'Afficher le menu',
-    AppLanguage.english: 'Show menu',
-  },
   'الإعدادات والإدارة': {
     AppLanguage.arabic: 'الإعدادات والإدارة',
     AppLanguage.french: 'Paramètres et gestion',
     AppLanguage.english: 'Settings and management',
-  },
-  'تأكيد الحذف': {
-    AppLanguage.arabic: 'تأكيد الحذف',
-    AppLanguage.french: 'Confirmation de suppression',
-    AppLanguage.english: 'Confirm deletion',
-  },
-  'لا يمكن الحذف': {
-    AppLanguage.arabic: 'لا يمكن الحذف',
-    AppLanguage.french: 'Suppression impossible',
-    AppLanguage.english: 'Cannot delete',
-  },
-  'غير مصرح': {
-    AppLanguage.arabic: 'غير مصرح',
-    AppLanguage.french: 'Non autorisé',
-    AppLanguage.english: 'Not authorized',
-  },
-  'الحد الأقصى هو 3 طلبيات مفتوحة.': {
-    AppLanguage.arabic: 'الحد الأقصى هو 3 طلبيات مفتوحة.',
-    AppLanguage.french: 'Le maximum est de 3 commandes ouvertes.',
-    AppLanguage.english: 'The maximum is 3 open orders.',
-  },
-  'إغلاق الطلبية؟': {
-    AppLanguage.arabic: 'إغلاق الطلبية؟',
-    AppLanguage.french: 'Fermer la commande ?',
-    AppLanguage.english: 'Close the order?',
-  },
-  'أي تعديلات لم تُحفظ في هذه الطلبية ستُفقد.': {
-    AppLanguage.arabic: 'أي تعديلات لم تُحفظ في هذه الطلبية ستُفقد.',
-    AppLanguage.french: 'Toute modification non enregistrée sera perdue.',
-    AppLanguage.english: 'Any unsaved changes to this order will be lost.',
-  },
-  'فتح طلبية محفوظة': {
-    AppLanguage.arabic: 'فتح طلبية محفوظة',
-    AppLanguage.french: 'Ouvrir une commande enregistrée',
-    AppLanguage.english: 'Open saved order',
-  },
-  'الطلبيات المفتوحة': {
-    AppLanguage.arabic: 'الطلبيات المفتوحة',
-    AppLanguage.french: 'Commandes ouvertes',
-    AppLanguage.english: 'Open orders',
   },
   'طلبية جديدة': {
     AppLanguage.arabic: 'طلبية جديدة',
@@ -276,16 +211,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase5Keys = {
     AppLanguage.french: 'Modifier les informations de l’utilisateur',
     AppLanguage.english: 'Edit user information',
   },
-  'حفظ المعلومات': {
-    AppLanguage.arabic: 'حفظ المعلومات',
-    AppLanguage.french: 'Enregistrer les informations',
-    AppLanguage.english: 'Save information',
-  },
-  'مثال: ألمنيوم، زجاج، بي في سي...': {
-    AppLanguage.arabic: 'مثال: ألمنيوم، زجاج، بي في سي...',
-    AppLanguage.french: 'Exemple : aluminium, verre, PVC…',
-    AppLanguage.english: 'Example: aluminium, glass, PVC…',
-  },
   'مثال: 5': {
     AppLanguage.arabic: 'مثال: 5',
     AppLanguage.french: 'Exemple : 5',
@@ -341,11 +266,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase5Keys = {
     AppLanguage.french: 'Effacer les séparations intérieures',
     AppLanguage.english: 'Clear inner dividers',
   },
-  'حزام (Sangle)': {
-    AppLanguage.arabic: 'حزام (Sangle)',
-    AppLanguage.french: 'Sangle',
-    AppLanguage.english: 'Strap',
-  },
   'منايفال (Manivelle)': {
     AppLanguage.arabic: 'منايفال (Manivelle)',
     AppLanguage.french: 'Manivelle',
@@ -396,16 +316,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase5Keys = {
     AppLanguage.french: 'La date d’achat a été modifiée',
     AppLanguage.english: 'Purchase date changed',
   },
-  'إغلاق القائمة': {
-    AppLanguage.arabic: 'إغلاق القائمة',
-    AppLanguage.french: 'Fermer le menu',
-    AppLanguage.english: 'Close menu',
-  },
-  'فتح القائمة': {
-    AppLanguage.arabic: 'فتح القائمة',
-    AppLanguage.french: 'Ouvrir le menu',
-    AppLanguage.english: 'Open menu',
-  },
   'أدخل رقم CCP/RIP أولاً.': {
     AppLanguage.arabic: 'أدخل رقم CCP/RIP أولاً.',
     AppLanguage.french: 'Saisissez d’abord le numéro CCP/RIP.',
@@ -451,11 +361,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase5Keys = {
     AppLanguage.french: 'Activer',
     AppLanguage.english: 'Activate',
   },
-  'الكل': {
-    AppLanguage.arabic: 'الكل',
-    AppLanguage.french: 'Tous',
-    AppLanguage.english: 'All',
-  },
   'منتهية / بحاجة تفعيل': {
     AppLanguage.arabic: 'منتهية / بحاجة تفعيل',
     AppLanguage.french: 'Expirées / à activer',
@@ -470,11 +375,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase5Keys = {
     AppLanguage.arabic: 'بحث بالاسم أو البريد الإلكتروني...',
     AppLanguage.french: 'Rechercher par nom ou e-mail...',
     AppLanguage.english: 'Search by name or email...',
-  },
-  'إدارة الحساب': {
-    AppLanguage.arabic: 'إدارة الحساب',
-    AppLanguage.french: 'Gérer le compte',
-    AppLanguage.english: 'Manage account',
   },
   'إدارة:': {
     AppLanguage.arabic: 'إدارة:',
@@ -715,11 +615,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase5Keys = {
         'Une erreur est survenue lors de la vérification de l’abonnement :',
     AppLanguage.english: 'An error occurred while checking the subscription:',
   },
-  'خطأ: لم يتم العثور على بيانات الورشة.': {
-    AppLanguage.arabic: 'خطأ: لم يتم العثور على بيانات الورشة.',
-    AppLanguage.french: 'Erreur : les données de l’atelier sont introuvables.',
-    AppLanguage.english: 'Error: workshop data was not found.',
-  },
   'أسطر مخزون': {
     AppLanguage.arabic: 'أسطر مخزون',
     AppLanguage.french: 'Lignes de stock',
@@ -839,11 +734,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase5Keys = {
     AppLanguage.arabic: 'الوحدة:',
     AppLanguage.french: 'Unité :',
     AppLanguage.english: 'Unit:',
-  },
-  'انقر على ': {
-    AppLanguage.arabic: 'انقر على ',
-    AppLanguage.french: 'Cliquez sur ',
-    AppLanguage.english: 'Click on ',
   },
   'تاريخ التصدير': {
     AppLanguage.arabic: 'تاريخ التصدير',
@@ -1063,16 +953,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase5Keys = {
     AppLanguage.arabic: 'لون الستار',
     AppLanguage.french: 'Couleur du volet',
     AppLanguage.english: 'Shutter color',
-  },
-  'مثال: 300': {
-    AppLanguage.arabic: 'مثال: 300',
-    AppLanguage.french: 'Exemple : 300',
-    AppLanguage.english: 'Example: 300',
-  },
-  'مثال: 4 أو 5': {
-    AppLanguage.arabic: 'مثال: 4 أو 5',
-    AppLanguage.french: 'Exemple : 4 ou 5',
-    AppLanguage.english: 'Example: 4 or 5',
   },
   'مشتريات (مدين)': {
     AppLanguage.arabic: 'مشتريات (مدين)',

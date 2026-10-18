@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:database_data/Screen/moustiquaire_screen.dart'
+    show moustiquaireTypePriceKeys;
 import 'package:database_data/widgets/app_material.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/settings/app_settings.dart';
@@ -104,7 +106,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
   void initState() {
     super.initState();
     _tabController = TabController(
-      length: 10,
+      length: 11,
       vsync: this,
       initialIndex: _sessionSelectedTab ?? widget.initialIndex,
     );
@@ -1972,32 +1974,11 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         (shutterSqmPrices['DemiOB_Install']?[0]) ?? 0.0;
     final double verrouInstallPrice =
         (shutterSqmPrices['Verrou_Install']?[0]) ?? 0.0;
-    final double moustiquaireSqmPrice =
-        (shutterSqmPrices['Moustiquaire_Sqm']?[0]) ?? 0.0;
 
     return ListView(
       key: const PageStorageKey<String>('price-shutter-sqm-list'),
       padding: const EdgeInsets.only(bottom: 16),
       children: [
-        sectionCard(
-          title: 'الموستيكير (Moustiquaire) — سعر المتر المربع',
-          icon: Icons.grid_on_rounded,
-          color: Colors.green,
-          body: PriceEditRow(
-            title: 'السعر الرسمي للمتر المربع',
-            titleIcon: const Icon(
-              Icons.square_foot_rounded,
-              size: 18,
-              color: Colors.green,
-            ),
-            subtitle: 'يُطبق تلقائياً عند إضافتها إلى النافذة',
-            currentPrice: moustiquaireSqmPrice,
-            canChangePrices: canChangePrices,
-            onSave: (parsed) =>
-                _updateShutterSqmPrice('Moustiquaire_Sqm', 0, parsed),
-          ),
-        ),
-
         // ── 1. Lames ──────────────────────────────────────────────────────
         sectionCard(
           title: Localization.translate(
@@ -2465,6 +2446,70 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         ),
       );
     }
+  }
+
+  /// Mosquito-net prices per square metre: the add-on of a drawn window and
+  /// each standalone mosquito-net type (read by the mosquito-net screen).
+  Widget _buildMoustiquairePricingTab(BuildContext context) {
+    final lang = Provider.of<AppSettingsProvider>(context).language;
+    String t(String key) => Localization.translate(key, lang);
+    double price(String key) => shutterSqmPrices[key]?[0] ?? 0.0;
+    Widget row(String key, String title, String subtitle, IconData icon) =>
+        PriceEditRow(
+          key: ValueKey('moustiquaire-$key-${price(key)}'),
+          title: t(title),
+          titleIcon: Icon(icon, size: 18, color: Colors.green),
+          subtitle: t(subtitle),
+          currentPrice: price(key),
+          canChangePrices: canChangePrices,
+          onSave: (parsed) => _updateShutterSqmPrice(key, 0, parsed),
+        );
+    Widget card(String title, List<Widget> rows) => Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.green.withValues(alpha: 0.4)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.grid_on_rounded, color: Colors.green),
+              title: Text(
+                t(title),
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            ...rows,
+          ],
+        ),
+      ),
+    );
+    return ListView(
+      key: const PageStorageKey<String>('price-moustiquaire-list'),
+      padding: const EdgeInsets.only(bottom: 16),
+      children: [
+        card('موستيكير مضافة إلى النافذة', [
+          row(
+            'Moustiquaire_Sqm',
+            'السعر الرسمي للمتر المربع',
+            'يُطبق تلقائياً عند إضافتها إلى النافذة',
+            Icons.square_foot_rounded,
+          ),
+        ]),
+        card('موستيكير مستقلة — سعر المتر المربع حسب النوع', [
+          for (final (key, title) in moustiquaireTypePriceKeys)
+            row(
+              key,
+              title,
+              'يُقترح تلقائياً في شاشة الموستيكير ويمكن تعديله في الطلبية',
+              Icons.window_rounded,
+            ),
+        ]),
+      ],
+    );
   }
 
   Widget _buildAccessoryColorTab(BuildContext context) {
@@ -4947,6 +4992,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                 _ => 'إكسسوارات الزجاج المقسّى',
               },
             ),
+            Tab(text: Localization.translate('الموستيكير (Moustiquaire)', lang)),
           ],
         ),
       ),
@@ -4974,6 +5020,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                   _buildShutterBoxLimitsTab(context),
                   _buildCaissonTunnelPricingTab(context),
                   _buildTemperedGlassPricingTab(context),
+                  _buildMoustiquairePricingTab(context),
                 ],
               ),
       ),

@@ -130,6 +130,9 @@ class _CommandeState extends State<Commande> {
   bool _isOrderUnseen(Map<String, dynamic> order) {
     final orderId = _readId(order['id']) ?? 0;
     if (orderId <= 0) return false;
+    // The author of the latest change has already seen it; it is unread
+    // only for the other accounts of the workshop.
+    if (SqlDatabase.isOwnLatestOrderEdit(order)) return false;
     final seenVersion = _seenOrderVersions[orderId];
     if (seenVersion == null) return true;
     if (seenVersion == _legacySeenVersion) return false;

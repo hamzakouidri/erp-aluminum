@@ -8,9 +8,48 @@ import 'package:database_data/Commande/Systeme/accessory_assembly.dart';
 import 'package:database_data/Commande/Systeme/bom_engine_v2.dart';
 import 'accessory_assembly_rules_test.dart' show RuleDatabase;
 
+/// The engine keeps a profile row only when the catalogue offers it for its
+/// role; these tests use a series whose extension and complement profiles
+/// are configured.
+class _SeriesSectionsDatabase extends RuleDatabase {
+  static const _sections = <String, Map<String, dynamic>>{
+    'frame_extension': {'id': 305, 'code': 'B90 105', 'name': 'Extension'},
+    'complement_haut_base': {'id': 314, 'code': 'B90 314', 'name': 'Complement'},
+  };
+
+  @override
+  Future<List<Map<String, dynamic>>> getDesignSectionsForRoles(
+    int seriesId,
+    Iterable<String> roleKeys, {
+    bool requireDialog = true,
+    bool requireQuantity = false,
+    bool requireVisible = true,
+  }) async => [
+    for (final role in roleKeys)
+      if (_sections[role] case final section?)
+        {
+          ...section,
+          'series_id': seriesId,
+          'type': role,
+          'design_role_key': role,
+          'is_active': 1,
+        },
+  ];
+
+  @override
+  Future<List<Map<String, dynamic>>> getDesignSectionsForScopedDialogRoles(
+    int seriesId,
+    Iterable<String> roleKeys, {
+    required String usageScope,
+    bool requireDialog = true,
+    bool requireQuantity = false,
+    bool requireVisible = true,
+  }) => getDesignSectionsForRoles(seriesId, roleKeys);
+}
+
 void main() {
   test('Clam includes base frame, extension frame and framed sliding sashes', () async {
-    final db = RuleDatabase();
+    final db = _SeriesSectionsDatabase();
     db.rules..clear()..addAll([
       {'id': 4188, 'item_id': 61, 'series_id': 41, 'role_key': 'clam',
         'is_active': 1, 'show_in_drawing': 0, 'show_in_quantity': 1,
@@ -40,7 +79,7 @@ void main() {
     expect(clamps.singleWhere((item) => item.catalogItemId == 60).quantity, 8);
   });
   test('BS90 quantity-only Clam follows B90 101 in mixed saved drawing', () async {
-    final db = RuleDatabase();
+    final db = _SeriesSectionsDatabase();
     db.rules..clear()..add({
       'id': 4148, 'item_id': 61, 'series_id': 41, 'role_key': 'clam',
       'is_active': 1, 'show_in_drawing': 0, 'show_in_quantity': 1,
@@ -78,7 +117,7 @@ void main() {
     expect(strike.quantity, greaterThan(0));
   });
   test('assembly screws follow configured ends of physical profile pieces', () async {
-    final db = RuleDatabase();
+    final db = _SeriesSectionsDatabase();
     db.rules..clear()..add({
       'id': 4153, 'item_id': 37, 'series_id': 41,
       'role_key': 'assembly_screw', 'is_active': 1,
@@ -115,18 +154,22 @@ void main() {
         sectionId: 12,
       ),
     ];
-    for (final role in ['clam', 'assembly_screw']) {
+    // Only the bound profile (section 90) counts. Screws use the top and
+    // bottom quantities (2×1 + 2×2); a clam is fitted with the same quantity
+    // on every 45° corner (4 corners × 1).
+    for (final (role, expected) in [('clam', 4), ('assembly_screw', 6)]) {
       expect(
         assemblyQuantity({
           'role_key': role,
           'assembly_target': 'sash',
           'assembly_section_quantities': '90:1:2',
         }, demands),
-        6,
+        expected,
+        reason: role,
       );
     }
   });
-  test('a zero configured bottom quantity remains zero for clamps', () {
+  test('clamps use the configured quantity on every 45° corner', () {
     expect(
       assemblyQuantity(
         {'role_key': 'clam', 'assembly_section_quantities': '90:1:0'},
@@ -140,11 +183,11 @@ void main() {
           ),
         ],
       ),
-      2,
+      4,
     );
   });
   test('BS90 frame clams progression per rail: 2 rails=4, 3 rails=6, 4 rails=8, 5 rails=10, 6 rails=12', () async {
-    final db = RuleDatabase();
+    final db = _SeriesSectionsDatabase();
     db.rules
       ..clear()
       ..add({
@@ -263,7 +306,7 @@ void main() {
   });
 
   test('BS90 face-to-face central meeting adds 4 clams for the two meeting columns', () async {
-    final db = RuleDatabase();
+    final db = _SeriesSectionsDatabase();
     db.rules
       ..clear()
       ..add({

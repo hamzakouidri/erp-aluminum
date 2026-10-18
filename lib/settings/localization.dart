@@ -22,6 +22,11 @@ import 'locales/translation_phase9_keys.dart';
 import 'locales/translation_phase10_keys.dart';
 import 'locales/translation_phase11_keys.dart';
 import 'locales/translation_phase12_keys.dart';
+import 'locales/product_movement_keys.dart';
+import 'locales/glazing_fit_keys.dart';
+import 'locales/window_3d_keys.dart';
+import 'locales/ai_agent_keys.dart';
+import 'locales/system_publication_keys.dart';
 
 class Localization {
   static final Map<String, Map<AppLanguage, String>> _dictionary = {
@@ -46,6 +51,11 @@ class Localization {
     ...translationPhase10Keys,
     ...translationPhase11Keys,
     ...translationPhase12Keys,
+    ...productMovementKeys,
+    ...glazingFitKeys,
+    ...window3dKeys,
+    ...aiAgentKeys,
+    ...systemPublicationKeys,
     ...shortcutKeys,
     ...subscriptionStatusKeys,
   };

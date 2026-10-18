@@ -1,11 +1,6 @@
 import '../app_settings.dart';
 
 final Map<String, Map<AppLanguage, String>> caissonTunnelKeys = {
-  'Caisson Tunnel': {
-    AppLanguage.arabic: 'صندوق النفق (Caisson tunnel)',
-    AppLanguage.french: 'Caisson tunnel',
-    AppLanguage.english: 'Tunnel box',
-  },
   'نوع الأغطية (Kit):': {
     AppLanguage.arabic: 'نوع الأغطية (Kit):',
     AppLanguage.french: 'Type d\'embouts (Kit):',
@@ -56,30 +51,10 @@ final Map<String, Map<AppLanguage, String>> caissonTunnelKeys = {
     AppLanguage.french: 'Dimension / Longueur',
     AppLanguage.english: 'Dimension / Length',
   },
-  'الكمية': {
-    AppLanguage.arabic: 'الكمية',
-    AppLanguage.french: 'Quantité',
-    AppLanguage.english: 'Quantity',
-  },
   'حجم الكيسون (الأغطية الجانبية):': {
     AppLanguage.arabic: 'حجم الكيسون (الأغطية الجانبية):',
     AppLanguage.french: 'Taille du caisson (Embouts):',
     AppLanguage.english: 'Caisson Size (Side Covers):',
-  },
-  'إلغاء': {
-    AppLanguage.arabic: 'إلغاء',
-    AppLanguage.french: 'Annuler',
-    AppLanguage.english: 'Cancel',
-  },
-  'إضافة': {
-    AppLanguage.arabic: 'إضافة',
-    AppLanguage.french: 'Ajouter',
-    AppLanguage.english: 'Add',
-  },
-  'تعديل': {
-    AppLanguage.arabic: 'تعديل',
-    AppLanguage.french: 'Modifier',
-    AppLanguage.english: 'Update',
   },
   'إضافة وإنهاء': {
     AppLanguage.arabic: 'إضافة وإنهاء',
@@ -175,11 +150,6 @@ final Map<String, Map<AppLanguage, String>> caissonTunnelKeys = {
     AppLanguage.arabic: 'الطول:',
     AppLanguage.french: 'Longueur:',
     AppLanguage.english: 'Length:',
-  },
-  'متر': {
-    AppLanguage.arabic: 'متر',
-    AppLanguage.french: 'm',
-    AppLanguage.english: 'm',
   },
   'غطاء سفلي:': {
     AppLanguage.arabic: 'غطاء سفلي:',

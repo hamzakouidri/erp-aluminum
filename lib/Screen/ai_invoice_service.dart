@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:google_generative_ai/google_generative_ai.dart';
+
+import '../services/ai_agent_service.dart';
+import '../services/gemini_gateway.dart';
 
 class ExtractedInvoiceItem {
   final String itemCode;
@@ -98,27 +100,17 @@ class ExtractedInvoice {
 }
 
 class AiInvoiceService {
-  /// تحليل صورة الفاتورة واستخراج البيانات.
-  /// Requires a configured API key; failures must never be replaced with
+  /// تحليل صورة الفاتورة واستخراج البيانات، بأقوى نموذج Gemini متاح عبر
+  /// [gateway] (الخادم افتراضياً). Failures must never be replaced with
   /// fabricated invoice data that looks like a successful scan.
   static Future<ExtractedInvoice> analyzeInvoice(
     Uint8List imageBytes, {
-    String? apiKey,
+    GeminiGateway? gateway,
     String mimeType = 'image/jpeg',
     List<Map<String, String>> catalogHints = const [],
   }) async {
-    if (apiKey == null || apiKey.trim().isEmpty) {
-      throw StateError('مفتاح Gemini غير مضبوط في الإعدادات.');
-    }
-
+    final gemini = gateway ?? await GeminiGateway.current();
     try {
-      final model = GenerativeModel(
-        model: 'gemini-3.8-flash',
-        apiKey: apiKey,
-        generationConfig: GenerationConfig(
-          responseMimeType: 'application/json',
-        ),
-      );
 
       final catalogText = catalogHints.take(350).map((entry) {
         return '${entry['code'] ?? ''} | ${entry['name'] ?? ''} | ${entry['color'] ?? ''}';
@@ -161,12 +153,40 @@ $catalogText
 ركز جداً على الأكواد التجارية (مثل P400، P405، TPR)، وعلى جميع الأسطر واللون. إذا كان السطر ضعيفاً أبقه مع confidence منخفض بدلاً من حذفه.
 ''';
 
-      final content = [
-        Content.multi([DataPart(mimeType, imageBytes), TextPart(prompt)]),
-      ];
-
-      final response = await model.generateContent(content);
-      final responseText = response.text;
+      final body = {
+        'contents': [
+          {
+            'role': 'user',
+            'parts': [
+              {
+                'inlineData': {
+                  'mimeType': mimeType,
+                  'data': base64Encode(imageBytes),
+                },
+              },
+              {'text': prompt},
+            ],
+          },
+        ],
+        'generationConfig': {
+          'temperature': 0.0,
+          'responseMimeType': 'application/json',
+        },
+      };
+      Object? lastError;
+      String? responseText;
+      for (final model in (await AiAgentService.modelsVia(gemini)).take(3)) {
+        try {
+          responseText = GeminiGateway.textOf(
+            await gemini.generate(model, body),
+          );
+          break;
+        } catch (error) {
+          lastError = error;
+          if (error is GeminiException && error.isQuota) break;
+        }
+      }
+      if (responseText == null && lastError != null) throw lastError;
 
       if (responseText == null || responseText.isEmpty) {
         throw Exception('الرد المستلم من الذكاء الاصطناعي فارغ.');

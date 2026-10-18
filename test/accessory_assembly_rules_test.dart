@@ -69,6 +69,7 @@ class RuleDatabase extends SqlDatabase {
   @override
   Future<Database?> get db async => MemoryDatabase();
 
+  /// Filters like the real query: by role and item when they are given.
   @override
   Future<List<Map<String, dynamic>>> getCatalogItemRules({
     String? itemTable,
@@ -77,7 +78,15 @@ class RuleDatabase extends SqlDatabase {
     Iterable<String> roleKeys = const [],
     bool exactSeriesOnly = false,
     bool includeInactive = false,
-  }) async => rules;
+  }) async {
+    final roles = roleKeys.map((role) => role.trim()).toSet();
+    return [
+      for (final rule in rules)
+        if ((roles.isEmpty || roles.contains('${rule['role_key']}'.trim())) &&
+            (itemId == null || rule['item_id'] == itemId))
+          rule,
+    ];
+  }
 }
 
 class LegacyAssignedAccessoryDatabase implements Database {
@@ -592,6 +601,24 @@ void main() {
           sourceSeriesId: 1,
           materialType: 'aluminium',
           overrideKey: 'linked-accessory:test-profile',
+        ),
+        // The drawing's sash row identifies the sash section (12), so the
+        // rule linked to the plinthe section is not applied to its corners.
+        BomItem(
+          category: 'profile',
+          originalName: 'الظلفة (Sash)',
+          name: 'Sash S12',
+          quantity: 1,
+          unit: 'متر',
+          unitPrice: 10,
+          pieces: const [1.0, 1.0, 0.4, 0.4, 1.0, 1.0, 0.4, 0.4],
+          catalogItemId: 12,
+          selectorCategory: 'profile',
+          selectorType: 'sash',
+          roleKey: 'sash',
+          sourceSeriesId: 1,
+          materialType: 'aluminium',
+          overrideKey: 'linked-accessory:test-sash',
         ),
       ];
 

@@ -560,51 +560,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase11Keys = {
     AppLanguage.french: 'Demander le renouvellement via WhatsApp',
     AppLanguage.english: 'Request subscription renewal via WhatsApp',
   },
-  'الدفع الإلكتروني وتجديد الاشتراك': {
-    AppLanguage.arabic: 'الدفع الإلكتروني وتجديد الاشتراك',
-    AppLanguage.french: 'Paiement électronique et renouvellement',
-    AppLanguage.english: 'Online payment and subscription renewal',
-  },
-  '1. اختر باقة الاشتراك': {
-    AppLanguage.arabic: '1. اختر باقة الاشتراك',
-    AppLanguage.french: '1. Choisissez le forfait',
-    AppLanguage.english: '1. Select subscription plan',
-  },
-  '2. وسيلة الدفع بالدينار الجزائري': {
-    AppLanguage.arabic: '2. وسيلة الدفع بالدينار الجزائري',
-    AppLanguage.french: '2. Mode de paiement (DZD)',
-    AppLanguage.english: '2. Payment method (DZD)',
-  },
-  'البطاقة الذهبية (Edahabia)': {
-    AppLanguage.arabic: 'البطاقة الذهبية (Edahabia)',
-    AppLanguage.french: 'Carte Edahabia',
-    AppLanguage.english: 'Edahabia card',
-  },
-  'دفع فوري آمن لبريد الجزائر مع رمز SMS': {
-    AppLanguage.arabic: 'دفع فوري آمن لبريد الجزائر مع رمز SMS',
-    AppLanguage.french: 'Paiement instantané sécurisé Algérie Poste par SMS',
-    AppLanguage.english: 'Secure instant payment via Algérie Poste with SMS',
-  },
-  'الأكثر استخداماً': {
-    AppLanguage.arabic: 'الأكثر استخداماً',
-    AppLanguage.french: 'Le plus utilisé',
-    AppLanguage.english: 'Most popular',
-  },
-  'بطاقة CIB البنكية': {
-    AppLanguage.arabic: 'بطاقة CIB البنكية',
-    AppLanguage.french: 'Carte bancaire CIB',
-    AppLanguage.english: 'CIB bank card',
-  },
-  'جميع البنوك الجزائرية (BNA, BEA, CPA, BDL, BADR, إلخ)': {
-    AppLanguage.arabic: 'جميع البنوك الجزائرية (BNA, BEA, CPA, BDL, BADR, إلخ)',
-    AppLanguage.french: 'Toutes les banques algériennes (BNA, BEA, CPA, BDL, BADR, etc.)',
-    AppLanguage.english: 'All Algerian banks (BNA, BEA, CPA, BDL, BADR, etc.)',
-  },
-  'شبكة SATIM': {
-    AppLanguage.arabic: 'شبكة SATIM',
-    AppLanguage.french: 'Réseau SATIM',
-    AppLanguage.english: 'SATIM Network',
-  },
   'تأكيد ومتابعة الدفع': {
     AppLanguage.arabic: 'تأكيد ومتابعة الدفع',
     AppLanguage.french: 'Confirmer et procéder au paiement',
@@ -624,21 +579,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase11Keys = {
     AppLanguage.arabic: 'إرسال إشعار التحويل للإدارة',
     AppLanguage.french: 'Envoyer la notification à l\'administration',
     AppLanguage.english: 'Send transfer notification to admin',
-  },
-  'تم استلام معلومات التحويل': {
-    AppLanguage.arabic: 'تم استلام معلومات التحويل',
-    AppLanguage.french: 'Informations de virement reçues',
-    AppLanguage.english: 'Transfer info received',
-  },
-  'تم إرسال إشعار الدفع عبر بريدي موب للإدارة.\nسيتم مراجعة رقم المعاملة وتفعيل الاشتراك خلال دقائق معدودة.': {
-    AppLanguage.arabic: 'تم إرسال إشعار الدفع عبر بريدي موب للإدارة.\nسيتم مراجعة رقم المعاملة وتفعيل الاشتراك خلال دقائق معدودة.',
-    AppLanguage.french: 'Notification de paiement envoyée.\nLe virement sera validé et l\'abonnement activé dans quelques minutes.',
-    AppLanguage.english: 'Payment notification sent.\nTransaction will be reviewed and subscription activated in a few minutes.',
-  },
-  'العودة للتطبيق': {
-    AppLanguage.arabic: 'العودة للتطبيق',
-    AppLanguage.french: 'Retour à l\'application',
-    AppLanguage.english: 'Return to application',
   },
   'موافق': {
     AppLanguage.arabic: 'موافق',
@@ -744,150 +684,10 @@ const Map<String, Map<AppLanguage, String>> translationPhase11Keys = {
   },
 
   // ── 6. إضافات الدفع الإلكتروني (Online Payment Details) ──
-  'دفع مشفر وآمن 100% ومطابق لمعايير الأمان البنكي وبريد الجزائر': {
-    AppLanguage.arabic: 'دفع مشفر وآمن 100% ومطابق لمعايير الأمان البنكي وبريد الجزائر',
-    AppLanguage.french: 'Paiement 100% sécurisé et conforme aux normes bancaires et Algérie Poste',
-    AppLanguage.english: '100% encrypted & secure payment compliant with banking & Algérie Poste standards',
-  },
-  'بوابة الدفع الإلكتروني المعتمدة': {
-    AppLanguage.arabic: 'بوابة الدفع الإلكتروني المعتمدة',
-    AppLanguage.french: 'Passerelle de paiement électronique agréée',
-    AppLanguage.english: 'Approved electronic payment gateway',
-  },
-  'الدفع متاح الآن مباشرة بالبطاقات الجزائرية دون الحاجة للتنقل': {
-    AppLanguage.arabic: 'الدفع متاح الآن مباشرة بالبطاقات الجزائرية دون الحاجة للتنقل',
-    AppLanguage.french: 'Le paiement est disponible directement avec les cartes algériennes sans déplacement',
-    AppLanguage.english: 'Online payment available directly with Algerian cards without traveling',
-  },
-  'بريدي موب (BaridiMob)': {
-    AppLanguage.arabic: 'بريدي موب (BaridiMob)',
-    AppLanguage.french: 'BaridiMob',
-    AppLanguage.english: 'BaridiMob',
-  },
-  'تحويل فوري للتطبيق عبر RIP والـ QR': {
-    AppLanguage.arabic: 'تحويل فوري للتطبيق عبر RIP والـ QR',
-    AppLanguage.french: 'Virement instantané via RIP et code QR',
-    AppLanguage.english: 'Instant transfer via RIP and QR code',
-  },
-  'تحويل مباشر': {
-    AppLanguage.arabic: 'تحويل مباشر',
-    AppLanguage.french: 'Virement direct',
-    AppLanguage.english: 'Direct transfer',
-  },
-  'كارت فيزا / ماستركارد (Visa / Mastercard)': {
-    AppLanguage.arabic: 'كارت فيزا / ماستركارد (Visa / Mastercard)',
-    AppLanguage.french: 'Carte Visa / Mastercard',
-    AppLanguage.english: 'Visa / Mastercard',
-  },
-  'البطاقات الدولية والمحلية المعتمدة': {
-    AppLanguage.arabic: 'البطاقات الدولية والمحلية المعتمدة',
-    AppLanguage.french: 'Cartes nationales et internationales agréées',
-    AppLanguage.english: 'Approved domestic and international cards',
-  },
-  'دولي': {
-    AppLanguage.arabic: 'دولي',
-    AppLanguage.french: 'International',
-    AppLanguage.english: 'International',
-  },
-  'المبلغ الإجمالي للدفع:': {
-    AppLanguage.arabic: 'المبلغ الإجمالي للدفع:',
-    AppLanguage.french: 'Montant total à payer :',
-    AppLanguage.english: 'Total amount to pay:',
-  },
-  'ادفع الآن بالبطاقة': {
-    AppLanguage.arabic: 'ادفع الآن بالبطاقة',
-    AppLanguage.french: 'Payer maintenant par carte',
-    AppLanguage.english: 'Pay now by card',
-  },
-  'جاري تجهيز بوابة الدفع...': {
-    AppLanguage.arabic: 'جاري تجهيز بوابة الدفع...',
-    AppLanguage.french: 'Préparation de la passerelle...',
-    AppLanguage.english: 'Preparing payment gateway...',
-  },
-  'خطوات الدفع عبر بريدي موب (BaridiMob):': {
-    AppLanguage.arabic: 'خطوات الدفع عبر بريدي موب (BaridiMob):',
-    AppLanguage.french: 'Étapes de paiement via BaridiMob :',
-    AppLanguage.english: 'Steps for paying via BaridiMob:',
-  },
-  '1. انسخ رقم الـ RIP أدناه.\n2. افتح تطبيق BaridiMob وقم بإجراء تحويل بالمبلغ المطلوب.\n3. ضع رقم المعاملة (N° de transaction) هنا لتفعيل اشتراكك.': {
-    AppLanguage.arabic: '1. انسخ رقم الـ RIP أدناه.\n2. افتح تطبيق BaridiMob وقم بإجراء تحويل بالمبلغ المطلوب.\n3. ضع رقم المعاملة (N° de transaction) هنا لتفعيل اشتراكك.',
-    AppLanguage.french: '1. Copiez le numéro RIP ci-dessous.\n2. Ouvrez l\'application BaridiMob et effectuez le virement.\n3. Saisissez le numéro de transaction ici pour activer votre abonnement.',
-    AppLanguage.english: '1. Copy the RIP number below.\n2. Open BaridiMob app and make the transfer.\n3. Enter the transaction number here to activate your subscription.',
-  },
-  'رقم الحساب البريدي (RIP):': {
-    AppLanguage.arabic: 'رقم الحساب البريدي (RIP):',
-    AppLanguage.french: 'Numéro de compte postal (RIP) :',
-    AppLanguage.english: 'Postal account number (RIP):',
-  },
-  'نسخ رقم الـ RIP': {
-    AppLanguage.arabic: 'نسخ رقم الـ RIP',
-    AppLanguage.french: 'Copier le numéro RIP',
-    AppLanguage.english: 'Copy RIP number',
-  },
-  'تم نسخ رقم الـ RIP بنجاح': {
-    AppLanguage.arabic: 'تم نسخ رقم الـ RIP بنجاح',
-    AppLanguage.french: 'Numéro RIP copié avec succès',
-    AppLanguage.english: 'RIP number copied successfully',
-  },
-  'رقم معاملة بريدي موب (Numéro de transaction)': {
-    AppLanguage.arabic: 'رقم معاملة بريدي موب (Numéro de transaction)',
-    AppLanguage.french: 'Numéro de transaction BaridiMob',
-    AppLanguage.english: 'BaridiMob transaction number',
-  },
-  'ملاحظة إضافية (اختياري - اسم الورشة أو رقم الهاتف)': {
-    AppLanguage.arabic: 'ملاحظة إضافية (اختياري - اسم الورشة أو رقم الهاتف)',
-    AppLanguage.french: 'Note additionnelle (facultatif - nom atelier ou tél)',
-    AppLanguage.english: 'Additional note (optional - workshop name or phone)',
-  },
-  'تأكيد التحويل وإرسال الإشعار': {
-    AppLanguage.arabic: 'تأكيد التحويل وإرسال الإشعار',
-    AppLanguage.french: 'Confirmer le virement et envoyer',
-    AppLanguage.english: 'Confirm transfer and send notice',
-  },
-  'بانتظار إتمام الدفع...': {
-    AppLanguage.arabic: 'بانتظار إتمام الدفع...',
-    AppLanguage.french: 'En attente du paiement...',
-    AppLanguage.english: 'Awaiting payment completion...',
-  },
-  'تم فتح صفحة الدفع الآمنة على المتصفح.\nيرجى إدخال بيانات البطاقة والرمز السري SMS المرسل إلى هاتفك لإتمام المعاملة.': {
-    AppLanguage.arabic: 'تم فتح صفحة الدفع الآمنة على المتصفح.\nيرجى إدخال بيانات البطاقة والرمز السري SMS المرسل إلى هاتفك لإتمام المعاملة.',
-    AppLanguage.french: 'Page de paiement sécurisée ouverte dans le navigateur.\nVeuillez saisir les coordonnées de la carte et le code SMS reçu sur votre téléphone.',
-    AppLanguage.english: 'Secure payment page opened in browser.\nPlease enter card details and SMS code received on your phone.',
-  },
-  'تحقق من تفعيل الدفع': {
-    AppLanguage.arabic: 'تحقق من تفعيل الدفع',
-    AppLanguage.french: 'Vérifier l\'activation du paiement',
-    AppLanguage.english: 'Verify payment activation',
-  },
-  'تم الدفع وتفعيل الاشتراك بنجاح!': {
-    AppLanguage.arabic: 'تم الدفع وتفعيل الاشتراك بنجاح!',
-    AppLanguage.french: 'Paiement effectué et abonnement activé avec succès !',
-    AppLanguage.english: 'Payment successful and subscription activated!',
-  },
-  'الأكثر طلباً': {
-    AppLanguage.arabic: 'الأكثر طلباً',
-    AppLanguage.french: 'Le plus demandé',
-    AppLanguage.english: 'Most requested',
-  },
   'د.ج': {
     AppLanguage.arabic: 'د.ج',
     AppLanguage.french: 'DZD',
     AppLanguage.english: 'DZD',
-  },
-  'الذهبية': {
-    AppLanguage.arabic: 'الذهبية',
-    AppLanguage.french: 'Edahabia',
-    AppLanguage.english: 'Edahabia',
-  },
-  'CIB': {
-    AppLanguage.arabic: 'CIB',
-    AppLanguage.french: 'CIB',
-    AppLanguage.english: 'CIB',
-  },
-  'BaridiMob': {
-    AppLanguage.arabic: 'BaridiMob',
-    AppLanguage.french: 'BaridiMob',
-    AppLanguage.english: 'BaridiMob',
   },
   'البار #': {
     AppLanguage.arabic: 'البار #',
@@ -1087,11 +887,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase11Keys = {
     AppLanguage.arabic: 'قائم وسطي سليم (Montant Slim)',
     AppLanguage.french: 'Montant central slim',
     AppLanguage.english: 'Slim central montant',
-  },
-  'مدى الحياة': {
-    AppLanguage.arabic: 'مدى الحياة',
-    AppLanguage.french: 'À vie',
-    AppLanguage.english: 'Lifetime',
   },
   'اشتراك مدى الحياة': {
     AppLanguage.arabic: 'اشتراك مدى الحياة',

@@ -3,11 +3,6 @@ import '../app_settings.dart';
 /// Glass drawing setup vocabulary.  The internal drawing values remain stable
 /// while these labels can be translated independently in the UI.
 const Map<String, Map<AppLanguage, String>> translationPhase7Keys = {
-  'ملف ومعلومات الورشة': {
-    AppLanguage.arabic: 'ملف ومعلومات الورشة',
-    AppLanguage.french: 'Profil et informations de l’atelier',
-    AppLanguage.english: 'Workshop profile and information',
-  },
   'معلومات الورشة': {
     AppLanguage.arabic: 'معلومات الورشة',
     AppLanguage.french: 'Informations de l’atelier',
@@ -124,16 +119,6 @@ const Map<String, Map<AppLanguage, String>> translationPhase7Keys = {
     AppLanguage.arabic: 'من أسفل الزجاج',
     AppLanguage.french: 'Depuis le bas du verre',
     AppLanguage.english: 'From glass bottom',
-  },
-  'من اليمين': {
-    AppLanguage.arabic: 'من اليمين',
-    AppLanguage.french: 'Depuis la droite',
-    AppLanguage.english: 'From right',
-  },
-  'من اليسار': {
-    AppLanguage.arabic: 'من اليسار',
-    AppLanguage.french: 'Depuis la gauche',
-    AppLanguage.english: 'From left',
   },
   'إضافة ثقب للكيت': {
     AppLanguage.arabic: 'إضافة ثقب للكيت',

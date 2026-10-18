@@ -1,11 +1,6 @@
 import '../app_settings.dart';
 
 const Map<String, Map<AppLanguage, String>> mainMenuKeys = {
-  'settings': {
-    AppLanguage.arabic: 'الإعدادات',
-    AppLanguage.french: 'Paramètres',
-    AppLanguage.english: 'Settings',
-  },
   'language': {
     AppLanguage.arabic: 'اللغة',
     AppLanguage.french: 'Langue',
@@ -41,11 +36,6 @@ const Map<String, Map<AppLanguage, String>> mainMenuKeys = {
     AppLanguage.french: 'Page d’accueil',
     AppLanguage.english: 'Home page',
   },
-  'حدد نوع النافذة للبدء في الحسابات': {
-    AppLanguage.arabic: 'حدد نوع النافذة للبدء في الحسابات',
-    AppLanguage.french: '',
-    AppLanguage.english: 'Select window type to start calculations',
-  },
   'حساب التقطيع (Calculate)': {
     AppLanguage.arabic: 'حساب التقطيع',
     AppLanguage.french: 'Calcul de découpe',
@@ -56,97 +46,26 @@ const Map<String, Map<AppLanguage, String>> mainMenuKeys = {
     AppLanguage.french: 'Calcul des quantités et des marchandises',
     AppLanguage.english: 'Quantities and goods calculation',
   },
-  'إعدادات المصادقة غير موجودة: يرجى الذهاب إلى Firebase Console -> قسم Authentication وتفعيل البريد الإلكتروني (Email/Password).':
-      {AppLanguage.arabic: '', AppLanguage.french: '', AppLanguage.english: ''},
-  'إعدادات غير مكتملة: يرجى الذهاب إلى Firebase Console -> قسم Authentication -> واضغط على Get Started ثم قم بتفعيل Email/Password.':
-      {AppLanguage.arabic: '', AppLanguage.french: '', AppLanguage.english: ''},
-  'إنشاء حساب': {
-    AppLanguage.arabic: 'إنشاء حساب',
-    AppLanguage.french: 'Créer un compte',
-    AppLanguage.english: 'Create Account',
-  },
-  'إنشاء حساب جديد': {
-    AppLanguage.arabic: 'إنشاء حساب جديد',
-    AppLanguage.french: 'Créer un nouveau compte',
-    AppLanguage.english: 'Create new account',
-  },
-  'المظهر (بانو):': {
-    AppLanguage.arabic: 'المظهر (بانو):',
-    AppLanguage.french: 'Aspect (Panneau) :',
-    AppLanguage.english: 'Appearance (Panneau):',
-  },
-  'المظهر:': {
-    AppLanguage.arabic: 'المظهر:',
-    AppLanguage.french: 'Aspect :',
-    AppLanguage.english: 'Appearance:',
-  },
-  'بيانات الدخول غير صحيحة، يرجى التأكد من البريد وكلمة المرور.': {
-    AppLanguage.arabic: '',
-    AppLanguage.french: '',
-    AppLanguage.english: '',
-  },
-  'تأكيد كلمة المرور': {
-    AppLanguage.arabic: 'تأكيد كلمة المرور',
-    AppLanguage.french: 'Confirmer Mot de passe',
-    AppLanguage.english: 'Confirm Password',
-  },
-  'تسجيل الدخول': {
-    AppLanguage.arabic: 'تسجيل الدخول',
-    AppLanguage.french: 'Connexion',
-    AppLanguage.english: 'Login',
-  },
   'تم الإنشاء بالصوت': {
     AppLanguage.arabic: 'تم الإنشاء بالصوت',
     AppLanguage.french: 'Créé par voix',
     AppLanguage.english: 'Created by voice',
-  },
-  'تم تعطيل هذا الحساب من قبل الإدارة.': {
-    AppLanguage.arabic: 'تم تعطيل هذا الحساب من قبل الإدارة.',
-    AppLanguage.french: 'Ce compte a été désactivé par l\'administration.',
-    AppLanguage.english: 'This account has been disabled by administration.',
   },
   'حساب التكلفة': {
     AppLanguage.arabic: 'حساب التكلفة',
     AppLanguage.french: 'Calculer le coût',
     AppLanguage.english: 'Calculate cost',
   },
-  'طريقة تسجيل الدخول هذه غير مفعلة في لوحة التحكم (يرجى تفعيل Email/Password).':
-      {AppLanguage.arabic: '', AppLanguage.french: '', AppLanguage.english: ''},
   'عفواً، لم أسمع أي شيء. حاول التحدث بصوت أوضح.': {
     AppLanguage.arabic: 'عفواً، لم أسمع أي شيء. حاول التحدث بصوت أوضح.',
     AppLanguage.french:
         'Désolé, je n\'ai rien entendu. Parlez plus clairement.',
     AppLanguage.english: 'Sorry, I didn\'t hear anything. Speak more clearly.',
   },
-  'كلمة المرور': {
-    AppLanguage.arabic: 'كلمة المرور',
-    AppLanguage.french: 'Mot de passe',
-    AppLanguage.english: 'Password',
-  },
-  'كلمة المرور غير صحيحة، يرجى المحاولة مرة أخرى.': {
-    AppLanguage.arabic: 'كلمة المرور غير صحيحة، يرجى المحاولة مرة أخرى.',
-    AppLanguage.french: 'Mot de passe incorrect, veuillez réessayer.',
-    AppLanguage.english: 'Incorrect password, please try again.',
-  },
-  'لديك حساب بالفعل؟ تسجيل الدخول': {
-    AppLanguage.arabic: 'لديك حساب بالفعل؟ تسجيل الدخول',
-    AppLanguage.french: 'Vous avez déjà un compte ? Se connecter',
-    AppLanguage.english: 'Already have an account? Login',
-  },
-  'لم يتم العثور على حساب بهذا البريد، تأكد من صحته.': {
-    AppLanguage.arabic: '',
-    AppLanguage.french: '',
-    AppLanguage.english: '',
-  },
   'لم يتم تسجيل الدخول': {
     AppLanguage.arabic: 'لم يتم تسجيل الدخول',
     AppLanguage.french: 'Non connecté',
     AppLanguage.english: 'Not logged in',
-  },
-  'ليس لديك حساب؟ إنشاء حساب جديد': {
-    AppLanguage.arabic: 'ليس لديك حساب؟ إنشاء حساب جديد',
-    AppLanguage.french: 'Vous n\'avez pas de compte ? S\'inscrire',
-    AppLanguage.english: 'Don\'t have an account? Register',
   },
   'مدخول (إضافة)': {
     AppLanguage.arabic: 'مدخول (إضافة)',
@@ -167,11 +86,6 @@ const Map<String, Map<AppLanguage, String>> mainMenuKeys = {
     AppLanguage.arabic: 'مفتاح الذكاء الاصطناعي (Gemini API Key)',
     AppLanguage.french: 'Clé API Gemini',
     AppLanguage.english: 'Gemini API Key',
-  },
-  'هذا البريد الإلكتروني مسجل لدينا بالفعل، جرب تسجيل الدخول.': {
-    AppLanguage.arabic: '',
-    AppLanguage.french: '',
-    AppLanguage.english: '',
   },
   'يجب تسجيل الدخول لاستعادة البيانات': {
     AppLanguage.arabic: 'يجب تسجيل الدخول لاستعادة البيانات',
@@ -197,55 +111,5 @@ const Map<String, Map<AppLanguage, String>> mainMenuKeys = {
     AppLanguage.arabic: '',
     AppLanguage.french: '',
     AppLanguage.english: '',
-  },
-  r'''جديد''': {
-    AppLanguage.arabic: r'''جديد''',
-    AppLanguage.french: r'''Nouveau''',
-    AppLanguage.english: r'''New''',
-  },
-  r'''معلومات الورشة''': {
-    AppLanguage.arabic: r'''معلومات الورشة''',
-    AppLanguage.french: r'''Informations de l\'atelier''',
-    AppLanguage.english: r'''Workshop Info''',
-  },
-  r'''إعدادات الشاشة والمظهر''': {
-    AppLanguage.arabic: r'''إعدادات الشاشة والمظهر''',
-    AppLanguage.french: r'''Affichage et apparence''',
-    AppLanguage.english: r'''Display & Appearance''',
-  },
-  r'''طريقة العرض (View Mode)''': {
-    AppLanguage.arabic: r'''طريقة العرض (View Mode)''',
-    AppLanguage.french: r'''Mode d\'affichage''',
-    AppLanguage.english: r'''View Mode''',
-  },
-  r'''عادي (كلاسيكي)''': {
-    AppLanguage.arabic: r'''عادي (كلاسيكي)''',
-    AppLanguage.french: r'''Classique''',
-    AppLanguage.english: r'''Classic''',
-  },
-  r'''تبويبات (متصفح)''': {
-    AppLanguage.arabic: r'''تبويبات (متصفح)''',
-    AppLanguage.french: r'''Onglets''',
-    AppLanguage.english: r'''Tabs''',
-  },
-  r'''نوافذ مصغرة''': {
-    AppLanguage.arabic: r'''نوافذ مصغرة''',
-    AppLanguage.french: r'''Fenêtres miniatures''',
-    AppLanguage.english: r'''Miniature Windows''',
-  },
-  r'''فتح الصفحات كنوافذ يمكن تحريكها وتصغيرها''': {
-    AppLanguage.arabic: r'''فتح الصفحات كنوافذ يمكن تحريكها وتصغيرها''',
-    AppLanguage.french: r'''Ouvrir les pages en fenêtres déplaçables''',
-    AppLanguage.english: r'''Open pages as floating windows''',
-  },
-  r'''مقبض كلاسيكي (فتح)''': {
-    AppLanguage.arabic: r'''مقبض كلاسيكي (فتح)''',
-    AppLanguage.french: r'''Poignée classique''',
-    AppLanguage.english: r'''Classic handle''',
-  },
-  r'''مقبض منزلق (جرار)''': {
-    AppLanguage.arabic: r'''مقبض منزلق (جرار)''',
-    AppLanguage.french: r'''Poignée coulissante''',
-    AppLanguage.english: r'''Sliding handle''',
   },
 };

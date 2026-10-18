@@ -11,6 +11,7 @@ import 'package:database_data/settings/shortcut_bindings.dart';
 import 'package:database_data/services/order_notification_service.dart';
 import 'package:database_data/services/worker_push_notification_service.dart';
 import 'package:database_data/services/app_admin_status_service.dart';
+import 'package:database_data/services/system_publication_service.dart';
 import 'package:database_data/services/supabase_account_service.dart';
 
 class WorkshopDataDiagnostics {
@@ -613,10 +614,21 @@ class SupabaseWorkshopSyncService {
   /// same profile automatically through the Realtime download listener.
   Future<void> loadAndApplyWorkshopSystems() async {
     await _ensureReady();
+    // A system the owner published or hid since the last time changes what
+    // is switched on, so the workshop selection is applied again.
+    if (await SystemPublicationService.instance.refresh()) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('last_applied_remote_workshop_systems');
+    }
     final profile = await readWorkshopProfile();
     final systems = profile['workshop_systems'];
     if (systems is Map) {
       await _applyWorkshopSystems(Map<String, dynamic>.from(systems));
+    } else {
+      final dbInstance = await _db.db;
+      if (dbInstance != null) {
+        await SystemPublicationService.instance.applyToProfiles(dbInstance);
+      }
     }
   }
 
@@ -733,6 +745,12 @@ class SupabaseWorkshopSyncService {
       } catch (error) {
         print('Supabase permission refresh skipped during startup: $error');
       }
+      // Systems the owner published or hid while this device was closed.
+      unawaited(
+        loadAndApplyWorkshopSystems().catchError((Object error) {
+          print('Workshop systems not refreshed during startup: $error');
+        }),
+      );
       final needsFullBootstrap = await _needsFullBootstrapDownload();
       // A full workshop snapshot is intentionally a one-time bootstrap. Using
       // the presence of clients or orders as an initialization signal made an
@@ -2266,6 +2284,10 @@ class SupabaseWorkshopSyncService {
     if (rawActiveProfiles is! List &&
         rawActiveCodes is! List &&
         rawActiveNames is! List) {
+      final dbInstance = await _db.db;
+      if (dbInstance != null) {
+        await SystemPublicationService.instance.applyToProfiles(dbInstance);
+      }
       await prefs.setString('last_applied_remote_workshop_systems', systemsJson);
       return;
     }
@@ -2297,6 +2319,8 @@ class SupabaseWorkshopSyncService {
 
     final dbInstance = await _db.db;
     if (dbInstance == null) return;
+    final unpublished = await SystemPublicationService.instance
+        .hiddenForCurrentUser();
 
     // Replace the complete selection, so a system removed by the manager is
     // also disabled on every worker device.
@@ -2372,6 +2396,9 @@ class SupabaseWorkshopSyncService {
           whereArgs: [name],
         );
       }
+
+      // Systems the owner has not published stay off for this user.
+      await SystemPublicationService.applyHiddenProfiles(txn, unpublished);
     });
     await prefs.setString('last_applied_remote_workshop_systems', systemsJson);
     _onDataChanged?.call();

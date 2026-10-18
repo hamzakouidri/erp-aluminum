@@ -85,7 +85,7 @@ void main() {
       const filter = NumericFilterState(operator: NumericFilterOperator.greaterThanZero);
       expect(filter.getLabel(AppLanguage.arabic), contains('أكبر تماماً من الصفر'));
       expect(filter.getLabel(AppLanguage.french), contains('supérieur à zéro'));
-      expect(filter.getLabel(AppLanguage.english), contains('Greater than zero'));
+      expect(filter.getLabel(AppLanguage.english), contains('greater than zero'));
     });
   });
 

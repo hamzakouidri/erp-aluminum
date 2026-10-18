@@ -1031,11 +1031,27 @@ class BomEngineV2 {
             return _catalogInt(rule['series_id']) == context.id;
           })
           .toList(growable: false);
+      // With a dedicated sliding kit present, a generic `kit` rule is only
+      // additive when it is linked to a specific (reinforced) montant; an
+      // unlinked one is the opening kit of the same series.
+      final hasDedicatedSlidingKit =
+          context.sliding &&
+          candidates.any((candidate) {
+            final rule = candidate['catalog_rule'] as Map;
+            return (rule['role_key']?.toString() ?? '').startsWith(
+              'sliding_kit',
+            );
+          });
       for (final candidate in candidates) {
         final rule = Map<String, dynamic>.from(
           candidate['catalog_rule'] as Map,
         );
         final linkedProfiles = assemblySectionIds(rule);
+        if (hasDedicatedSlidingKit &&
+            (rule['role_key']?.toString() ?? 'kit') == 'kit' &&
+            linkedProfiles.isEmpty) {
+          continue;
+        }
         // A linked profile is a presence condition, not merely editor
         // metadata. In particular, a 4NF kit linked to Batmo must disappear
         // when that Batmo profile is not part of the actual BOM.
