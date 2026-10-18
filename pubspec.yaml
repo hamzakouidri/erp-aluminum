@@ -70,6 +70,22 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  msix: ^3.18.0
+
+# Microsoft Store package (MSIX): `dart run msix:create --store`, then upload
+# the .msix in Partner Center. identity_name and publisher must be copied
+# from Partner Center > the app > Product identity (see
+# docs/MICROSOFT_STORE_AR.md); the Store signs the package itself.
+msix_config:
+  display_name: Warchati ERP Aluminium
+  publisher_display_name: ورشتي للألمنيوم
+  identity_name: REPLACE_WITH_PACKAGE_IDENTITY_NAME
+  publisher: CN=REPLACE_WITH_PUBLISHER_ID
+  msix_version: 1.0.0.0
+  logo_path: assets/images/app_icon.png
+  languages: ar, fr, en
+  capabilities: internetClient, microphone
+  store: true
 
 flutter:
   uses-material-design: true
