@@ -12,6 +12,7 @@ import '../sql_database.dart';
 import '../items_produits/glass_systems_rules_screen.dart';
 import '../services/glass_fabrication_pdf_service.dart';
 import '../Commande/glass_handle_designs.dart';
+import '../Commande/tempered_glass_hardware.dart';
 import '../widgets/desktop_scroll_behavior.dart';
 
 enum GlassWorkType {
@@ -341,6 +342,14 @@ class TemperedGlassWorkScreen extends StatefulWidget {
       color: Colors.cyan.shade800,
       showHandles: showHandles,
       fabricationOnly: fabricationOnly,
+      showSlidingProfiles:
+          payload['slidingRule'] != null && payload['showProfiles'] != false,
+      gasketEdges: {
+        if (payload['gasketItems'] is Map)
+          for (final e in (payload['gasketItems'] as Map).entries)
+            if ((e.value as num?) != null && (e.value as num) > 0)
+              e.key.toString(),
+      },
     );
 
     painter.paint(canvas, Size(canvasW, canvasH));
@@ -438,6 +447,17 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
 
   /// Kit saved with the order being reopened.
   int? _initialKitId;
+
+  /// Show the U channel and top rail of a sliding shower on the drawing.
+  bool _showProfiles = true;
+
+  /// Profile chosen for each [GlassProfileRole]; 0 means none. A role
+  /// without an entry uses the first catalogue profile of that role made
+  /// for the glass thickness.
+  final Map<String, int> _profileItems = {};
+
+  /// Gasket chosen for each [GlassGasketLocation].
+  final Map<String, int> _gasketItems = {};
 
   /// A kit fixes the drillings, hinges and accessories of its glass: nothing
   /// can be added to it, moved or removed. Free drawing (no kit) allows it.
@@ -883,6 +903,19 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
         (payload['glassThicknessMm'] ?? payload['thicknessMm'] as num?)
             ?.toDouble() ??
         10.0;
+    _showProfiles = payload['showProfiles'] != false;
+    for (final entry in [
+      (payload['profileItems'], _profileItems),
+      (payload['gasketItems'], _gasketItems),
+    ]) {
+      final raw = entry.$1;
+      if (raw is Map) {
+        for (final e in raw.entries) {
+          final id = (e.value as num?)?.toInt();
+          if (id != null) entry.$2[e.key.toString()] = id;
+        }
+      }
+    }
     _overallWidthMmValue =
         (payload['overallWidthMm'] ?? payload['widthMm'] as num?)?.toDouble();
     _overallHeightMmValue =
@@ -2736,6 +2769,19 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
       fixedDisplayWidth,
       layoutRect.height,
     );
+    // Holes the user drilled (free holes, catalogue accessories) are not
+    // part of the layout rules: keep them when the layout is rebuilt.
+    List<_GlassHole> userHoles(String role, double widthMm, double heightMm) => [
+      for (final panel in _panels.where((p) => p.role == role))
+        for (final hole in panel.holes)
+          if ((hole.purpose.startsWith('custom_') ||
+                  hole.purpose.startsWith('acc_')) &&
+              hole.xMm + hole.diameterMm / 2 <= widthMm &&
+              hole.yMm + hole.diameterMm / 2 <= heightMm)
+            hole,
+    ];
+    final doorUserHoles = userHoles('door', doorWidth, doorHeightMm);
+    final fixedUserHoles = userHoles('fixed', fixedWidth, drawnHeightMm);
     _panels
       ..clear()
       ..addAll([
@@ -2744,18 +2790,21 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
           widthMm: doorWidth,
           heightMm: doorHeightMm,
           role: 'door',
-          holes: _doorHoles(
-            doorWidth,
-            doorHeightMm,
-            referenceHeightMm: drawnHeightMm,
-          ),
+          holes: [
+            ..._doorHoles(
+              doorWidth,
+              doorHeightMm,
+              referenceHeightMm: drawnHeightMm,
+            ),
+            ...doorUserHoles,
+          ],
         ),
         _GlassPanel(
           rect: fixedRect,
           widthMm: fixedWidth,
           heightMm: drawnHeightMm,
           role: 'fixed',
-          holes: _fixedHoles(fixedWidth, drawnHeightMm),
+          holes: [..._fixedHoles(fixedWidth, drawnHeightMm), ...fixedUserHoles],
         ),
       ]);
     _selectedPanelIndex = 0;
@@ -5997,6 +6046,9 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
           ? _panels.first.heightMm
           : _overallHeightMm,
       'drawingVersion': 1,
+      'showProfiles': _showProfiles,
+      'profileItems': Map<String, int>.from(_profileItems),
+      'gasketItems': Map<String, int>.from(_gasketItems),
       'slidingRule': _isSlidingStraight
           ? {
               'drawnWidthMm': _overallWidthMm,
@@ -7772,6 +7824,27 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                                 Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
+                                    if (((item['holes_count'] as num?)
+                                                ?.toInt() ??
+                                            0) >
+                                        0)
+                                      IconButton(
+                                        tooltip: _tr(
+                                          'وضع ثقوبه على الزجاج',
+                                          'Placer ses trous sur le verre',
+                                          'Place its holes on the glass',
+                                        ),
+                                        icon: const Icon(
+                                          Icons.add_location_alt_outlined,
+                                          size: 20,
+                                        ),
+                                        color: Colors.deepOrange.shade400,
+                                        onPressed: () {
+                                          _scaffoldKey.currentState
+                                              ?.closeEndDrawer();
+                                          _placeAccessoryOnGlass(item);
+                                        },
+                                      ),
                                     IconButton(
                                       icon: const Icon(
                                         Icons.remove_circle_outline,
@@ -8279,7 +8352,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
               return a['category'] == 'joint';
             });
 
-            if (!hasExplicitJoint) {
+            if (!hasExplicitJoint && _gasketItems.values.every((id) => id <= 0)) {
               // 1. Magnetic joint for 90° corner or straight 180°
               final jointNameKeyword = is90DegCorner ? '90°' : '180°';
               final magnetJointItem = _catalogAccessories.firstWhere(
@@ -8340,6 +8413,11 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
               });
               accessoriesTotal += fPrice;
             }
+          }
+
+          for (final line in _profileAndGasketCostLines()) {
+            appliedAccessories.add(line);
+            accessoriesTotal += (line['total'] as num).toDouble();
           }
 
           for (final entry in _selectedAccessories.entries) {
@@ -8768,6 +8846,498 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     }
   }
 
+  Map<String, dynamic>? _catalogItem(int? id) {
+    if (id == null || id <= 0) return null;
+    return _catalogAccessories.where((a) => a['id'] == id).firstOrNull;
+  }
+
+  bool _itemFitsThickness(Map<String, dynamic> item) =>
+      GlassAccessoryTemplate.fromItem(item).fitsThickness(_glassThicknessMm);
+
+  /// Profile used for [role]: the user's choice, else the first catalogue
+  /// profile of that role made for the glass thickness.
+  Map<String, dynamic>? _profileItemFor(String role) {
+    final chosen = _profileItems[role];
+    if (chosen != null) return _catalogItem(chosen);
+    return _catalogAccessories
+        .where(
+          (a) =>
+              a['category'] == 'profile' &&
+              a['profile_role'] == role &&
+              _itemFitsThickness(a),
+        )
+        .firstOrNull;
+  }
+
+  /// Profile lengths of the current sliding layout, or null for another
+  /// layout.
+  SlidingGlassProfiles? get _slidingProfiles {
+    if (!_isSlidingStraight) return null;
+    final door = _panels.where((p) => p.isDoor).firstOrNull;
+    final fixed = _panels.where((p) => p.isFixed).firstOrNull;
+    if (door == null || fixed == null) return null;
+    return SlidingGlassProfiles(
+      fixedWidthMm: fixed.widthMm,
+      fixedHeightMm: fixed.heightMm,
+      overallWidthMm: _overallWidthMm,
+    );
+  }
+
+  String _gasketTypeLabel(String type) => switch (type) {
+    GlassGasketType.magnetic90 => _tr('مغناطيسي 90°', 'Magnétique 90°', 'Magnetic 90°'),
+    GlassGasketType.magnetic180 => _tr('مغناطيسي 180°', 'Magnétique 180°', 'Magnetic 180°'),
+    GlassGasketType.h => _tr('جوان H', 'Joint H', 'H gasket'),
+    GlassGasketType.f => _tr('جوان F', 'Joint F', 'F gasket'),
+    GlassGasketType.bulb => _tr('جوان بومبي', 'Joint bombé', 'Bulb gasket'),
+    GlassGasketType.rail => _tr('جوان البروفيل', 'Joint de profilé', 'Profile gasket'),
+    _ => '',
+  };
+
+  /// Rows the cost table adds for the chosen profiles and gaskets. Profiles
+  /// and the profile gasket are counted by the metre, the door gaskets by
+  /// the piece (one per door).
+  List<Map<String, dynamic>> _profileAndGasketCostLines() {
+    final lines = <Map<String, dynamic>>[];
+    void add(Map<String, dynamic>? item, double qty, String unit) {
+      if (item == null || qty <= 0) return;
+      final price = (item['price'] as num?)?.toDouble() ?? 0.0;
+      final rounded = double.parse(qty.toStringAsFixed(2));
+      lines.add({
+        'estimated': false,
+        'name': item['name'] ?? '',
+        'qty': unit == 'meter' ? rounded : rounded.round(),
+        'unit': unit,
+        'price': price,
+        'total': price * rounded,
+      });
+    }
+
+    final profiles = _slidingProfiles;
+    if (profiles != null && _showProfiles) {
+      add(
+        _profileItemFor(GlassProfileRole.uChannel),
+        profiles.uChannelMm / 1000,
+        'meter',
+      );
+      add(
+        _profileItemFor(GlassProfileRole.topRail),
+        profiles.topRailMm / 1000,
+        'meter',
+      );
+    }
+    final doorCount = _panels.where((p) => p.isDoor).length;
+    for (final location in [
+      GlassGasketLocation.doorWall,
+      GlassGasketLocation.doorFixed,
+    ]) {
+      add(_catalogItem(_gasketItems[location]), doorCount.toDouble(), 'piece');
+    }
+    if (profiles != null) {
+      add(
+        _catalogItem(_gasketItems[GlassGasketLocation.profile]),
+        profiles.profileGasketMm / 1000,
+        'meter',
+      );
+    }
+    return lines;
+  }
+
+  Future<void> _showProfilesAndGasketsDialog() async {
+    final joints = _catalogAccessories
+        .where((a) => a['category'] == 'joint')
+        .toList();
+    final profilesCatalog = _catalogAccessories
+        .where((a) => a['category'] == 'profile')
+        .toList();
+
+    String itemLabel(Map<String, dynamic> item) {
+      final type = _gasketTypeLabel(item['joint_type']?.toString() ?? '');
+      final name = item['name']?.toString() ?? '';
+      return type.isEmpty ? name : '$name · $type';
+    }
+
+    Widget picker({
+      required String label,
+      required List<Map<String, dynamic>> items,
+      required int? value,
+      required ValueChanged<int?> onChanged,
+    }) {
+      final ids = items.map((i) => i['id'] as int).toSet();
+      return DropdownButtonFormField<int>(
+        value: value != null && (value == 0 || ids.contains(value))
+            ? value
+            : 0,
+        isExpanded: true,
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+          isDense: true,
+        ),
+        items: [
+          DropdownMenuItem(value: 0, child: Text(_tr('بدون', 'Aucun', 'None'))),
+          ...items.map(
+            (item) => DropdownMenuItem(
+              value: item['id'] as int,
+              child: Text(itemLabel(item), overflow: TextOverflow.ellipsis),
+            ),
+          ),
+        ],
+        onChanged: onChanged,
+      );
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          void update(VoidCallback change) {
+            _pushHistory();
+            setState(change);
+            setDialogState(() {});
+          }
+
+          final sliding = _slidingProfiles != null;
+          return AlertDialog(
+            title: Text(
+              _tr('البروفيلات والجوانات', 'Profilés & joints', 'Profiles & gaskets'),
+            ),
+            content: SizedBox(
+              width: 440,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (sliding) ...[
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: _showProfiles,
+                        title: Text(
+                          _tr(
+                            'بروفيل U للثابت والراي العلوي',
+                            'Profilé U du fixe et rail supérieur',
+                            'Fixed U channel and top rail',
+                          ),
+                        ),
+                        subtitle: Text(
+                          _tr(
+                            'U تحت الثابت ومن جهة الحائط، والثابت يدخل الراي 15 مم.',
+                            'U sous le fixe et côté mur ; le fixe entre de 15 mm dans le rail.',
+                            'U under the fixed glass and on the wall side; the fixed glass enters the rail by 15 mm.',
+                          ),
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                        onChanged: (v) => update(() => _showProfiles = v),
+                      ),
+                      if (_showProfiles) ...[
+                        picker(
+                          label: _tr('بروفيل U (باغيت)', 'Profilé U (baguette)', 'U channel'),
+                          items: profilesCatalog
+                              .where((a) => a['profile_role'] != GlassProfileRole.topRail)
+                              .toList(),
+                          value: _profileItemFor(GlassProfileRole.uChannel)?['id'] as int? ??
+                              _profileItems[GlassProfileRole.uChannel],
+                          onChanged: (v) => update(
+                            () => _profileItems[GlassProfileRole.uChannel] = v ?? 0,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        picker(
+                          label: _tr('الراي العلوي', 'Rail supérieur', 'Top rail'),
+                          items: profilesCatalog
+                              .where((a) => a['profile_role'] != GlassProfileRole.uChannel)
+                              .toList(),
+                          value: _profileItemFor(GlassProfileRole.topRail)?['id'] as int? ??
+                              _profileItems[GlassProfileRole.topRail],
+                          onChanged: (v) => update(
+                            () => _profileItems[GlassProfileRole.topRail] = v ?? 0,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+                    ],
+                    picker(
+                      label: _tr(
+                        'جوان حافة الباب من جهة الحائط (بالقطعة)',
+                        'Joint du chant de porte côté mur (pièce)',
+                        'Door edge gasket, wall side (piece)',
+                      ),
+                      items: joints
+                          .where((a) => a['joint_type'] != GlassGasketType.rail)
+                          .toList(),
+                      value: _gasketItems[GlassGasketLocation.doorWall],
+                      onChanged: (v) => update(
+                        () => _gasketItems[GlassGasketLocation.doorWall] = v ?? 0,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    picker(
+                      label: _tr(
+                        'جوان بين الثابت والباب (بالقطعة)',
+                        'Joint entre fixe et porte (pièce)',
+                        'Gasket between fixed and door (piece)',
+                      ),
+                      items: joints
+                          .where((a) => a['joint_type'] != GlassGasketType.rail)
+                          .toList(),
+                      value: _gasketItems[GlassGasketLocation.doorFixed],
+                      onChanged: (v) => update(
+                        () => _gasketItems[GlassGasketLocation.doorFixed] = v ?? 0,
+                      ),
+                    ),
+                    if (sliding) ...[
+                      const SizedBox(height: 10),
+                      picker(
+                        label: _tr(
+                          'جوان بين البروفيل والزجاج (بالمتر)',
+                          'Joint entre profilé et verre (au mètre)',
+                          'Gasket between profile and glass (per metre)',
+                        ),
+                        items: joints
+                            .where((a) =>
+                                (a['joint_type']?.toString() ?? '').isEmpty ||
+                                a['joint_type'] == GlassGasketType.rail)
+                            .toList(),
+                        value: _gasketItems[GlassGasketLocation.profile],
+                        onChanged: (v) => update(
+                          () => _gasketItems[GlassGasketLocation.profile] = v ?? 0,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text(_tr('إغلاق', 'Fermer', 'Close')),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// Drills the holes of a catalogue accessory in a panel it can be mounted
+  /// on, from the position of its first hole.
+  Future<void> _placeAccessoryOnGlass(Map<String, dynamic> item) async {
+    if (_refuseWhenKitLocked()) return;
+    final template = GlassAccessoryTemplate.fromItem(item);
+    if (template.holeCount == 0 || _panels.isEmpty) return;
+    final eligible = [
+      for (var i = 0; i < _panels.length; i++)
+        if (GlassMountTarget.fitsPanel(
+          template.mountTarget,
+          _panels[i].isDoor ? 'door' : 'fixed',
+        ))
+          i,
+    ];
+    if (eligible.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _tr(
+              'لا يوجد لوح يناسب مكان تركيب هذا الإكسسوار.',
+              'Aucun panneau ne convient au montage de cet accessoire.',
+              'No panel matches where this accessory is mounted.',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+    var panelIndex =
+        eligible.contains(_selectedPanelIndex) ? _selectedPanelIndex! : eligible.first;
+    var vertical = template.vertical;
+    GlassAccessoryTemplate oriented() => GlassAccessoryTemplate(
+      holeDiameters: template.holeDiameters,
+      holeSpacings: template.holeSpacings,
+      vertical: vertical,
+    );
+    double defaultX(_GlassPanel panel) => vertical
+        ? panel.widthMm / 2
+        : (panel.widthMm - template.spanMm) / 2;
+    double defaultY(_GlassPanel panel) => vertical
+        ? (panel.heightMm - template.spanMm) / 2
+        : panel.heightMm / 2;
+    final xController = TextEditingController(
+      text: defaultX(_panels[panelIndex]).toStringAsFixed(0),
+    );
+    final yController = TextEditingController(
+      text: defaultY(_panels[panelIndex]).toStringAsFixed(0),
+    );
+    String? error;
+    final placed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          void submit() {
+            final x = _parseMillimeters(xController.text);
+            final y = _parseMillimeters(yController.text);
+            final panel = _panels[panelIndex];
+            if (x == null ||
+                y == null ||
+                !oriented().fitsGlass(
+                  widthMm: panel.widthMm,
+                  heightMm: panel.heightMm,
+                  xMm: x,
+                  yMm: y,
+                )) {
+              setDialogState(
+                () => error = _tr(
+                  'يجب أن تبقى كل الثقوب داخل الزجاج.',
+                  'Tous les trous doivent rester dans le verre.',
+                  'Every hole must stay inside the glass.',
+                ),
+              );
+              return;
+            }
+            Navigator.pop(dialogContext, true);
+          }
+
+          final spacings = template.holeSpacings
+              .map((v) => v.toStringAsFixed(0))
+              .join(' / ');
+          final diameters = template.holeDiameters
+              .map((v) => 'Ø${v.toStringAsFixed(0)}')
+              .join(' ');
+          return AlertDialog(
+            title: Text(item['name']?.toString() ?? ''),
+            content: SizedBox(
+              width: 400,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '${template.holeCount} ${_tr('ثقوب', 'trous', 'holes')}: $diameters'
+                    '${spacings.isEmpty ? '' : '  ·  ${_tr('المسافات', 'entraxes', 'spacings')}: $spacings mm'}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  if (!template.fitsThickness(_glassThicknessMm))
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        _tr(
+                          'تنبيه: هذا الإكسسوار مصنوع لزجاج ${template.glassThicknessMm.toStringAsFixed(0)} مم.',
+                          'Attention : accessoire prévu pour un verre de ${template.glassThicknessMm.toStringAsFixed(0)} mm.',
+                          'Warning: this accessory is made for ${template.glassThicknessMm.toStringAsFixed(0)} mm glass.',
+                        ),
+                        style: TextStyle(color: Colors.orange.shade800, fontSize: 12),
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<int>(
+                    value: panelIndex,
+                    decoration: InputDecoration(
+                      labelText: _tr('اللوح', 'Panneau', 'Panel'),
+                      border: const OutlineInputBorder(),
+                    ),
+                    items: eligible
+                        .map(
+                          (i) => DropdownMenuItem(
+                            value: i,
+                            child: Text(
+                              '${_panels[i].isDoor ? _tr('باب', 'Porte', 'Door') : _tr('ثابت', 'Fixe', 'Fixed')} #${i + 1}',
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) => setDialogState(() {
+                      panelIndex = v ?? panelIndex;
+                      xController.text = defaultX(_panels[panelIndex]).toStringAsFixed(0);
+                      yController.text = defaultY(_panels[panelIndex]).toStringAsFixed(0);
+                    }),
+                  ),
+                  const SizedBox(height: 10),
+                  SegmentedButton<bool>(
+                    segments: [
+                      ButtonSegment(value: false, label: Text(_tr('أفقي', 'Horizontal', 'Horizontal'))),
+                      ButtonSegment(value: true, label: Text(_tr('عمودي', 'Vertical', 'Vertical'))),
+                    ],
+                    selected: {vertical},
+                    onSelectionChanged: (v) => setDialogState(() {
+                      vertical = v.first;
+                      xController.text = defaultX(_panels[panelIndex]).toStringAsFixed(0);
+                      yController.text = defaultY(_panels[panelIndex]).toStringAsFixed(0);
+                    }),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: xController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: _tr(
+                        'مركز الثقب الأول عن اليسار (X)',
+                        'Centre du 1er trou depuis la gauche (X)',
+                        'First hole centre from left (X)',
+                      ),
+                      suffixText: 'mm',
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: yController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    onSubmitted: (_) => submit(),
+                    decoration: InputDecoration(
+                      labelText: _tr(
+                        'مركز الثقب الأول عن الأعلى (Y)',
+                        'Centre du 1er trou depuis le haut (Y)',
+                        'First hole centre from top (Y)',
+                      ),
+                      suffixText: 'mm',
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                  if (error != null) ...[
+                    const SizedBox(height: 8),
+                    Text(error!, style: const TextStyle(color: Colors.red)),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text(_tr('إلغاء', 'Annuler', 'Cancel')),
+              ),
+              FilledButton(
+                onPressed: submit,
+                child: Text(_tr('وضع على الزجاج', 'Placer sur le verre', 'Place on glass')),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (placed != true || !mounted) return;
+    final x = _parseMillimeters(xController.text)!;
+    final y = _parseMillimeters(yController.text)!;
+    final itemId = item['id'] as int;
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    final holes = oriented().holes();
+    _pushHistory();
+    setState(() {
+      final panel = _panels[panelIndex];
+      for (var i = 0; i < holes.length; i++) {
+        panel.holes.add(
+          _GlassHole(
+            xMm: x + holes[i].dxMm,
+            yMm: y + holes[i].dyMm,
+            diameterMm: holes[i].diameterMm,
+            purpose: 'acc_${itemId}_${stamp}_$i',
+          ),
+        );
+      }
+      _selectedPanelIndex = panelIndex;
+      _selectedAccessories[itemId] = (_selectedAccessories[itemId] ?? 0) + 1;
+    });
+  }
+
   Future<void> _showMobileToolsSheet() async {
     await showModalBottomSheet<void>(
       context: context,
@@ -8809,6 +9379,13 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                 leading: const Icon(Icons.rounded_corner),
                 title: Text(_tr('نوع الحواف', 'Type de chants', 'Edge type')),
                 onTap: () => open(_showEdgeFinishSheet),
+              ),
+              ListTile(
+                leading: const Icon(Icons.view_column_outlined),
+                title: Text(
+                  _tr('البروفيلات والجوانات', 'Profilés & joints', 'Profiles & gaskets'),
+                ),
+                onTap: () => open(_showProfilesAndGasketsDialog),
               ),
             ],
           ),
@@ -9474,6 +10051,23 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                     Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
             child: FilledButton.tonalIcon(
+              onPressed: _showProfilesAndGasketsDialog,
+              icon: const Icon(Icons.view_column_outlined, size: 18),
+              label: Text(
+                _tr('البروفيلات والجوانات', 'Profilés & joints', 'Profiles & gaskets'),
+              ),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 0,
+                ),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ),
+                    Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+            child: FilledButton.tonalIcon(
               onPressed: _showManufacturingSheet,
               icon: const Icon(Icons.description_outlined, size: 18),
               label: Text(_tr('ورقة التصنيع', 'Fiche', 'Mfg Sheet')),
@@ -9628,6 +10222,12 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                                         'Sablé',
                                         'Frosted',
                                       ),
+                                      showSlidingProfiles:
+                                          _showProfiles && _isSlidingStraight,
+                                      gasketEdges: _gasketItems.entries
+                                          .where((e) => e.value > 0)
+                                          .map((e) => e.key)
+                                          .toSet(),
                                     ),
                                     child: const SizedBox.expand(),
                                   ),
@@ -10352,6 +10952,8 @@ class _GlassPanelDrawingPainter extends CustomPainter {
     this.handleDesignCode = 'vro_ronde',
     this.glassTypeLabel = '',
     this.frostedLabel = 'S (Sablé)',
+    this.showSlidingProfiles = false,
+    this.gasketEdges = const {},
   });
 
   final List<_GlassPanel> panels;
@@ -10381,6 +10983,13 @@ class _GlassPanelDrawingPainter extends CustomPainter {
   /// glass area (a frosted area shows [frostedLabel]).
   final String glassTypeLabel;
   final String frostedLabel;
+
+  /// Sliding shower: the U channel under and beside the fixed glass (wall
+  /// side) and the top rail the fixed glass enters.
+  final bool showSlidingProfiles;
+
+  /// Door edges carrying a gasket ([GlassGasketLocation] values).
+  final Set<String> gasketEdges;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -10423,6 +11032,10 @@ class _GlassPanelDrawingPainter extends CustomPainter {
     // Frosting is an overlay on the glass, so it must be painted after the
     // glass and before the holes/markers.
     _paintSablage(canvas);
+    if (!fabricationOnly) {
+      if (showSlidingProfiles) _paintSlidingProfiles(canvas);
+      if (gasketEdges.isNotEmpty) _paintGaskets(canvas);
+    }
     for (final panel in panels) {
       if (!fabricationOnly) _paintHinges(canvas, panel);
       _paintHoles(canvas, panel);
@@ -11612,6 +12225,112 @@ class _GlassPanelDrawingPainter extends CustomPainter {
         '#${holeLabelIndex(hole)} Ø ${diameterMm.toStringAsFixed(0)}',
         center + Offset(0, radius + 11),
       );
+    }
+  }
+
+  /// The fixed panel next to [door] (sharing a vertical edge), if any.
+  _GlassPanel? _fixedBeside(_GlassPanel door) {
+    _GlassPanel? best;
+    var bestGap = double.infinity;
+    for (final panel in panels) {
+      if (panel.isDoor) continue;
+      final gap = math.min(
+        (panel.rect.left - door.rect.right).abs(),
+        (panel.rect.right - door.rect.left).abs(),
+      );
+      final overlapsX =
+          panel.rect.left < door.rect.right && panel.rect.right > door.rect.left;
+      final distance = overlapsX ? 0.0 : gap;
+      if (distance < bestGap) {
+        bestGap = distance;
+        best = panel;
+      }
+    }
+    return best;
+  }
+
+  void _paintSlidingProfiles(Canvas canvas) {
+    final door = panels.where((p) => p.isDoor).firstOrNull;
+    if (door == null) return;
+    final fixed = _fixedBeside(door);
+    if (fixed == null || fixed.heightMm <= 0) return;
+    final scale = fixed.rect.height / fixed.heightMm;
+    final insertPx =
+        SlidingGlassProfiles.defaultRailInsertionMm * scale;
+    final channelPx = math.max(4.0, 22 * scale);
+    final railPx = math.max(6.0, 40 * scale);
+    final fill = Paint()
+      ..color = const Color(0xFF90A4AE).withValues(alpha: 0.9)
+      ..style = PaintingStyle.fill;
+    final edge = Paint()
+      ..color = const Color(0xFF455A64)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    void drawProfile(Rect rect) {
+      canvas.drawRect(rect, fill);
+      canvas.drawRect(rect, edge);
+    }
+
+    // Top rail across the whole opening; the fixed glass enters it.
+    final left = panels.map((p) => p.rect.left).reduce(math.min);
+    final right = panels.map((p) => p.rect.right).reduce(math.max);
+    final railBottom = fixed.rect.top + insertPx;
+    drawProfile(Rect.fromLTRB(left, railBottom - railPx, right, railBottom));
+
+    // U channel under the fixed glass.
+    drawProfile(
+      Rect.fromLTRB(
+        fixed.rect.left,
+        fixed.rect.bottom - insertPx,
+        fixed.rect.right,
+        fixed.rect.bottom - insertPx + channelPx,
+      ),
+    );
+
+    // U channel on the wall side of the fixed glass, below the rail.
+    final wallOnLeft = fixed.rect.center.dx < door.rect.center.dx;
+    final wallX = wallOnLeft ? fixed.rect.left : fixed.rect.right;
+    drawProfile(
+      Rect.fromLTRB(
+        wallOnLeft ? wallX - channelPx + insertPx : wallX - insertPx,
+        railBottom,
+        wallOnLeft ? wallX + insertPx : wallX + channelPx - insertPx,
+        fixed.rect.bottom - insertPx,
+      ),
+    );
+  }
+
+  void _paintGaskets(Canvas canvas) {
+    final paint = Paint()
+      ..color = const Color(0xFF263238)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round;
+    for (final door in panels.where((p) => p.isDoor)) {
+      final fixed = _fixedBeside(door);
+      final fixedOnLeft =
+          fixed != null && fixed.rect.center.dx < door.rect.center.dx;
+      final fixedEdgeX = fixed == null
+          ? null
+          : (fixedOnLeft ? door.rect.left : door.rect.right);
+      final wallEdgeX = fixed == null
+          ? door.rect.right
+          : (fixedOnLeft ? door.rect.right : door.rect.left);
+      if (gasketEdges.contains(GlassGasketLocation.doorWall)) {
+        canvas.drawLine(
+          Offset(wallEdgeX, door.rect.top + 4),
+          Offset(wallEdgeX, door.rect.bottom - 4),
+          paint,
+        );
+      }
+      if (fixedEdgeX != null &&
+          gasketEdges.contains(GlassGasketLocation.doorFixed)) {
+        canvas.drawLine(
+          Offset(fixedEdgeX, door.rect.top + 4),
+          Offset(fixedEdgeX, door.rect.bottom - 4),
+          paint,
+        );
+      }
     }
   }
 

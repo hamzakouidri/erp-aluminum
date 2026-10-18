@@ -5714,6 +5714,24 @@ extension SqlDatabaseSchema on SqlDatabase {
         "ALTER TABLE TemperedGlassItems ADD COLUMN service_code TEXT DEFAULT ''",
       );
     } catch (_) {}
+    // Drilling pattern of an accessory (see GlassAccessoryTemplate), where
+    // it is mounted, the glass thickness it is made for, and the family of
+    // a gasket or the role of a profile.
+    for (final column in const [
+      "hole_diameters TEXT DEFAULT ''",
+      "hole_spacings TEXT DEFAULT ''",
+      "hole_layout TEXT DEFAULT 'horizontal'",
+      "mount_target TEXT DEFAULT 'all'",
+      'glass_thickness_mm REAL DEFAULT 0.0',
+      "joint_type TEXT DEFAULT ''",
+      "profile_role TEXT DEFAULT ''",
+    ]) {
+      try {
+        await dbInstance.execute(
+          'ALTER TABLE TemperedGlassItems ADD COLUMN $column',
+        );
+      } catch (_) {}
+    }
   }
 
   /// Adds the edge-finishing and frosting services at the rates the cost

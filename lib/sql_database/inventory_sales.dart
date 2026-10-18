@@ -1944,23 +1944,6 @@ extension SqlDatabaseInventory on SqlDatabase {
         referenceId != null &&
         referenceId > 0 &&
         (type.startsWith('purchase') || type.contains('supplier'));
-    final where = colorId == null
-        ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
-        : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
-    final whereArgs = colorId == null
-        ? [itemId, itemType, locationId]
-        : [itemId, itemType, colorId, locationId];
-    final stockRows = await txn.query(
-      'CurrentStock',
-      columns: const ['quantity'],
-      where: where,
-      whereArgs: whereArgs,
-      limit: 1,
-    );
-    final double currentQty = stockRows.isEmpty
-        ? 0.0
-        : (SqlDatabase._readStoredNumber(stockRows.first['quantity']) ?? 0);
-
     // 1-2. Movement and balance, validated together.
     final isCostedPurchase =
         quantityChange > 0 && unitPrice != null && unitPrice > 0;
@@ -1995,7 +1978,7 @@ extension SqlDatabaseInventory on SqlDatabase {
         itemType: itemType,
         colorId: colorId,
         quantity: quantityChange,
-        unitPrice: unitPrice!,
+        unitPrice: unitPrice,
         stockBefore: stockBeforePurchase,
       );
     }
@@ -2085,7 +2068,7 @@ extension SqlDatabaseInventory on SqlDatabase {
         hasColor && colorTable != null && colorKeyColumn != null;
     if (useColorTable) {
       final colorRows = await txn.query(
-        colorTable!,
+        colorTable,
         columns: const ['price'],
         where: '$colorKeyColumn = ? AND color_id = ?',
         whereArgs: [itemId, colorId],
@@ -2107,8 +2090,8 @@ extension SqlDatabaseInventory on SqlDatabase {
     if (averagePrice <= 0) return;
 
     if (useColorTable) {
-      final table = colorTable!;
-      final keyColumn = colorKeyColumn!;
+      final table = colorTable;
+      final keyColumn = colorKeyColumn;
       final updated = await txn.update(
         table,
         {'price': averagePrice},

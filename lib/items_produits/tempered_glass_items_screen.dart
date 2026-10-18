@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../sql_database.dart';
 import '../settings/app_settings.dart';
 import '../Commande/glass_handle_designs.dart';
+import '../Commande/tempered_glass_hardware.dart';
 
 class TemperedGlassItemsScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -79,6 +80,33 @@ class _TemperedGlassItemsScreenState extends State<TemperedGlassItemsScreen> {
     };
   }
 
+  static String _mm(double value) =>
+      value == value.roundToDouble() ? value.toStringAsFixed(0) : value.toString();
+
+  String _mountLabel(String target) => switch (target) {
+    GlassMountTarget.door => _tr('الباب', 'Porte', 'Door'),
+    GlassMountTarget.fixed => _tr('الثابت', 'Fixe', 'Fixed panel'),
+    GlassMountTarget.frame => _tr('الحائط / الإطار', 'Mur / cadre', 'Wall / frame'),
+    GlassMountTarget.between => _tr('بين الثابت والباب', 'Entre fixe et porte', 'Between fixed and door'),
+    _ => _tr('الكل', 'Tous', 'Any'),
+  };
+
+  String _gasketLabel(String type) => switch (type) {
+    GlassGasketType.magnetic90 => _tr('جوان مغناطيسي 90°', 'Joint magnétique 90°', 'Magnetic gasket 90°'),
+    GlassGasketType.magnetic180 => _tr('جوان مغناطيسي 180°', 'Joint magnétique 180°', 'Magnetic gasket 180°'),
+    GlassGasketType.h => _tr('جوان H (بشفة)', 'Joint H (à lèvre)', 'H gasket (with lip)'),
+    GlassGasketType.f => _tr('جوان F (بشفة)', 'Joint F (à lèvre)', 'F gasket (with lip)'),
+    GlassGasketType.bulb => _tr('جوان بومبي', 'Joint bombé', 'Bulb gasket'),
+    GlassGasketType.rail => _tr('جوان البروفيل (بالمتر)', 'Joint de profilé (au mètre)', 'Profile gasket (per metre)'),
+    _ => _tr('غير محدد', 'Non défini', 'Not set'),
+  };
+
+  String _profileRoleLabel(String role) => switch (role) {
+    GlassProfileRole.uChannel => _tr('بروفيل U للثابت (باغيت)', 'Profilé U du fixe (baguette)', 'Fixed panel U channel'),
+    GlassProfileRole.topRail => _tr('الراي العلوي', 'Rail supérieur', 'Top rail'),
+    _ => _tr('غير محدد', 'Non défini', 'Not set'),
+  };
+
   IconData _categoryIcon(String category) {
     return switch (category) {
       'poignee' => Icons.door_sliding_outlined,
@@ -106,6 +134,27 @@ class _TemperedGlassItemsScreenState extends State<TemperedGlassItemsScreen> {
     String unit = existing?['unit']?.toString() ?? 'piece';
     String imagePath = existing?['image_path']?.toString() ?? '';
     String handleDesignCode = existing?['handle_design_code']?.toString() ?? '';
+    final holeDiametersCtrl = TextEditingController(
+      text: existing?['hole_diameters']?.toString() ?? '',
+    );
+    final holeSpacingsCtrl = TextEditingController(
+      text: existing?['hole_spacings']?.toString() ?? '',
+    );
+    bool verticalHoles = existing?['hole_layout']?.toString() == 'vertical';
+    String mountTarget =
+        GlassMountTarget.values.contains(existing?['mount_target'])
+        ? existing!['mount_target'].toString()
+        : GlassMountTarget.all;
+    double glassThickness =
+        (existing?['glass_thickness_mm'] as num?)?.toDouble() ?? 0.0;
+    String jointType =
+        GlassGasketType.values.contains(existing?['joint_type'])
+        ? existing!['joint_type'].toString()
+        : '';
+    String profileRole =
+        GlassProfileRole.values.contains(existing?['profile_role'])
+        ? existing!['profile_role'].toString()
+        : '';
     if (category == 'poignee' && handleDesignCode.isEmpty) {
       final resolved = GlassHandleDesignCatalog.resolveForItem(existing);
       handleDesignCode = resolved.code;
@@ -326,6 +375,130 @@ class _TemperedGlassItemsScreenState extends State<TemperedGlassItemsScreen> {
                     ],
                   ),
                   const SizedBox(height: 12),
+                  // Drilling pattern: one diameter per hole and the centre
+                  // distance from each hole to the next.
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: holeDiametersCtrl,
+                          decoration: InputDecoration(
+                            labelText: _tr('قطر كل ثقب (مم)', 'Ø de chaque trou (mm)', 'Each hole Ø (mm)'),
+                            hintText: '12, 12, 10',
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: holeSpacingsCtrl,
+                          decoration: InputDecoration(
+                            labelText: _tr('المسافة بين كل ثقب والذي يليه (مم)', 'Entraxe entre trous successifs (mm)', 'Spacing between holes (mm)'),
+                            hintText: '150, 200',
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<bool>(
+                          value: verticalHoles,
+                          decoration: InputDecoration(
+                            labelText: _tr('اتجاه الثقوب', 'Sens des trous', 'Holes direction'),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          items: [
+                            DropdownMenuItem(value: false, child: Text(_tr('أفقي', 'Horizontal', 'Horizontal'))),
+                            DropdownMenuItem(value: true, child: Text(_tr('عمودي', 'Vertical', 'Vertical'))),
+                          ],
+                          onChanged: (v) => setDlg(() => verticalHoles = v ?? false),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: mountTarget,
+                          decoration: InputDecoration(
+                            labelText: _tr('مكان التركيب', 'Montage', 'Mounted on'),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          items: GlassMountTarget.values
+                              .map((t) => DropdownMenuItem(value: t, child: Text(_mountLabel(t))))
+                              .toList(),
+                          onChanged: (v) => setDlg(() => mountTarget = v ?? GlassMountTarget.all),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<double>(
+                          value: const [0.0, 6.0, 8.0, 10.0, 12.0].contains(glassThickness) ? glassThickness : 0.0,
+                          decoration: InputDecoration(
+                            labelText: _tr('سمك الزجاج', 'Épaisseur du verre', 'Glass thickness'),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          items: const [0.0, 6.0, 8.0, 10.0, 12.0]
+                              .map((t) => DropdownMenuItem(
+                                    value: t,
+                                    child: Text(t == 0 ? _tr('كل السماكات', 'Toutes', 'Any') : '${t.toStringAsFixed(0)} mm'),
+                                  ))
+                              .toList(),
+                          onChanged: (v) => setDlg(() => glassThickness = v ?? 0.0),
+                        ),
+                      ),
+                      if (category == 'joint') ...[
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: jointType,
+                            decoration: InputDecoration(
+                              labelText: _tr('نوع الجوان', 'Type de joint', 'Gasket type'),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            items: ['', ...GlassGasketType.values]
+                                .map((t) => DropdownMenuItem(value: t, child: Text(_gasketLabel(t))))
+                                .toList(),
+                            onChanged: (v) => setDlg(() {
+                              jointType = v ?? '';
+                              // The gasket between a profile and the glass is
+                              // sold by the metre, every other one by the piece.
+                              if (jointType.isNotEmpty) {
+                                unit = GlassGasketType.soldByMetre(jointType) ? 'meter' : 'piece';
+                              }
+                            }),
+                          ),
+                        ),
+                      ],
+                      if (category == 'profile') ...[
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: profileRole,
+                            decoration: InputDecoration(
+                              labelText: _tr('دور البروفيل', 'Rôle du profilé', 'Profile role'),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            items: ['', ...GlassProfileRole.values]
+                                .map((t) => DropdownMenuItem(value: t, child: Text(_profileRoleLabel(t))))
+                                .toList(),
+                            onChanged: (v) => setDlg(() {
+                              profileRole = v ?? '';
+                              if (profileRole.isNotEmpty) unit = 'meter';
+                            }),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 12),
                   TextField(
                     controller: notesCtrl,
                     maxLines: 2,
@@ -376,6 +549,13 @@ class _TemperedGlassItemsScreenState extends State<TemperedGlassItemsScreen> {
         'entraxe': entraxe,
         'image_path': imagePath,
         'handle_design_code': handleDesignCode,
+        'hole_diameters': parseMillimetreList(holeDiametersCtrl.text).map(_mm).join(', '),
+        'hole_spacings': parseMillimetreList(holeSpacingsCtrl.text).map(_mm).join(', '),
+        'hole_layout': verticalHoles ? 'vertical' : 'horizontal',
+        'mount_target': mountTarget,
+        'glass_thickness_mm': glassThickness,
+        'joint_type': category == 'joint' ? jointType : '',
+        'profile_role': category == 'profile' ? profileRole : '',
         'notes': notes,
         'is_active': 1,
       };

@@ -41,6 +41,33 @@ void main() {
         'ملون');
   });
 
+  testWidgets('profiles and gaskets open from the toolbar', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final settings = AppSettingsProvider();
+    await settings.loadSettings();
+    addTearDown(settings.dispose);
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AppSettingsProvider>.value(
+        value: settings,
+        child: const MaterialApp(home: TemperedGlassWorkScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final button = find.text('Profilés & joints');
+    expect(button, findsOneWidget);
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Joint entre fixe et porte (pièce)'), findsOneWidget);
+    await tester.tap(find.text('Fermer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Joint entre fixe et porte (pièce)'), findsNothing);
+  });
+
   testWidgets('sablage region dialog shows error when end <= start', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final settings = AppSettingsProvider();
