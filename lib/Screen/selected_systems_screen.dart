@@ -9,6 +9,7 @@ import '../sql_database.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../services/cloud_sync_service.dart';
+import '../services/system_publication_service.dart';
 
 class SystemModeItem {
   final String id;
@@ -61,6 +62,11 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
   final CloudSyncService _cloudSync = CloudSyncService();
   bool _isLoading = true;
   bool _isSyncing = false;
+
+  /// The application owner publishes or hides systems for every user; the
+  /// others see what is published (see [SystemPublicationService]).
+  bool _isOwner = false;
+  Set<String> _unpublished = {};
   String _searchQuery = '';
   late TabController _tabController;
   StreamSubscription<String>? _syncSubscription;
@@ -300,6 +306,9 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
       );
     } catch (_) {}
     final prefs = await SharedPreferences.getInstance();
+    final publication = SystemPublicationService.instance;
+    _isOwner = await publication.isOwner();
+    _unpublished = await publication.hiddenKeys();
     await _loadSubscriptionLimits();
     final lang = Provider.of<AppSettingsProvider>(
       context,
@@ -517,6 +526,8 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
     setState(() {
       var enabledCount = 0;
       for (var mode in _systemModes) {
+        // An unpublished system keeps the workshop's earlier choice.
+        if (_isLocked(_modeKey(mode))) continue;
         final canEnable =
             _maxSystemModes == null || enabledCount < _maxSystemModes!;
         mode.isActive = enable && canEnable;
@@ -536,8 +547,25 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
         systemModes[mode.id] = false;
       }
     }
+    // A profile hidden from this user is switched off on this device, but
+    // the workshop's choice for it is kept for when it is published.
+    final remote = await SystemPublicationService.lastWorkshopSelection();
+    Set<String> remoteList(String key) => {
+      for (final v in (remote[key] as List? ?? const []))
+        v.toString().trim().toLowerCase(),
+    };
+    final remoteIds = remoteList('active_profile_ids');
+    final remoteCodes = remoteList('active_profile_codes');
+    final remoteNames = remoteList('active_profile_names');
+    bool chosenByWorkshop(ProfileSystemItem p) =>
+        remoteIds.contains('${p.id}') ||
+        (p.code.trim().isNotEmpty &&
+            remoteCodes.contains(p.code.trim().toLowerCase())) ||
+        remoteNames.contains(p.name.trim().toLowerCase());
     final activeProfiles = _profileSystems
-        .where((p) => p.isActive)
+        .where(
+          (p) => _isLocked(_profileKey(p)) ? chosenByWorkshop(p) : p.isActive,
+        )
         .take(_maxProfiles ?? _profileSystems.length)
         .toList();
     final activeProfileIds = activeProfiles.map((p) => p.id).toList();
@@ -894,6 +922,111 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
     );
   }
 
+  String _modeKey(SystemModeItem item) =>
+      SystemPublicationService.modeKey(item.id);
+
+  String _profileKey(ProfileSystemItem item) =>
+      SystemPublicationService.profileKey(code: item.code, name: item.name);
+
+  /// Unpublished, and this user is not the owner: shown but not usable.
+  bool _isLocked(String key) => !_isOwner && _unpublished.contains(key);
+
+  Future<void> _setPublication(String key, String label, bool publish) async {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    try {
+      await SystemPublicationService.instance.setPublished(
+        key,
+        published: publish,
+        label: label,
+      );
+      final hidden = await SystemPublicationService.instance.hiddenKeys();
+      if (!mounted) return;
+      setState(() => _unpublished = hidden);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${Localization.translate(publish ? 'تم نشر النظام للمستخدمين' : 'تم إخفاء النظام عن المستخدمين', lang)}: $label',
+            style: const TextStyle(fontFamily: 'Cairo'),
+          ),
+          backgroundColor: publish
+              ? Colors.green.shade700
+              : Colors.orange.shade800,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${Localization.translate('تعذر تغيير نشر النظام', lang)}: $error',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// For the owner, the switch that publishes the system to every user; for
+  /// the others, a badge on a system still in development.
+  Widget _publicationControl(String key, String label, AppLanguage lang) {
+    final published = !_unpublished.contains(key);
+    if (_isOwner) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: ActionChip(
+          visualDensity: VisualDensity.compact,
+          avatar: Icon(
+            published ? Icons.public_rounded : Icons.visibility_off_rounded,
+            size: 16,
+            color: published ? Colors.green.shade700 : Colors.orange.shade800,
+          ),
+          label: Text(
+            Localization.translate(
+              published
+                  ? 'منشور للمستخدمين'
+                  : 'مخفي عن المستخدمين (قيد التطوير)',
+              lang,
+            ),
+            style: const TextStyle(fontFamily: 'Cairo', fontSize: 11),
+          ),
+          tooltip: Localization.translate(
+            published ? 'إخفاء عن المستخدمين' : 'نشر للمستخدمين',
+            lang,
+          ),
+          onPressed: () => _setPublication(key, label, !published),
+        ),
+      );
+    }
+    if (published) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.lock_clock_rounded,
+            size: 14,
+            color: Colors.orange.shade800,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            Localization.translate('قيد التطوير — غير متاح حالياً', lang),
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Colors.orange.shade800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildModesTab(
     List<SystemModeItem> modes,
     bool isDark,
@@ -1059,15 +1192,18 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
                           color: isDark ? Colors.white60 : Colors.grey.shade600,
                         ),
                       ),
+                      _publicationControl(_modeKey(item), item.title, lang),
                     ],
                   ),
                 ),
 
                 // Switch
                 Switch(
-                  value: item.isActive,
+                  value: item.isActive && !_isLocked(_modeKey(item)),
                   activeColor: Colors.blue.shade600,
-                  onChanged: (val) => _toggleSystemMode(item, val),
+                  onChanged: _isLocked(_modeKey(item))
+                      ? null
+                      : (val) => _toggleSystemMode(item, val),
                 ),
               ],
             ),
@@ -1234,14 +1370,17 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
                           ),
                         ],
                       ),
+                      _publicationControl(_profileKey(item), item.name, lang),
                     ],
                   ),
                 ),
 
                 Switch(
-                  value: item.isActive,
+                  value: item.isActive && !_isLocked(_profileKey(item)),
                   activeColor: Colors.teal.shade600,
-                  onChanged: (val) => _toggleProfileItem(item, val),
+                  onChanged: _isLocked(_profileKey(item))
+                      ? null
+                      : (val) => _toggleProfileItem(item, val),
                 ),
               ],
             ),

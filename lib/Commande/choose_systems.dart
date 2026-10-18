@@ -1,3 +1,4 @@
+import 'package:database_data/services/system_publication_service.dart';
 import 'dart:async';
 import 'package:database_data/widgets/app_material.dart';
 import 'package:database_data/sql_database.dart';
@@ -57,19 +58,29 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
 
   Future<void> _readLocalModes() async {
     final prefs = await SharedPreferences.getInstance();
+    // A system the owner has not published is off whatever the workshop
+    // selected (the owner sees it).
+    final unpublished = await SystemPublicationService.instance
+        .hiddenForCurrentUser();
+    bool active(String id) =>
+        (prefs.getBool('system_active_$id') ?? true) &&
+        !unpublished.contains(SystemPublicationService.modeKey(id));
     if (!mounted) return;
     setState(() {
       _defaultOpeningSeriesId = prefs.getInt('default_opening_series_id');
       _defaultSlidingSeriesId = prefs.getInt('default_sliding_series_id');
       _activeModes = {
-        'sliding': prefs.getBool('system_active_sliding') ?? true,
-        'french': prefs.getBool('system_active_french') ?? true,
-        'mixed': prefs.getBool('system_active_mixed') ?? true,
-        'rolling': prefs.getBool('system_active_rolling') ?? true,
-        'caisson_tunnel': prefs.getBool('system_active_caisson_tunnel') ?? true,
-        'moustiquaire': prefs.getBool('system_active_moustiquaire') ?? true,
-        'precadre': prefs.getBool('system_active_precadre') ?? true,
-        'verre': prefs.getBool('system_active_verre') ?? true,
+        for (final id in const [
+          'sliding',
+          'french',
+          'mixed',
+          'rolling',
+          'caisson_tunnel',
+          'moustiquaire',
+          'precadre',
+          'verre',
+        ])
+          id: active(id),
       };
     });
   }
