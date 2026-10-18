@@ -1032,7 +1032,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                 if (isConfirmedMesure)
                   _specBadge('📐 ${lang == AppLanguage.arabic ? "قياس مؤكد" : "Mesure Validée"}: $finalW×$finalH', Icons.straighten_rounded, Colors.teal),
                 if (color.isNotEmpty)
-                  _specBadge(lang == AppLanguage.arabic ? 'اللون: $color' : 'Couleur: $color', Icons.color_lens_outlined, Colors.purple),
+                  _specBadge(lang == AppLanguage.arabic ? 'اللون: $color' : 'Couleur: ${Localization.colorName(color, lang)}', Icons.color_lens_outlined, Colors.purple),
                 if (glass.isNotEmpty)
                   _specBadge(lang == AppLanguage.arabic ? 'الزجاج: $glass' : 'Vitrage: $glass', Icons.square_outlined, Colors.teal),
                 _specBadge('${lang == AppLanguage.arabic ? "الكمية" : "Qté"}: $qty قطع', Icons.layers_outlined, Colors.blueGrey),

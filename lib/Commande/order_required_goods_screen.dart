@@ -1285,7 +1285,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               pRows.add([
                 p.profileCode ?? '-',
                 p.name,
-                p.colorName ?? '-',
+                Localization.colorName(p.colorName ?? '-', _currentLang),
                 _purchaseQuantityLabel(p),
                 p.stockLength != null && p.stockLength! > 0
                     ? '${p.stockLength!.toStringAsFixed(2)} m'
@@ -1319,7 +1319,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               aRows.add([
                 a.profileCode ?? '-',
                 a.name,
-                a.colorName ?? '-',
+                Localization.colorName(a.colorName ?? '-', _currentLang),
                 _roundQuantity(a.totalQuantity, a.unit),
                 isFrench ? (a.unit == 'قطعة' ? 'U' : a.unit) : a.unit,
               ]);
@@ -1328,7 +1328,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   aRows.add([
                     sub.profileCode ?? '',
                     '   • ${sub.name}',
-                    sub.colorName ?? '-',
+                    Localization.colorName(sub.colorName ?? '-', _currentLang),
                     _roundQuantity(sub.purchaseQuantity, sub.unit),
                     isFrench ? (sub.unit == 'قطعة' ? 'U' : sub.unit) : sub.unit,
                   ]);
@@ -6765,7 +6765,7 @@ class _OrderShortageReportPageState extends State<_OrderShortageReportPage> {
                       ],
                     ),
                     if (item.colorName?.trim().isNotEmpty == true)
-                      Text('${t('اللون')}: ${item.colorName}'),
+                      Text('${t('اللون')}: ${Localization.colorName(item.colorName, lang)}'),
                     if (unlinked)
                       Padding(
                         padding: const EdgeInsets.only(top: 8),

@@ -1472,7 +1472,10 @@ extension _MaterialTable on _MaterialConsumptionScreenState {
                                   item.category == 'other') &&
                               (item.colorName ?? '').trim().isEmpty
                           ? ''
-                          : (item.colorName ?? '-')),
+                          : Localization.colorName(
+                              item.colorName ?? '-',
+                              lang,
+                            )),
                 style: TextStyle(
                   fontSize: 12,
                   color: isDark ? Colors.white70 : Colors.black87,

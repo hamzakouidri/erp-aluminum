@@ -1098,7 +1098,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                                 children: _allColors.map((col) {
                                   final isSel = _selectedColor?['id'] == col['id'];
                                   return ChoiceChip(
-                                    label: Text(col['name'].toString(), style: const TextStyle(fontFamily: 'Cairo')),
+                                    label: Text(Localization.colorName(col['name'], lang), style: const TextStyle(fontFamily: 'Cairo')),
                                     selected: isSel,
                                     selectedColor: Colors.blue.withValues(alpha: 0.2),
                                     onSelected: (selected) {

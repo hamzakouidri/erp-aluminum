@@ -1951,7 +1951,7 @@ extension _WindowViewDrawers on _WindowViewState {
                                         ),
                                         const SizedBox(height: 4),
                                         Text(
-                                          colorName,
+                                          _trColor(colorName),
                                           style: TextStyle(
                                             fontSize: 10,
                                             fontWeight: isSelected
@@ -2162,7 +2162,7 @@ extension _WindowViewDrawers on _WindowViewState {
                                           ),
                                           child: ChoiceChip(
                                             label: Text(
-                                              '${_tr('تلقائي:')} $frameColorName',
+                                              '${_tr('تلقائي:')} ${_trColor(frameColorName)}',
                                               style: const TextStyle(
                                                 fontSize: 9,
                                               ),
@@ -2283,7 +2283,7 @@ extension _WindowViewDrawers on _WindowViewState {
                                                   SizedBox(
                                                     width: 42,
                                                     child: Text(
-                                                      colorName,
+                                                      _trColor(colorName),
                                                       textAlign:
                                                           TextAlign.center,
                                                       maxLines: 2,
@@ -2898,7 +2898,7 @@ extension _WindowViewDrawers on _WindowViewState {
                                 return DropdownMenuItem<String>(
                                   value: colorName,
                                   child: Text(
-                                    colorName,
+                                    _trColor(colorName),
                                     style: const TextStyle(fontSize: 12),
                                   ),
                                 );

@@ -730,11 +730,12 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
     }
 
     // 3. Colors (Profile Color & Accessory Color & Shutter Color)
-    final String profColor =
-        p.selectedDbColor?['name']?.toString() ??
-        _colorLabelLocal(p.frameColor.toString().split('.').last, curLang);
-    final String accColor =
-        p.selectedAccessoryColor?['name']?.toString() ?? profColor;
+    final String profColor = p.selectedDbColor?['name'] != null
+        ? Localization.colorName(p.selectedDbColor!['name'], curLang)
+        : _colorLabelLocal(p.frameColor.toString().split('.').last, curLang);
+    final String accColor = p.selectedAccessoryColor?['name'] != null
+        ? Localization.colorName(p.selectedAccessoryColor!['name'], curLang)
+        : profColor;
 
     if (curLang == AppLanguage.french) {
       details.add('Couleur Profil: $profColor');

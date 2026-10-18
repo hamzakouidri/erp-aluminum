@@ -664,10 +664,16 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
       model.isMoustiquaire = true;
       model.isReplaced = false;
       model.manualNameOverride = 'Moustiquaire ($subtype)';
+      final lang = Provider.of<AppSettingsProvider>(
+        context,
+        listen: false,
+      ).language;
+      String t(String key) => Localization.translate(key, lang);
       model.description =
-          'النوع: $subtype | القياس: ${width.toStringAsFixed(0)} × '
-          '${height.toStringAsFixed(0)} mm | الإطار: $frameColor | '
-          'الشبكة: $meshColor';
+          '${t('النوع:')} ${t(subtype)} | ${t('القياس:')} '
+          '${width.toStringAsFixed(0)} × ${height.toStringAsFixed(0)} mm | '
+          '${t('الإطار:')} ${Localization.colorName(frameColor, lang)} | '
+          '${t('الشبكة:')} ${Localization.colorName(meshColor, lang)}';
       model.quantity = quantity < 1 ? 1 : quantity;
       model.moustiquairePayload = singlePayload;
       model.manualPriceOverride = model.quantity > 0

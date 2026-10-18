@@ -3236,7 +3236,7 @@ extension _WindowViewToolbars on _WindowViewState {
                           const SizedBox(width: 6),
                           Expanded(
                             child: Text(
-                              colorName,
+                              _trColor(colorName),
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 color: isDark

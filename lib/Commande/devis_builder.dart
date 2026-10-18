@@ -1088,7 +1088,7 @@ class DevisBuilder {
             final String hStr = (hMm / 10.0).toStringAsFixed(0);
             final String fColor = it['frameColor']?.toString() ?? itemColorStr;
             details.add(
-              'Moustiquaire N°${i + 1}: القياس: $wStr × $hStr سم | المساحة: ${area.toStringAsFixed(2)} m² | اللون: $fColor | العدد: $qty',
+              'Moustiquaire N°${i + 1}: ${t('القياس:')} $wStr × $hStr ${t('سم')} | ${t('المساحة:')} ${area.toStringAsFixed(2)} m² | ${t('اللون:')} ${Localization.colorName(fColor, _currentLang)} | ${t('العدد:')} $qty',
             );
           }
         }
@@ -1097,7 +1097,7 @@ class DevisBuilder {
             .toDouble();
         final totalQty = (payload['totalQuantity'] as num? ?? 1).toInt();
         details.add(
-          'النوع: $subTypeStr | المساحة الكلية: ${totalArea.toStringAsFixed(2)} m² | اللون: $itemColorStr | العدد: $totalQty',
+          '${t('النوع:')} ${t(subTypeStr)} | ${t('المساحة الكلية:')} ${totalArea.toStringAsFixed(2)} m² | ${t('اللون:')} ${Localization.colorName(itemColorStr, _currentLang)} | ${t('العدد:')} $totalQty',
         );
       }
 
@@ -1112,7 +1112,7 @@ class DevisBuilder {
         replacementReason: replacementReason,
         width: width,
         height: height,
-        color: itemColorStr,
+        color: Localization.colorName(itemColorStr, _currentLang),
         detailId: detailId,
       );
     }

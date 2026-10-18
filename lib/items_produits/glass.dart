@@ -381,7 +381,15 @@ class _GlassScreenState extends State<GlassScreen> {
                       items: _glassColors.map((color) {
                         return DropdownMenuItem(
                           value: color,
-                          child: Text(color),
+                          child: Text(
+                            Localization.colorName(
+                              color,
+                              Provider.of<AppSettingsProvider>(
+                                context,
+                                listen: false,
+                              ).language,
+                            ),
+                          ),
                         );
                       }).toList(),
                       onChanged: (val) {
@@ -842,7 +850,15 @@ class _GlassScreenState extends State<GlassScreen> {
                       items: _glassColors.map((color) {
                         return DropdownMenuItem(
                           value: color,
-                          child: Text(color),
+                          child: Text(
+                            Localization.colorName(
+                              color,
+                              Provider.of<AppSettingsProvider>(
+                                context,
+                                listen: false,
+                              ).language,
+                            ),
+                          ),
                         );
                       }).toList(),
                       onChanged: !isUserAdmin

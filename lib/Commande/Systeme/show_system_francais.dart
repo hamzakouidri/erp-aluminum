@@ -122,6 +122,10 @@ class _WindowViewState extends State<WindowView> {
   String _tr(String key) =>
       Localization.translate(key, context.read<AppSettingsProvider>().language);
 
+  /// A catalogue colour name in the app language.
+  String _trColor(Object? name) =>
+      Localization.colorName(name, context.read<AppSettingsProvider>().language);
+
 
 
 
