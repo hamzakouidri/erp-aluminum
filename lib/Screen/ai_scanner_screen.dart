@@ -142,13 +142,8 @@ class _AiScannerScreenState extends State<AiScannerScreen>
 
     try {
       final bytes = await _imageFile!.readAsBytes();
-      final apiKey = Provider.of<AppSettingsProvider>(
-        context,
-        listen: false,
-      ).geminiApiKey;
       final invoice = await AiInvoiceService.analyzeInvoice(
         bytes,
-        apiKey: apiKey,
         mimeType: _mimeTypeForPath(_imageFile!.path),
         catalogHints: _catalogSections.map((section) {
           return {

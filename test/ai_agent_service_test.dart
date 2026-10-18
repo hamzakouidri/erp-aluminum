@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:database_data/services/ai_agent_service.dart';
+import 'package:database_data/services/gemini_gateway.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -66,6 +67,9 @@ void main() {
           });
         }
         expect(request.url.path, contains('gemini-2.5-pro'));
+        // The key travels in a header, never in the address.
+        expect(request.url.query, isNot(contains('key')));
+        expect(request.headers['x-goog-api-key'], 'k');
         requests.add(jsonDecode(request.body) as Map<String, dynamic>);
         turn++;
         if (turn == 1) {
@@ -101,7 +105,9 @@ void main() {
       });
 
       final confirmations = <String>[];
-      final agent = AiAgentService(apiKey: 'k', client: client);
+      final agent = AiAgentService(
+        gateway: GeminiGateway(personalKey: 'k', client: client),
+      );
       final result = await agent.run(
         userText: 'اجعل الطلبية 7 منتهية',
         history: const [
@@ -155,14 +161,22 @@ void main() {
     },
   );
 
-  test('without a key the agent says how to enable it', () async {
-    final result = await AiAgentService(apiKey: '').run(
-      userText: 'hi',
-      language: AppLanguage.english,
-      permissions: const AiAgentPermissions(),
-      confirm: (_, _) async => true,
+  test('a daily limit stops the agent with a clear message', () async {
+    final client = MockClient(
+      (request) async => request.method == 'GET'
+          ? _json({'models': []})
+          : http.Response('{"error":"Daily AI limit reached"}', 429),
     );
+    final result =
+        await AiAgentService(
+          gateway: GeminiGateway(personalKey: 'k', client: client),
+        ).run(
+          userText: 'hi',
+          language: AppLanguage.english,
+          permissions: const AiAgentPermissions(),
+          confirm: (_, _) async => true,
+        );
     expect(result.isError, isTrue);
-    expect(result.text, contains('Gemini API key'));
+    expect(result.text, contains('daily limit'));
   });
 }

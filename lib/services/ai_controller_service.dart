@@ -6,6 +6,9 @@ import 'package:database_data/sql_database.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:path/path.dart' as p;
 
+import 'ai_agent_service.dart';
+import 'gemini_gateway.dart';
+
 /// Representation of an executable action returned by the AI controller
 class AiAction {
   final String actionType;
@@ -37,15 +40,11 @@ class AiAction {
 }
 
 class AiControllerService {
-  final String apiKey;
+  /// Reaches Gemini through the server (or the user's own key).
+  final GeminiGateway gateway;
   final SqlDatabase db = SqlDatabase();
 
-  AiControllerService({required this.apiKey});
-
-  static const List<String> candidateModels = [
-    'gemini-3.8-flash',
-    'gemini-3.6-flash',
-  ];
+  AiControllerService({required this.gateway});
 
   static String getSystemInstruction(AppLanguage language) {
     final defaultLang = switch (language) {
@@ -126,48 +125,88 @@ Return strict JSON:
     return normalized;
   }
 
-  /// Sends a request with automatic fallback across available Gemini models
+  /// Sends a request to the strongest available Gemini model, then the next
+  /// ones if it fails. The result keeps the shape of an HTTP response for the
+  /// callers below.
   Future<http.Response> _postWithFallback(
     Map<String, dynamic> requestBody,
   ) async {
-    http.Response? lastResponse;
     Object? lastError;
-    for (final model in candidateModels) {
+    final models = (await AiAgentService.modelsVia(gateway)).take(3);
+    for (final model in models) {
       try {
-        final url = Uri.parse(
-          'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent',
-        );
-        final response = await http
-            .post(
-              url,
-              headers: {
-                'Content-Type': 'application/json',
-                'x-goog-api-key': apiKey,
-              },
-              body: jsonEncode(requestBody),
-            )
-            .timeout(const Duration(seconds: 25));
-
-        if (response.statusCode == 200) {
-          return response;
-        }
-        lastResponse = response;
-        debugPrint(
-          'Gemini model $model returned ${response.statusCode}: ${response.body}',
+        final result = await gateway.generate(model, requestBody);
+        return http.Response(
+          jsonEncode(result),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
         );
       } catch (e) {
         lastError = e;
         debugPrint('Gemini model $model failed: $e');
+        if (e is GeminiException && e.isQuota) break;
       }
     }
-    return lastResponse ??
-        http.Response(
-          jsonEncode({
-            'error': 'network_failure',
-            'details': lastError?.runtimeType.toString(),
-          }),
-          599,
-        );
+    return http.Response(
+      jsonEncode({
+        'error': 'network_failure',
+        'details': lastError?.toString(),
+      }),
+      lastError is GeminiException ? lastError.status : 599,
+    );
+  }
+
+  /// Word-for-word transcription of a voice message by the strongest Gemini
+  /// model, which follows Algerian Darija mixed with French and the
+  /// workshop's vocabulary far better than the phone's speech engine.
+  /// Returns an empty string when nothing was said.
+  Future<String> transcribeAudio(File audioFile) async {
+    final bytes = await audioFile.readAsBytes();
+    final ext = p.extension(audioFile.path).toLowerCase();
+    final mimeType = switch (ext) {
+      '.wav' => 'audio/wav',
+      '.mp3' => 'audio/mp3',
+      '.aac' => 'audio/aac',
+      '.ogg' => 'audio/ogg',
+      '.flac' => 'audio/flac',
+      _ => 'audio/mp4',
+    };
+    final response = await _postWithFallback({
+      'contents': [
+        {
+          'role': 'user',
+          'parts': [
+            {
+              'text': '''
+Transcribe this voice message exactly, word for word, for an aluminium, PVC
+and glass joinery workshop app. The speaker may use Algerian Darija, Modern
+Standard Arabic, French or English, often mixed in one sentence; keep each
+word in the language it was spoken (write French words in Latin letters,
+Arabic and Darija in Arabic letters). Write numbers and dimensions as digits
+(e.g. 1200, 2.5, 4/16/4). Workshop words you may hear: fenêtre, porte,
+coulissant, ouvrant, battant, oscillo-battant, soufflet, volet roulant,
+caisson, moustiquaire, pré-cadre, profilé, dormant, ouvrant, traverse,
+montant, chicane, parclose, joint, vitrage, double vitrage, trempé, stop sol,
+commande, client, devis, facture, caisse, stock, بروفيل، ظلفة، إطار، زجاج،
+سيليكون، جوان، طلبية، زبون، صندوق، مخزون.
+Do not answer, summarise or correct the speaker. Output only the transcript.
+If there is no speech, output nothing.
+''',
+            },
+            {
+              'inlineData': {'mimeType': mimeType, 'data': base64Encode(bytes)},
+            },
+          ],
+        },
+      ],
+      'generationConfig': {'temperature': 0.0},
+    });
+    if (response.statusCode != 200) {
+      throw GeminiException(response.statusCode, response.body);
+    }
+    return GeminiGateway.textOf(
+      jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>,
+    );
   }
 
   /// Sends text query to Gemini and parses structured action and speech readout
@@ -176,20 +215,6 @@ Return strict JSON:
     List<Map<String, String>> chatHistory = const [],
     AppLanguage language = AppLanguage.arabic,
   }) async {
-    if (apiKey.trim().isEmpty) {
-      return AiAction(
-        actionType: 'error',
-        parameters: {},
-        speechResponse: switch (language) {
-          AppLanguage.french =>
-            'Veuillez saisir votre clé API Gemini dans les Paramètres pour activer l\'IA.',
-          AppLanguage.english =>
-            'Please enter your Gemini API key in Settings to activate AI.',
-          _ =>
-            'يرجى إدخال مفتاح Gemini API في شاشة الإعدادات لتفعيل الذكاء الاصطناعي.',
-        },
-      );
-    }
 
     try {
       final contents = _normalizedHistory(chatHistory);
@@ -333,20 +358,6 @@ Return strict JSON:
     List<Map<String, String>> chatHistory = const [],
     AppLanguage language = AppLanguage.arabic,
   }) async {
-    if (apiKey.trim().isEmpty) {
-      return AiAction(
-        actionType: 'error',
-        parameters: {},
-        speechResponse: switch (language) {
-          AppLanguage.french =>
-            'Veuillez saisir votre clé API Gemini dans les Paramètres pour activer la saisie vocale.',
-          AppLanguage.english =>
-            'Please enter your Gemini API key in Settings to activate voice input.',
-          _ =>
-            'يرجى إدخال مفتاح Gemini API في شاشة الإعدادات لتفعيل الاستماع الصوتي.',
-        },
-      );
-    }
 
     try {
       final bytes = await audioFile.readAsBytes();
@@ -460,19 +471,6 @@ Return strict JSON:
     File imageFile, {
     AppLanguage language = AppLanguage.arabic,
   }) async {
-    if (apiKey.trim().isEmpty) {
-      return AiAction(
-        actionType: 'error',
-        parameters: {},
-        speechResponse: switch (language) {
-          AppLanguage.french =>
-            'Veuillez saisir votre clé API Gemini dans les Paramètres d\'abord.',
-          AppLanguage.english =>
-            'Please enter your Gemini API key in Settings first.',
-          _ => 'يرجى وضع مفتاح Gemini API في الإعدادات أولاً.',
-        },
-      );
-    }
 
     try {
       final bytes = await imageFile.readAsBytes();

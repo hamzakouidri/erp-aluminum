@@ -1,13 +1,11 @@
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../Commande/order_status_order.dart';
 import '../settings/app_settings.dart';
 import '../sql_database.dart';
 import 'ai_controller_service.dart';
+import 'gemini_gateway.dart';
 
 /// What the signed-in user may do. The agent works under these rights and
 /// never more: a tool the user may not use is not offered to the model, and
@@ -101,22 +99,16 @@ class _Tool {
 /// data and actions with native function calling, in as many steps as a
 /// question needs, instead of answering from one guessed JSON command.
 class AiAgentService {
-  AiAgentService({
-    required this.apiKey,
-    SqlDatabase? db,
-    http.Client? client,
-    this.preferredModel,
-  }) : db = db ?? SqlDatabase(),
-       _client = client ?? http.Client();
+  AiAgentService({required this.gateway, SqlDatabase? db, this.preferredModel})
+    : db = db ?? SqlDatabase();
 
-  final String apiKey;
+  /// Reaches Gemini through the server (or the user's own key).
+  final GeminiGateway gateway;
   final SqlDatabase db;
-  final http.Client _client;
 
   /// A model chosen by the user; otherwise the strongest one available.
   final String? preferredModel;
 
-  static const _api = 'https://generativelanguage.googleapis.com/v1beta';
   static const modelPreferenceKey = 'ai_agent_model';
 
   /// Used when the model list cannot be read.
@@ -129,15 +121,16 @@ class AiAgentService {
 
   static List<String>? _cachedModels;
 
-  /// Text models of this key that support generateContent, strongest first.
-  Future<List<String>> availableModels() async {
+  /// Text models that support generateContent, strongest first.
+  Future<List<String>> availableModels() => modelsVia(gateway);
+
+  /// [availableModels] for any gateway, cached for the session; the other
+  /// AI services use it to pick the same strongest model.
+  static Future<List<String>> modelsVia(GeminiGateway gateway) async {
     if (_cachedModels != null) return _cachedModels!;
     try {
-      final response = await _client
-          .get(Uri.parse('$_api/models?pageSize=200&key=$apiKey'))
-          .timeout(const Duration(seconds: 15));
-      if (response.statusCode != 200) return fallbackModels;
-      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      final decoded = await gateway.listModels();
+      if (decoded == null) return fallbackModels;
       final names = <String>[];
       for (final model in (decoded['models'] as List? ?? const [])) {
         final methods = (model['supportedGenerationMethods'] as List? ?? [])
@@ -326,7 +319,7 @@ class AiAgentService {
       }),
       allowed: (p) => p.accessTreasury,
       run: (args) async => {
-        'summary': await AiControllerService(apiKey: apiKey)
+        'summary': await AiControllerService(gateway: gateway)
             .getDailyCaisseSummary(
               targetCaisse: args['target']?.toString(),
               language: language,
@@ -843,19 +836,8 @@ asked.
     required AiConfirm confirm,
     int maxSteps = 8,
   }) async {
-    if (apiKey.trim().isEmpty) {
-      return AiAgentResult(
-        text: switch (language) {
-          AppLanguage.french =>
-            'Ajoutez une clé API Gemini dans les paramètres pour activer l’assistant.',
-          AppLanguage.english =>
-            'Add a Gemini API key in the settings to enable the assistant.',
-          _ => 'أضف مفتاح Gemini API في الإعدادات لتفعيل المساعد.',
-        },
-        isError: true,
-      );
-    }
     _navigateTo = null;
+    _lastError = null;
     final tools = _tools(permissions, language);
     final byName = {for (final t in tools) t.name: t};
     final contents = <Map<String, dynamic>>[
@@ -900,6 +882,20 @@ asked.
         },
       );
       if (response == null) {
+        if (_lastError is GeminiException &&
+            (_lastError as GeminiException).isQuota) {
+          return AiAgentResult(
+            text: switch (language) {
+              AppLanguage.french =>
+                'La limite quotidienne de l’assistant est atteinte. Réessayez demain.',
+              AppLanguage.english =>
+                'The assistant\'s daily limit has been reached. Try again tomorrow.',
+              _ => 'وصلتَ إلى الحد اليومي لاستعمال المساعد. حاول غداً.',
+            },
+            steps: steps,
+            isError: true,
+          );
+        }
         return AiAgentResult(
           text: switch (language) {
             AppLanguage.french =>
@@ -1015,6 +1011,8 @@ asked.
     return result;
   }
 
+  Object? _lastError;
+
   /// Sends [body] to the first model that answers.
   Future<(Map<String, dynamic>?, String?)> _generate({
     required List<String> models,
@@ -1022,24 +1020,12 @@ asked.
   }) async {
     for (final model in models.toSet()) {
       try {
-        final response = await _client
-            .post(
-              Uri.parse('$_api/models/$model:generateContent?key=$apiKey'),
-              headers: const {'Content-Type': 'application/json'},
-              body: jsonEncode(body),
-            )
-            .timeout(const Duration(seconds: 90));
-        if (response.statusCode == 200) {
-          return (
-            jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>,
-            model,
-          );
-        }
-        debugPrint(
-          'Gemini $model: HTTP ${response.statusCode} ${response.body}',
-        );
+        return (await gateway.generate(model, body), model);
       } catch (error) {
+        _lastError = error;
         debugPrint('Gemini $model failed: $error');
+        // The daily limit applies to every model.
+        if (error is GeminiException && error.isQuota) break;
       }
     }
     return (null, null);

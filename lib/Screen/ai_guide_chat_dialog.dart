@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:async';
 import 'package:database_data/widgets/app_material.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:record/record.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:path_provider/path_provider.dart';
@@ -11,6 +10,7 @@ import 'package:file_picker/file_picker.dart';
 import '../settings/app_settings.dart';
 import '../services/ai_agent_service.dart';
 import '../services/ai_controller_service.dart';
+import '../services/gemini_gateway.dart';
 import '../services/tts_service.dart';
 import '../settings/localization.dart';
 
@@ -128,22 +128,9 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
       if (mounted) setState(() => _model = model);
     });
 
-    // Check if native streaming STT is available (Android, iOS, Web)
-    _speechToText.initialize(
-      onError: (val) => debugPrint('STT onError: $val'),
-      onStatus: (val) {
-        debugPrint('STT status: $val');
-        if ((val == 'done' || val == 'notListening') && _isListening && _isUsingStt) {
-          _stopListeningAndProcess();
-        }
-      },
-    ).then((available) {
-      if (mounted) {
-        setState(() => _isSttEngineAvailable = available);
-      }
-    }).catchError((e) {
-      debugPrint('STT init exception: $e');
-    });
+    // Voice is always recorded and transcribed by Gemini: the phone's speech
+    // engine drops Darija and mixed French words too often. The native
+    // engine (_isSttEngineAvailable) therefore stays off.
 
     // Welcome message with localized speech and text
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -187,14 +174,13 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
     });
   }
 
-  Future<String> _getEffectiveApiKey() async {
-    final settings = context.read<AppSettingsProvider>();
-    String apiKey = settings.geminiApiKey.trim();
-    if (apiKey.isEmpty) {
-      final prefs = await SharedPreferences.getInstance();
-      apiKey = prefs.getString('app_gemini_api_key')?.trim() ?? '';
-    }
-    return apiKey;
+  /// Gemini through the server, or through the user's own key when one is
+  /// set in the settings.
+  Future<GeminiGateway> _gateway() async {
+    final key = context.read<AppSettingsProvider>().geminiApiKey.trim();
+    return key.isNotEmpty
+        ? GeminiGateway(personalKey: key)
+        : await GeminiGateway.current();
   }
 
   /// Voice Listener handler: starts/stops listening with live real-time typing
@@ -272,11 +258,16 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
       final tempDir = await getTemporaryDirectory();
       final filePath = p.join(
         tempDir.path,
-        'voice_query_${DateTime.now().millisecondsSinceEpoch}.m4a',
+        'voice_query_${DateTime.now().millisecondsSinceEpoch}.wav',
       );
 
       await _audioRecorder.start(
-        const RecordConfig(encoder: AudioEncoder.aacLc),
+        // 16 kHz mono WAV: a format Gemini always accepts, clear for speech.
+        const RecordConfig(
+          encoder: AudioEncoder.wav,
+          sampleRate: 16000,
+          numChannels: 1,
+        ),
         path: filePath,
       );
 
@@ -330,7 +321,6 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
       final audioPath = path ?? _recordingPath;
       if (audioPath == null || !File(audioPath).existsSync()) return;
 
-      final lang = context.read<AppSettingsProvider>().language;
       final userBubble = ChatMessage(
         text: _t(
           ar: '🎤 [جاري تفريغ الصوت وكتابته بدقة...]',
@@ -346,47 +336,40 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
       });
       _scrollToBottom();
 
-      final apiKey = await _getEffectiveApiKey();
-      final aiService = AiControllerService(apiKey: apiKey);
-
-      final history = _messages
-          .take(_messages.length - 1)
-          .where((m) => !m.text.startsWith('🎤 ['))
-          .map((m) => {
-                'role': m.isUser ? 'user' : 'model',
-                'content': m.text,
-              })
-            .toList();
-
-      final response = await aiService.processVoiceAudio(
+      final aiService = AiControllerService(gateway: await _gateway());
+      final transcribed = (await aiService.transcribeAudio(
         File(audioPath),
-        chatHistory: history,
-        language: lang,
-      );
-
+      )).trim();
       if (!mounted) return;
 
-      // Populate text field with what the user said (Real-time live synchronization)
-      final transcribed = response.transcribedQuery?.trim() ?? '';
-      if (transcribed.isNotEmpty) {
-        userBubble.text = '🗣️ $transcribed';
-        // The transcription is answered by the agent like typed text.
-        await _runAgent(transcribed);
+      if (transcribed.isEmpty) {
+        setState(() {
+          _isLoading = false;
+          userBubble.text = _t(
+            ar: '🎤 لم أسمع كلاماً، أعد المحاولة.',
+            fr: '🎤 Aucune parole entendue, réessayez.',
+            en: '🎤 No speech heard, please try again.',
+          );
+        });
         return;
       }
-      userBubble.text = _t(
-        ar: '🗣️ أمر صوتي',
-        fr: '🗣️ Commande vocale',
-        en: '🗣️ Voice command',
-      );
-
-      await _processAiResponse(aiService, response);
+      // What Gemini heard, then the agent answers it like typed text.
+      setState(() => userBubble.text = '🗣️ $transcribed');
+      await _runAgent(transcribed);
     } catch (e) {
       debugPrint('Voice listener error: $e');
       if (mounted) {
         setState(() {
           _isListening = false;
           _isLoading = false;
+          _messages.add(ChatMessage(
+            text: _t(
+              ar: 'تعذر تفريغ الصوت. تحقق من الاتصال وأعد المحاولة.',
+              fr: 'Transcription impossible. Vérifiez la connexion et réessayez.',
+              en: 'Could not transcribe. Check the connection and try again.',
+            ),
+            isUser: false,
+          ));
         });
       }
     }
@@ -416,8 +399,7 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
     });
     _scrollToBottom();
 
-    final apiKey = await _getEffectiveApiKey();
-    final aiService = AiControllerService(apiKey: apiKey);
+    final aiService = AiControllerService(gateway: await _gateway());
 
     final action = await aiService.processSketchImage(file, language: lang);
 
@@ -470,7 +452,7 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
     final settings = context.read<AppSettingsProvider>();
     final lang = settings.language;
     final permissions = AiAgentPermissions.fromSettings(settings);
-    final apiKey = await _getEffectiveApiKey();
+    final gateway = await _gateway();
     if (!mounted) return;
     final history = _messages
         .take(_messages.length - 1)
@@ -482,7 +464,7 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
         .toList();
 
     final result = await AiAgentService(
-      apiKey: apiKey,
+      gateway: gateway,
       preferredModel: _model,
     ).run(
       userText: text,
@@ -570,11 +552,11 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
   }
 
   Future<void> _pickModel() async {
-    final apiKey = await _getEffectiveApiKey();
+    final gateway = await _gateway();
     if (!mounted) return;
     final lang = context.read<AppSettingsProvider>().language;
     String tr(String key) => Localization.translate(key, lang);
-    final models = await AiAgentService(apiKey: apiKey).availableModels();
+    final models = await AiAgentService(gateway: gateway).availableModels();
     if (!mounted) return;
     final chosen = await showDialog<String>(
       context: context,
@@ -607,68 +589,6 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
     if (chosen == null) return;
     await AiAgentService.saveModel(chosen);
     if (mounted) setState(() => _model = chosen.isEmpty ? null : chosen);
-  }
-
-  Future<void> _processAiResponse(AiControllerService aiService, AiAction response) async {
-    final lang = context.read<AppSettingsProvider>().language;
-    String finalVoiceText = response.speechResponse;
-    bool isWarning = false;
-
-    // Handle Specialized Precision Actions with strict language localization
-    if (response.actionType == 'caisse_summary') {
-      final target = response.parameters['target_caisse']?.toString();
-      final summary = await aiService.getDailyCaisseSummary(targetCaisse: target, language: lang);
-      finalVoiceText = '$finalVoiceText\n\n$summary';
-    } else if (response.actionType == 'check_stock') {
-      final item = response.parameters['item_name']?.toString() ?? '';
-      final stockResult = await aiService.checkItemStock(item, language: lang);
-      finalVoiceText = '$finalVoiceText\n\n$stockResult';
-    } else if (response.actionType == 'create_order') {
-      final res = await aiService.executeCreateOrder(response.parameters, language: lang);
-      finalVoiceText = '$finalVoiceText\n\n$res';
-      if (res.contains('تنبيه هندسي') || res.contains('Alerte') || res.contains('Warning')) {
-        isWarning = true;
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(res), backgroundColor: isWarning ? Colors.orange : Colors.teal),
-        );
-      }
-    } else if (response.actionType == 'create_client') {
-      final res = await aiService.executeCreateClient(response.parameters, language: lang);
-      finalVoiceText = '$finalVoiceText\n\n$res';
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(res), backgroundColor: Colors.teal),
-        );
-      }
-    } else if (response.actionType == 'search_client') {
-      final res = await aiService.executeSearchClient(response.parameters, language: lang);
-      finalVoiceText = '$finalVoiceText\n\n$res';
-    } else if (response.actionType == 'navigate') {
-      final target = response.parameters['target']?.toString();
-      if (target != null && widget.onNavigateRequested != null) {
-        widget.onNavigateRequested!(target);
-      }
-    }
-
-    if (!mounted) return;
-
-    setState(() {
-      _isLoading = false;
-      _messages.add(ChatMessage(
-        text: finalVoiceText,
-        isUser: false,
-        actionType: response.actionType,
-        isWarning: isWarning,
-      ));
-    });
-    _scrollToBottom();
-
-    if (!_isVoiceMuted) {
-      final ttsLang = response.detectedLanguage ?? _currentLangCode;
-      await _ttsService.speak(finalVoiceText, languageCode: ttsLang);
-    }
   }
 
   /// Builds a responsive visual sound wave based on microphone amplitude

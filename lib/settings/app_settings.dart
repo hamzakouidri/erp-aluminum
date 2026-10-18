@@ -57,8 +57,9 @@ class AppSettingsProvider extends ChangeNotifier {
   AppUpdateMode _updateMode = AppUpdateMode.automatic;
   double _profitMargin = 0.0;
   double _fontSizeScale = 1.0;
-  String _geminiApiKey =
-      'AQ.Ab8RN6K0VzsqO944GLUZOKqevI4ncAbuewu7Cx8pEUg3O-xVaA';
+  // Optional personal key. Without it the app reaches Gemini through the
+  // gemini-proxy Edge Function, which keeps the key on the server.
+  String _geminiApiKey = '';
 
   String _userRole = 'worker';
   String _workshopCode = '';
