@@ -1,9 +1,7 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart' show PointerScrollEvent;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:provider/provider.dart';
 
 import '../settings/app_settings.dart';
@@ -45,10 +43,6 @@ class _Window3DPreviewState extends State<Window3DPreview>
   bool _showWall = true;
   late final AnimationController _openingController;
 
-  /// Sea photograph behind the window, decoded once per run.
-  static ui.Image? _seaBackdrop;
-  static const _seaBackdropAsset = 'assets/images/sea_backdrop.webp';
-
   @override
   void initState() {
     super.initState();
@@ -56,20 +50,6 @@ class _Window3DPreviewState extends State<Window3DPreview>
       vsync: this,
       duration: const Duration(milliseconds: 1400),
     );
-    _loadSeaBackdrop();
-  }
-
-  Future<void> _loadSeaBackdrop() async {
-    if (_seaBackdrop != null) return;
-    try {
-      final data = await rootBundle.load(_seaBackdropAsset);
-      final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
-      final frame = await codec.getNextFrame();
-      _seaBackdrop = frame.image;
-      if (mounted) setState(() {});
-    } catch (_) {
-      // Without the photograph the painted sea and sky are shown.
-    }
   }
 
   @override
@@ -197,7 +177,6 @@ class _Window3DPreviewState extends State<Window3DPreview>
                       ),
                       dark: dark,
                       showWall: _showWall,
-                      backdrop: _seaBackdrop,
                     ),
                   ),
                 ),
@@ -418,7 +397,6 @@ class Window3DPainter extends CustomPainter {
     required this.openingProgress,
     required this.dark,
     this.showWall = true,
-    this.backdrop,
   }) : super(repaint: model.drawingRepaint);
 
   final WindowModel model;
@@ -428,10 +406,6 @@ class Window3DPainter extends CustomPainter {
   final double openingProgress;
   final bool dark;
   final bool showWall;
-
-  /// Photograph shown behind the window (the sea); painted sky and sea when
-  /// null.
-  final ui.Image? backdrop;
 
   /// Depths (mm, along the outward normal from the frame's outer face).
   static const double frameDepth = 70;
@@ -1719,24 +1693,9 @@ class Window3DPainter extends CustomPainter {
     }
   }
 
-  /// The sea photograph, or a painted clear sky over the sea and a sandy
-  /// beach.
+  /// A clear sky over the sea and a sandy beach.
   void _paintBackdrop(Canvas canvas, Size size) {
     final all = Offset.zero & size;
-    final photo = backdrop;
-    if (photo != null) {
-      paintImage(
-        canvas: canvas,
-        rect: all,
-        image: photo,
-        fit: BoxFit.cover,
-        filterQuality: FilterQuality.medium,
-      );
-      if (dark) {
-        canvas.drawRect(all, Paint()..color = const Color(0x33000814));
-      }
-      return;
-    }
     final horizon = size.height * 0.56;
     final shore = size.height * 0.74;
     canvas.drawRect(
@@ -1838,6 +1797,5 @@ class Window3DPainter extends CustomPainter {
       oldDelegate.zoom != zoom ||
       oldDelegate.openingProgress != openingProgress ||
       oldDelegate.dark != dark ||
-      oldDelegate.showWall != showWall ||
-      oldDelegate.backdrop != backdrop;
+      oldDelegate.showWall != showWall;
 }

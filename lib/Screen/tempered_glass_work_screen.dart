@@ -12430,9 +12430,9 @@ class _GlassPanelDrawingPainter extends CustomPainter {
     final fixed = _fixedBeside(door);
     if (fixed == null || fixed.heightMm <= 0) return;
     final scale = fixed.rect.height / fixed.heightMm;
-    final insertPx =
-        SlidingGlassProfiles.defaultRailInsertionMm * scale;
-    final channelPx = math.max(4.0, 22 * scale);
+    // The glass enters the rail and the U channels by 15 mm: inside the
+    // glass outline, the profiles cover that band of the glass edge.
+    final insertPx = SlidingGlassProfiles.defaultRailInsertionMm * scale;
     final railPx = math.max(6.0, 40 * scale);
     final fill = Paint()
       ..color = const Color(0xFF90A4AE).withValues(alpha: 0.9)
@@ -12441,38 +12441,47 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       ..color = const Color(0xFF455A64)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
-    void drawProfile(Rect rect) {
-      canvas.drawRect(rect, fill);
-      canvas.drawRect(rect, edge);
+    void drawProfile(List<Offset> outline) {
+      final path = Path()..addPolygon(outline, true);
+      canvas.drawPath(path, fill);
+      canvas.drawPath(path, edge);
     }
 
-    // Top rail across the whole opening; the fixed glass enters it.
-    final left = panels.map((p) => p.rect.left).reduce(math.min);
-    final right = panels.map((p) => p.rect.right).reduce(math.max);
-    final railBottom = fixed.rect.top + insertPx;
-    drawProfile(Rect.fromLTRB(left, railBottom - railPx, right, railBottom));
-
-    // U channel under the fixed glass.
-    drawProfile(
-      Rect.fromLTRB(
-        fixed.rect.left,
-        fixed.rect.bottom - insertPx,
-        fixed.rect.right,
-        fixed.rect.bottom - insertPx + channelPx,
-      ),
-    );
-
-    // U channel on the wall side of the fixed glass, below the rail.
     final wallOnLeft = fixed.rect.center.dx < door.rect.center.dx;
     final wallX = wallOnLeft ? fixed.rect.left : fixed.rect.right;
-    drawProfile(
-      Rect.fromLTRB(
-        wallOnLeft ? wallX - channelPx + insertPx : wallX - insertPx,
-        railBottom,
-        wallOnLeft ? wallX + insertPx : wallX + channelPx - insertPx,
-        fixed.rect.bottom - insertPx,
-      ),
-    );
+    // Towards the door from the wall.
+    final inward = wallOnLeft ? 1.0 : -1.0;
+    final farX = wallOnLeft
+        ? panels.map((p) => p.rect.right).reduce(math.max)
+        : panels.map((p) => p.rect.left).reduce(math.min);
+    final railBottom = fixed.rect.top + insertPx;
+    final bottom = fixed.rect.bottom;
+    final fixedFarX = wallOnLeft ? fixed.rect.right : fixed.rect.left;
+
+    // Top rail: from the wall, where the wall channel starts, across the
+    // opening; the fixed glass enters it.
+    drawProfile([
+      Offset(wallX, railBottom - railPx),
+      Offset(farX, railBottom - railPx),
+      Offset(farX, railBottom),
+      Offset(wallX, railBottom),
+    ]);
+
+    // Wall channel, from the rail down to the bottom, and bottom channel
+    // under the fixed glass. Neither passes the glass; they meet at the
+    // bottom corner with a 45° mitre.
+    drawProfile([
+      Offset(wallX, railBottom),
+      Offset(wallX + inward * insertPx, railBottom),
+      Offset(wallX + inward * insertPx, bottom - insertPx),
+      Offset(wallX, bottom),
+    ]);
+    drawProfile([
+      Offset(wallX, bottom),
+      Offset(wallX + inward * insertPx, bottom - insertPx),
+      Offset(fixedFarX, bottom - insertPx),
+      Offset(fixedFarX, bottom),
+    ]);
   }
 
   void _paintGaskets(Canvas canvas) {
