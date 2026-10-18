@@ -2340,7 +2340,10 @@ class SqlDatabase {
 
   Future<Database?> get db async {
     final current = _db;
-    if (current != null) return current;
+    if (current != null) {
+      _refreshLocalEditorUid(current);
+      return current;
+    }
 
     // Several startup services ask for SQLite concurrently. Opening the same
     // file twice while migrations are running can leave a stale native handle
@@ -2355,8 +2358,10 @@ class SqlDatabase {
       }
     });
     _openingDb = task;
-    _db = await task;
-    return _db;
+    final opened = await task;
+    _db = opened;
+    _refreshLocalEditorUid(opened);
+    return opened;
   }
 
   Future<Database> initDb() async {
@@ -14735,6 +14740,106 @@ class SqlDatabase {
     });
   }
 
+  /// Stamps every local order write with the signed-in account, so the
+  /// orders list can show an edit as unread to the other accounts of the
+  /// workshop but not to its author. The account comes from
+  /// `_sync_runtime_flags.local_editor_uid` (kept current by [db]). Rows
+  /// arriving from the cloud are written with tombstones suppressed and keep
+  /// the author they were synced with.
+  ///
+  /// [last_editor_version] is the `updated_at` the stamp belongs to: an edit
+  /// from an app version without this trigger changes `updated_at` but not
+  /// the stamp, and must still count as someone else's edit.
+  Future<void> _ensureOrderEditorTracking(DatabaseExecutor db) async {
+    for (final statement in const [
+      'ALTER TABLE _sync_runtime_flags ADD COLUMN local_editor_uid TEXT;',
+      'ALTER TABLE Commandes ADD COLUMN last_editor_uid TEXT;',
+      'ALTER TABLE Commandes ADD COLUMN last_editor_version TEXT;',
+    ]) {
+      try {
+        await db.execute(statement);
+      } catch (_) {}
+    }
+    const stamp = '''
+      UPDATE Commandes
+      SET last_editor_uid = (
+            SELECT local_editor_uid FROM _sync_runtime_flags WHERE id = 1
+          ),
+          last_editor_version = NEW.updated_at
+      WHERE id = NEW.id;
+    ''';
+    const localWrite = '''
+      COALESCE(
+        (SELECT suppress_tombstones FROM _sync_runtime_flags WHERE id = 1),
+        0
+      ) = 0
+    ''';
+    try {
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS order_local_editor_insert
+        AFTER INSERT ON Commandes
+        WHEN $localWrite
+        BEGIN $stamp END
+      ''');
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS order_local_editor_update
+        AFTER UPDATE OF updated_at ON Commandes
+        WHEN $localWrite AND NEW.updated_at IS NOT OLD.updated_at
+        BEGIN $stamp END
+      ''');
+    } catch (error) {
+      debugPrint('Could not track order editors: $error');
+    }
+  }
+
+  /// The signed-in account's id, or null when signed out.
+  static String? currentEditorUid() {
+    try {
+      final uid = AppAuthService().currentUser?.uid.trim() ?? '';
+      return uid.isEmpty ? null : uid;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// True when the latest change to [order] was made by the signed-in
+  /// account itself, so it must not appear as unread to that account.
+  static bool isOwnLatestOrderEdit(Map<String, dynamic> order) {
+    final uid = currentEditorUid();
+    if (uid == null) return false;
+    final version = order['updated_at']?.toString() ?? '';
+    return order['last_editor_uid']?.toString() == uid &&
+        version.isNotEmpty &&
+        order['last_editor_version']?.toString() == version;
+  }
+
+  static Object? _localEditorUidOwner;
+  static String? _localEditorUidWritten;
+
+  /// Keeps `_sync_runtime_flags.local_editor_uid` equal to the signed-in
+  /// account. Not awaited: sqflite runs it before later writes on the same
+  /// connection, and awaiting it here could wait on a caller's transaction.
+  void _refreshLocalEditorUid(Database database) {
+    final uid = currentEditorUid();
+    if (identical(_localEditorUidOwner, database) &&
+        _localEditorUidWritten == uid) {
+      return;
+    }
+    _localEditorUidOwner = database;
+    _localEditorUidWritten = uid;
+    unawaited(
+      database
+          .update('_sync_runtime_flags', {
+            'local_editor_uid': uid,
+          }, where: 'id = 1')
+          .then<void>((_) {})
+          .catchError((Object error) {
+            _localEditorUidOwner = null;
+            debugPrint('Could not record the local order editor: $error');
+          }),
+    );
+  }
+
   Future<void> _ensureSyncTombstoneInfrastructure(DatabaseExecutor db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS SyncTombstones (
@@ -14754,6 +14859,7 @@ class SqlDatabase {
       'id': 1,
       'suppress_tombstones': 0,
     }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    await _ensureOrderEditorTracking(db);
     await db.execute('''
       CREATE TABLE IF NOT EXISTS _sync_change_log (
         table_name TEXT NOT NULL,
