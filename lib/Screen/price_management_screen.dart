@@ -2501,16 +2501,92 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     final lang = Provider.of<AppSettingsProvider>(context).language;
     String t(String key) => Localization.translate(key, lang);
     double price(String key) => shutterSqmPrices[key]?[0] ?? 0.0;
-    Widget row(String key, String title, String subtitle, IconData icon) =>
-        PriceEditRow(
-          key: ValueKey('moustiquaire-$key-${price(key)}'),
-          title: t(title),
-          titleIcon: Icon(icon, size: 18, color: Colors.green),
-          subtitle: t(subtitle),
-          currentPrice: price(key),
-          canChangePrices: canChangePrices,
-          onSave: (parsed) => _updateShutterSqmPrice(key, 0, parsed),
-        );
+    // The base price (colour 0) applies to every colour without its own
+    // price; a colour price replaces it for that colour.
+    Widget row(String key, String title, String subtitle, IconData icon) {
+      final colorPrices = {...?shutterSqmPrices[key]}..remove(0);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          PriceEditRow(
+            key: ValueKey('moustiquaire-$key-${price(key)}'),
+            title: t(title),
+            titleIcon: Icon(icon, size: 18, color: Colors.green),
+            subtitle: t(subtitle),
+            currentPrice: price(key),
+            canChangePrices: canChangePrices,
+            onSave: (parsed) => _updateShutterSqmPrice(key, 0, parsed),
+          ),
+          for (final entry in colorPrices.entries)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(start: 24),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: PriceEditRow(
+                      key: ValueKey('moustiquaire-$key-${entry.key}-${entry.value}'),
+                      title: (allColorList.firstWhere(
+                                (c) => c['id'] == entry.key,
+                                orElse: () => {'name': 'Color ${entry.key}'},
+                              )['name'] ??
+                              '')
+                          .toString(),
+                      titleIcon: _buildColorCircle(
+                        allColorList.firstWhere(
+                          (c) => c['id'] == entry.key,
+                          orElse: () => {
+                            'id': entry.key,
+                            'name': '',
+                            'hex_code': '#9E9E9E',
+                          },
+                        ),
+                        size: 20,
+                      ),
+                      subtitle: t('سعر م² لهذا اللون'),
+                      currentPrice: entry.value,
+                      canChangePrices: canChangePrices,
+                      onSave: (parsed) =>
+                          _updateShutterSqmPrice(key, entry.key, parsed),
+                    ),
+                  ),
+                  if (canChangePrices)
+                    IconButton(
+                      tooltip: t('حذف'),
+                      icon: Icon(
+                        Icons.delete_outline,
+                        color: Colors.red.shade300,
+                        size: 20,
+                      ),
+                      onPressed: () async {
+                        await db.deleteShutterSqmPrice(key, entry.key);
+                        _loadAllData();
+                      },
+                    ),
+                ],
+              ),
+            ),
+          if (canChangePrices)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(start: 16),
+              child: TextButton.icon(
+                onPressed: () => _showAddSqmColorDialog(key, Colors.green),
+                icon: const Icon(
+                  Icons.add_circle_outline,
+                  size: 18,
+                  color: Colors.green,
+                ),
+                label: Text(
+                  t('+ سعر حسب اللون'),
+                  style: const TextStyle(
+                    color: Colors.green,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+    }
     Widget card(String title, List<Widget> rows) => Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       shape: RoundedRectangleBorder(

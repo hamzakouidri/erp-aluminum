@@ -416,16 +416,12 @@ extension _MaterialPricing on _MaterialConsumptionScreenState {
       verrouInstall =
           (verrouRes.first['price_per_sqm'] as num?)?.toDouble() ?? 0.0;
     }
-    final moustiquaireRes = await dbInstance.query(
-      'ShutterSqmPrices',
-      columns: ['price_per_sqm'],
-      where: 'blade_type = ? AND color_id = ?',
-      whereArgs: ['Moustiquaire_Sqm', 0],
-      limit: 1,
+    // The window colour's own mosquito-net price, else the price of every
+    // colour (colour 0).
+    final moustiquaireSqmPrice = await SqlDatabase().getShutterSqmPriceForColor(
+      'Moustiquaire_Sqm',
+      colorId,
     );
-    final moustiquaireSqmPrice = moustiquaireRes.isEmpty
-        ? 0.0
-        : _safeDouble(moustiquaireRes.first['price_per_sqm']);
     if (!mounted || generation != _priceLoadGeneration) return;
     final effectiveLinearMeterPrice = linearMeterPrice > 0 || seriesId != null
         ? linearMeterPrice
@@ -1140,9 +1136,19 @@ extension _MaterialPricing on _MaterialConsumptionScreenState {
           errorMsg = 'العنصر غير مرتبط بقاعدة البيانات';
         }
       } else if (item.category == 'moustiquaire' || item.overrideKey == 'moustiquaire') {
+        // Edit the window colour's own price when it has one, else the
+        // price of every colour.
+        final windowColorId =
+            (widget.model.selectedDbColor?['id'] as num?)?.toInt() ?? 0;
+        final ownColorPrice = windowColorId > 0
+            ? await SqlDatabase().getShutterSqmPrice(
+                'Moustiquaire_Sqm',
+                windowColorId,
+              )
+            : 0.0;
         await db.insert('ShutterSqmPrices', {
           'blade_type': 'Moustiquaire_Sqm',
-          'color_id': 0,
+          'color_id': ownColorPrice > 0 ? windowColorId : 0,
           'price_per_sqm': newPrice,
         }, conflictAlgorithm: ConflictAlgorithm.replace);
         _moustiquaireSqmPriceFromDb = newPrice;

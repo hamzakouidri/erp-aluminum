@@ -30,6 +30,7 @@ import 'locales/product_movement_keys.dart';
 import 'locales/glazing_fit_keys.dart';
 import 'locales/ai_agent_keys.dart';
 import 'locales/system_publication_keys.dart';
+import 'locales/moustiquaire_price_keys.dart';
 
 class Localization {
   static final Map<String, Map<AppLanguage, String>> _dictionary = {
@@ -59,6 +60,7 @@ class Localization {
     ...window3dKeys,
     ...aiAgentKeys,
     ...systemPublicationKeys,
+    ...moustiquairePriceKeys,
     ...shortcutKeys,
     ...subscriptionStatusKeys,
     ...auditLogKeys,

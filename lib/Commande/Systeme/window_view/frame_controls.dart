@@ -1200,9 +1200,9 @@ extension _WindowViewFrame on _WindowViewState {
         pricePerSqm: prefs.getDouble('app_price_per_sqm') ?? 0,
         linearMeterPrice: linearMeterPrice,
         shutterSqmPrice: shutterSqmPrice,
-        moustiquaireSqmPrice: await dbInstance.getShutterSqmPrice(
+        moustiquaireSqmPrice: await dbInstance.getShutterSqmPriceForColor(
           'Moustiquaire_Sqm',
-          0,
+          (widget.model.selectedDbColor?['id'] as num?)?.toInt(),
         ),
         profileRules: {
           for (final rule in pricingRules)

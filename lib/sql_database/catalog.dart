@@ -1928,6 +1928,19 @@ extension SqlDatabaseCatalog on SqlDatabase {
     return 0.0;
   }
 
+  /// Price per m² of [bladeType] in [colorId]: the colour's own price when
+  /// it has one, else the price of every colour (colour 0).
+  Future<double> getShutterSqmPriceForColor(
+    String bladeType,
+    int? colorId,
+  ) async {
+    if (colorId != null && colorId > 0) {
+      final colorPrice = await getShutterSqmPrice(bladeType, colorId);
+      if (colorPrice > 0) return colorPrice;
+    }
+    return getShutterSqmPrice(bladeType, 0);
+  }
+
   Future<int> insertOrUpdateShutterSqmPrice(
     String bladeType,
     int colorId,

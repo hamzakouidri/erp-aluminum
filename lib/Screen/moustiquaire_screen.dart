@@ -11,7 +11,7 @@ enum MoustiquaireType {
   fixe, // ثابتة
 }
 
-/// Price keys (in `ShutterSqmPrices`, colour 0) of each mosquito-net type,
+/// Price keys (in `ShutterSqmPrices`: colour 0 for every colour, or a colour's own price) of each mosquito-net type,
 /// edited in the price management page.
 const moustiquaireTypePriceKeys = [
   ('Moustiquaire_enroulable', 'Enroulable (ملفوفة / سحاب زبرك)'),
@@ -94,6 +94,10 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
 
   final List<String> _meshColors = ['رمادي', 'أسود'];
 
+  /// Catalogue colour ids by name: a frame colour found in the catalogue is
+  /// priced with its own mosquito-net price (price management).
+  final Map<String, int> _catalogColorIds = {};
+
   final List<MoustiquaireItem> _items = [];
 
   /// Catalogue price per m² of each type (0 when not set).
@@ -122,12 +126,34 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
   Future<void> _loadCatalogPrices() async {
     try {
       final db = SqlDatabase();
-      final addon = await db.getShutterSqmPrice(moustiquaireAddonPriceKey, 0);
+      if (_catalogColorIds.isEmpty) {
+        final database = await db.db;
+        final rows = database == null
+            ? const <Map<String, Object?>>[]
+            : await database.query('Colors', columns: const ['id', 'name']);
+        for (final row in rows) {
+          final name = row['name']?.toString().trim() ?? '';
+          final id = (row['id'] as num?)?.toInt();
+          if (name.isNotEmpty && id != null) _catalogColorIds[name] = id;
+        }
+        if (mounted && _catalogColorIds.isNotEmpty) {
+          setState(() {
+            for (final name in _catalogColorIds.keys) {
+              if (!_frameColors.contains(name)) _frameColors.add(name);
+            }
+          });
+        }
+      }
+      final colorId = _catalogColorIds[_selectedFrameColor];
+      final addon = await db.getShutterSqmPriceForColor(
+        moustiquaireAddonPriceKey,
+        colorId,
+      );
       final prices = <MoustiquaireType, double>{};
       for (final type in MoustiquaireType.values) {
-        prices[type] = await db.getShutterSqmPrice(
+        prices[type] = await db.getShutterSqmPriceForColor(
           moustiquaireTypePriceKey(type),
-          0,
+          colorId,
         );
       }
       if (!mounted) return;
@@ -638,8 +664,10 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
                                       )
                                       .toList(),
                                   onChanged: (val) {
-                                    if (val != null)
-                                      setState(() => _selectedFrameColor = val);
+                                    if (val == null) return;
+                                    setState(() => _selectedFrameColor = val);
+                                    // The price follows the frame colour.
+                                    _loadCatalogPrices();
                                   },
                                 ),
                               ],

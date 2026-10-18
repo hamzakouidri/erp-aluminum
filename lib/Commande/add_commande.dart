@@ -2110,9 +2110,9 @@ class _CommandePageState extends State<CommandePage> {
       pricePerSqm: prefs.getDouble('app_price_per_sqm') ?? 0,
       linearMeterPrice: await _readSeriesLinearMeterPrice(product),
       shutterSqmPrice: await _readShutterSquareMeterPrice(product),
-      moustiquaireSqmPrice: await widget.db.getShutterSqmPrice(
+      moustiquaireSqmPrice: await widget.db.getShutterSqmPriceForColor(
         'Moustiquaire_Sqm',
-        0,
+        (product.selectedDbColor?['id'] as num?)?.toInt(),
       ),
       profileRules: {
         for (final rule in pricingRules)
