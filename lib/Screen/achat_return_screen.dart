@@ -163,7 +163,17 @@ class _AchatReturnScreenState extends State<AchatReturnScreen> {
         0.0,
         (sum, i) => sum + (i['refundAmount'] as double),
       );
-      await widget.db.returnAchatInvoice(achatId, returns, achatRefund);
+      try {
+        await widget.db.returnAchatInvoice(achatId, returns, achatRefund);
+      } catch (error) {
+        // Each invoice is returned atomically; earlier invoices stay done.
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$error'), backgroundColor: Colors.red),
+        );
+        _loadItemsForSupplier(_selectedSupplierId!);
+        return;
+      }
     }
 
     if (mounted) {

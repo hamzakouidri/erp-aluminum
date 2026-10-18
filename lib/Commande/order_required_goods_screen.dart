@@ -4767,6 +4767,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       }
     }
 
+    // Stock and remnants this order reserved stay available to it.
+    final reservationOrderId = _safeInt(widget.orderData['id']);
     final reports = <Map<String, dynamic>>[];
     for (final item in stockItemsByKey.values) {
       final itemId = item.catalogItemId;
@@ -4779,6 +4781,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         itemId: itemId,
         itemType: itemType,
         colorId: item.colorId,
+        forOrderId: reservationOrderId,
       );
       if (item.cuttingPieces.isNotEmpty && (item.stockLength ?? 0) > 0) {
         final seriesId = await _seriesIdFor(item);
@@ -4787,6 +4790,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           itemType: itemType,
           colorId: item.colorId,
           seriesId: seriesId,
+          forOrderId: reservationOrderId,
         );
         final remnantPlan = optimizeCuttingWithRemnants(
           pieces: item.cuttingPieces,
@@ -6410,12 +6414,12 @@ class _OrderShortageReportPageState extends State<_OrderShortageReportPage> {
     final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     String t(String key) => Localization.translate(key, lang);
     final newStatus = !_isStockReserved;
-    final remnantIds = _usedRemnantIds();
     try {
       await db.setOrderStockReservation(
         orderId: orderId,
         reserved: newStatus,
-        remnantIds: remnantIds,
+        remnantIds: _usedRemnantIds(),
+        stockDeductions: _stockDeductions(),
       );
       if (!context.mounted) return;
       setState(() {

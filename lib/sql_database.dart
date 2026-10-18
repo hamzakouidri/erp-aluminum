@@ -320,6 +320,7 @@ class SqlDatabase {
     'InventorySettings',
     'OrderCuttingSessions',
     'OrderInventoryIssueSessions',
+    'StockReservations',
     'MaterialRemnants',
     'MaterialScrap',
     'StandardSheets',
@@ -4937,52 +4938,249 @@ class SqlDatabase {
     _orderStockReservationInfrastructureReady = true;
   }
 
+  /// Reserves (or releases) the stock an order needs.
+  ///
+  /// [stockDeductions] uses the same rows as [applyOrderInventoryIssue]
+  /// (item_id, item_type, color_id, location_id, quantity). Reserving replaces
+  /// the order's previous hold and fails without changing anything when a
+  /// balance cannot cover it after other orders' reservations, or when a
+  /// remnant is no longer free. Releasing frees every active hold.
   Future<bool> setOrderStockReservation({
     required int orderId,
     required bool reserved,
     List<int>? remnantIds,
+    List<Map<String, dynamic>>? stockDeductions,
   }) async {
     final myDb = await db;
     if (myDb == null) return false;
     await _ensureOrderStockReservationInfrastructure(myDb);
+    await _ensureRemnantInventorySchema(myDb);
+    await _ensureOrderInventoryIssueSchema(myDb);
+    final author = await _currentOrderEditor();
 
-    final now = DateTime.now().toIso8601String();
-    await myDb.update(
-      'Commandes',
-      {
-        'is_stock_reserved': reserved ? 1 : 0,
-        'stock_reserved_at': reserved ? now : null,
-      },
-      where: 'id = ?',
-      whereArgs: [orderId],
-    );
-
-    try {
-      if (reserved && remnantIds != null && remnantIds.isNotEmpty) {
-        final idPlaceholders = List.filled(remnantIds.length, '?').join(',');
-        await myDb.rawUpdate(
-          '''
-          UPDATE MaterialRemnants
-          SET status = 'reserved', reserved_order_id = ?, reserved_at = ?
-          WHERE id IN ($idPlaceholders) AND (status = 'available' OR reserved_order_id = ?)
-        ''',
-          [orderId, now, ...remnantIds, orderId],
+    await myDb.transaction((txn) async {
+      final now = DateTime.now().toUtc().toIso8601String();
+      if (reserved) {
+        final issued = await txn.query(
+          'OrderInventoryIssueSessions',
+          columns: const ['id'],
+          where: 'order_id = ?',
+          whereArgs: [orderId],
+          limit: 1,
         );
-      } else if (!reserved) {
-        await myDb.rawUpdate(
-          '''
-          UPDATE MaterialRemnants
-          SET status = 'available', reserved_order_id = NULL, reserved_at = NULL
-          WHERE reserved_order_id = ? AND status = 'reserved'
-        ''',
-          [orderId],
-        );
+        if (issued.isNotEmpty) {
+          throw StateError(
+            'تم صرف مخزون الطلبية #$orderId مسبقاً، فلا حاجة إلى حجزه.',
+          );
+        }
       }
-    } catch (e) {
-      debugPrint('Warning updating MaterialRemnants reservation: $e');
-    }
 
+      // Drop the previous hold first so a re-reservation is checked against
+      // the new quantities only.
+      await _releaseOrderStockHold(txn, orderId, now);
+
+      if (reserved) {
+        final requested = <String, Map<String, dynamic>>{};
+        for (final row in stockDeductions ?? const <Map<String, dynamic>>[]) {
+          final itemId = (row['item_id'] as num?)?.toInt();
+          final itemType = row['item_type']?.toString().trim();
+          final locationId = (row['location_id'] as num?)?.toInt();
+          final quantity = _readStoredNumber(row['quantity']) ?? 0;
+          if (itemId == null ||
+              itemType == null ||
+              itemType.isEmpty ||
+              locationId == null ||
+              quantity <= 0) {
+            continue;
+          }
+          final colorId = (row['color_id'] as num?)?.toInt();
+          final key = '$itemId|$itemType|${colorId ?? ''}|$locationId';
+          final entry = requested.putIfAbsent(
+            key,
+            () => {
+              'item_id': itemId,
+              'item_type': itemType,
+              'color_id': colorId,
+              'location_id': locationId,
+              'quantity': 0.0,
+            },
+          );
+          entry['quantity'] = (entry['quantity'] as double) + quantity;
+        }
+
+        for (final entry in requested.values) {
+          final itemId = entry['item_id'] as int;
+          final itemType = entry['item_type'] as String;
+          final colorId = entry['color_id'] as int?;
+          final locationId = entry['location_id'] as int;
+          final quantity = entry['quantity'] as double;
+          await _ensureUnreservedStock(
+            txn,
+            itemId: itemId,
+            itemType: itemType,
+            colorId: colorId,
+            locationId: locationId,
+            quantity: quantity,
+            excludeOrderId: orderId,
+          );
+          await txn.insert(
+            'StockReservations',
+            _withDistributedId({
+              'order_id': orderId,
+              'item_id': itemId,
+              'item_type': itemType,
+              'color_id': colorId,
+              'location_id': locationId,
+              'quantity': quantity,
+              'status': 'active',
+              'created_at': now,
+              'updated_at': now,
+              'created_by': author,
+            }),
+          );
+        }
+
+        for (final id in (remnantIds ?? const <int>[]).toSet()) {
+          final updated = await txn.update(
+            'MaterialRemnants',
+            {
+              'status': 'reserved',
+              'reserved_order_id': orderId,
+              'reserved_at': now,
+              'updated_at': now,
+            },
+            where: 'id = ? AND status = ?',
+            whereArgs: [id, 'available'],
+          );
+          if (updated == 0) {
+            throw StateError(
+              'الفضلة رقم $id غير متاحة: محجوزة لطلبية أخرى أو سبق صرفها.',
+            );
+          }
+        }
+      }
+
+      await txn.update(
+        'Commandes',
+        {
+          'is_stock_reserved': reserved ? 1 : 0,
+          'stock_reserved_at': reserved ? now : null,
+        },
+        where: 'id = ?',
+        whereArgs: [orderId],
+      );
+    });
+
+    CloudSyncService().notifyChange();
     return true;
+  }
+
+  /// Frees everything [orderId] holds: active stock reservations and
+  /// reserved remnants. The caller updates the order's reservation flag.
+  Future<void> _releaseOrderStockHold(
+    DatabaseExecutor executor,
+    int orderId,
+    String timestamp,
+  ) async {
+    await executor.update(
+      'StockReservations',
+      {'status': 'released', 'updated_at': timestamp},
+      where: 'order_id = ? AND status = ?',
+      whereArgs: [orderId, 'active'],
+    );
+    await executor.update(
+      'MaterialRemnants',
+      {
+        'status': 'available',
+        'reserved_order_id': null,
+        'reserved_at': null,
+        'updated_at': timestamp,
+      },
+      where: 'reserved_order_id = ? AND status = ?',
+      whereArgs: [orderId, 'reserved'],
+    );
+  }
+
+  /// Total held by active reservations on one CurrentStock balance.
+  /// [excludeOrderId] leaves out that order's own hold, so an order can
+  /// always use what it reserved.
+  Future<double> _activeReservedQuantity(
+    DatabaseExecutor executor, {
+    required int itemId,
+    required String itemType,
+    int? colorId,
+    required int locationId,
+    int? excludeOrderId,
+  }) async {
+    final rows = await executor.rawQuery(
+      '''
+      SELECT COALESCE(SUM(quantity), 0) AS reserved
+      FROM StockReservations
+      WHERE status = 'active' AND item_id = ? AND item_type = ?
+        AND (color_id = ? OR (color_id IS NULL AND ? IS NULL))
+        AND location_id = ?
+        ${excludeOrderId == null ? '' : 'AND order_id != ?'}
+      ''',
+      [
+        itemId,
+        itemType,
+        colorId,
+        colorId,
+        locationId,
+        if (excludeOrderId != null) excludeOrderId,
+      ],
+    );
+    return _readStoredNumber(rows.first['reserved']) ?? 0;
+  }
+
+  /// Throws when taking [quantity] from a balance would use stock reserved
+  /// for another order. [currentQuantity] is read from CurrentStock when not
+  /// given. Callers must have run [_ensureRemnantInventorySchema].
+  Future<void> _ensureUnreservedStock(
+    DatabaseExecutor executor, {
+    required int itemId,
+    required String itemType,
+    int? colorId,
+    required int locationId,
+    required double quantity,
+    double? currentQuantity,
+    int? excludeOrderId,
+    String? label,
+  }) async {
+    var current = currentQuantity;
+    if (current == null) {
+      final rows = await executor.query(
+        'CurrentStock',
+        columns: const ['quantity'],
+        where: colorId == null
+            ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
+            : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?',
+        whereArgs: colorId == null
+            ? [itemId, itemType, locationId]
+            : [itemId, itemType, colorId, locationId],
+        limit: 1,
+      );
+      current = rows.isEmpty
+          ? 0.0
+          : (_readStoredNumber(rows.first['quantity']) ?? 0);
+    }
+    final reserved = await _activeReservedQuantity(
+      executor,
+      itemId: itemId,
+      itemType: itemType,
+      colorId: colorId,
+      locationId: locationId,
+      excludeOrderId: excludeOrderId,
+    );
+    final free = current - reserved;
+    if (free + 0.000001 < quantity) {
+      final name = label ?? '$itemId ($itemType)';
+      throw StateError(
+        reserved > 0.000001
+            ? 'الكمية غير متاحة للصنف $name: المتوفر $current منها $reserved محجوزة لطلبيات أخرى، والمتاح ${free < 0 ? 0 : free} والمطلوب $quantity. ألغِ الحجز أو وفّر كمية إضافية.'
+            : 'المخزون غير كافٍ للصنف $name: المطلوب $quantity والمتاح $current.',
+      );
+    }
   }
 
   Future<bool> isOrderStockReserved(int orderId) async {
@@ -9584,6 +9782,8 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return 0;
     await _ensureOrderTrashInfrastructure(myDb);
+    await _ensureRemnantInventorySchema(myDb);
+    await _ensureOrderStockReservationInfrastructure(myDb);
     final notificationRow = await readCommandeWithClientById(id);
     final order = await myDb.query(
       'Commandes',
@@ -9595,17 +9795,23 @@ class SqlDatabase {
     final nowIso = DateTime.now().toUtc().toIso8601String();
     final deletedBy = await _currentOrderEditor();
     await snapshotCommande(id, actionType: 'DELETE');
-    final res = await myDb.update(
-      'Commandes',
-      {
-        'is_deleted': 1,
-        'deleted_at': nowIso,
-        'deleted_by': deletedBy,
-        'updated_at': nowIso,
-      },
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    // A deleted order must not keep stock away from the others.
+    final res = await myDb.transaction<int>((txn) async {
+      await _releaseOrderStockHold(txn, id, nowIso);
+      return txn.update(
+        'Commandes',
+        {
+          'is_deleted': 1,
+          'deleted_at': nowIso,
+          'deleted_by': deletedBy,
+          'updated_at': nowIso,
+          'is_stock_reserved': 0,
+          'stock_reserved_at': null,
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
     if (res > 0) {
       final clientId = _paymentRecordId(
         order.isEmpty ? null : order.first['client_id'],
@@ -9765,7 +9971,13 @@ class SqlDatabase {
     // Track every affected record before it is deleted so Firebase receives
     // the deletion as well, and keep the operation atomic on every device.
     await _ensureSyncTombstoneInfrastructure(myDb);
+    await _ensureRemnantInventorySchema(myDb);
     final res = await myDb.transaction((txn) async {
+      await _releaseOrderStockHold(
+        txn,
+        id,
+        DateTime.now().toUtc().toIso8601String(),
+      );
       final details = await txn.query(
         'Commandes_details',
         columns: ['id'],
@@ -11489,6 +11701,7 @@ class SqlDatabase {
     Database? myDb = await db;
     if (myDb == null) return 0;
     await _ensureAchatTrashInfrastructure(myDb);
+    await _ensureRemnantInventorySchema(myDb);
     final achatRows = await myDb.query(
       'Achats',
       where: 'id = ?',
@@ -11536,6 +11749,16 @@ class SqlDatabase {
               'لا يمكن حذف فاتورة الشراء لأن جزءاً من مخزون ${item['item_name'] ?? item['item_code'] ?? 'العنصر'} قد تم استهلاكه.',
             );
           }
+          await _ensureUnreservedStock(
+            txn,
+            itemId: itemId,
+            itemType: itemType,
+            colorId: colorId,
+            locationId: locationId,
+            quantity: qty,
+            currentQuantity: available,
+            label: (item['item_name'] ?? item['item_code'])?.toString(),
+          );
           await txn.update(
             'CurrentStock',
             {'quantity': available - qty, 'updated_at': now},
@@ -11832,6 +12055,9 @@ class SqlDatabase {
     return res;
   }
 
+  /// Returns purchased items to the supplier in one transaction: the invoice
+  /// lines, the stock taken back out of the warehouse (for a confirmed
+  /// invoice), the refund and the new totals are all written, or none is.
   Future<void> returnAchatInvoice(
     int achatId,
     List<Map<String, dynamic>> returnedItems,
@@ -11839,6 +12065,7 @@ class SqlDatabase {
   ) async {
     Database? myDb = await db;
     if (myDb == null) return;
+    await _ensureRemnantInventorySchema(myDb);
     await snapshotAchat(
       achatId,
       actionType: 'RETURN',
@@ -11848,96 +12075,165 @@ class SqlDatabase {
       },
     );
 
-    for (var item in returnedItems) {
-      final itemId = item['id'] as int;
-      final returnQty = (item['returnQty'] as num).toDouble();
-      final currentQty = (item['currentQty'] as num).toDouble();
-      final remainingQty = currentQty - returnQty;
-
-      if (remainingQty <= 0) {
-        await myDb.delete('Achat_items', where: 'id = ?', whereArgs: [itemId]);
-      } else {
-        await myDb.update(
-          'Achat_items',
-          {'quantity': remainingQty},
-          where: 'id = ?',
-          whereArgs: [itemId],
-        );
-      }
-    }
-
-    if (refundedAmount > 0) {
-      final achatRes = await myDb.query(
+    await myDb.transaction((txn) async {
+      final achatRows = await txn.query(
         'Achats',
-        columns: ['supplier_id'],
         where: 'id = ?',
         whereArgs: [achatId],
+        limit: 1,
       );
-      int? supplierId;
-      if (achatRes.isNotEmpty) {
-        supplierId = achatRes.first['supplier_id'] as int?;
+      if (achatRows.isEmpty) throw StateError('فاتورة الشراء غير موجودة.');
+      final achat = achatRows.first;
+      final status = achat['status']?.toString() ?? '';
+      // Only a confirmed invoice put its quantities into stock.
+      final movesStock = status == 'Confirmed' || status == 'Partial Returned';
+      final locationId = (achat['location_id'] as num?)?.toInt() ?? 1;
+      final now = DateTime.now().toUtc().toIso8601String();
+
+      for (var item in returnedItems) {
+        final lineId = (item['id'] as num).toInt();
+        final returnQty = (item['returnQty'] as num).toDouble();
+        if (returnQty <= 0) continue;
+        final lineRows = await txn.query(
+          'Achat_items',
+          where: 'id = ? AND achat_id = ?',
+          whereArgs: [lineId, achatId],
+          limit: 1,
+        );
+        if (lineRows.isEmpty) {
+          throw StateError('سطر الفاتورة رقم $lineId غير موجود.');
+        }
+        final line = lineRows.first;
+        final lineQty = (line['quantity'] as num?)?.toDouble() ?? 0;
+        if (returnQty > lineQty + 0.000001) {
+          throw StateError(
+            'كمية الإرجاع لـ ${line['item_name'] ?? line['item_code']} ($returnQty) أكبر من الكمية المشتراة ($lineQty).',
+          );
+        }
+
+        final itemId = (line['item_id'] as num?)?.toInt() ?? 0;
+        if (movesStock && itemId > 0) {
+          final itemType = line['item_type']?.toString() ?? 'Other';
+          final colorId = (line['color_id'] as num?)?.toInt();
+          final label = (line['item_name'] ?? line['item_code'])?.toString();
+          final where = colorId == null
+              ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
+              : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
+          final args = colorId == null
+              ? [itemId, itemType, locationId]
+              : [itemId, itemType, colorId, locationId];
+          final stock = await txn.query(
+            'CurrentStock',
+            columns: const ['quantity'],
+            where: where,
+            whereArgs: args,
+            limit: 1,
+          );
+          final current = stock.isEmpty
+              ? 0.0
+              : (_readStoredNumber(stock.first['quantity']) ?? 0);
+          if (current + 0.000001 < returnQty) {
+            throw StateError(
+              'لا يمكن إرجاع $label: المتوفر في المخزن $current والمطلوب إرجاعه $returnQty.',
+            );
+          }
+          await _ensureUnreservedStock(
+            txn,
+            itemId: itemId,
+            itemType: itemType,
+            colorId: colorId,
+            locationId: locationId,
+            quantity: returnQty,
+            currentQuantity: current,
+            label: label,
+          );
+          await txn.update(
+            'CurrentStock',
+            {'quantity': current - returnQty, 'updated_at': now},
+            where: where,
+            whereArgs: args,
+          );
+          await txn.insert(
+            'InventoryTransactions',
+            _withDistributedId({
+              'item_id': itemId,
+              'item_type': itemType,
+              'color_id': colorId,
+              'location_id': locationId,
+              'quantity': -returnQty,
+              'transaction_type': 'Return to Supplier',
+              'reference_id': achatId,
+              'created_at': now,
+            }),
+          );
+        }
+
+        final remainingQty = lineQty - returnQty;
+        if (remainingQty <= 0.000001) {
+          await txn.delete('Achat_items', where: 'id = ?', whereArgs: [lineId]);
+        } else {
+          await txn.update(
+            'Achat_items',
+            {'quantity': remainingQty},
+            where: 'id = ?',
+            whereArgs: [lineId],
+          );
+        }
       }
 
-      await myDb.insert(
-        'Treasury',
-        _withDistributedId({
-          'transaction_type': 'Encaissement',
-          'amount': refundedAmount,
-          'description': 'استرجاع من المورد - فاتورة مشتريات رقم $achatId',
-          'reference_id': achatId,
-          'entity_type': 'Supplier',
-          'entity_id': supplierId,
-          'recorded_by': 'system',
-          'created_at': DateTime.now().toUtc().toIso8601String(),
-          'old_balance': 0.0,
-          'new_balance': 0.0,
-          'caisse_name': 'الصندوق الرئيسي',
-          'payment_method': 'نقداً / Espèce',
-        }),
+      if (refundedAmount > 0) {
+        await txn.insert(
+          'Treasury',
+          _withDistributedId({
+            'transaction_type': 'Encaissement',
+            'amount': refundedAmount,
+            'description': 'استرجاع من المورد - فاتورة مشتريات رقم $achatId',
+            'reference_id': achatId,
+            'entity_type': 'Supplier',
+            'entity_id': (achat['supplier_id'] as num?)?.toInt(),
+            'recorded_by': 'system',
+            'created_at': now,
+            'old_balance': 0.0,
+            'new_balance': 0.0,
+            'caisse_name': 'الصندوق الرئيسي',
+            'payment_method': 'نقداً / Espèce',
+          }),
+        );
+      }
+
+      final newItems = await txn.query(
+        'Achat_items',
+        where: 'achat_id = ?',
+        whereArgs: [achatId],
       );
-    }
+      double newTotal = 0.0;
+      for (var i in newItems) {
+        newTotal +=
+            ((i['quantity'] as num?)?.toDouble() ?? 0) *
+            ((i['price'] as num?)?.toDouble() ?? 0);
+      }
 
-    final newItems = await myDb.query(
-      'Achat_items',
-      where: 'achat_id = ?',
-      whereArgs: [achatId],
-    );
-    double newTotal = 0.0;
-    for (var i in newItems) {
-      newTotal +=
-          ((i['quantity'] as num?)?.toDouble() ?? 0) *
-          ((i['price'] as num?)?.toDouble() ?? 0);
-    }
-
-    String newStatus = newTotal == 0 ? 'Returned' : 'Partial Returned';
-
-    final achatRows = await myDb.query(
-      'Achats',
-      where: 'id = ?',
-      whereArgs: [achatId],
-    );
-    if (achatRows.isNotEmpty) {
-      double currentPaid =
-          (achatRows.first['paid_amount'] as num?)?.toDouble() ?? 0.0;
-      double newPaid = (currentPaid - refundedAmount).clamp(
+      final newStatus = newTotal == 0 ? 'Returned' : 'Partial Returned';
+      final currentPaid = (achat['paid_amount'] as num?)?.toDouble() ?? 0.0;
+      final newPaid = (currentPaid - refundedAmount).clamp(
         0.0,
         double.infinity,
       );
-      double newRemaining = (newTotal - newPaid).clamp(0.0, double.infinity);
+      final newRemaining = (newTotal - newPaid).clamp(0.0, double.infinity);
 
-      await myDb.update(
+      await txn.update(
         'Achats',
         {
           'total': newTotal,
           'paid_amount': newPaid,
           'remaining_amount': newRemaining,
           'status': newStatus,
-          'updated_at': DateTime.now().toUtc().toIso8601String(),
+          'updated_at': now,
         },
         where: 'id = ?',
         whereArgs: [achatId],
       );
-    }
+    });
 
     CloudSyncService().notifyChange();
   }
@@ -15719,6 +16015,7 @@ class SqlDatabase {
       'InventorySettings',
       'OrderCuttingSessions',
       'OrderInventoryIssueSessions',
+      'StockReservations',
       'MaterialRemnants',
       'MaterialScrap',
     ];
@@ -15757,6 +16054,7 @@ class SqlDatabase {
       'InventorySettings',
       'OrderCuttingSessions',
       'OrderInventoryIssueSessions',
+      'StockReservations',
       'MaterialRemnants',
       'MaterialScrap',
       'AuditLogs',
@@ -16589,6 +16887,32 @@ class SqlDatabase {
         updated_at TEXT NOT NULL
       )
     ''');
+    // Quantities held for an order (حجز السلع). An active row lowers the
+    // stock that every other order, sale or transfer may take from the same
+    // CurrentStock balance until the order issues it or the hold is released.
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS StockReservations (
+        id INTEGER PRIMARY KEY,
+        order_id INTEGER NOT NULL,
+        item_id INTEGER NOT NULL,
+        item_type TEXT NOT NULL,
+        color_id INTEGER,
+        location_id INTEGER NOT NULL,
+        quantity REAL NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        created_by TEXT NOT NULL DEFAULT ''
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_stock_reservations_balance '
+      'ON StockReservations(item_id, item_type, color_id, location_id, status)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_stock_reservations_order '
+      'ON StockReservations(order_id, status)',
+    );
     await db.execute('''
       CREATE TABLE IF NOT EXISTS MaterialRemnants (
         id INTEGER PRIMARY KEY,
@@ -17089,15 +17413,19 @@ class SqlDatabase {
     required String itemType,
     int? colorId,
     int? seriesId,
+    int? forOrderId,
   }) async {
     final myDb = await db;
     if (myDb == null) return [];
     await _ensureRemnantInventorySchema(myDb);
+    // Remnants reserved for [forOrderId] remain part of that order's plan.
     final where = StringBuffer(
-      'r.item_id = ? AND r.item_type = ? AND r.status = ? '
+      'r.item_id = ? AND r.item_type = ? '
+      "AND (r.status = 'available' OR "
+      "(r.status = 'reserved' AND r.reserved_order_id = ?)) "
       'AND (r.color_id = ? OR (r.color_id IS NULL AND ? IS NULL))',
     );
-    final args = <Object?>[itemId, itemType, 'available', colorId, colorId];
+    final args = <Object?>[itemId, itemType, forOrderId, colorId, colorId];
     if (seriesId != null) {
       where.write(' AND (r.series_id = ? OR r.series_id IS NULL)');
       args.add(seriesId);
@@ -17313,6 +17641,7 @@ class SqlDatabase {
     if (myDb == null) return const {'applied': false};
     await _ensureRemnantInventorySchema(myDb);
     await _ensureOrderInventoryIssueSchema(myDb);
+    await _ensureOrderStockReservationInfrastructure(myDb);
     final uniqueRemnantIds = remnantIds.toSet().toList();
     var consumedRemnants = 0;
     var deductedRows = 0;
@@ -17357,10 +17686,13 @@ class SqlDatabase {
       // negative result to zero hides a shortage and corrupts stock totals.
       final remnantRows = <Map<String, Object?>>[];
       for (final id in uniqueRemnantIds) {
+        // A remnant this order reserved is still usable by this order.
         final rows = await txn.query(
           'MaterialRemnants',
-          where: 'id = ? AND status = ?',
-          whereArgs: [id, 'available'],
+          where:
+              "id = ? AND (status = 'available' OR "
+              "(status = 'reserved' AND reserved_order_id = ?))",
+          whereArgs: [id, orderId],
           limit: 1,
         );
         if (rows.isEmpty) {
@@ -17408,6 +17740,16 @@ class SqlDatabase {
             'المخزون غير كافٍ للصنف $itemId ($itemType): المطلوب $quantity والمتاح $current.',
           );
         }
+        await _ensureUnreservedStock(
+          txn,
+          itemId: itemId,
+          itemType: itemType,
+          colorId: colorId,
+          locationId: locationId,
+          quantity: alreadyProjected + quantity,
+          currentQuantity: current,
+          excludeOrderId: orderId,
+        );
         projectedDeductions[balanceKey] = alreadyProjected + quantity;
         validatedDeductions.add({
           ...row,
@@ -17439,8 +17781,10 @@ class SqlDatabase {
             'consumed_at': timestamp,
             'updated_at': timestamp,
           },
-          where: 'id = ? AND status = ?',
-          whereArgs: [id, 'available'],
+          where:
+              "id = ? AND (status = 'available' OR "
+              "(status = 'reserved' AND reserved_order_id = ?))",
+          whereArgs: [id, orderId],
         );
         await txn.insert(
           'InventoryTransactions',
@@ -17504,6 +17848,22 @@ class SqlDatabase {
         );
       }
 
+      // The issue replaces the order's hold: the stock it reserved has just
+      // left the warehouse, and reserved remnants it did not use are free.
+      await txn.update(
+        'StockReservations',
+        {'status': 'consumed', 'updated_at': timestamp},
+        where: 'order_id = ? AND status = ?',
+        whereArgs: [orderId, 'active'],
+      );
+      await _releaseOrderStockHold(txn, orderId, timestamp);
+      await txn.update(
+        'Commandes',
+        {'is_stock_reserved': 0, 'stock_reserved_at': null},
+        where: 'id = ?',
+        whereArgs: [orderId],
+      );
+
       if (completeIssue) {
         await txn.update(
           'MaterialRemnants',
@@ -17529,25 +17889,64 @@ class SqlDatabase {
     };
   }
 
+  /// Stock balances of one item that can still be used. `quantity` is what is
+  /// left after other orders' active reservations ([forOrderId]'s own hold
+  /// stays usable); `physical_quantity` and `reserved_quantity` give the
+  /// breakdown.
   Future<List<Map<String, dynamic>>> readStockAvailability({
     required int itemId,
     required String itemType,
     int? colorId,
+    int? forOrderId,
   }) async {
     final myDb = await db;
     if (myDb == null) return [];
-    return myDb.rawQuery(
+    await _ensureRemnantInventorySchema(myDb);
+    final rows = await myDb.rawQuery(
       '''
-      SELECT cs.*, l.name AS location_name
+      SELECT cs.*, l.name AS location_name,
+             COALESCE((
+               SELECT SUM(r.quantity)
+               FROM StockReservations r
+               WHERE r.status = 'active'
+                 AND r.item_id = cs.item_id
+                 AND r.item_type = cs.item_type
+                 AND (r.color_id = cs.color_id
+                      OR (r.color_id IS NULL AND cs.color_id IS NULL))
+                 AND r.location_id = cs.location_id
+                 AND (? IS NULL OR r.order_id != ?)
+             ), 0) AS reserved_quantity
       FROM CurrentStock cs
       LEFT JOIN Locations l ON l.id = cs.location_id
       WHERE cs.item_id = ? AND cs.item_type = ?
         AND (cs.color_id = ? OR (cs.color_id IS NULL AND ? IS NULL))
         AND cs.quantity > 0
-      ORDER BY cs.quantity DESC, cs.location_id ASC
       ''',
-      [itemId, itemType, colorId, colorId],
+      [forOrderId, forOrderId, itemId, itemType, colorId, colorId],
     );
+    final available = <Map<String, dynamic>>[];
+    for (final row in rows) {
+      final physical = _readStoredNumber(row['quantity']) ?? 0;
+      final reserved = _readStoredNumber(row['reserved_quantity']) ?? 0;
+      final free = physical - reserved;
+      if (free <= 0.000001) continue;
+      available.add({
+        ...row,
+        'physical_quantity': physical,
+        'reserved_quantity': reserved,
+        'quantity': free,
+      });
+    }
+    available.sort((a, b) {
+      final byQuantity = (b['quantity'] as double).compareTo(
+        a['quantity'] as double,
+      );
+      if (byQuantity != 0) return byQuantity;
+      return ((a['location_id'] as num?)?.toInt() ?? 0).compareTo(
+        (b['location_id'] as num?)?.toInt() ?? 0,
+      );
+    });
+    return available;
   }
 
   Future<List<Map<String, dynamic>>> readMaterialRemnantsForOrder(
@@ -17998,6 +18397,7 @@ class SqlDatabase {
   }) async {
     Database? myDb = await db;
     if (myDb == null) return;
+    await _ensureRemnantInventorySchema(myDb);
 
     await myDb.transaction((txn) async {
       // 1. Record the transaction
@@ -18042,6 +18442,17 @@ class SqlDatabase {
         if (newQty < -0.000001) {
           throw StateError(
             'الرصيد غير كافٍ. المتوفر $currentQty والمطلوب ${quantityChange.abs()}.',
+          );
+        }
+        if (quantityChange < 0) {
+          await _ensureUnreservedStock(
+            txn,
+            itemId: itemId,
+            itemType: itemType,
+            colorId: colorId,
+            locationId: locationId,
+            quantity: -quantityChange,
+            currentQuantity: currentQty,
           );
         }
         await txn.update(
@@ -22770,10 +23181,13 @@ class SqlDatabase {
     if ((sale['is_deleted'] as num?)?.toInt() == 1) return;
     await snapshotMaterialSale(saleId, actionType: 'before_delete');
     final isInternal = (sale['is_internal'] as num?)?.toInt() == 1;
-    if (isInternal && (sale['stock_deducted'] as num?)?.toInt() == 1) {
-      await cancelOrReverseInternalMaterialSaleTransfer(saleId: saleId);
-    } else if ((sale['stock_deducted'] as num?)?.toInt() == 1) {
-      await myDb.transaction((txn) async {
+    final deletedBy = await _currentOrderEditor();
+    // The stock reversal and the soft delete succeed or fail together, so a
+    // failed reversal never leaves a cancelled document with stock still out.
+    await myDb.transaction((txn) async {
+      if (isInternal && (sale['stock_deducted'] as num?)?.toInt() == 1) {
+        await _reverseInternalMaterialSaleTransfer(txn, saleId);
+      } else if ((sale['stock_deducted'] as num?)?.toInt() == 1) {
         final items = await txn.query(
           'MaterialSaleItems',
           where: 'sale_id = ?',
@@ -22835,23 +23249,23 @@ class SqlDatabase {
             }),
           );
         }
-      });
-    }
-    final now = DateTime.now().toUtc().toIso8601String();
-    await myDb.update(
-      'MaterialSales',
-      {
-        'is_deleted': 1,
-        'deleted_at': now,
-        'deleted_by': await _currentOrderEditor(),
-        'status_before_delete': sale['status']?.toString() ?? 'draft',
-        'status': 'cancelled',
-        'stock_deducted': 0,
-        'updated_at': now,
-      },
-      where: 'id = ?',
-      whereArgs: [saleId],
-    );
+      }
+      final now = DateTime.now().toUtc().toIso8601String();
+      await txn.update(
+        'MaterialSales',
+        {
+          'is_deleted': 1,
+          'deleted_at': now,
+          'deleted_by': deletedBy,
+          'status_before_delete': sale['status']?.toString() ?? 'draft',
+          'status': 'cancelled',
+          'stock_deducted': 0,
+          'updated_at': now,
+        },
+        where: 'id = ?',
+        whereArgs: [saleId],
+      );
+    });
     await logAuditAction(
       actionType: 'delete',
       entityType: 'MaterialSale',
@@ -23557,6 +23971,7 @@ class SqlDatabase {
   }) async {
     final myDb = await db;
     if (myDb == null) return;
+    await _ensureRemnantInventorySchema(myDb);
     await myDb.transaction((txn) async {
       final saleRows = await txn.query(
         'MaterialSales',
@@ -23575,6 +23990,7 @@ class SqlDatabase {
 
       // Validate every line first. Nothing is written if even one item is
       // unavailable, so unavailable lines are never silently omitted.
+      final projected = <String, double>{};
       for (final item in items) {
         final itemType = item['item_type']?.toString() ?? '';
         final itemId = (item['item_id'] as num?)?.toInt() ?? 0;
@@ -23606,6 +24022,20 @@ class SqlDatabase {
             'المخزون غير كافٍ لـ $label: المتوفر $available والمطلوب $requiredQty.',
           );
         }
+        // Several lines can draw on one balance; check their sum.
+        final key = '$itemId|$itemType|${colorId ?? ''}';
+        final total = (projected[key] ?? 0) + requiredQty;
+        projected[key] = total;
+        await _ensureUnreservedStock(
+          txn,
+          itemId: itemId,
+          itemType: itemType,
+          colorId: colorId,
+          locationId: locationId,
+          quantity: total,
+          currentQuantity: available,
+          label: item['item_name']?.toString() ?? item['item_code']?.toString(),
+        );
       }
 
       for (final item in items) {
@@ -23664,6 +24094,7 @@ class SqlDatabase {
   }) async {
     final myDb = await db;
     if (myDb == null) return 0;
+    await _ensureRemnantInventorySchema(myDb);
 
     final createdAchatId = await myDb.transaction<int>((txn) async {
       final saleRows = await txn.query(
@@ -23764,6 +24195,16 @@ class SqlDatabase {
                 'الرصيد غير كافٍ للعنصر $itemCode. المتوفر $curQty والمطلوب $qty.',
               );
             }
+            await _ensureUnreservedStock(
+              txn,
+              itemId: itemId,
+              itemType: itemType,
+              colorId: colorId,
+              locationId: storeLocationId,
+              quantity: qty,
+              currentQuantity: curQty,
+              label: itemCode.isEmpty ? itemName : itemCode,
+            );
             await txn.update(
               'CurrentStock',
               {'quantity': curQty - qty, 'updated_at': now},
@@ -23870,147 +24311,164 @@ class SqlDatabase {
   }) async {
     final myDb = await db;
     if (myDb == null) return;
+    await _ensureRemnantInventorySchema(myDb);
+    await myDb.transaction(
+      (txn) => _reverseInternalMaterialSaleTransfer(txn, saleId),
+    );
+    CloudSyncService().notifyChange();
+  }
 
-    await myDb.transaction((txn) async {
-      final saleRows = await txn.query(
-        'MaterialSales',
-        where: 'id = ?',
+  /// Body of [cancelOrReverseInternalMaterialSaleTransfer], so other document
+  /// operations can include the reversal in their own transaction.
+  Future<void> _reverseInternalMaterialSaleTransfer(
+    DatabaseExecutor txn,
+    int saleId,
+  ) async {
+    final saleRows = await txn.query(
+      'MaterialSales',
+      where: 'id = ?',
+      whereArgs: [saleId],
+    );
+    if (saleRows.isEmpty) return;
+    final sale = saleRows.first;
+    final storeLocationId = (sale['location_id'] as num?)?.toInt() ?? 1;
+    final destLocationId = (sale['dest_location_id'] as num?)?.toInt();
+    final linkedAchatId = (sale['linked_achat_id'] as num?)?.toInt();
+    final stockDeducted = (sale['stock_deducted'] as num?)?.toInt() ?? 0;
+    final now = DateTime.now().toUtc().toIso8601String();
+
+    if (stockDeducted == 1 && destLocationId != null) {
+      final items = await txn.query(
+        'MaterialSaleItems',
+        where: 'sale_id = ?',
         whereArgs: [saleId],
       );
-      if (saleRows.isEmpty) return;
-      final sale = saleRows.first;
-      final storeLocationId = (sale['location_id'] as num?)?.toInt() ?? 1;
-      final destLocationId = (sale['dest_location_id'] as num?)?.toInt();
-      final linkedAchatId = (sale['linked_achat_id'] as num?)?.toInt();
-      final stockDeducted = (sale['stock_deducted'] as num?)?.toInt() ?? 0;
-      final now = DateTime.now().toUtc().toIso8601String();
+      for (final item in items) {
+        final itemType = item['item_type'] as String? ?? 'Other';
+        final itemId = (item['item_id'] as num?)?.toInt() ?? 0;
+        final colorId = (item['color_id'] as num?)?.toInt();
+        final qty = (item['quantity'] as num?)?.toDouble() ?? 0.0;
 
-      if (stockDeducted == 1 && destLocationId != null) {
-        final items = await txn.query(
-          'MaterialSaleItems',
-          where: 'sale_id = ?',
-          whereArgs: [saleId],
-        );
-        for (final item in items) {
-          final itemType = item['item_type'] as String? ?? 'Other';
-          final itemId = (item['item_id'] as num?)?.toInt() ?? 0;
-          final colorId = (item['color_id'] as num?)?.toInt();
-          final qty = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+        if (itemId > 0 && qty > 0) {
+          // Return to store warehouse
+          await txn.insert(
+            'InventoryTransactions',
+            _withDistributedId({
+              'item_id': itemId,
+              'item_type': itemType,
+              'color_id': colorId,
+              'location_id': storeLocationId,
+              'quantity': qty,
+              'transaction_type':
+                  'Reversal: Internal Return (Workshop -> Store)',
+              'reference_id': saleId,
+              'created_at': now,
+            }),
+          );
 
-          if (itemId > 0 && qty > 0) {
-            // Return to store warehouse
+          final storeWhere = colorId == null
+              ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
+              : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
+          final storeArgs = colorId == null
+              ? [itemId, itemType, storeLocationId]
+              : [itemId, itemType, colorId, storeLocationId];
+          final storeRows = await txn.query(
+            'CurrentStock',
+            where: storeWhere,
+            whereArgs: storeArgs,
+          );
+          final storeQty = storeRows.isEmpty
+              ? 0.0
+              : (storeRows.first['quantity'] as num).toDouble();
+          if (storeRows.isEmpty) {
             await txn.insert(
-              'InventoryTransactions',
+              'CurrentStock',
               _withDistributedId({
                 'item_id': itemId,
                 'item_type': itemType,
                 'color_id': colorId,
                 'location_id': storeLocationId,
                 'quantity': qty,
-                'transaction_type':
-                    'Reversal: Internal Return (Workshop -> Store)',
-                'reference_id': saleId,
-                'created_at': now,
+                'updated_at': now,
               }),
             );
-
-            final storeWhere = colorId == null
-                ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
-                : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
-            final storeArgs = colorId == null
-                ? [itemId, itemType, storeLocationId]
-                : [itemId, itemType, colorId, storeLocationId];
-            final storeRows = await txn.query(
+          } else {
+            await txn.update(
               'CurrentStock',
+              {'quantity': storeQty + qty, 'updated_at': now},
               where: storeWhere,
               whereArgs: storeArgs,
             );
-            final storeQty = storeRows.isEmpty
-                ? 0.0
-                : (storeRows.first['quantity'] as num).toDouble();
-            if (storeRows.isEmpty) {
-              await txn.insert(
-                'CurrentStock',
-                _withDistributedId({
-                  'item_id': itemId,
-                  'item_type': itemType,
-                  'color_id': colorId,
-                  'location_id': storeLocationId,
-                  'quantity': qty,
-                  'updated_at': now,
-                }),
-              );
-            } else {
-              await txn.update(
-                'CurrentStock',
-                {'quantity': storeQty + qty, 'updated_at': now},
-                where: storeWhere,
-                whereArgs: storeArgs,
-              );
-            }
+          }
 
-            final workshopWhere = colorId == null
-                ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
-                : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
-            final workshopArgs = colorId == null
-                ? [itemId, itemType, destLocationId]
-                : [itemId, itemType, colorId, destLocationId];
-            final workshopRows = await txn.query(
-              'CurrentStock',
-              where: workshopWhere,
-              whereArgs: workshopArgs,
-            );
-            final workshopQty = workshopRows.isEmpty
-                ? 0.0
-                : (workshopRows.first['quantity'] as num).toDouble();
-            if (workshopQty + 0.000001 < qty) {
-              throw StateError(
-                'لا يمكن إلغاء التحويل لأن الورشة استهلكت جزءاً من الكمية.',
-              );
-            }
-            await txn.update(
-              'CurrentStock',
-              {'quantity': workshopQty - qty, 'updated_at': now},
-              where: workshopWhere,
-              whereArgs: workshopArgs,
-            );
-
-            // Deduct from workshop warehouse
-            await txn.insert(
-              'InventoryTransactions',
-              _withDistributedId({
-                'item_id': itemId,
-                'item_type': itemType,
-                'color_id': colorId,
-                'location_id': destLocationId,
-                'quantity': -qty,
-                'transaction_type': 'Reversal: Internal Return Out of Workshop',
-                'reference_id': linkedAchatId,
-                'created_at': now,
-              }),
+          final workshopWhere = colorId == null
+              ? 'item_id = ? AND item_type = ? AND color_id IS NULL AND location_id = ?'
+              : 'item_id = ? AND item_type = ? AND color_id = ? AND location_id = ?';
+          final workshopArgs = colorId == null
+              ? [itemId, itemType, destLocationId]
+              : [itemId, itemType, colorId, destLocationId];
+          final workshopRows = await txn.query(
+            'CurrentStock',
+            where: workshopWhere,
+            whereArgs: workshopArgs,
+          );
+          final workshopQty = workshopRows.isEmpty
+              ? 0.0
+              : (workshopRows.first['quantity'] as num).toDouble();
+          if (workshopQty + 0.000001 < qty) {
+            throw StateError(
+              'لا يمكن إلغاء التحويل لأن الورشة استهلكت جزءاً من الكمية.',
             );
           }
+          await _ensureUnreservedStock(
+            txn,
+            itemId: itemId,
+            itemType: itemType,
+            colorId: colorId,
+            locationId: destLocationId,
+            quantity: qty,
+            currentQuantity: workshopQty,
+          );
+          await txn.update(
+            'CurrentStock',
+            {'quantity': workshopQty - qty, 'updated_at': now},
+            where: workshopWhere,
+            whereArgs: workshopArgs,
+          );
+
+          // Deduct from workshop warehouse
+          await txn.insert(
+            'InventoryTransactions',
+            _withDistributedId({
+              'item_id': itemId,
+              'item_type': itemType,
+              'color_id': colorId,
+              'location_id': destLocationId,
+              'quantity': -qty,
+              'transaction_type': 'Reversal: Internal Return Out of Workshop',
+              'reference_id': linkedAchatId,
+              'created_at': now,
+            }),
+          );
         }
       }
+    }
 
+    await txn.update(
+      'MaterialSales',
+      {'status': 'cancelled', 'updated_at': now},
+      where: 'id = ?',
+      whereArgs: [saleId],
+    );
+
+    if (linkedAchatId != null) {
       await txn.update(
-        'MaterialSales',
-        {'status': 'cancelled', 'updated_at': now},
+        'Achats',
+        {'status': 'Cancelled', 'updated_at': now},
         where: 'id = ?',
-        whereArgs: [saleId],
+        whereArgs: [linkedAchatId],
       );
-
-      if (linkedAchatId != null) {
-        await txn.update(
-          'Achats',
-          {'status': 'Cancelled', 'updated_at': now},
-          where: 'id = ?',
-          whereArgs: [linkedAchatId],
-        );
-      }
-    });
-
-    CloudSyncService().notifyChange();
+    }
   }
 
   /// Calculates the unified financial and profit margin report for the enterprise.

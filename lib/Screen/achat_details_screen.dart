@@ -1175,27 +1175,25 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
 
                     Navigator.pop(ctx);
 
-                    await _db.returnAchatInvoice(
-                      widget.achatId,
-                      itemsToReturn,
-                      refunded,
-                    );
-
-                    if (_status == 'Confirmed' || _status == 'Partial Returned') {
-                      final achat = await _db.readAchatById(widget.achatId);
-                      int locationId = achat?['location_id'] as int? ?? 1;
-                      for (var rItem in itemsToReturn) {
-                        await _db.updateInventory(
-                          itemId: rItem['item_id'] as int? ?? 0,
-                          itemType: rItem['item_type'] as String? ?? 'Other',
-                          colorId: rItem['color_id'] as int?,
-                          locationId: locationId,
-                          quantityChange: -(rItem['returnQty'] as num)
-                              .toDouble(),
-                          transactionType: 'Return to Supplier',
-                          referenceId: widget.achatId,
-                        );
-                      }
+                    // Lines, stock and refund are reversed together.
+                    try {
+                      await _db.returnAchatInvoice(
+                        widget.achatId,
+                        itemsToReturn,
+                        refunded,
+                      );
+                    } catch (error) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            '$error',
+                            style: const TextStyle(fontFamily: 'Cairo'),
+                          ),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
                     }
 
                     await _loadAchatDetails();
