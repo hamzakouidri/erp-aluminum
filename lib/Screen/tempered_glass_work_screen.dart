@@ -7639,8 +7639,9 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
   }
 
   /// Divides the glass, from top to bottom, into consecutive frosting
-  /// zones (clear, full or bands), replacing the current zones. One zone may
-  /// leave its height empty to take what the others leave.
+  /// zones (clear, full or bands), replacing the current zones. Each zone
+  /// starts where the previous one ends; the user types where it ends, and
+  /// the last zone always runs to the bottom of the glass.
   Future<void> _divideSablageZones() async {
     final total = _overallHeightMm;
     final zones = <({
@@ -7657,12 +7658,23 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
         text: _sablageTransparentWidthController.text,
       ),
     ));
+    // `height` holds where the zone ends, measured from the top.
     void preset() {
       zones.clear();
       addZone(_SablageRegionType.bands, '400');
-      addZone(_SablageRegionType.full, '');
-      addZone(_SablageRegionType.bands, '400');
+      addZone(
+        _SablageRegionType.full,
+        math.max(400.0, total - 400).toStringAsFixed(0),
+      );
+      addZone(_SablageRegionType.bands, '');
     }
+
+    /// Where each zone ends (null when not typed yet); the last ends at the
+    /// bottom of the glass.
+    List<double?> zoneEnds() => [
+      for (var i = 0; i < zones.length; i++)
+        i == zones.length - 1 ? total : _parseMillimeters(zones[i].height.text),
+    ];
 
     preset();
     String? error;
@@ -7685,19 +7697,16 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
           };
 
           void apply() {
-            final heights = [
-              for (final zone in zones)
-                zone.height.text.trim().isEmpty
-                    ? null
-                    : _parseMillimeters(zone.height.text),
-            ];
-            final ranges = splitGlassHeight(total, heights);
+            final ends = zoneEnds();
+            final ranges = ends.contains(null)
+                ? null
+                : glassZonesFromEnds(total, ends.cast<double>());
             if (ranges == null) {
               setDialogState(
                 () => error = _tr(
-                  'مجموع الارتفاعات (مع منطقة واحدة على الأكثر بلا ارتفاع) يجب ألا يتجاوز ارتفاع الزجاج ${total.toStringAsFixed(0)} مم، وكل ارتفاع أكبر من 0.',
-                  'La somme des hauteurs (une seule zone sans hauteur au plus) ne doit pas dépasser la hauteur du verre (${total.toStringAsFixed(0)} mm), et chaque hauteur doit être supérieure à 0.',
-                  'The heights (at most one zone without a height) must not exceed the glass height (${total.toStringAsFixed(0)} mm), and each must be above 0.',
+                  'كل منطقة تنتهي بعد بداية التي قبلها وقبل أسفل الزجاج (${total.toStringAsFixed(0)} مم).',
+                  'Chaque zone doit finir après la précédente et avant le bas du verre (${total.toStringAsFixed(0)} mm).',
+                  'Each zone must end after the previous one and before the bottom of the glass (${total.toStringAsFixed(0)} mm).',
                 ),
               );
               return;
@@ -7757,9 +7766,9 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                   children: [
                     Text(
                       _tr(
-                        'ارتفاع الزجاج ${total.toStringAsFixed(0)} مم. اترك ارتفاع منطقة واحدة فارغًا لتأخذ الباقي.',
-                        'Hauteur du verre ${total.toStringAsFixed(0)} mm. Laissez la hauteur d\'une zone vide pour qu\'elle prenne le reste.',
-                        'Glass height ${total.toStringAsFixed(0)} mm. Leave one zone\'s height empty to take the rest.',
+                        'ارتفاع الزجاج ${total.toStringAsFixed(0)} مم. كل منطقة تبدأ حيث تنتهي التي قبلها، والأخيرة تمتد إلى أسفل الزجاج.',
+                        'Hauteur du verre ${total.toStringAsFixed(0)} mm. Chaque zone commence où finit la précédente ; la dernière va jusqu\'en bas.',
+                        'Glass height ${total.toStringAsFixed(0)} mm. Each zone starts where the previous one ends; the last runs to the bottom.',
                       ),
                       style: const TextStyle(fontSize: 12),
                     ),
@@ -7830,20 +7839,50 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                                   ),
                                   const SizedBox(width: 8),
                                   SizedBox(
-                                    width: 110,
-                                    child: TextField(
-                                      controller: zones[i].height,
-                                      keyboardType:
-                                          const TextInputType.numberWithOptions(
-                                            decimal: true,
+                                    width: 150,
+                                    child: Builder(
+                                      builder: (context) {
+                                        final ends = zoneEnds();
+                                        final start = i == 0
+                                            ? 0.0
+                                            : ends[i - 1];
+                                        final from = start == null
+                                            ? '?'
+                                            : start.toStringAsFixed(0);
+                                        if (i == zones.length - 1) {
+                                          // The last zone always reaches the
+                                          // bottom of the glass.
+                                          return InputDecorator(
+                                            decoration: mm(
+                                              _tr(
+                                                'من $from إلى',
+                                                'De $from à',
+                                                'From $from to',
+                                              ),
+                                            ),
+                                            child: Text(
+                                              '${total.toStringAsFixed(0)} (${_tr('تلقائي', 'auto', 'auto')})',
+                                            ),
+                                          );
+                                        }
+                                        return TextField(
+                                          controller: zones[i].height,
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                decimal: true,
+                                              ),
+                                          decoration: mm(
+                                            _tr(
+                                              'من $from إلى',
+                                              'De $from à',
+                                              'From $from to',
+                                            ),
                                           ),
-                                      decoration: mm(
-                                        _tr('الارتفاع', 'Hauteur', 'Height'),
-                                      ).copyWith(
-                                        hintText: _tr('الباقي', 'Reste', 'Rest'),
-                                      ),
-                                      onChanged: (_) =>
-                                          setDialogState(() => error = null),
+                                          onChanged: (_) => setDialogState(
+                                            () => error = null,
+                                          ),
+                                        );
+                                      },
                                     ),
                                   ),
                                   IconButton(
@@ -7914,7 +7953,18 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                           _tr('إضافة منطقة', 'Ajouter une zone', 'Add zone'),
                         ),
                         onPressed: () => setDialogState(() {
-                          addZone(_SablageRegionType.clear, '');
+                          // The new zone goes before the last one, which
+                          // keeps running to the bottom of the glass.
+                          final ends = zoneEnds();
+                          final previousEnd = zones.length < 2
+                              ? 0.0
+                              : (ends[zones.length - 2] ?? 0.0);
+                          addZone(
+                            _SablageRegionType.clear,
+                            ((previousEnd + total) / 2).toStringAsFixed(0),
+                          );
+                          final added = zones.removeLast();
+                          zones.insert(zones.length - 1, added);
                           error = null;
                         }),
                       ),
@@ -14057,4 +14107,22 @@ List<({double startMm, double endMm})>? splitGlassHeight(
     top += h;
   }
   return ranges;
+}
+
+/// Consecutive zones from the top of a [totalMm] glass, each ending at the
+/// matching entry of [endsMm] (the last must be the bottom of the glass).
+/// Returns null unless every zone ends after the previous one.
+List<({double startMm, double endMm})>? glassZonesFromEnds(
+  double totalMm,
+  List<double> endsMm,
+) {
+  if (endsMm.isEmpty || (endsMm.last - totalMm).abs() > 0.01) return null;
+  final heights = <double?>[];
+  var previous = 0.0;
+  for (final end in endsMm) {
+    if (end <= previous) return null;
+    heights.add(end - previous);
+    previous = end;
+  }
+  return splitGlassHeight(totalMm, heights);
 }

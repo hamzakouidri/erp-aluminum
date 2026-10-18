@@ -68,6 +68,38 @@ void main() {
     expect(find.text('Joint entre fixe et porte (pièce)'), findsNothing);
   });
 
+  testWidgets('frosting zones chain from top to bottom', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final settings = AppSettingsProvider();
+    await settings.loadSettings();
+    addTearDown(settings.dispose);
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AppSettingsProvider>.value(
+        value: settings,
+        child: const MaterialApp(home: TemperedGlassWorkScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final sablageBtn = find.textContaining('Sablage');
+    expect(sablageBtn, findsWidgets);
+    await tester.tap(sablageBtn.first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Diviser en zones...'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    // Three zones: 0 → 400, 400 → (typed), the last to the bottom.
+    expect(find.text('De 0 à'), findsOneWidget);
+    expect(find.text('De 400 à'), findsOneWidget);
+    expect(find.textContaining('(auto)'), findsOneWidget);
+    await tester.tap(find.text('Appliquer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Appliquer'), findsNothing);
+  });
+
   testWidgets('sablage region dialog shows error when end <= start', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final settings = AppSettingsProvider();

@@ -21,4 +21,15 @@ void main() {
     expect(splitGlassHeight(2000, [null, null]), isNull);
     expect(splitGlassHeight(2000, [0, null]), isNull);
   });
+
+  test('each zone starts where the previous one ends, the last at the bottom', () {
+    final ranges = glassZonesFromEnds(2000, [400, 1600, 2000])!;
+    expect(ranges.map((r) => (r.startMm, r.endMm)), [
+      (0.0, 400.0),
+      (400.0, 1600.0),
+      (1600.0, 2000.0),
+    ]);
+    expect(glassZonesFromEnds(2000, [400, 300, 2000]), isNull);
+    expect(glassZonesFromEnds(2000, [400, 2100]), isNull);
+  });
 }
