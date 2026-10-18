@@ -108,7 +108,8 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
   void initState() {
     super.initState();
     _tabController = TabController(
-      length: 11,
+      // One per tab of the TabBar below (and child of its TabBarView).
+      length: 12,
       vsync: this,
       initialIndex: _sessionSelectedTab ?? widget.initialIndex,
     );
