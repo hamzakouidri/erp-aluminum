@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:database_data/widgets/app_material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
@@ -201,6 +202,7 @@ class TemperedGlassWorkScreen extends StatefulWidget {
     Map<String, dynamic> payload, {
     int maxSide = 1200,
     bool showHandles = true,
+    bool fabricationOnly = false,
   }) async {
     final overallWidthMm =
         (payload['overallWidthMm'] as num?)?.toDouble() ??
@@ -338,6 +340,7 @@ class TemperedGlassWorkScreen extends StatefulWidget {
       holeDimensionMode: holeDimensionMode,
       color: Colors.cyan.shade800,
       showHandles: showHandles,
+      fabricationOnly: fabricationOnly,
     );
 
     painter.paint(canvas, Size(canvasW, canvasH));
@@ -428,6 +431,38 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
 
   List<Map<String, dynamic>> _glassKits = [];
   Map<String, dynamic>? _selectedKit;
+
+  /// The user chose to draw without a kit (free drawing). Without this the
+  /// default kit would be selected again on the next catalogue load.
+  bool _noKit = false;
+
+  /// Kit saved with the order being reopened.
+  int? _initialKitId;
+
+  /// A kit fixes the drillings, hinges and accessories of its glass: nothing
+  /// can be added to it, moved or removed. Free drawing (no kit) allows it.
+  bool get _kitLocked => _selectedKit != null;
+
+  /// Shows why a change is refused while a kit is applied. Returns true when
+  /// the change must stop.
+  bool _refuseWhenKitLocked() {
+    if (!_kitLocked) return false;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            _tr(
+              'الكيت المطبَّق يحدد الثقوب والمفاصل والإكسسوارات، ولا يقبل أي إضافة أو تعديل عليها. اختر «بدون كيت» للرسم الحر.',
+              'Le kit appliqué fixe les perçages, charnières et accessoires : aucun ajout ni modification n\'est accepté. Choisissez « Sans kit » pour un dessin libre.',
+              'The applied kit fixes the holes, hinges and accessories: nothing can be added or changed. Choose "No kit" to draw freely.',
+            ),
+          ),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    return true;
+  }
   List<Map<String, dynamic>> _activeKitHoles = [];
   List<Map<String, dynamic>> _activeKitComponents = [];
   List<Map<String, dynamic>> _systemRules = [];
@@ -510,6 +545,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
       );
       if (matchingKit.isNotEmpty) {
         _selectedKit = matchingKit;
+        _noKit = false;
         await _loadKitHoles(matchingKit['id'] as int);
       }
     }
@@ -549,7 +585,13 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
           _catalogAccessories = items;
           _glassKits = kits;
           _glassSystems = systems;
-          if (_selectedKit == null && kits.isNotEmpty) {
+          final initialKit = _initialKitId == null
+              ? null
+              : kits.where((k) => k['id'] == _initialKitId).firstOrNull;
+          _initialKitId = null;
+          if (initialKit != null) {
+            _selectedKit = initialKit;
+          } else if (_selectedKit == null && !_noKit && kits.isNotEmpty) {
             _selectedKit = kits.firstWhere(
               (k) => k['code'] == 'kit_alfa',
               orElse: () => kits.first,
@@ -700,7 +742,10 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                             : null,
                         onTap: () async {
                           Navigator.pop(ctx);
-                          setState(() => _selectedKit = kit);
+                          setState(() {
+                            _selectedKit = kit;
+                            _noKit = false;
+                          });
                           await _loadKitHoles(kit['id'] as int);
                           if (!mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -715,6 +760,56 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                       ),
                     );
                   }),
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: _selectedKit == null
+                          ? Colors.cyan
+                          : Colors.grey.withValues(alpha: 0.3),
+                      width: _selectedKit == null ? 2 : 1,
+                    ),
+                  ),
+                  child: ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.draw_outlined, size: 20),
+                    ),
+                    title: Text(
+                      _tr('بدون كيت (رسم حر)', 'Sans kit (dessin libre)',
+                          'No kit (free drawing)'),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                    subtitle: Text(
+                      _tr(
+                        'تضيف الثقوب والمفاصل والإكسسوارات بنفسك.',
+                        'Vous ajoutez vous-même perçages, charnières et accessoires.',
+                        'You add the holes, hinges and accessories yourself.',
+                      ),
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                    trailing: _selectedKit == null
+                        ? const Icon(Icons.check_circle, color: Colors.cyan)
+                        : null,
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      setState(() {
+                        _selectedKit = null;
+                        _noKit = true;
+                        _activeKitHoles = [];
+                        _activeKitComponents = [];
+                      });
+                      if (_isSlidingStraight) {
+                        _applySlidingLayout();
+                      } else {
+                        _updatePanelsForHandles();
+                      }
+                    },
+                  ),
+                ),
                 const Divider(),
                 TextButton.icon(
                   icon: const Icon(Icons.settings_outlined, size: 18),
@@ -759,6 +854,11 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     final sysCode = payload['systemCode']?.toString();
     if (sysCode != null && sysCode.isNotEmpty) {
       _selectedSystemCode = sysCode;
+    }
+
+    if (payload.containsKey('kitId')) {
+      _initialKitId = (payload['kitId'] as num?)?.toInt();
+      _noKit = _initialKitId == null;
     }
 
     final holeDimensionModeStr = payload['holeDimensionMode']?.toString();
@@ -928,6 +1028,9 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
       'عاكس' => _tr('عاكس', 'Réfléchissant', 'Reflective'),
       'مصفح' => _tr('مصفح', 'Feuilleté', 'Laminated'),
       'معتّم' => _tr('معتّم', 'Opaque', 'Opaque'),
+      'شفاف إضافي' => _tr('شفاف إضافي', 'Extra-clair', 'Extra clear'),
+      'ساتان' => _tr('ساتان (مثلّج)', 'Satiné', 'Satin (acid-etched)'),
+      'مطبوع' => _tr('مطبوع', 'Imprimé', 'Patterned'),
       'mirror' => _tr('زجاج مرآة', 'Verre miroir', 'Mirror glass'),
       _ => _tr('زجاج عادي', 'Verre normal', 'Standard glass'),
     };
@@ -1379,6 +1482,11 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
       return;
     }
     _draggingHole = _findMovableHole(position);
+    if (_draggingHole != null && _kitLocked) {
+      _draggingHole = null;
+      _refuseWhenKitLocked();
+      return;
+    }
     if (_draggingHole != null) {
       _pushHistory();
       _drawStart = details.localPosition;
@@ -1919,6 +2027,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
               : isHorizontal
               ? (h2.xMm - h1.xMm).abs()
               : (h2.yMm - h1.yMm).abs();
+          if (_refuseWhenKitLocked()) return true;
           _promptDimensionDialog(
             title: group == 'handle'
                 ? _tr(
@@ -2009,6 +2118,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
         );
         if (hitBox.contains(position)) {
           final currentVal = fromLeft ? leftMm : rightMm;
+          if (_refuseWhenKitLocked()) return true;
           _promptDimensionDialog(
             title: fromLeft
                 ? _tr(
@@ -2090,6 +2200,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
         );
         if (hitBox.contains(position)) {
           final currentVal = fromTop ? topMm : bottomMm;
+          if (_refuseWhenKitLocked()) return true;
           _promptDimensionDialog(
             title: fromTop
                 ? _tr(
@@ -2168,6 +2279,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
           height: 28,
         );
         if (labelHitBox.contains(position)) {
+          if (_refuseWhenKitLocked()) return true;
           _promptDimensionDialog(
             title: _tr('قطر الثقب', 'Diamètre du trou', 'Hole diameter'),
             initialValue: hole.diameterMm,
@@ -3023,6 +3135,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
   }
 
   Future<void> _editMovableHole(_MovableHoleTarget target) async {
+    if (_refuseWhenKitLocked()) return;
     if (target.panelIndex >= _panels.length) return;
     final panel = _panels[target.panelIndex];
     if (target.holeIndex >= panel.holes.length) return;
@@ -3641,6 +3754,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     double? diameterMm,
   }) {
     if (_panels.isEmpty) return;
+    if (_refuseWhenKitLocked()) return;
     final targetPanel =
         panel ??
         (_selectedPanelIndex != null && _selectedPanelIndex! < _panels.length
@@ -3712,6 +3826,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
   }
 
   void _handleCanvasLongPress(LongPressStartDetails details) {
+    if (_refuseWhenKitLocked()) return;
     final position = _canvasPosition(details.localPosition);
     final target = _findMovableHole(position);
     if (target != null && target.panelIndex < _panels.length) {
@@ -3774,6 +3889,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
 
   void _handleToolDrop(String tool, Offset canvasPos) {
     if (_panels.isEmpty) return;
+    if (tool != 'tool_handle' && _refuseWhenKitLocked()) return;
     final pIdx = _panels.lastIndexWhere((p) => p.rect.contains(canvasPos));
     final panel = _panels[pIdx >= 0 ? pIdx : 0];
 
@@ -3824,6 +3940,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
 
   void _addExtraHinge({_GlassPanel? panel, double? yMm, String? side}) {
     if (_panels.isEmpty) return;
+    if (_refuseWhenKitLocked()) return;
     final targetPanel =
         panel ??
         _panels.firstWhere((p) => p.isDoor, orElse: () => _panels.first);
@@ -5042,6 +5159,13 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
   }
 
   void _showQuickHoleMenu() {
+    if (_refuseWhenKitLocked()) return;
+    const presets = [2.0, 4.0, 10.0, 20.0, 30.0, 45.0];
+    final customDiameter = TextEditingController(
+      text: presets.contains(_holeDiameterMm)
+          ? ''
+          : _holeDiameterMm.toStringAsFixed(0),
+    );
     showModalBottomSheet<void>(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -5084,18 +5208,48 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: [2.0, 4.0, 10.0, 20.0, 30.0, 45.0].map((d) {
-                  final isSel = _holeDiameterMm == d;
-                  return ChoiceChip(
-                    label: Text('${d.toStringAsFixed(0)} mm'),
-                    selected: isSel,
-                    selectedColor: Colors.deepOrange.shade100,
-                    onSelected: (_) {
-                      setMenuState(() => _holeDiameterMm = d);
-                      setState(() => _holeDiameterMm = d);
-                    },
-                  );
-                }).toList(),
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  ...[2.0, 4.0, 10.0, 20.0, 30.0, 45.0].map((d) {
+                    final isSel = _holeDiameterMm == d;
+                    return ChoiceChip(
+                      label: Text('${d.toStringAsFixed(0)} mm'),
+                      selected: isSel,
+                      selectedColor: Colors.deepOrange.shade100,
+                      onSelected: (_) {
+                        customDiameter.text = '';
+                        setMenuState(() => _holeDiameterMm = d);
+                        setState(() => _holeDiameterMm = d);
+                      },
+                    );
+                  }),
+                  // Any other diameter, typed directly.
+                  SizedBox(
+                    width: 120,
+                    child: TextField(
+                      controller: customDiameter,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                        LengthLimitingTextInputFormatter(5),
+                      ],
+                      decoration: InputDecoration(
+                        isDense: true,
+                        labelText: _tr('قطر آخر', 'Autre Ø', 'Other Ø'),
+                        suffixText: 'mm',
+                        border: const OutlineInputBorder(),
+                      ),
+                      onChanged: (text) {
+                        final value = _parseMillimeters(text);
+                        if (value == null || value <= 0 || value > 200) return;
+                        setMenuState(() => _holeDiameterMm = value);
+                        setState(() => _holeDiameterMm = value);
+                      },
+                    ),
+                  ),
+                ],
               ),
               const Divider(height: 20),
               FilledButton.icon(
@@ -9054,7 +9208,16 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                     decoration: _toolbarFieldDecoration(
                       _tr('نوع الزجاج', 'Type', 'Type'),
                     ),
-                    items: const ['شفاف', 'ملون', 'عاكس', 'مصفح', 'معتّم']
+                    items: const [
+                      'شفاف',
+                      'شفاف إضافي',
+                      'ملون',
+                      'عاكس',
+                      'مصفح',
+                      'معتّم',
+                      'ساتان',
+                      'مطبوع',
+                    ]
                         .map(
                           (t) => DropdownMenuItem(
                             value: t,
@@ -9391,7 +9554,25 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                                 }
                               },
                               builder: (dragCtx, candidateData, rejectedData) {
-                                return GestureDetector(
+                                // Mouse wheel: zoom the glass in and out.
+                                return Listener(
+                                  onPointerSignal: (event) {
+                                    if (event is PointerScrollEvent) {
+                                      GestureBinding
+                                          .instance
+                                          .pointerSignalResolver
+                                          .register(event, (event) {
+                                            final scroll =
+                                                event as PointerScrollEvent;
+                                            _changeZoom(
+                                              scroll.scrollDelta.dy < 0
+                                                  ? 0.1
+                                                  : -0.1,
+                                            );
+                                          });
+                                    }
+                                  },
+                                  child: GestureDetector(
                                   behavior: HitTestBehavior.opaque,
                                   onTapUp: _handleCanvasTap,
                                   onLongPressStart: _handleCanvasLongPress,
@@ -9439,9 +9620,18 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                                       handleShape: _selectedHandleShape,
                                       handleDesignCode:
                                           _selectedHandleDesignCode,
+                                      glassTypeLabel: _glassTypeLabel(
+                                        _glassType,
+                                      ),
+                                      frostedLabel: _tr(
+                                        'مصنفر (Sablé)',
+                                        'Sablé',
+                                        'Frosted',
+                                      ),
                                     ),
                                     child: const SizedBox.expand(),
                                   ),
+                                ),
                                 );
                               },
                             ),
@@ -9576,7 +9766,7 @@ class _GlassManufacturingSheet extends StatelessWidget {
         lower == 'clear' ||
         lower == 'clair' ||
         lower == 'transparent') {
-      return _tr3(context, 'شفاف', 'Clear', 'Clear');
+      return _tr3(context, 'شفاف', 'Transparent', 'Clear');
     }
     if (lower == 'ملون' || lower == 'teinté' || lower == 'tinted') {
       return _tr3(context, 'ملون', 'Teinté', 'Tinted');
@@ -9592,6 +9782,15 @@ class _GlassManufacturingSheet extends StatelessWidget {
     }
     if (lower == 'مرآة' || lower == 'mirror' || lower == 'miroir') {
       return _tr3(context, 'مرآة', 'Miroir', 'Mirror');
+    }
+    if (lower == 'شفاف إضافي' || lower == 'extra-clair') {
+      return _tr3(context, 'شفاف إضافي', 'Extra-clair', 'Extra clear');
+    }
+    if (lower == 'ساتان' || lower == 'satiné') {
+      return _tr3(context, 'ساتان (مثلّج)', 'Satiné', 'Satin (acid-etched)');
+    }
+    if (lower == 'مطبوع' || lower == 'imprimé') {
+      return _tr3(context, 'مطبوع', 'Imprimé', 'Patterned');
     }
     return val.isEmpty ? '—' : val;
   }
@@ -9957,6 +10156,7 @@ class _GlassManufacturingSheet extends StatelessWidget {
                             color: Colors.cyan.shade800,
                             showHandles:
                                 false, // المقابض لا تظهر في الفيش دو فابريكاسيون
+                            fabricationOnly: true,
                           ),
                         ),
                       ),
@@ -10147,8 +10347,11 @@ class _GlassPanelDrawingPainter extends CustomPainter {
     required this.color,
     this.holeDimensionMode = _HoleDimensionMode.edge,
     this.showHandles = true,
+    this.fabricationOnly = false,
     this.handleShape = 'round',
     this.handleDesignCode = 'vro_ronde',
+    this.glassTypeLabel = '',
+    this.frostedLabel = 'S (Sablé)',
   });
 
   final List<_GlassPanel> panels;
@@ -10167,8 +10370,17 @@ class _GlassPanelDrawingPainter extends CustomPainter {
   final Color color;
   final _HoleDimensionMode holeDimensionMode;
   final bool showHandles;
+
+  /// Fabrication sheet: only the glass, its frosting, the holes with their
+  /// diameters and their X/Y distances (no hinges, hardware or reflections).
+  final bool fabricationOnly;
   final String handleShape;
   final String handleDesignCode;
+
+  /// The selected glass type in the chosen language, written on every clear
+  /// glass area (a frosted area shows [frostedLabel]).
+  final String glassTypeLabel;
+  final String frostedLabel;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -10184,7 +10396,9 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
     final reflectionPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.60)
+      ..color = fabricationOnly
+          ? Colors.transparent
+          : Colors.white.withValues(alpha: 0.60)
       ..strokeWidth = 5
       ..strokeCap = StrokeCap.round;
 
@@ -10210,9 +10424,9 @@ class _GlassPanelDrawingPainter extends CustomPainter {
     // glass and before the holes/markers.
     _paintSablage(canvas);
     for (final panel in panels) {
-      _paintHinges(canvas, panel);
+      if (!fabricationOnly) _paintHinges(canvas, panel);
       _paintHoles(canvas, panel);
-      if (showHandles) {
+      if (showHandles && !fabricationOnly) {
         _paintHandles(canvas, panel);
       }
       _paintHoleDimensions(canvas, panel);
@@ -10997,7 +11211,21 @@ class _GlassPanelDrawingPainter extends CustomPainter {
 
     void drawArrowDimension(Offset from, Offset to, String label) {
       final totalDist = (to - from).distance;
-      if (totalDist < 12) return;
+      // A distance too short for arrows (a hole close to the edge, or a
+      // zoomed-out drawing) still shows its value, beside the gap, so every
+      // hole keeps its X and Y distances from the glass edges.
+      if (totalDist < 12) {
+        if (totalDist < 0.5) return;
+        final isHorizontalGap =
+            (to.dx - from.dx).abs() >= (to.dy - from.dy).abs();
+        final middle = Offset((from.dx + to.dx) / 2, (from.dy + to.dy) / 2);
+        canvas.drawLine(from, to, dimensionPaint);
+        drawLabel(
+          label,
+          middle + (isHorizontalGap ? const Offset(0, -9) : const Offset(12, 0)),
+        );
+        return;
+      }
 
       const gap =
           3.5; // Boundary clearance so arrows and lines do not touch elements
@@ -11448,6 +11676,17 @@ class _GlassPanelDrawingPainter extends CustomPainter {
 
   void _paintSablage(Canvas canvas) {
     if (panels.isEmpty) return;
+    if (sablageMode == _SablageMode.none && glassTypeLabel.isNotEmpty) {
+      for (final panel in panels) {
+        _drawGlassTypeBadge(
+          canvas,
+          rect: _glassContentRect(panel.rect),
+          text: glassTypeLabel,
+          isFrosted: false,
+        );
+      }
+      return;
+    }
     final paint = Paint()
       ..color = const Color(0xFFB7B7B7).withValues(alpha: 0.78)
       ..style = PaintingStyle.fill;
@@ -11460,7 +11699,7 @@ class _GlassPanelDrawingPainter extends CustomPainter {
         _drawGlassTypeBadge(
           canvas,
           rect: glassRect,
-          text: 'S (Sablé)',
+          text: frostedLabel,
           isFrosted: true,
         );
         canvas.restore();
@@ -11500,7 +11739,7 @@ class _GlassPanelDrawingPainter extends CustomPainter {
               _drawGlassTypeBadge(
                 canvas,
                 rect: regionRect,
-                text: 'Clair',
+                text: glassTypeLabel,
                 isFrosted: false,
               );
             }
@@ -11514,7 +11753,7 @@ class _GlassPanelDrawingPainter extends CustomPainter {
             _drawGlassTypeBadge(
               canvas,
               rect: regionRect,
-              text: 'S (Sablé)',
+              text: frostedLabel,
               isFrosted: true,
             );
           } else {
@@ -11550,7 +11789,7 @@ class _GlassPanelDrawingPainter extends CustomPainter {
             _drawGlassTypeBadge(
               canvas,
               rect: regionRect,
-              text: 'S (Sablé)',
+              text: frostedLabel,
               isFrosted: true,
             );
           }
@@ -11601,7 +11840,7 @@ class _GlassPanelDrawingPainter extends CustomPainter {
         canvas.clipRect(glassRect);
         canvas.drawRect(bandRect, paint);
         canvas.drawRect(bandRect, labelPaint);
-        final bandText = bandRect.height >= 20 ? 'S (Sablé)' : 'S';
+        final bandText = bandRect.height >= 20 ? frostedLabel : 'S';
         _drawGlassTypeBadge(
           canvas,
           rect: bandRect,

@@ -74,6 +74,7 @@ class GlassFabricationPdfService {
           payload,
           maxSide: 2600,
           showHandles: false, // لا تظهر المقابض في الفيش دو فابريكاسيون
+          fabricationOnly: true,
         );
       } catch (e) {
         debugPrint('Error rendering glass drawing for PDF: $e');
