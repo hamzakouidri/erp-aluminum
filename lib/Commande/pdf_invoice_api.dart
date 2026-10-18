@@ -1765,12 +1765,18 @@ class PdfInvoiceApi {
                 ],
               ),
             ),
-            _totalRow(
-              t('Montant payé'),
-              data.amountPaid,
-              color: PdfColors.green,
-            ),
-            _totalRow(t('Remaining:'), amountRemaining, color: PdfColors.red),
+            if (data.showsPayments) ...[
+              _totalRow(
+                t('Montant payé'),
+                data.amountPaid,
+                color: PdfColors.green,
+              ),
+              _totalRow(
+                t('Remaining:'),
+                amountRemaining,
+                color: PdfColors.red,
+              ),
+            ],
           ],
         ),
       ),

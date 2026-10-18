@@ -2395,8 +2395,14 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
             _totalRow(netHtLabel, data.totalBeforeTax),
             _totalRow(tvaLabel, data.tvaAmount),
             _totalRow(totalTtcLabel, data.totalTTC, highlight: true),
-            _totalRow(t('Montant payé'), data.amountPaid, color: Colors.green),
-            _totalRow(t('Remaining:'), amountRemaining, color: Colors.red),
+            if (data.showsPayments) ...[
+              _totalRow(
+                t('Montant payé'),
+                data.amountPaid,
+                color: Colors.green,
+              ),
+              _totalRow(t('Remaining:'), amountRemaining, color: Colors.red),
+            ],
           ],
         ),
       ),

@@ -118,6 +118,25 @@ class DevisData {
   final Map<String, dynamic>? rawOrder;
   final List<Map<String, dynamic>>? rawItems;
 
+  /// Payments belong to a confirmed order: a quote for a new, draft or
+  /// pending order shows its totals (gross, discount, net, VAT, total)
+  /// without the amount paid and the balance.
+  bool get showsPayments {
+    final status = (rawOrder?['status'] ?? '').toString().trim().toLowerCase();
+    const pending = {
+      'nouveau',
+      'new',
+      'جديد',
+      'جديدة',
+      'pending',
+      'draft',
+      'en attente',
+      'en_attente',
+      'في الانتظار',
+    };
+    return !pending.contains(status);
+  }
+
   const DevisData({
     required this.orderId,
     required this.orderDate,
