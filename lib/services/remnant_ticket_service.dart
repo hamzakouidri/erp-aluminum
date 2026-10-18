@@ -1,7 +1,7 @@
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 import 'pdf_font_cache.dart';
+import 'labels/label_print_service.dart';
 
 class RemnantTicketService {
   static String _value(Map<String, dynamic> row, String key) =>
@@ -114,12 +114,11 @@ class RemnantTicketService {
       );
     }
 
-    await Printing.layoutPdf(
-      onLayout: (_) => document.save(),
+    // The system dialog, or ZPL straight to the label printer.
+    await LabelPrintService.printLabels(
+      document,
       name: 'remnant-tickets.pdf',
       format: const PdfPageFormat(70 * PdfPageFormat.mm, 45 * PdfPageFormat.mm),
-      dynamicLayout: false,
-      usePrinterSettings: true,
     );
   }
 }
