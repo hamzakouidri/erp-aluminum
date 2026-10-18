@@ -163,6 +163,19 @@ extension WindowModelFrame on WindowModel {
       if (plain.isNotEmpty) return plain;
     }
 
+    // With a side cover switched on, a frame that can never carry one is
+    // not a default choice.
+    if (hasSideCovers) {
+      final coverFrames = frames
+          .where(
+            (frame) =>
+                _sectionAllowsStandaloneSideCover(frame) ||
+                _sectionHasIntegratedSideCover(frame),
+          )
+          .toList();
+      if (coverFrames.isNotEmpty) frames = coverFrames;
+    }
+
     if (!hasShutter || isCaissonTunnel || _isPvcSeries(series)) return frames;
 
     // Plain frames must never disappear from the replacement picker merely
@@ -3216,6 +3229,32 @@ extension WindowModelFrame on WindowModel {
     _notifyModelListeners();
   }
 
+  /// Whether [section] may stand next to a corner profile (profil d'angle).
+  /// A frame with an integrated cover never may. In aluminium, a frame that
+  /// accepts a separate cover may not either: only a frame that can never
+  /// carry a cover sits against the corner tube. In PVC every frame without
+  /// an integrated cover may.
+  bool frameFitsProfileAngle(AluminumSection section, {bool sliding = false}) {
+    if (_sectionHasIntegratedSideCover(section) ||
+        section.couvreJointWidth > 0) {
+      return false;
+    }
+    final series = sliding ? activeSlidingSeries : activeFrameSeries;
+    if (series != null && _isPvcSeries(series)) return true;
+    return !section.allowsSideCover;
+  }
+
+  /// Whether [section] can be used in a drawing with a corner profile:
+  /// it fits the corner itself, or the series has a frame that does for the
+  /// jamb touching the corner.
+  bool frameUsableWithProfileAngle(
+    AluminumSection section, {
+    bool sliding = false,
+  }) =>
+      frameFitsProfileAngle(section, sliding: sliding) ||
+      findCompatibleNoCoverFrame(currentFrame: section, sliding: sliding) !=
+          null;
+
   /// Searches for a compatible frame section without integrated side cover (couvre-joint)
   /// that matches the current frame's visible width (العرض الظاهر), preferring any
   /// frame sections configured as compatible with the profile_angle role.
@@ -3239,11 +3278,13 @@ extension WindowModelFrame on WindowModel {
       }
     }
 
-    // If currentFrame is already in compatible_frame_ids, no switch needed!
+    // If currentFrame is already in compatible_frame_ids, or already fits
+    // the corner, no switch needed!
     if (compatibleIdSet.isNotEmpty &&
         compatibleIdSet.contains(currentFrame.id)) {
       return null;
     }
+    if (frameFitsProfileAngle(currentFrame, sliding: sliding)) return null;
 
     final targetVisibleWidth = currentFrame.visibleWidth > 0
         ? currentFrame.visibleWidth
@@ -3262,7 +3303,11 @@ extension WindowModelFrame on WindowModel {
       if (_sectionHasIntegratedSideCover(section)) return false;
       if (section.couvreJointWidth > 0) return false;
 
-      return true;
+      // A frame the series design lists for the corner profile is trusted;
+      // any other must fit the corner rule (in aluminium: never accept a
+      // separate cover).
+      return compatibleIdSet.contains(section.id) ||
+          frameFitsProfileAngle(section, sliding: sliding);
     }).toList();
 
     if (candidateSections.isEmpty) return null;
@@ -3332,6 +3377,39 @@ extension WindowModelFrame on WindowModel {
       }
     }
     return result;
+  }
+
+  /// Frames touching an active corner profile that neither fit the corner
+  /// nor have a frame in their series that does (see
+  /// [frameFitsProfileAngle]). The drawing is then not buildable as drawn.
+  List<String> get profileAngleFrameProblems {
+    if (!usesProfileAngle) return const [];
+    final names = <String>{};
+    void check(Rect frame) {
+      final section = frameSectionForRect(frame);
+      if (section == null) return;
+      final sliding = frameUsesSlidingSeries(frame);
+      if (!frameUsableWithProfileAngle(section, sliding: sliding)) {
+        names.add(section.name);
+      }
+    }
+
+    final junctions = getAdjacentFrameJunctions();
+    for (final junction in junctions) {
+      if (!activeProfileAngleJunctions.contains(junction.index)) continue;
+      check(junction.firstFrame);
+      check(junction.secondFrame);
+    }
+    final frameRects = getFrameRects();
+    if (junctions.isEmpty && frameRects.isNotEmpty) {
+      if (profileAngleMode == 2 || profileAngleMode == 3) {
+        check(frameRects.first);
+      }
+      if (profileAngleMode == 1 || profileAngleMode == 3) {
+        check(frameRects.last);
+      }
+    }
+    return names.toList();
   }
 
   void _restoreFramesBeforeProfileAngleFullSwitch() {
@@ -3445,6 +3523,14 @@ extension WindowModelFrame on WindowModel {
 
   (int, int) cacheRailCountsForRect(Rect frame) {
     if (!usesFrameRole('cache_rail', sliding: true)) return (0, 0);
+    // A frame that can never carry a side cover cannot carry a cache-rail
+    // either.
+    final section = frameSectionForRect(frame);
+    if (section != null &&
+        !section.allowsSideCover &&
+        !_sectionHasIntegratedSideCover(section)) {
+      return (0, 0);
+    }
     final tracks = zones
         .where((zone) => frame.contains(zone.boundary.center))
         .fold<int>(1, (count, zone) => math.max(count, zone.slidingTrackCount));

@@ -3862,6 +3862,27 @@ class _WindowViewState extends State<WindowView> {
     return false;
   }
 
+  /// Tells the user when a frame touching the corner profile cannot stand
+  /// next to it (an integrated cover, or in aluminium a frame accepting a
+  /// cover) and the series has no frame that can.
+  void _warnProfileAngleFrames() {
+    final problems = widget.model.profileAngleFrameProblems;
+    if (problems.isEmpty || !mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 6),
+          content: Text(
+            _tr(
+              'بجانب بروفيل الزاوية يجب إطار لا يحمل غطاءً جانبيًا ولا غطاءً مدمجًا، ولا يوجد في السلسلة إطار مناسب لـ: {frames}',
+            ).replaceAll('{frames}', problems.join('، ')),
+          ),
+        ),
+      );
+  }
+
   double _shownDoubleSashCuttingWidth(WindowZone zone, double ratio) {
     final weldLoss = widget.model.isPVC ? 5.0 : 0.0;
     final totalCutWidth =

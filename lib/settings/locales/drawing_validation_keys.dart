@@ -3,6 +3,14 @@ import '../app_settings.dart';
 /// Messages shown when a typed drawing dimension is outside what the
 /// aluminium/PVC layout can physically take.
 final Map<String, Map<AppLanguage, String>> drawingValidationKeys = {
+  'بجانب بروفيل الزاوية يجب إطار لا يحمل غطاءً جانبيًا ولا غطاءً مدمجًا، ولا يوجد في السلسلة إطار مناسب لـ: {frames}': {
+    AppLanguage.arabic:
+        'بجانب بروفيل الزاوية يجب إطار لا يحمل غطاءً جانبيًا ولا غطاءً مدمجًا، ولا يوجد في السلسلة إطار مناسب لـ: {frames}',
+    AppLanguage.french:
+        'Contre le profilé d\'angle il faut un cadre sans couvre-joint ni couvre-joint intégré ; la série n\'en a aucun pour : {frames}',
+    AppLanguage.english:
+        'A corner profile needs a frame that carries no side cover and has no integrated cover; the series has none for: {frames}',
+  },
   'القياس المسموح به بين {min} و {max} مم': {
     AppLanguage.arabic: 'القياس المسموح به بين {min} و {max} مم',
     AppLanguage.french: 'Dimension autorisée entre {min} et {max} mm',

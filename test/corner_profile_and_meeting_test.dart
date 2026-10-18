@@ -101,6 +101,9 @@ void main() {
             thickness: 45,
             visibleWidth: 45,
             couvreJointWidth: 0,
+            // Only a frame that can never carry a cover sits against the
+            // aluminium corner tube.
+            allowsSideCover: false,
           ),
         ],
       );
@@ -120,6 +123,50 @@ void main() {
       expect(first.sliding, isFalse);
       expect(first.section.id, 102);
       expect(first.section.name, 'Cadre 45 sans couvre-joint');
+    });
+
+    test('only a frame that can never carry a cover fits an aluminium corner', () {
+      AluminumSection frame(int id, {bool allows = true, double cover = 0}) =>
+          AluminumSection(
+            id: id,
+            seriesId: 1,
+            code: 'F$id',
+            name: 'Cadre $id',
+            type: 'frame',
+            thickness: 45,
+            visibleWidth: 45,
+            couvreJointWidth: cover,
+            allowsSideCover: allows,
+          );
+      final integrated = frame(1, cover: 20);
+      final acceptsCover = frame(2);
+      final plain = frame(3, allows: false);
+
+      final aluminium = WindowModel(db: SqlDatabase())
+        ..activeSeries = AluminumSeries(
+          id: 1,
+          profileId: 1,
+          name: 'Série 40',
+          type: 'opening',
+          sections: [integrated, acceptsCover, plain],
+        );
+      expect(aluminium.frameFitsProfileAngle(integrated), isFalse);
+      expect(aluminium.frameFitsProfileAngle(acceptsCover), isFalse);
+      expect(aluminium.frameFitsProfileAngle(plain), isTrue);
+      // A frame accepting a cover is usable: its jamb against the corner is
+      // cut from the plain frame of the series.
+      expect(aluminium.frameUsableWithProfileAngle(acceptsCover), isTrue);
+
+      final pvc = WindowModel(db: SqlDatabase())
+        ..activeSeries = AluminumSeries(
+          id: 2,
+          profileId: 1,
+          name: 'PVC 70',
+          type: 'pvc',
+          sections: [integrated, acceptsCover],
+        );
+      expect(pvc.frameFitsProfileAngle(acceptsCover), isTrue);
+      expect(pvc.frameFitsProfileAngle(integrated), isFalse);
     });
 
     test('getProfileAngleJunctionFrames returns two frames when two different series meet at junction', () {
@@ -167,6 +214,9 @@ void main() {
             thickness: 45,
             visibleWidth: 45,
             couvreJointWidth: 0,
+            // Only a frame that can never carry a cover sits against the
+            // aluminium corner tube.
+            allowsSideCover: false,
           ),
         ],
       );
@@ -196,6 +246,9 @@ void main() {
             thickness: 60,
             visibleWidth: 60,
             couvreJointWidth: 0,
+            // Only a frame that can never carry a cover sits against the
+            // aluminium corner tube.
+            allowsSideCover: false,
           ),
         ],
       );

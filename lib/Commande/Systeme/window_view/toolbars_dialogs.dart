@@ -4361,6 +4361,7 @@ extension _WindowViewToolbars on _WindowViewState {
                                   j.index,
                                   checked,
                                 );
+                                _warnProfileAngleFrames();
                                 setModalState(() {});
                                 _setViewState(() {});
                               },
@@ -4485,6 +4486,7 @@ extension _WindowViewToolbars on _WindowViewState {
                             : null,
                         onTap: () {
                           widget.model.setProfileAngleMode(0);
+                          _warnProfileAngleFrames();
                           setModalState(() {});
                           _setViewState(() {});
                           if (!hasJunctions) Navigator.pop(ctx);
@@ -4512,6 +4514,7 @@ extension _WindowViewToolbars on _WindowViewState {
                             : null,
                         onTap: () {
                           widget.model.setProfileAngleMode(1);
+                          _warnProfileAngleFrames();
                           setModalState(() {});
                           _setViewState(() {});
                           if (!hasJunctions) Navigator.pop(ctx);
@@ -4539,6 +4542,7 @@ extension _WindowViewToolbars on _WindowViewState {
                             : null,
                         onTap: () {
                           widget.model.setProfileAngleMode(2);
+                          _warnProfileAngleFrames();
                           setModalState(() {});
                           _setViewState(() {});
                           if (!hasJunctions) Navigator.pop(ctx);
@@ -4566,6 +4570,7 @@ extension _WindowViewToolbars on _WindowViewState {
                             : null,
                         onTap: () {
                           widget.model.setProfileAngleMode(3);
+                          _warnProfileAngleFrames();
                           setModalState(() {});
                           _setViewState(() {});
                           if (!hasJunctions) Navigator.pop(ctx);

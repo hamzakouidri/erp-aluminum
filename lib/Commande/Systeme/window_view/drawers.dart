@@ -4448,6 +4448,7 @@ extension _WindowViewDrawers on _WindowViewState {
                                           j.index,
                                           val,
                                         );
+                                        _warnProfileAngleFrames();
                                       });
                                     },
                                   );
@@ -4510,6 +4511,7 @@ extension _WindowViewDrawers on _WindowViewState {
                           onPressed: (index) {
                             _setViewState(() {
                               widget.model.setProfileAngleMode(index);
+                              _warnProfileAngleFrames();
                             });
                           },
                           children: [
@@ -5877,19 +5879,27 @@ extension _WindowViewDrawers on _WindowViewState {
             final hasSeparateCover = !hasIntegratedCover;
             if (hasSeparateCover) {
               if (integratedCover) return false;
+              // A frame that can never carry a cover does not fit a drawing
+              // whose cover is switched on.
+              final allowsStandaloneCover = readBool(
+                item['design_allows_side_cover'] ?? item['allows_side_cover'],
+                fallback: true,
+              );
+              if (!allowsStandaloneCover) return false;
             }
-            // Plain frames are always valid here: when the cover is enabled,
-            // selecting one keeps the switch and uses a separate cover.
           }
 
-          // 3. 90° Profile angle compatibility:
-          if (widget.model.usesProfileAngle && integratedCover) {
+          // 3. 90° Profile angle compatibility: the frame itself fits the
+          // corner, or the series has a frame that does for the touching
+          // jamb.
+          if (widget.model.usesProfileAngle) {
             try {
-              final compatible = widget.model.findCompatibleNoCoverFrame(
-                currentFrame: AluminumSection.fromMap(item),
+              if (!widget.model.frameUsableWithProfileAngle(
+                AluminumSection.fromMap(item),
                 sliding: sliding,
-              );
-              if (compatible == null) return false;
+              )) {
+                return false;
+              }
             } catch (_) {
               return false;
             }
@@ -6042,14 +6052,12 @@ extension _WindowViewDrawers on _WindowViewState {
           final removesShutter = widget.model.hasShutter && !allowedWithShutter;
 
           var removesProfileAngle = false;
-          if (widget.model.usesProfileAngle && integratedCover) {
+          if (widget.model.usesProfileAngle) {
             try {
-              removesProfileAngle =
-                  widget.model.findCompatibleNoCoverFrame(
-                    currentFrame: AluminumSection.fromMap(item),
-                    sliding: sliding,
-                  ) ==
-                  null;
+              removesProfileAngle = !widget.model.frameUsableWithProfileAngle(
+                AluminumSection.fromMap(item),
+                sliding: sliding,
+              );
             } catch (_) {
               removesProfileAngle = true;
             }
