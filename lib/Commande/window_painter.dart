@@ -8207,7 +8207,75 @@ class WindowPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.35;
 
+    // Aluminium hinges (paumelles): a slim barrel in the frame/sash reveal,
+    // split across into the frame knuckle and the sash knuckle. PVC keeps
+    // its own hinge drawing.
+    final aluminiumHinges = !model.isPVC;
+    void drawAluminiumHinge(Offset center, bool horizontal) {
+      const length = 110.0;
+      const width = 14.0;
+      final rect = horizontal
+          ? Rect.fromCenter(center: center, width: length, height: width)
+          : Rect.fromCenter(center: center, width: width, height: length);
+      final barrelColor = accessoryColor.computeLuminance() > 0.62
+          ? const Color(0xFFF7F8FA)
+          : Color.lerp(accessoryColor, Colors.black, 0.1)!;
+      final radius = const Radius.circular(width / 2.5);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect.translate(1, 1), radius),
+        Paint()..color = Colors.black26,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, radius),
+        Paint()..color = barrelColor,
+      );
+      // Light on the barrel's rounded face.
+      final highlight = horizontal
+          ? Rect.fromLTWH(rect.left + 4, rect.top + 2, rect.width - 8, 3)
+          : Rect.fromLTWH(rect.left + 2, rect.top + 4, 3, rect.height - 8);
+      canvas.drawRect(
+        highlight,
+        Paint()..color = Colors.white.withValues(alpha: 0.7),
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, radius),
+        Paint()
+          ..color = Colors.black87
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.2,
+      );
+      final joint = Paint()
+        ..color = Colors.black87
+        ..strokeWidth = 1.4;
+      final cap = Paint()
+        ..color = Colors.black45
+        ..strokeWidth = 0.9;
+      if (horizontal) {
+        canvas.drawLine(
+          Offset(center.dx, rect.top),
+          Offset(center.dx, rect.bottom),
+          joint,
+        );
+        for (final x in [rect.left + 7, rect.right - 7]) {
+          canvas.drawLine(Offset(x, rect.top + 1), Offset(x, rect.bottom - 1), cap);
+        }
+      } else {
+        canvas.drawLine(
+          Offset(rect.left, center.dy),
+          Offset(rect.right, center.dy),
+          joint,
+        );
+        for (final y in [rect.top + 7, rect.bottom - 7]) {
+          canvas.drawLine(Offset(rect.left + 1, y), Offset(rect.right - 1, y), cap);
+        }
+      }
+    }
+
     void drawHinge(Offset center, bool horizontal) {
+      if (aluminiumHinges) {
+        drawAluminiumHinge(center, horizontal);
+        return;
+      }
       final rect = horizontal
           ? Rect.fromCenter(center: center, width: 80, height: 16)
           : Rect.fromCenter(center: center, width: 16, height: 80);
