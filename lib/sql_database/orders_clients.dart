@@ -260,6 +260,13 @@ extension SqlDatabaseOrders on SqlDatabase {
         'creation_platform': _currentCreationPlatform,
       });
     });
+    try {
+      await _recordDashboardActivity(
+        activityType: 'client_added',
+        entityId: clientId,
+        party: '$firstname $lastname'.trim(),
+      );
+    } catch (_) {}
     CloudSyncService().notifyChangeImmediate();
     return clientId;
   }
@@ -1155,6 +1162,19 @@ extension SqlDatabaseOrders on SqlDatabase {
     if (previousClientId != null && previousClientId != clientId) {
       await reconcileClientPayments(previousClientId);
     }
+
+    // The order screen saves through here: record it before the refresh
+    // so the dashboard shows it at once.
+    try {
+      final (document, party) = await _orderLabelsForActivity(savedId);
+      await _recordDashboardActivity(
+        activityType: createdNewOrder ? 'order_added' : 'order_updated',
+        entityId: savedId,
+        document: document,
+        party: party,
+        userName: editor,
+      );
+    } catch (_) {}
 
     var uploaded = false;
     try {
@@ -2298,12 +2318,46 @@ extension SqlDatabaseOrders on SqlDatabase {
     String party = '',
     int? relatedOrderId,
     String? userName,
+    Set<String> mergeInto = const {},
   }) async {
     final database = await db;
     if (database == null || entityId <= 0) return;
     await _ensureDashboardActivitiesInfrastructure(database);
     final now = DateTime.now().toUtc().toIso8601String();
     await database.transaction((txn) async {
+      // The same action repeated on one record (saving an order several
+      // times, opening it again) refreshes the latest entry instead of
+      // filling the list with copies.
+      final latest = await txn.query(
+        'DashboardActivities',
+        orderBy: 'occurred_at DESC, id DESC',
+        limit: 1,
+      );
+      final latestType = latest.isEmpty
+          ? null
+          : latest.first['activity_type']?.toString();
+      if (latest.isNotEmpty &&
+          (latestType == activityType || mergeInto.contains(latestType)) &&
+          (latest.first['entity_id'] as num?)?.toInt() == entityId) {
+        final previous = DateTime.tryParse(
+          '${latest.first['occurred_at'] ?? ''}',
+        );
+        if (previous != null &&
+            DateTime.now().toUtc().difference(previous) <
+                const Duration(minutes: 30)) {
+          await txn.update(
+            'DashboardActivities',
+            {
+              'occurred_at': now,
+              if (document.isNotEmpty) 'document': document,
+              if (party.isNotEmpty) 'party': party,
+            },
+            where: 'id = ?',
+            whereArgs: [latest.first['id']],
+          );
+          return;
+        }
+      }
       await txn.insert('DashboardActivities', {
         'id': DateTime.now().microsecondsSinceEpoch,
         'activity_type': activityType,
@@ -2323,6 +2377,34 @@ extension SqlDatabaseOrders on SqlDatabase {
         )
       ''');
     });
+  }
+
+  /// Records that an order was opened for editing (shown in the dashboard's
+  /// recent activity).
+  Future<void> recordOrderOpened(int orderId) async {
+    try {
+      final (document, party) = await _orderLabelsForActivity(orderId);
+      await _recordDashboardActivity(
+        activityType: 'order_opened',
+        entityId: orderId,
+        document: document,
+        party: party,
+      );
+      CloudSyncService().notifyChangeImmediate();
+    } catch (_) {}
+  }
+
+  /// Order code and client name for the activity list; a missing order still
+  /// records the activity under its id.
+  Future<(String, String)> _orderLabelsForActivity(int orderId) async {
+    try {
+      return (
+        await _orderCodeForNotification(orderId),
+        await _clientNameForOrderNotification(orderId),
+      );
+    } catch (_) {
+      return (orderId.toString(), '');
+    }
   }
 
   Future<List<Map<String, dynamic>>> readDashboardActivities() async {

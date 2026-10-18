@@ -2866,7 +2866,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
     final id = activity['id'] as int? ?? 0;
     if (id <= 0) return;
     final type = activity['type']?.toString() ?? '';
-    if (type == 'order_added' || type == 'order_updated') {
+    if (type == 'order_added' ||
+        type == 'order_updated' ||
+        type == 'order_opened') {
       openAdaptiveScreen(
         context,
         title: _desktopText(
@@ -2944,6 +2946,18 @@ class _WelcomScreenState extends State<WelcomScreen> {
         'Commande modifiée',
         'Order updated',
       ),
+      'order_opened' => _desktopText(
+        lang,
+        'فتح طلبية',
+        'Commande ouverte',
+        'Order opened',
+      ),
+      'client_added' => _desktopText(
+        lang,
+        'إضافة زبون',
+        'Client ajouté',
+        'Client added',
+      ),
       'delivery_added' => _desktopText(
         lang,
         'إضافة وصل تسليم',
@@ -2991,6 +3005,14 @@ class _WelcomScreenState extends State<WelcomScreen> {
               Icons.edit_note_rounded,
               const Color(0xFF7C3AED),
             ),
+            'order_opened' => (
+              Icons.folder_open_rounded,
+              const Color(0xFF64748B),
+            ),
+            'client_added' => (
+              Icons.person_add_alt_1_rounded,
+              const Color(0xFFDB2777),
+            ),
             'delivery_added' => (
               Icons.local_shipping_rounded,
               const Color(0xFF0891B2),
@@ -3037,9 +3059,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
       ),
       subtitle: _desktopText(
         lang,
-        'آخر 12 عملية في المبيعات والمشتريات والطلبيات والتسليم',
-        'Les 12 dernières opérations de vente, achat, commande et livraison',
-        'Latest 12 sales, purchases, orders, and deliveries',
+        'آخر 12 عملية: الطلبيات والزبائن والمبيعات والمشتريات والتسليم',
+        'Les 12 dernières opérations : commandes, clients, ventes, achats et livraisons',
+        'Latest 12 operations: orders, clients, sales, purchases and deliveries',
       ),
       icon: Icons.history_rounded,
       color: const Color(0xFF2563EB),

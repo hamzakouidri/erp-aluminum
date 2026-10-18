@@ -1032,6 +1032,7 @@ class _CommandePageState extends State<CommandePage> {
       widget.editCommandeId!,
     );
     if (cmd != null) {
+      unawaited(widget.db.recordOrderOpened(widget.editCommandeId!));
       // Start the local detail query before optional project metadata.  The
       // project is secondary to the editable rows and should never delay
       // their first paint.
