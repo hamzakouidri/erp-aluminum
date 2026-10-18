@@ -629,6 +629,8 @@ extension WindowModelFrame on WindowModel {
     bool manualSelection = false,
   }) {
     final keepStandaloneSideCover = hasSideCovers;
+    final previousThickness = profileThickness;
+    final previousMullionThickness = mullionThickness;
     var mutable = Map<String, dynamic>.from(frame);
     if (manualSelection) {
       _sideCoverSelectionRevision++;
@@ -680,6 +682,14 @@ extension WindowModelFrame on WindowModel {
       selectedFrameCode = mutable['code']?.toString();
     }
     updateProfileThickness();
+    // updateProfileThickness only moves the edges on the outer perimeter.
+    // Where two coupled frames meet, the zones kept the old two-jamb gap, so
+    // a narrower frame left an empty strip between each sash and the jamb
+    // (and the sashes were cut too small).
+    _synchronizeDivisionGapsForSeries(
+      previousThickness,
+      previousMullionThickness,
+    );
   }
 
   List<WindowZone> zonesInFrameOf(WindowZone targetZone) {
