@@ -171,16 +171,6 @@ final Map<String, Map<AppLanguage, String>> translationPhase12Keys = {
     AppLanguage.french: 'Continuer en mode hors-ligne',
     AppLanguage.english: 'Continue in offline mode',
   },
-  'المساحة = عرض النافذة × ارتفاعها × الكمية. تعديل السعر يتم من إدارة الأسعار فقط.': {
-    AppLanguage.arabic: 'المساحة = عرض النافذة × ارتفاعها × الكمية. تعديل السعر يتم من إدارة الأسعار فقط.',
-    AppLanguage.french: 'Surface = Largeur × Hauteur × Qté. Modification de prix depuis la gestion des prix.',
-    AppLanguage.english: 'Area = Width × Height × Qty. Price modifications done via Price Management only.',
-  },
-  'الموستيكير (Moustiquaire)': {
-    AppLanguage.arabic: 'الموستيكير (Moustiquaire)',
-    AppLanguage.french: 'Moustiquaire',
-    AppLanguage.english: 'Mosquito net',
-  },
   'اليسرى:': {
     AppLanguage.arabic: 'اليسرى:',
     AppLanguage.french: 'Gauche :',
@@ -251,11 +241,6 @@ final Map<String, Map<AppLanguage, String>> translationPhase12Keys = {
     AppLanguage.french: 'Réinitialiser les installations 🧹',
     AppLanguage.english: 'Reset installations 🧹',
   },
-  'تظهر في الكمية والتكلفة فقط ولا تظهر في الرسم': {
-    AppLanguage.arabic: 'تظهر في الكمية والتكلفة فقط ولا تظهر في الرسم',
-    AppLanguage.french: 'Visible dans le métré et coût uniquement, non affiché sur le plan',
-    AppLanguage.english: 'Appears in quantity and cost only, not drawn on plan',
-  },
   'تعديل السعر': {
     AppLanguage.arabic: 'تعديل السعر',
     AppLanguage.french: 'Modifier le prix',
@@ -290,11 +275,6 @@ final Map<String, Map<AppLanguage, String>> translationPhase12Keys = {
     AppLanguage.arabic: 'طلبات الانضمام المعلقة',
     AppLanguage.french: 'Demandes d\'adhésion en attente',
     AppLanguage.english: 'Pending join requests',
-  },
-  'إعدادات بوابات الدفع الإلكتروني': {
-    AppLanguage.arabic: 'إعدادات بوابات الدفع الإلكتروني',
-    AppLanguage.french: 'Paramètres des passerelles de paiement électronique',
-    AppLanguage.english: 'E-Payment Gateways Settings',
   },
   'دفع إلكتروني': {
     AppLanguage.arabic: 'دفع إلكتروني',
@@ -386,11 +366,6 @@ final Map<String, Map<AppLanguage, String>> translationPhase12Keys = {
     AppLanguage.french: 'Ouvrir le tableau des débits et coûts',
     AppLanguage.english: 'Open quantity and cost table',
   },
-  'معاينة ثلاثية الأبعاد': {
-    AppLanguage.arabic: 'معاينة ثلاثية الأبعاد',
-    AppLanguage.french: 'Aperçu 3D',
-    AppLanguage.english: '3D Preview',
-  },
   'رقم...': {
     AppLanguage.arabic: 'رقم...',
     AppLanguage.french: 'N°...',
@@ -410,16 +385,6 @@ final Map<String, Map<AppLanguage, String>> translationPhase12Keys = {
     AppLanguage.arabic: 'اسم...',
     AppLanguage.french: 'Nom...',
     AppLanguage.english: 'Name...',
-  },
-  'تاريخ...': {
-    AppLanguage.arabic: 'تاريخ...',
-    AppLanguage.french: 'Date...',
-    AppLanguage.english: 'Date...',
-  },
-  'النوع...': {
-    AppLanguage.arabic: 'النوع...',
-    AppLanguage.french: 'Type...',
-    AppLanguage.english: 'Type...',
   },
   'الحالة...': {
     AppLanguage.arabic: 'الحالة...',
@@ -446,20 +411,10 @@ final Map<String, Map<AppLanguage, String>> translationPhase12Keys = {
     AppLanguage.french: 'Quantité disponible',
     AppLanguage.english: 'Available quantity',
   },
-  'الكمية المتاحة:': {
-    AppLanguage.arabic: 'الكمية المتاحة:',
-    AppLanguage.french: 'Quantité disponible :',
-    AppLanguage.english: 'Available quantity:',
-  },
   'المراد إرجاعه': {
     AppLanguage.arabic: 'المراد إرجاعه',
     AppLanguage.french: 'À retourner',
     AppLanguage.english: 'To return',
-  },
-  'المراد إرجاعه:': {
-    AppLanguage.arabic: 'المراد إرجاعه:',
-    AppLanguage.french: 'À retourner :',
-    AppLanguage.english: 'To return:',
   },
   'مزامنة الأسعار': {
     AppLanguage.arabic: 'مزامنة الأسعار',

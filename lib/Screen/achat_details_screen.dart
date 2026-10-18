@@ -14,7 +14,6 @@ import '../sql_database.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../settings/document_status_localization.dart';
-import '../services/cloud_sync_service.dart';
 import '../widgets/resizable_columns_table.dart';
 import 'achat_item_picker.dart';
 
@@ -92,33 +91,6 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
     super.dispose();
   }
 
-  Future<void> _processInventoryUpdate() async {
-    final achat = await _db.readAchatById(widget.achatId);
-    int locationId = achat?['location_id'] as int? ?? 1;
-
-    for (var item in _items) {
-      final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
-      final itemId = item['item_id'] as int? ?? 0;
-      final itemType = item['item_type'] as String? ?? 'Other';
-      final colorId = item['color_id'] as int?;
-
-      final unitPrice = (item['price'] as num?)?.toDouble() ?? 0.0;
-
-      if (quantity > 0 && itemId > 0) {
-        await _db.updateInventory(
-          itemId: itemId,
-          itemType: itemType,
-          colorId: colorId,
-          locationId: locationId,
-          quantityChange: quantity,
-          transactionType: 'Purchase',
-          referenceId: widget.achatId,
-          unitPrice: unitPrice > 0 ? unitPrice : null,
-        );
-      }
-    }
-  }
-
   Future<void> _saveAchatDetails() async {
     if (!_formKey.currentState!.validate()) return;
     final newInvoice = _invoiceController.text.trim();
@@ -150,16 +122,25 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
 
     final bool wasConfirmed = _status == 'Confirmed';
 
+    final receivesStock = !wasConfirmed && status == 'Confirmed';
     await _db.updateAchatPayment(
       widget.achatId,
       paidAmount: paidAmount,
       remainingAmount: remainingAmount,
-      status: status,
+      // A confirmation is written together with the received stock.
+      status: receivesStock ? null : status,
     );
 
-    if (!wasConfirmed && status == 'Confirmed') {
-      await _processInventoryUpdate();
-      CloudSyncService().notifyChange();
+    if (receivesStock) {
+      try {
+        await _db.receiveAchatStock(widget.achatId, status: status);
+      } catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$error'), backgroundColor: Colors.red),
+        );
+        return;
+      }
     }
 
     if (!mounted) return;
@@ -728,9 +709,15 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
     );
     if (confirmed != true) return;
 
-    await _db.updateAchatStatus(widget.achatId, 'Confirmed');
-    await _processInventoryUpdate();
-    CloudSyncService().notifyChange();
+    try {
+      await _db.receiveAchatStock(widget.achatId);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$error'), backgroundColor: Colors.red),
+      );
+      return;
+    }
 
     if (!mounted) return;
     setState(() {
@@ -1175,27 +1162,25 @@ class _AchatDetailsScreenState extends State<AchatDetailsScreen> {
 
                     Navigator.pop(ctx);
 
-                    await _db.returnAchatInvoice(
-                      widget.achatId,
-                      itemsToReturn,
-                      refunded,
-                    );
-
-                    if (_status == 'Confirmed' || _status == 'Partial Returned') {
-                      final achat = await _db.readAchatById(widget.achatId);
-                      int locationId = achat?['location_id'] as int? ?? 1;
-                      for (var rItem in itemsToReturn) {
-                        await _db.updateInventory(
-                          itemId: rItem['item_id'] as int? ?? 0,
-                          itemType: rItem['item_type'] as String? ?? 'Other',
-                          colorId: rItem['color_id'] as int?,
-                          locationId: locationId,
-                          quantityChange: -(rItem['returnQty'] as num)
-                              .toDouble(),
-                          transactionType: 'Return to Supplier',
-                          referenceId: widget.achatId,
-                        );
-                      }
+                    // Lines, stock and refund are reversed together.
+                    try {
+                      await _db.returnAchatInvoice(
+                        widget.achatId,
+                        itemsToReturn,
+                        refunded,
+                      );
+                    } catch (error) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            '$error',
+                            style: const TextStyle(fontFamily: 'Cairo'),
+                          ),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
                     }
 
                     await _loadAchatDetails();

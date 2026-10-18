@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:database_data/settings/localization.dart';
+import 'package:database_data/sql_database.dart';
 
 enum MoustiquaireType {
   enroulable, // ملفوفة / سحاب زبرك
@@ -9,6 +10,22 @@ enum MoustiquaireType {
   coulissante, // منزلقة / جرار
   fixe, // ثابتة
 }
+
+/// Price keys (in `ShutterSqmPrices`, colour 0) of each mosquito-net type,
+/// edited in the price management page.
+const moustiquaireTypePriceKeys = [
+  ('Moustiquaire_enroulable', 'Enroulable (ملفوفة / سحاب زبرك)'),
+  ('Moustiquaire_plissee', 'Plissée (مطوية / أكورديون)'),
+  ('Moustiquaire_coulissante', 'Coulissante (منزلقة / جرار)'),
+  ('Moustiquaire_fixe', 'Fixe (إطار ثابت)'),
+];
+
+/// Price key of the mosquito net added to a drawn window, also the fallback
+/// of a type without its own price.
+const moustiquaireAddonPriceKey = 'Moustiquaire_Sqm';
+
+String moustiquaireTypePriceKey(MoustiquaireType type) =>
+    'Moustiquaire_${type.name}';
 
 enum InputUnit {
   mm, // مليمتر
@@ -79,9 +96,62 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
 
   final List<MoustiquaireItem> _items = [];
 
+  /// Catalogue price per m² of each type (0 when not set).
+  final Map<MoustiquaireType, double> _typePrices = {};
+  double _addonPrice = 0;
+
+  /// The user typed a price for this order: catalogue prices no longer
+  /// replace it when the type changes.
+  bool _priceEditedByUser = false;
+
+  double _catalogPriceFor(MoustiquaireType type) {
+    final own = _typePrices[type] ?? 0;
+    return own > 0 ? own : _addonPrice;
+  }
+
+  void _applyCatalogPrice() {
+    if (_priceEditedByUser) return;
+    final price = _catalogPriceFor(_selectedType);
+    if (price > 0) _priceController.text = _formatPrice(price);
+  }
+
+  String _formatPrice(double price) => price == price.roundToDouble()
+      ? price.toStringAsFixed(0)
+      : price.toStringAsFixed(2);
+
+  Future<void> _loadCatalogPrices() async {
+    try {
+      final db = SqlDatabase();
+      final addon = await db.getShutterSqmPrice(moustiquaireAddonPriceKey, 0);
+      final prices = <MoustiquaireType, double>{};
+      for (final type in MoustiquaireType.values) {
+        prices[type] = await db.getShutterSqmPrice(
+          moustiquaireTypePriceKey(type),
+          0,
+        );
+      }
+      if (!mounted) return;
+      setState(() {
+        _addonPrice = addon;
+        _typePrices
+          ..clear()
+          ..addAll(prices);
+        _applyCatalogPrice();
+      });
+    } catch (_) {
+      // Without the catalogue the price stays editable by hand.
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    // A reopened order keeps the prices it was saved with.
+    final hasSavedItems =
+        widget.initialPayload?['items'] is List &&
+        (widget.initialPayload!['items'] as List).isNotEmpty;
+    _priceEditedByUser = hasSavedItems;
+    _loadCatalogPrices();
     final payload = widget.initialPayload;
     final rawItems = payload?['items'];
     if (rawItems is! List) return;
@@ -414,6 +484,7 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
                               if (selected) {
                                 setState(() {
                                   _selectedType = t;
+                                  _applyCatalogPrice();
                                 });
                               }
                             },
@@ -629,11 +700,32 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
+                        onChanged: (_) => _priceEditedByUser = true,
                         decoration: InputDecoration(
                           labelText: Localization.translate(
                             'سعر المتر المربع (د.ج / m²)',
                             lang,
                           ),
+                          helperText: _catalogPriceFor(_selectedType) > 0
+                              ? '${Localization.translate('سعر إدارة الأسعار', lang)}: '
+                                    '${_formatPrice(_catalogPriceFor(_selectedType))}'
+                              : Localization.translate(
+                                  'لا يوجد سعر لهذا النوع في إدارة الأسعار',
+                                  lang,
+                                ),
+                          suffixIcon: _catalogPriceFor(_selectedType) > 0
+                              ? IconButton(
+                                  tooltip: Localization.translate(
+                                    'استعمال سعر إدارة الأسعار',
+                                    lang,
+                                  ),
+                                  icon: const Icon(Icons.restore_rounded),
+                                  onPressed: () => setState(() {
+                                    _priceEditedByUser = false;
+                                    _applyCatalogPrice();
+                                  }),
+                                )
+                              : null,
                           prefixIcon: const Icon(
                             Icons.attach_money_rounded,
                             color: Colors.teal,

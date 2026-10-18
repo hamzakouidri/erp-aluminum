@@ -28,7 +28,9 @@ void main() {
   test('side covers default to enabled and preserve an explicit off state', () {
     final model = WindowModel(db: FakeSqlDatabase());
 
-    expect(model.hasSideCovers, isTrue);
+    // A bare model starts without covers; a new drawing enables them when
+    // it is created (ChooseSysteme), and legacy maps default to enabled.
+    expect(model.hasSideCovers, isFalse);
 
     applyWindowModelFromMap(model, {'hasSideCovers': false});
     expect(model.hasSideCovers, isFalse);
@@ -1098,7 +1100,10 @@ void main() {
       ];
       model.selection = SelectionInfo.zone('z1');
 
-      expect(model.parcloseCapacityForStructure(GlassStructure.double), 18);
+      // An aluminium bead holds the vitrage and bourrage gaskets beside the
+      // panes: 5 + 6 (thinnest spacer) + 5 + 2 + 2 needs more than the 18 mm
+      // bead, so the 22 mm one is used and leaves an 8 mm spacer.
+      expect(model.parcloseCapacityForStructure(GlassStructure.double), 22);
       expect(
         model.suggestedIntercallThicknessForDoubleGlass(
           thicknessOuter: 5,
@@ -1384,6 +1389,8 @@ void main() {
     ];
     // Keep only left and top covers: width and height each lose 10 mm once.
     model.removedShutterSides.addAll(['right', 'bottom']);
+    // New drawings enable the cover explicitly (the model default is off).
+    model.hasSideCovers = true;
 
     final bom = ComponentCalculator.generateBom(model, {});
     final frameItem = bom.firstWhere(
@@ -1394,7 +1401,10 @@ void main() {
     );
 
     expect(frameItem.pieces, containsAllInOrder([0.995, 0.995, 1.195, 1.195]));
-    expect(coverItem.pieces, containsAllInOrder([1.275, 1.075]));
+    // Each kept cover is mitred only where it meets the other kept cover
+    // (top-left): side + 35 mm cover width + 5 mm welding. Its end at a
+    // removed side stays square.
+    expect(coverItem.pieces, containsAllInOrder([1.24, 1.04]));
   });
 
   test('side-cover workshop note lists only customised sides', () {
@@ -1458,13 +1468,14 @@ void main() {
       ..zones = [
         WindowZone(id: 'z1', boundary: const Rect.fromLTWH(0, 0, 1000, 1200)),
       ];
+    model.hasSideCovers = true;
 
     final coverItem = ComponentCalculator.generateBom(model, {}).firstWhere(
       (item) => item.originalName == 'الغطاء الجانبي (Side Cover)',
     );
 
     expect(coverItem.productionNote, contains('يمين'));
-    expect(coverItem.productionNote, contains('من أقصى الأعلى إلى 70 سم'));
+    expect(coverItem.productionNote, contains('يبدأ من أقصى الأعلى (0) إلى 70 سم'));
     expect(coverItem.productionNote, contains('عرضه الظاهر 3 سم'));
     // 70 cm covered span + the original 6 cm cover face + 0.5 cm PVC
     // welding allowance. The customised 3 cm façade projection must not

@@ -11,11 +11,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Créé par',
     AppLanguage.english: 'Created by',
   },
-  'تاريخ التعديل': {
-    AppLanguage.arabic: 'تاريخ التعديل',
-    AppLanguage.french: 'Date de modification',
-    AppLanguage.english: 'Updated at',
-  },
   'عُدل من طرف': {
     AppLanguage.arabic: 'عُدل من طرف',
     AppLanguage.french: 'Modifié par',
@@ -144,11 +139,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Tableau de bord',
     AppLanguage.english: 'Dashboard',
   },
-  'الطلبات': {
-    AppLanguage.arabic: 'الطلبات',
-    AppLanguage.french: 'Commandes',
-    AppLanguage.english: 'Orders',
-  },
   'الحجوزات': {
     AppLanguage.arabic: 'الحجوزات',
     AppLanguage.french: 'Réservations',
@@ -158,11 +148,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.arabic: 'التسليمات',
     AppLanguage.french: 'Livraisons',
     AppLanguage.english: 'Deliveries',
-  },
-  'الفواتير': {
-    AppLanguage.arabic: 'الفواتير',
-    AppLanguage.french: 'Factures',
-    AppLanguage.english: 'Invoices',
   },
   'عروض الأسعار': {
     AppLanguage.arabic: 'عروض الأسعار',
@@ -209,11 +194,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Revenus',
     AppLanguage.english: 'Revenue',
   },
-  'المدفوع': {
-    AppLanguage.arabic: 'المدفوع',
-    AppLanguage.french: 'Payé',
-    AppLanguage.english: 'Paid',
-  },
   'لا توجد وثائق': {
     AppLanguage.arabic: 'لا توجد وثائق',
     AppLanguage.french: 'Aucun document',
@@ -251,11 +231,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.arabic: 'خطأ في الطباعة',
     AppLanguage.french: 'Erreur d\'impression',
     AppLanguage.english: 'Print error',
-  },
-  'إعادة المحاولة': {
-    AppLanguage.arabic: 'إعادة المحاولة',
-    AppLanguage.french: 'Réessayer',
-    AppLanguage.english: 'Retry',
   },
   'هل أنت متأكد من حذف الوثيقة': {
     AppLanguage.arabic: 'هل أنت متأكد من حذف الوثيقة',
@@ -402,11 +377,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Net à payer',
     AppLanguage.english: 'Net to pay',
   },
-  'المبلغ المدفوع': {
-    AppLanguage.arabic: 'المبلغ المدفوع',
-    AppLanguage.french: 'Montant versé',
-    AppLanguage.english: 'Amount paid',
-  },
   'المبلغ المتبقي': {
     AppLanguage.arabic: 'المبلغ المتبقي',
     AppLanguage.french: 'Montant restant',
@@ -531,11 +501,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.arabic: 'تعديل المنتج الخاص',
     AppLanguage.french: 'Modifier produit spécial',
     AppLanguage.english: 'Edit Special Product',
-  },
-  'اسم المنتج': {
-    AppLanguage.arabic: 'اسم المنتج',
-    AppLanguage.french: 'Nom du produit',
-    AppLanguage.english: 'Product Name',
   },
   'سعر الشراء (اختياري)': {
     AppLanguage.arabic: 'سعر الشراء (اختياري)',
@@ -796,11 +761,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Cadre de base',
     AppLanguage.english: 'Bottom Frame',
   },
-  'إلغاء': {
-    AppLanguage.arabic: 'إلغاء',
-    AppLanguage.french: 'Annuler',
-    AppLanguage.english: 'Cancel',
-  },
   'تأكيد الخروج': {
     AppLanguage.arabic: 'تأكيد الخروج',
     AppLanguage.french: 'Confirmation de sortie',
@@ -831,11 +791,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'La mesure actuelle a été convertie en volet',
     AppLanguage.english: 'The current measurement was converted to a shutter',
   },
-  'إعدادات القص والفضلات': {
-    AppLanguage.arabic: 'إعدادات القص والفضلات',
-    AppLanguage.french: 'Paramètres de coupe et de chutes',
-    AppLanguage.english: 'Cutting and Remnant Settings',
-  },
   'فاقد المنشار والحد الأدنى للفضلات حسب نوع القطعة.': {
     AppLanguage.arabic: 'فاقد المنشار والحد الأدنى للفضلات حسب نوع القطعة.',
     AppLanguage.french:
@@ -852,11 +807,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Choisissez d\'abord un système',
     AppLanguage.english: 'Choose a system first',
   },
-  'اعتماد وحفظ': {
-    AppLanguage.arabic: 'اعتماد وحفظ',
-    AppLanguage.french: 'Approuver et sauvegarder',
-    AppLanguage.english: 'Approve and Save',
-  },
   'التصوير بالكاميرا فوراً': {
     AppLanguage.arabic: 'التصوير بالكاميرا فوراً',
     AppLanguage.french: 'Prendre une photo immédiatement',
@@ -871,14 +821,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.arabic: 'الذكاء الاصطناعي متاح مجاناً للمعاينة',
     AppLanguage.french: 'L’IA est disponible en aperçu gratuit',
     AppLanguage.english: 'AI is available for free preview',
-  },
-  'سيقوم التطبيق بمحاكاة قراءة فاتورة ألمنيوم حقيقية وعرض الفحص التفاعلي والربط مباشرة لتختبر عمل الميزة بكل سهولة.': {
-    AppLanguage.arabic:
-        'سيقوم التطبيق بمحاكاة قراءة فاتورة ألمنيوم حقيقية وعرض الفحص التفاعلي والربط مباشرة لتختبر عمل الميزة بكل سهولة.',
-    AppLanguage.french:
-        'L’application va simuler la lecture d’une vraie facture d’aluminium, afficher l’inspection interactive et la lier directement pour que vous puissiez tester la fonctionnalité facilement.',
-    AppLanguage.english:
-        'The application will simulate reading a real aluminum invoice, display the interactive inspection, and link it directly so you can easily test the feature.',
   },
   'القيمة الإجمالية': {
     AppLanguage.arabic: 'القيمة الإجمالية',
@@ -925,11 +867,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Ignorer cet article',
     AppLanguage.english: 'Ignore this item',
   },
-  'تراجع': {
-    AppLanguage.arabic: 'تراجع',
-    AppLanguage.french: 'Retour',
-    AppLanguage.english: 'Back',
-  },
   'تصدير ملف الكميات': {
     AppLanguage.arabic: 'تصدير ملف الكميات',
     AppLanguage.french: 'Exporter le fichier de quantités',
@@ -970,11 +907,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Division:',
     AppLanguage.english: 'Division:',
   },
-  'تم حفظ تقرير السلع بنجاح': {
-    AppLanguage.arabic: 'تم حفظ تقرير السلع بنجاح',
-    AppLanguage.french: '',
-    AppLanguage.english: 'Goods report successfully saved',
-  },
   'تيار / تقسيم (Mullion)': {
     AppLanguage.arabic: 'تيار / تقسيم (Mullion)',
     AppLanguage.french: 'Meneau',
@@ -984,11 +916,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.arabic: 'حذف نهائي',
     AppLanguage.french: 'Suppression définitive',
     AppLanguage.english: 'Permanent Delete',
-  },
-  'حفظ': {
-    AppLanguage.arabic: 'حفظ',
-    AppLanguage.french: 'Enregistrer',
-    AppLanguage.english: 'Save',
   },
   'حفظ التعديل': {
     AppLanguage.arabic: 'حفظ التعديل',
@@ -1020,11 +947,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Mesure personnalisée',
     AppLanguage.english: 'Custom Measurement',
   },
-  'لا توجد تفاصيل إضافية': {
-    AppLanguage.arabic: 'لا توجد تفاصيل إضافية',
-    AppLanguage.french: 'Aucun détail supplémentaire',
-    AppLanguage.english: 'No additional details',
-  },
   'لا توجد مقاطع بالكتالوج حالياً.': {
     AppLanguage.arabic: 'لا توجد مقاطع بالكتالوج حالياً.',
     AppLanguage.french: 'Aucun profil dans le catalogue actuellement.',
@@ -1035,20 +957,10 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Double',
     AppLanguage.english: 'Double',
   },
-  'مطابقة وفحص السلع المستوردة': {
-    AppLanguage.arabic: 'مطابقة وفحص السلع المستوردة',
-    AppLanguage.french: '',
-    AppLanguage.english: 'Matching and checking imported goods',
-  },
   'مفرد': {
     AppLanguage.arabic: 'مفرد',
     AppLanguage.french: 'Simple',
     AppLanguage.english: 'Single',
-  },
-  'من: ': {
-    AppLanguage.arabic: 'من: ',
-    AppLanguage.french: 'De: ',
-    AppLanguage.english: 'From: ',
   },
   'نافذة ضلفة مزدوجة (Double Ouvante)': {
     AppLanguage.arabic: 'نافذة ضلفة مزدوجة',
@@ -1064,16 +976,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.arabic: 'نوع البانو:',
     AppLanguage.french: 'Type de panneau:',
     AppLanguage.english: 'Panel type:',
-  },
-  'نوع المنطقة:': {
-    AppLanguage.arabic: 'نوع المنطقة:',
-    AppLanguage.french: 'Type de zone:',
-    AppLanguage.english: 'Zone type:',
-  },
-  'السماكة': {
-    AppLanguage.arabic: 'السماكة',
-    AppLanguage.french: 'Épaisseur',
-    AppLanguage.english: 'Thickness',
   },
   'اسم الإكسسوار': {
     AppLanguage.arabic: 'اسم الإكسسوار',
@@ -1094,16 +996,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.arabic: 'الستائر',
     AppLanguage.french: 'Volets',
     AppLanguage.english: 'Shutters',
-  },
-  'الإكسسوارات': {
-    AppLanguage.arabic: 'الإكسسوارات',
-    AppLanguage.french: 'Accessoires',
-    AppLanguage.english: 'Accessories',
-  },
-  'لا توجد عناصر. يرجى إضافتها من قائمة المنتجات أولاً.': {
-    AppLanguage.arabic: '',
-    AppLanguage.french: '',
-    AppLanguage.english: '',
   },
   'المقاطع': {
     AppLanguage.arabic: 'مقاطع (بارات)',
@@ -1150,11 +1042,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: '15 jours',
     AppLanguage.english: '15 days',
   },
-  '3 أيام': {
-    AppLanguage.arabic: '3 أيام',
-    AppLanguage.french: '3 jours',
-    AppLanguage.english: '3 days',
-  },
   '30 يوماً': {
     AppLanguage.arabic: '30 يوماً',
     AppLanguage.french: '30 jours',
@@ -1165,16 +1052,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: '7 jours',
     AppLanguage.english: '7 days',
   },
-  'System Beating (فرنسي)': {
-    AppLanguage.arabic: 'نظام فتح عادي (فرنسي)',
-    AppLanguage.french: 'System Battant francias',
-    AppLanguage.english: 'System Beating franch',
-  },
-  'System Sliding (جرار)': {
-    AppLanguage.arabic: 'نظام جرار',
-    AppLanguage.french: 'System Collissant ',
-    AppLanguage.english: 'System Sliding ',
-  },
   'أبيض': {
     AppLanguage.arabic: 'أبيض',
     AppLanguage.french: 'Blanc',
@@ -1184,31 +1061,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.arabic: 'أجرة',
     AppLanguage.french: 'Salaire',
     AppLanguage.english: 'Salary',
-  },
-  'أجرة (Salary)': {
-    AppLanguage.arabic: 'أجرة (Salary)',
-    AppLanguage.french: 'Salaire (Salary)',
-    AppLanguage.english: 'Salary',
-  },
-  'أخضر': {
-    AppLanguage.arabic: 'أخضر',
-    AppLanguage.french: 'Vert',
-    AppLanguage.english: 'Green',
-  },
-  'أدخل البُعد (mm)': {
-    AppLanguage.arabic: 'أدخل البُعد (mm)',
-    AppLanguage.french: 'Entrer la dimension (mm)',
-    AppLanguage.english: 'Enter dimension (mm)',
-  },
-  'أدخل مفتاحك للاستخراج الفعلي من الصور الكبيرة...': {
-    AppLanguage.arabic: '',
-    AppLanguage.french: '',
-    AppLanguage.english: '',
-  },
-  'أزرق': {
-    AppLanguage.arabic: 'أزرق',
-    AppLanguage.french: 'Bleu',
-    AppLanguage.english: 'Blue',
   },
   'أسعار المتر والإكسسوارات': {
     AppLanguage.arabic: 'أسعار المتر والإكسسوارات',
@@ -1260,26 +1112,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Total reçu : \$totalReceived DA',
     AppLanguage.english: 'Total received: \$totalReceived DA',
   },
-  'إرسال عبر واتساب': {
-    AppLanguage.arabic: 'إرسال عبر واتساب',
-    AppLanguage.french: 'Envoyer via WhatsApp',
-    AppLanguage.english: 'Send via WhatsApp',
-  },
-  'إضافة': {
-    AppLanguage.arabic: 'إضافة',
-    AppLanguage.french: 'Ajouter',
-    AppLanguage.english: 'Add',
-  },
-  'إلى كم قطعة تقسمها؟': {
-    AppLanguage.arabic: 'إلى كم قطعة تقسمها؟',
-    AppLanguage.french: 'En combien de pièces la divisez-vous ?',
-    AppLanguage.english: 'Into how many pieces do you split it?',
-  },
-  'ابيض': {
-    AppLanguage.arabic: 'ابيض',
-    AppLanguage.french: 'Blanc',
-    AppLanguage.english: 'White',
-  },
   'اتجاه الفتح وسمك الضلفة:': {
     AppLanguage.arabic: 'اتجاه الفتح وسمك الضلفة:',
     AppLanguage.french: 'Direction d\'ouverture et épaisseur de l\'ouvrant :',
@@ -1294,21 +1126,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.arabic: 'اختيار نوع النظام',
     AppLanguage.french: 'Choisir le type de système',
     AppLanguage.english: 'Choose system type',
-  },
-  'ارزين': {
-    AppLanguage.arabic: 'ارزين',
-    AppLanguage.french: 'Résine',
-    AppLanguage.english: 'Resin',
-  },
-  'ازرق بلجيكي': {
-    AppLanguage.arabic: 'ازرق بلجيكي',
-    AppLanguage.french: 'Bleu Belge',
-    AppLanguage.english: 'Belgian Blue',
-  },
-  'استعادة': {
-    AppLanguage.arabic: 'استعادة',
-    AppLanguage.french: 'Restaurer',
-    AppLanguage.english: 'Restore',
   },
   'استعادة البيانات': {
     AppLanguage.arabic: 'استعادة البيانات',
@@ -1325,11 +1142,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Nom du fournisseur ou de la société vendeuse',
     AppLanguage.english: 'Supplier or vendor name',
   },
-  'اسود': {
-    AppLanguage.arabic: 'اسود',
-    AppLanguage.french: 'Noir',
-    AppLanguage.english: 'Black',
-  },
   'اكتب ملاحظتك، شكواك، أو اقتراحك هنا...': {
     AppLanguage.arabic: 'اكتب ملاحظتك، شكواك، أو اقتراحك هنا...',
     AppLanguage.french: 'Écrivez votre note, plainte ou suggestion ici...',
@@ -1345,32 +1157,10 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Accessoires (Accessories)',
     AppLanguage.english: 'Accessories (Accessories)',
   },
-  'الاسم': {
-    AppLanguage.arabic: 'الاسم',
-    AppLanguage.french: 'Nom',
-    AppLanguage.english: 'Name',
-  },
-  'البريد الإلكتروني': {
-    AppLanguage.arabic: 'البريد الإلكتروني',
-    AppLanguage.french: 'E-mail',
-    AppLanguage.english: 'Email',
-  },
-  'البريد الإلكتروني غير صالح، يرجى كتابته بشكل صحيح.': {
-    AppLanguage.arabic: '',
-    AppLanguage.french: '',
-    AppLanguage.english: '',
-  },
   'البُعد الصافي للفراغ (mm)': {
     AppLanguage.arabic: 'البُعد الصافي للفراغ (mm)',
     AppLanguage.french: 'Dimension nette de l\'espace (mm)',
     AppLanguage.english: 'Net spacing dimension (mm)',
-  },
-  'التحقق من مطابقة المقاطع الواردة مع كتالوج الألمنيوم المحلي في قاعدة البيانات:': {
-    AppLanguage.arabic: '',
-    AppLanguage.french:
-        'Vérification de la conformité des profilés reçus avec le catalogue local dans la base de données :',
-    AppLanguage.english:
-        'Checking conformity of incoming profiles with the local aluminum catalog in the database:',
   },
   'الرجاء إدخال رقم صحيح': {
     AppLanguage.arabic: 'الرجاء إدخال رقم صحيح',
@@ -1397,11 +1187,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Volets Roulants',
     AppLanguage.english: 'Shutters',
   },
-  'السفلية': {
-    AppLanguage.arabic: 'السفلية',
-    AppLanguage.french: 'Base',
-    AppLanguage.english: 'السفلية',
-  },
   '\'\'\'الصلاحية: \$': {
     AppLanguage.arabic: 'الصلاحية: \${role ==',
     AppLanguage.french: 'الصلاحية: \${role ==',
@@ -1411,11 +1196,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.arabic: 'سماكة القطاع / Thickness (mm)',
     AppLanguage.french: 'Épaisseur / Thickness (mm)',
     AppLanguage.english: 'Thickness (mm)',
-  },
-  'العلوية': {
-    AppLanguage.arabic: 'العلوية',
-    AppLanguage.french: 'Haut',
-    AppLanguage.english: 'Out',
   },
   'علوية': {
     AppLanguage.arabic: 'علوية',
@@ -1479,20 +1259,10 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
         'L’épaisseur du vitrage correspond à la capacité de la parclose',
     AppLanguage.english: 'Glass thickness matches the parclose capacity',
   },
-  'نسبة تقسيم الضلفة (ضلفة أكبر من ضلفة)': {
-    AppLanguage.arabic: 'نسبة تقسيم الضلفة (ضلفة أكبر من ضلفة)',
-    AppLanguage.french: 'Ratio de division du battant (un battant plus grand)',
-    AppLanguage.english: 'Sash division ratio (one sash larger)',
-  },
   'عرض الضلفة اليسرى (مم)': {
     AppLanguage.arabic: 'عرض الضلفة اليسرى (مم)',
     AppLanguage.french: 'Largeur du battant gauche (mm)',
     AppLanguage.english: 'Left sash width (mm)',
-  },
-  'متساويين (50%)': {
-    AppLanguage.arabic: 'متساويين (50%)',
-    AppLanguage.french: 'Égaux (50%)',
-    AppLanguage.english: 'Equal (50%)',
   },
   'هيكل الزجاج:': {
     AppLanguage.arabic: 'هيكل الزجاج:',
@@ -1504,55 +1274,15 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Épaisseur du vitrage :',
     AppLanguage.english: 'Glass thickness:',
   },
-  'العمود محدد': {
-    AppLanguage.arabic: 'العمود محدد',
-    AppLanguage.french: 'Mullion sélectionné',
-    AppLanguage.english: 'Mullion selected',
-  },
-  'القطعة السفلية (mm)': {
-    AppLanguage.arabic: 'القطعة السفلية (mm)',
-    AppLanguage.french: 'Pièce Base (mm)',
-    AppLanguage.english: 'Piece Base (mm)',
-  },
-  'القطعة العلوية (mm)': {
-    AppLanguage.arabic: 'القطعة العلوية (mm)',
-    AppLanguage.french: 'Pièce Haut (mm)',
-    AppLanguage.english: 'Piece Out (mm)',
-  },
   '\'\'\'القطعة الوسطى: \$': {
     AppLanguage.arabic: '',
     AppLanguage.french: '',
     AppLanguage.english: '',
   },
-  'القطعة اليسرى (mm)': {
-    AppLanguage.arabic: 'القطعة اليسرى (mm)',
-    AppLanguage.french: 'Pièce Gauche (mm)',
-    AppLanguage.english: 'Piece Left (mm)',
-  },
-  'القطعة اليمنى (mm)': {
-    AppLanguage.arabic: 'القطعة اليمنى (mm)',
-    AppLanguage.french: 'Pièce Droite (mm)',
-    AppLanguage.english: 'Piece Right (mm)',
-  },
-  'القياس الداخلي (mm)': {
-    AppLanguage.arabic: 'القياس الداخلي (mm)',
-    AppLanguage.french: 'Mesure Intérieur (mm)',
-    AppLanguage.english: 'Measurement Internal (mm)',
-  },
   'القيمة الإجمالية (دج) *': {
     AppLanguage.arabic: 'القيمة الإجمالية (دج) *',
     AppLanguage.french: 'Valeur totale (DA) *',
     AppLanguage.english: 'Total Value (DA) *',
-  },
-  'الكود التجاري (Code) *': {
-    AppLanguage.arabic: 'الكود التجاري (Code) *',
-    AppLanguage.french: 'Code commercial *',
-    AppLanguage.english: 'Commercial Code *',
-  },
-  'الكود التجاري (مثال: P400)': {
-    AppLanguage.arabic: 'الكود التجاري (مثال: P400)',
-    AppLanguage.french: 'Code commercial (ex : P400)',
-    AppLanguage.english: 'Commercial Code (ex: P400)',
   },
   '\'\'\'الكود المستخرج: \$': {
     AppLanguage.arabic: 'الكود المستخرج: \${item.itemCode.isEmpty ?',
@@ -1614,26 +1344,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Aspect (panneau) :',
     AppLanguage.english: 'Appearance (panel):',
   },
-  'الوزن التقريبي للمتر (Kg/m)': {
-    AppLanguage.arabic: 'الوزن التقريبي للمتر (Kg/m)',
-    AppLanguage.french: 'Poids approximatif par mètre (Kg/m)',
-    AppLanguage.english: 'Approximate weight per meter (Kg/m)',
-  },
-  'الوزن للمتر (Kg/m)': {
-    AppLanguage.arabic: 'الوزن للمتر (Kg/m)',
-    AppLanguage.french: 'Poids par mètre (Kg/m)',
-    AppLanguage.english: 'Weight per meter (Kg/m)',
-  },
-  'اليسرى': {
-    AppLanguage.arabic: 'اليسرى',
-    AppLanguage.french: 'Gauche',
-    AppLanguage.english: 'Left',
-  },
-  'اليمنى': {
-    AppLanguage.arabic: 'اليمنى',
-    AppLanguage.french: 'Droite',
-    AppLanguage.english: 'Right',
-  },
   'انقر على': {
     AppLanguage.arabic: 'انقر على',
     AppLanguage.french: 'Cliquer sur',
@@ -1644,26 +1354,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french:
         'Cliquer pour sélectionner et modifier n\'importe quelle zone',
     AppLanguage.english: 'Click to select and edit any zone',
-  },
-  'باج': {
-    AppLanguage.arabic: 'باج',
-    AppLanguage.french: 'Beige',
-    AppLanguage.english: 'Beige',
-  },
-  'بارداش': {
-    AppLanguage.arabic: 'بارداش',
-    AppLanguage.french: 'Bardage',
-    AppLanguage.english: 'Siding',
-  },
-  'بانو': {
-    AppLanguage.arabic: 'بانو',
-    AppLanguage.french: 'Panneau',
-    AppLanguage.english: 'Panel',
-  },
-  'بانو ديكور': {
-    AppLanguage.arabic: 'بانو ديكور',
-    AppLanguage.french: 'Panneau Décoré',
-    AppLanguage.english: 'Decorated Panel',
   },
   'بدون بريد إلكتروني': {
     AppLanguage.arabic: 'بدون بريد إلكتروني',
@@ -1700,11 +1390,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Essai actif (reste \$daysLeft jours)',
     AppLanguage.english: 'Trial active (\$daysLeft days remaining)',
   },
-  'تحديث من السحابة': {
-    AppLanguage.arabic: 'تحديث من السحابة',
-    AppLanguage.french: 'Mettre à jour depuis le cloud',
-    AppLanguage.english: 'Update from cloud',
-  },
   'تخصيص جهات الغطاء الجانبي:': {
     AppLanguage.arabic: 'تخصيص جهات الغطاء الجانبي:',
     AppLanguage.french: 'Personnaliser les côtés des embouts :',
@@ -1714,11 +1399,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.arabic: 'تطبيق القياس الجديد',
     AppLanguage.french: 'Appliquer les nouvelles dimensions',
     AppLanguage.english: 'Apply new dimensions',
-  },
-  'تعديل': {
-    AppLanguage.arabic: 'تعديل',
-    AppLanguage.french: 'Modifier',
-    AppLanguage.english: 'Edit',
   },
   'تعديل الفراغ الأيسر (mm)': {
     AppLanguage.arabic: 'تعديل الفراغ الأيسر (mm)',
@@ -1745,27 +1425,12 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Changer les prix',
     AppLanguage.english: 'Change Prices',
   },
-  'تفاصيل التقسيم الأفقي': {
-    AppLanguage.arabic: 'تفاصيل التقسيم الأفقي',
-    AppLanguage.french: 'Détails Division Horizontal',
-    AppLanguage.english: 'Details Division Horizontal',
-  },
-  'تفاصيل التقسيم العمودي': {
-    AppLanguage.arabic: 'تفاصيل التقسيم العمودي',
-    AppLanguage.french: 'Détails Division Vertical',
-    AppLanguage.english: 'Details Division Vertical',
-  },
   'تقسيم متساوي (حسب عدد القطع)': {
     AppLanguage.arabic: 'تقسيم متساوي (حسب عدد القطع)',
     AppLanguage.french: 'Division égale (selon le nombre de pièces)',
     AppLanguage.english: 'Equal division (by number of pieces)',
   },
   '\'\'\'تقييم التطبيق: \$_rating نجوم\\nالملاحظة/الشكوى: \$': {
-    AppLanguage.arabic: '',
-    AppLanguage.french: '',
-    AppLanguage.english: '',
-  },
-  'تم استيراد وحفظ فاتورة المشتريات ومطابقة السلع بنجاح تام': {
     AppLanguage.arabic: '',
     AppLanguage.french: '',
     AppLanguage.english: '',
@@ -1780,25 +1445,10 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Article ignoré',
     AppLanguage.english: 'Item ignored',
   },
-  'تم تحليل الطلب بنجاح، ولكن الإجراء غير معروف.': {
-    AppLanguage.arabic: 'تم تحليل الطلب بنجاح، ولكن الإجراء غير معروف.',
-    AppLanguage.french: '',
-    AppLanguage.english: '',
-  },
   'تم مزامنة بيانات جديدة من السحابة 🔄': {
     AppLanguage.arabic: 'تم مزامنة بيانات جديدة من السحابة 🔄',
     AppLanguage.french: 'Nouvelles données synchronisées depuis le cloud 🔄',
     AppLanguage.english: 'New data synchronized from cloud 🔄',
-  },
-  'تمت الاستعادة بنجاح! يرجى إعادة تشغيل التطبيق.': {
-    AppLanguage.arabic: 'تمت الاستعادة بنجاح! يرجى إعادة تشغيل التطبيق.',
-    AppLanguage.french: '',
-    AppLanguage.english: '',
-  },
-  'تيسي': {
-    AppLanguage.arabic: 'تيسي',
-    AppLanguage.french: 'Martelé',
-    AppLanguage.english: 'Patterned',
   },
   'جاري التحميل...': {
     AppLanguage.arabic: 'جاري التحميل...',
@@ -1829,11 +1479,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.arabic: 'حذف التقسيم',
     AppLanguage.french: 'Supprimer la division',
     AppLanguage.english: 'Delete division',
-  },
-  'حراري': {
-    AppLanguage.arabic: 'حراري',
-    AppLanguage.french: 'Thermique',
-    AppLanguage.english: 'Low-E',
   },
   'حفظ تعديل': {
     AppLanguage.arabic: 'حفظ تعديل',
@@ -1870,16 +1515,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Bois',
     AppLanguage.english: 'Wood',
   },
-  'خشبي داكن': {
-    AppLanguage.arabic: 'خشبي داكن',
-    AppLanguage.french: 'Bois Foncé',
-    AppLanguage.english: 'Dark Wood',
-  },
-  'خشبي فاتح': {
-    AppLanguage.arabic: 'خشبي فاتح',
-    AppLanguage.french: 'Bois Clair',
-    AppLanguage.english: 'Light Wood',
-  },
   'خطأ': {
     AppLanguage.arabic: 'خطأ',
     AppLanguage.french: 'Erreur',
@@ -1889,11 +1524,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.arabic: 'خطأ في قاعدة البيانات: \$e',
     AppLanguage.french: 'Erreur de base de données : \$e',
     AppLanguage.english: 'Database error: \$e',
-  },
-  'دلتا': {
-    AppLanguage.arabic: 'دلتا',
-    AppLanguage.french: 'Delta',
-    AppLanguage.english: 'Delta',
   },
   'رفع للسحابة': {
     AppLanguage.arabic: 'رفع للسحابة',
@@ -1905,30 +1535,10 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Gris',
     AppLanguage.english: 'Grey',
   },
-  'رمادي بلجيكي': {
-    AppLanguage.arabic: 'رمادي بلجيكي',
-    AppLanguage.french: 'Gris Belge',
-    AppLanguage.english: 'Belgian Grey',
-  },
-  'رمادي داكن': {
-    AppLanguage.arabic: 'رمادي داكن',
-    AppLanguage.french: 'Gris Foncé',
-    AppLanguage.english: 'Grey Dark',
-  },
-  'رمادي فاتح': {
-    AppLanguage.arabic: 'رمادي فاتح',
-    AppLanguage.french: 'Gris Clair',
-    AppLanguage.english: 'Grey Light',
-  },
   'ساعدنا في تحسين التطبيق': {
     AppLanguage.arabic: 'ساعدنا في تحسين التطبيق',
     AppLanguage.french: 'Aidez-nous à améliorer l\'application',
     AppLanguage.english: 'Help us improve the app',
-  },
-  'ستوبسول': {
-    AppLanguage.arabic: 'ستوبسول',
-    AppLanguage.french: 'Stopsol',
-    AppLanguage.english: 'Stopsol',
   },
   'سحب التطبيق نهائياً (طرد)': {
     AppLanguage.arabic: 'سحب التطبيق نهائياً (طرد)',
@@ -1940,37 +1550,15 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Avance',
     AppLanguage.english: 'Advance',
   },
-  'سلفة (Advance)': {
-    AppLanguage.arabic: 'سلفة (Advance)',
-    AppLanguage.french: 'Avance (Advance)',
-    AppLanguage.english: 'Advance (Advance)',
-  },
   '\'\'\'سماكة: \$': {
     AppLanguage.arabic: 'سماكة: \${sec[',
     AppLanguage.french: 'Épaisseur: \${sec[',
     AppLanguage.english: 'Thickness: \${sec[',
   },
-  'سيتم مسح البيانات الحالية بالكامل واستبدالها بالنسخة السحابية المحفوظة. هل أنت متأكد؟': {
-    AppLanguage.arabic: '',
-    AppLanguage.french:
-        'Toutes les données actuelles seront effacées et remplacées par la version cloud. Êtes-vous sûr ?',
-    AppLanguage.english:
-        'All current data will be erased and replaced with the cloud version. Are you sure?',
-  },
-  'شفاف': {
-    AppLanguage.arabic: 'شفاف',
-    AppLanguage.french: 'Clair',
-    AppLanguage.english: 'Clear',
-  },
   'شفاف/عادي': {
     AppLanguage.arabic: 'شفاف/عادي',
     AppLanguage.french: 'Transparent/Standard',
     AppLanguage.english: 'Transparent/Standard',
-  },
-  'صابلي': {
-    AppLanguage.arabic: 'صابلي',
-    AppLanguage.french: 'Sabler',
-    AppLanguage.english: 'Frosted',
   },
   'ضلفة جرار عريضة (Sliding Sash)': {
     AppLanguage.arabic: 'ضلفة جرار عريضة (Sliding Sash)',
@@ -1986,11 +1574,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.arabic: 'ضلفتان',
     AppLanguage.french: 'Double ouvrant',
     AppLanguage.english: 'Double sash',
-  },
-  'عاتم': {
-    AppLanguage.arabic: 'عاتم',
-    AppLanguage.french: 'Opaque',
-    AppLanguage.english: 'Opaque',
   },
   'عادي': {
     AppLanguage.arabic: 'عادي',
@@ -2012,20 +1595,10 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Général pour toutes les séries',
     AppLanguage.english: 'General for all series',
   },
-  'عدد القطع:': {
-    AppLanguage.arabic: 'عدد القطع:',
-    AppLanguage.french: 'Nombre de pièces :',
-    AppLanguage.english: 'Number of pieces:',
-  },
   'عذراً': {
     AppLanguage.arabic: 'عذراً',
     AppLanguage.french: 'Désolé',
     AppLanguage.english: 'Sorry',
-  },
-  'عذراً، لقد انتهت الفترة التجريبية الخاصة بك!': {
-    AppLanguage.arabic: 'عذراً، لقد انتهت الفترة التجريبية الخاصة بك!',
-    AppLanguage.french: 'Désolé, votre période d\'essai a expiré !',
-    AppLanguage.english: 'Sorry, your trial period has expired!',
   },
   'عمودي': {
     AppLanguage.arabic: 'عمودي',
@@ -2092,21 +1665,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Dimensions personnalisées',
     AppLanguage.english: 'Custom dimensions',
   },
-  'كلمة المرور ضعيفة جداً، يرجى استخدام 6 أحرف أو أكثر.': {
-    AppLanguage.arabic: '',
-    AppLanguage.french: '',
-    AppLanguage.english: '',
-  },
-  'كلمتا المرور غير متطابقتين. يرجى التأكد.': {
-    AppLanguage.arabic: 'كلمتا المرور غير متطابقتين. يرجى التأكد.',
-    AppLanguage.french: 'Les deux mots de passe ne correspondent pas.',
-    AppLanguage.english: 'Passwords do not match.',
-  },
-  'لا يمكن فتح التطبيق. يرجى التأكد من تثبيت واتساب.': {
-    AppLanguage.arabic: '',
-    AppLanguage.french: '',
-    AppLanguage.english: '',
-  },
   'لا يوجد بريد': {
     AppLanguage.arabic: 'لا يوجد بريد',
     AppLanguage.french: 'Aucun e-mail',
@@ -2117,16 +1675,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Aucun utilisateur enregistré',
     AppLanguage.english: 'No registered users',
   },
-  'لحفظ بياناتك واسترجاعها عند تغيير الهاتف أو مسح التطبيق.': {
-    AppLanguage.arabic: '',
-    AppLanguage.french: '',
-    AppLanguage.english: '',
-  },
-  'لكي ينضم إليك أي عامل، اطلب منه تحميل التطبيق والتسجيل كعامل، ثم إدخال': {
-    AppLanguage.arabic: '',
-    AppLanguage.french: '',
-    AppLanguage.english: '',
-  },
   'لم يتم العثور على ألوان.': {
     AppLanguage.arabic: 'لم يتم العثور على ألوان.',
     AppLanguage.french: 'Aucune couleur trouvée.',
@@ -2136,16 +1684,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.arabic: 'لم يتم العثور على نسخة احتياطية سابقة',
     AppLanguage.french: 'Aucune sauvegarde précédente trouvée',
     AppLanguage.english: 'No previous backup found',
-  },
-  'لون البانو:': {
-    AppLanguage.arabic: 'لون البانو:',
-    AppLanguage.french: 'Couleur du panneau :',
-    AppLanguage.english: 'Panneau color:',
-  },
-  'ما هو تقييمك للتطبيق؟': {
-    AppLanguage.arabic: 'ما هو تقييمك للتطبيق؟',
-    AppLanguage.french: 'Quelle est votre évaluation de l\'application ?',
-    AppLanguage.english: 'How do you rate the app?',
   },
   'مخصص لسلاسل معينة': {
     AppLanguage.arabic: 'مخصص لسلاسل معينة',
@@ -2187,60 +1725,15 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Annulé',
     AppLanguage.english: 'Canceled',
   },
-  'من أين يبدأ القياس؟': {
-    AppLanguage.arabic: 'من أين يبدأ القياس؟',
-    AppLanguage.french: 'Où commence la mesure ?',
-    AppLanguage.english: 'Where does the measurement start?',
-  },
-  'من الأسفل': {
-    AppLanguage.arabic: 'من الأسفل',
-    AppLanguage.french: 'Depuis le bas',
-    AppLanguage.english: 'From bottom',
-  },
-  'من الأعلى': {
-    AppLanguage.arabic: 'من الأعلى',
-    AppLanguage.french: 'Depuis le haut',
-    AppLanguage.english: 'From top',
-  },
-  'من اليسار': {
-    AppLanguage.arabic: 'من اليسار',
-    AppLanguage.french: 'Depuis la gauche',
-    AppLanguage.english: 'From left',
-  },
-  'من اليمين': {
-    AppLanguage.arabic: 'من اليمين',
-    AppLanguage.french: 'Depuis la droite',
-    AppLanguage.english: 'From right',
-  },
-  'منتهي الصلاحية': {
-    AppLanguage.arabic: 'منتهي الصلاحية',
-    AppLanguage.french: 'Expiré',
-    AppLanguage.english: 'Expired',
-  },
-  'منزلق': {
-    AppLanguage.arabic: 'منزلق',
-    AppLanguage.french: 'Coulissant',
-    AppLanguage.english: 'Sliding',
-  },
   'موافقة لإنشاء جديد': {
     AppLanguage.arabic: 'موافقة لإنشاء جديد',
     AppLanguage.french: 'Approuver pour créer un nouveau',
     AppLanguage.english: 'Approve to create new',
   },
-  'مورد': {
-    AppLanguage.arabic: 'مورد',
-    AppLanguage.french: 'À fleurs',
-    AppLanguage.english: 'Floral',
-  },
   'مورق': {
     AppLanguage.arabic: 'مورق',
     AppLanguage.french: 'Feuilleté',
     AppLanguage.english: 'Laminated',
-  },
-  'نشط': {
-    AppLanguage.arabic: 'نشط',
-    AppLanguage.french: 'نشط',
-    AppLanguage.english: 'نشط',
   },
   'نظام تصميم النوافذ ERP': {
     AppLanguage.arabic: 'نظام تصميم النوافذ ERP',
@@ -2262,30 +1755,15 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Noralur Aluminium',
     AppLanguage.english: 'Noralur Aluminium',
   },
-  'نوع العملية': {
-    AppLanguage.arabic: 'نوع العملية',
-    AppLanguage.french: 'Type d\'opération',
-    AppLanguage.english: 'Operation type',
-  },
   'نوع المادة': {
     AppLanguage.arabic: 'نوع المادة',
     AppLanguage.french: 'Type de matériau',
     AppLanguage.english: 'Material type',
   },
-  'نوع المعالجة:': {
-    AppLanguage.arabic: 'نوع المعالجة:',
-    AppLanguage.french: 'Type de traitement :',
-    AppLanguage.english: 'Processing type:',
-  },
   'نوع المعاملة': {
     AppLanguage.arabic: 'نوع المعاملة',
     AppLanguage.french: 'Type de transaction',
     AppLanguage.english: 'Transaction type',
-  },
-  'نيفادا': {
-    AppLanguage.arabic: 'نيفادا',
-    AppLanguage.french: 'Nevada',
-    AppLanguage.english: 'Nevada',
   },
   'وجه خارجي': {
     AppLanguage.arabic: 'وجه خارجي',
@@ -2323,11 +1801,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
         'Veuillez d\'abord faire correspondre tous les articles',
     AppLanguage.english: 'Please match all items first',
   },
-  'يسار': {
-    AppLanguage.arabic: 'يسار',
-    AppLanguage.french: 'Gauche',
-    AppLanguage.english: 'Left',
-  },
   'يقوم الذكاء الاصطناعي باستخراج أسماء الموردين، قيم الفواتير، والأكواد التجارية للسلع لمطابقتها تلقائياً.': {
     AppLanguage.arabic:
         'يقوم الذكاء الاصطناعي باستخراج أسماء الموردين، قيم الفواتير، والأكواد التجارية للسلع لمطابقتها تلقائياً.',
@@ -2335,11 +1808,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
         'L\'IA extrait les noms des fournisseurs, les valeurs des factures et les codes commerciaux pour une correspondance automatique.',
     AppLanguage.english:
         'AI extracts supplier names, invoice values, and commercial codes for automatic matching.',
-  },
-  'يمين': {
-    AppLanguage.arabic: 'يمين',
-    AppLanguage.french: 'Droite',
-    AppLanguage.english: 'Right',
   },
   'Address:': {
     AppLanguage.arabic: 'العنوان:',
@@ -2401,11 +1869,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Mesure du moteur :',
     AppLanguage.english: 'Motor measure:',
   },
-  'مجموعات الكيت (Kit)': {
-    AppLanguage.arabic: 'مجموعات الكيت (Kit)',
-    AppLanguage.french: 'Kits (Kit Bundles)',
-    AppLanguage.english: 'Kit Bundles',
-  },
   'كوليس': {
     AppLanguage.arabic: 'كوليس (Coulisse)',
     AppLanguage.french: 'Coulisse',
@@ -2420,11 +1883,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.arabic: 'ورشتي',
     AppLanguage.french: 'Mon Atelier',
     AppLanguage.english: 'My Workshop',
-  },
-  'محرك (Moteur)': {
-    AppLanguage.arabic: 'محرك',
-    AppLanguage.french: 'Moteur',
-    AppLanguage.english: 'Motor',
   },
   'غطاء جانبي: يمين، يسار، علوي (Gauche, Droite, Haut)': {
     AppLanguage.arabic: 'غطاء جانبي: يمين، يسار، علوي',
@@ -2486,26 +1944,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'FOURNISSEUR',
     AppLanguage.english: 'SUPPLIER',
   },
-  'Image': {
-    AppLanguage.arabic: 'صورة',
-    AppLanguage.french: 'Image',
-    AppLanguage.english: 'Image',
-  },
-  'Désignation': {
-    AppLanguage.arabic: 'البيان',
-    AppLanguage.french: 'Désignation',
-    AppLanguage.english: 'Designation',
-  },
-  'Qté': {
-    AppLanguage.arabic: 'الكمية',
-    AppLanguage.french: 'Qté',
-    AppLanguage.english: 'Qty',
-  },
-  'Total': {
-    AppLanguage.arabic: 'المجموع',
-    AppLanguage.french: 'Total',
-    AppLanguage.english: 'Total',
-  },
   'Total Brut': {
     AppLanguage.arabic: 'المجموع الإجمالي',
     AppLanguage.french: 'Total Brut',
@@ -2556,11 +1994,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'PDF enregistré avec succès',
     AppLanguage.english: 'PDF successfully saved',
   },
-  'خطأ في الحفظ: ': {
-    AppLanguage.arabic: 'خطأ في الحفظ: ',
-    AppLanguage.french: 'Erreur d\'enregistrement: ',
-    AppLanguage.english: 'Save error: ',
-  },
   'خطأ في الطباعة: ': {
     AppLanguage.arabic: 'خطأ في الطباعة: ',
     AppLanguage.french: 'Erreur d\'impression: ',
@@ -2585,16 +2018,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.arabic: '(عنصر مستبدل - غير محسوب في المجموع)',
     AppLanguage.french: '(Élément remplacé - Non inclus dans le total)',
     AppLanguage.english: '(Replaced item - Not included in total)',
-  },
-  'الكمية: ': {
-    AppLanguage.arabic: 'الكمية: ',
-    AppLanguage.french: 'Quantité: ',
-    AppLanguage.english: 'Quantity: ',
-  },
-  'قطع': {
-    AppLanguage.arabic: 'قطع',
-    AppLanguage.french: 'pièces',
-    AppLanguage.english: 'pieces',
   },
   'سبب التعديل / الإلغاء': {
     AppLanguage.arabic: 'سبب التعديل / الإلغاء',
@@ -2636,30 +2059,15 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'D.A.',
     AppLanguage.english: 'D.A.',
   },
-  'نافذة ': {
-    AppLanguage.arabic: 'نافذة ',
-    AppLanguage.french: 'Fenêtre ',
-    AppLanguage.english: 'Window ',
-  },
   'الستائر (Volets):': {
     AppLanguage.arabic: 'الستائر:',
     AppLanguage.french: 'Volets:',
     AppLanguage.english: 'Shutters:',
   },
-  'المجموع: ': {
-    AppLanguage.arabic: 'المجموع: ',
-    AppLanguage.french: 'Total: ',
-    AppLanguage.english: 'Total: ',
-  },
   'شكل النافذة': {
     AppLanguage.arabic: 'شكل النافذة',
     AppLanguage.french: 'Forme de la fenêtre',
     AppLanguage.english: 'Window shape',
-  },
-  'موافق': {
-    AppLanguage.arabic: 'موافق',
-    AppLanguage.french: 'D\'accord',
-    AppLanguage.english: 'OK',
   },
   'الكمية:': {
     AppLanguage.arabic: 'الكمية:',
@@ -2696,73 +2104,11 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: r'''Aucune activité récente.''',
     AppLanguage.english: r'''No recent activity.''',
   },
-  r'''كتالوج البروفيلات العالمي''': {
-    AppLanguage.arabic: r'''كتالوج البروفيلات العالمي''',
-    AppLanguage.french: r'''Catalogue mondial de profilés''',
-    AppLanguage.english: r'''Global Profiles Catalog''',
-  },
-  r'''تحديث بيانات البروفيلات والإكسسوارات من الكتالوج المركزي. (لن يؤثر على بيانات الطلبيات والزبائن والمشتريات الخاصة بك)''': {
-    AppLanguage.arabic:
-        r'''تحديث بيانات البروفيلات والإكسسوارات من الكتالوج المركزي. (لن يؤثر على بيانات الطلبيات والزبائن والمشتريات الخاصة بك)''',
-    AppLanguage.french:
-        r'''Mettre à jour les profilés. (N\'affectera pas vos commandes)''',
-    AppLanguage.english: r'''Update profiles. (Will not affect your orders)''',
-  },
-  r'''تحديث الكتالوج الآن''': {
-    AppLanguage.arabic: r'''تحديث الكتالوج الآن''',
-    AppLanguage.french: r'''Mettre à jour le catalogue maintenant''',
-    AppLanguage.english: r'''Update Catalog Now''',
-  },
-  r'''تم تحديث البروفيلات والإكسسوارات بنجاح!''': {
-    AppLanguage.arabic: r'''تم تحديث البروفيلات والإكسسوارات بنجاح!''',
-    AppLanguage.french: r'''Mise à jour réussie !''',
-    AppLanguage.english: r'''Updated successfully!''',
-  },
   r'''تصدير / رفع الكتالوج (للمدير فقط)''': {
     AppLanguage.arabic: r'''تصدير / رفع الكتالوج (للمدير فقط)''',
     AppLanguage.french:
         r'''Exporter / Télécharger le catalogue (Directeur uniquement)''',
     AppLanguage.english: r'''Export / Upload Catalog (Manager only)''',
-  },
-  r'''استخدم هذا الزر لرفع الكتالوج الموجود بجهازك حالياً ليصبح هو الكتالوج المركزي في السحابة.''': {
-    AppLanguage.arabic:
-        r'''استخدم هذا الزر لرفع الكتالوج الموجود بجهازك حالياً ليصبح هو الكتالوج المركزي في السحابة.''',
-    AppLanguage.french:
-        r'''Utilisez ce bouton pour charger le catalogue de votre appareil.''',
-    AppLanguage.english:
-        r'''Use this button to upload your device\'s catalog.''',
-  },
-  r'''رفع الكتالوج الآن''': {
-    AppLanguage.arabic: r'''رفع الكتالوج الآن''',
-    AppLanguage.french: r'''Charger le catalogue maintenant''',
-    AppLanguage.english: r'''Upload Catalog Now''',
-  },
-  r'''تم رفع الكتالوج المركزي بنجاح!''': {
-    AppLanguage.arabic: r'''تم رفع الكتالوج المركزي بنجاح!''',
-    AppLanguage.french: r'''Catalogue central chargé avec succès !''',
-    AppLanguage.english: r'''Central catalog uploaded successfully!''',
-  },
-  r'''نسبة الفائدة (Pourcentage)''': {
-    AppLanguage.arabic: r'''نسبة الفائدة (Pourcentage)''',
-    AppLanguage.french: r'''Marge bénéficiaire (%)''',
-    AppLanguage.english: r'''Profit margin (%)''',
-  },
-  r'''إغلاق التطبيق''': {
-    AppLanguage.arabic: r'''إغلاق التطبيق''',
-    AppLanguage.french: r'''Fermer l\'application''',
-    AppLanguage.english: r'''Close App''',
-  },
-  r'''الرجاء رسم أو إضافة جزء في النافذة أولاً قبل حساب التكلفة!''': {
-    AppLanguage.arabic:
-        r'''الرجاء رسم أو إضافة جزء في النافذة أولاً قبل حساب التكلفة!''',
-    AppLanguage.french:
-        r'''Veuillez dessiner ou ajouter une partie à la fenêtre d\'abord !''',
-    AppLanguage.english: r'''Please draw or add a part to the window first !''',
-  },
-  r'''التنقل السريع''': {
-    AppLanguage.arabic: r'''التنقل السريع''',
-    AppLanguage.french: r'''Navigation rapide''',
-    AppLanguage.english: r'''Quick Navigation''',
   },
   r'''النشاطات الأخيرة''': {
     AppLanguage.arabic: r'''النشاطات الأخيرة''',
@@ -2784,11 +2130,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: r'''Double''',
     AppLanguage.english: r'''Double''',
   },
-  r'''Simple''': {
-    AppLanguage.arabic: r'''بسيط''',
-    AppLanguage.french: r'''Simple''',
-    AppLanguage.english: r'''Simple''',
-  },
   'الكمية والتكلفة': {
     AppLanguage.arabic: 'الكمية والتكلفة',
     AppLanguage.french: 'Quantité et Coût',
@@ -2804,11 +2145,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Préparation des quantités et des prix...',
     AppLanguage.english: 'Preparing quantities and prices...',
   },
-  'القياس': {
-    AppLanguage.arabic: 'القياس',
-    AppLanguage.french: 'Dimensions / Mesures',
-    AppLanguage.english: 'Dimensions / Measurement',
-  },
   'إعدادات السعر': {
     AppLanguage.arabic: 'إعدادات السعر',
     AppLanguage.french: 'Paramètres de prix',
@@ -2818,21 +2154,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.arabic: 'تفاصيل الحساب',
     AppLanguage.french: 'Détails du compte',
     AppLanguage.english: 'Account Details',
-  },
-  'قطعة': {
-    AppLanguage.arabic: 'قطعة',
-    AppLanguage.french: 'Pièce',
-    AppLanguage.english: 'Piece',
-  },
-  'حبة': {
-    AppLanguage.arabic: 'حبة',
-    AppLanguage.french: 'Unité',
-    AppLanguage.english: 'Unit',
-  },
-  'متر': {
-    AppLanguage.arabic: 'متر',
-    AppLanguage.french: 'Mètre',
-    AppLanguage.english: 'Meter',
   },
   'سعر التكلفة الإجمالي': {
     AppLanguage.arabic: 'سعر التكلفة الإجمالي',
@@ -2854,50 +2175,15 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Contacter l\'administration',
     AppLanguage.english: 'Contact Admin',
   },
-  'المخزون': {
-    AppLanguage.arabic: 'المخزون',
-    AppLanguage.french: 'Stock',
-    AppLanguage.english: 'Stock',
-  },
   'الموردين': {
     AppLanguage.arabic: 'الموردين',
     AppLanguage.french: 'Fournisseurs',
     AppLanguage.english: 'Suppliers',
   },
-  'المشتريات': {
-    AppLanguage.arabic: 'المشتريات',
-    AppLanguage.french: 'Achats',
-    AppLanguage.english: 'Purchases',
-  },
-  'البروفيلات': {
-    AppLanguage.arabic: 'البروفيلات',
-    AppLanguage.french: 'Profilés',
-    AppLanguage.english: 'Profiles',
-  },
   'ستوب صول': {
     AppLanguage.arabic: 'ستوب صول',
     AppLanguage.french: 'Stopsol',
     AppLanguage.english: 'Stopsol',
-  },
-  'بليكسي': {
-    AppLanguage.arabic: 'بليكسي',
-    AppLanguage.french: 'Plexiglas',
-    AppLanguage.english: 'Plexiglass',
-  },
-  'موسى': {
-    AppLanguage.arabic: 'موسى',
-    AppLanguage.french: 'Moussa',
-    AppLanguage.english: 'Moussa',
-  },
-  'زجاج مسلح': {
-    AppLanguage.arabic: 'زجاج مسلح',
-    AppLanguage.french: 'Verre armé',
-    AppLanguage.english: 'Wired Glass',
-  },
-  'رخامي': {
-    AppLanguage.arabic: 'رخامي',
-    AppLanguage.french: 'Marbré',
-    AppLanguage.english: 'Marbled',
   },
   'المتوفر فقط': {
     AppLanguage.arabic: 'المتوفر فقط',
@@ -2923,22 +2209,6 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.arabic: 'تصفير المخزون!',
     AppLanguage.french: 'Réinitialiser le stock !',
     AppLanguage.english: 'Reset Stock!',
-  },
-  r'''هل أنت متأكد أنك تريد تصفير المخزون بالكامل وجعل كل الكميات 0؟
-
-لا يمكن التراجع عن هذا الإجراء!''': {
-    AppLanguage.arabic:
-        r'''هل أنت متأكد أنك تريد تصفير المخزون بالكامل وجعل كل الكميات 0؟
-
-لا يمكن التراجع عن هذا الإجراء!''',
-    AppLanguage.french:
-        r'''Êtes-vous sûr de vouloir réinitialiser tout le stock à 0 ?
-
-Cette action est irréversible !''',
-    AppLanguage.english:
-        r'''Are you sure you want to reset the entire stock to 0?
-
-This action cannot be undone!''',
   },
   'تأكيد التصفير': {
     AppLanguage.arabic: 'تأكيد التصفير',
@@ -2974,11 +2244,6 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'جرد المخزون: ',
     AppLanguage.french: 'Ajustement du stock : ',
     AppLanguage.english: 'Stock Count: ',
-  },
-  'حفظ التعديلات': {
-    AppLanguage.arabic: 'حفظ التعديلات',
-    AppLanguage.french: 'Enregistrer les modifications',
-    AppLanguage.english: 'Save Changes',
   },
   'تم حفظ تسوية المخزون بنجاح!': {
     AppLanguage.arabic: 'تم حفظ تسوية المخزون بنجاح!',
@@ -3040,30 +2305,15 @@ This action cannot be undone!''',
     AppLanguage.french: 'Nom du fournisseur',
     AppLanguage.english: 'Supplier Name',
   },
-  'رقم الهاتف': {
-    AppLanguage.arabic: 'رقم الهاتف',
-    AppLanguage.french: 'Numéro de téléphone',
-    AppLanguage.english: 'Phone Number',
-  },
   'ملاحظات': {
     AppLanguage.arabic: 'ملاحظات',
     AppLanguage.french: 'Remarques / Notes',
     AppLanguage.english: 'Notes / Remarks',
   },
-  'تأكيد الحذف': {
-    AppLanguage.arabic: 'تأكيد الحذف',
-    AppLanguage.french: 'Confirmer la suppression',
-    AppLanguage.english: 'Confirm Deletion',
-  },
   'هل أنت متأكد من حذف هذا المورد؟': {
     AppLanguage.arabic: 'هل أنت متأكد من حذف هذا المورد؟',
     AppLanguage.french: 'Êtes-vous sûr de vouloir supprimer ce fournisseur ?',
     AppLanguage.english: 'Are you sure you want to delete this supplier?',
-  },
-  'حذف': {
-    AppLanguage.arabic: 'حذف',
-    AppLanguage.french: 'Supprimer',
-    AppLanguage.english: 'Delete',
   },
   'لا يوجد موردين مضافين حتى الآن.': {
     AppLanguage.arabic: 'لا يوجد موردين مضافين حتى الآن.',
@@ -3154,11 +2404,6 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'ملغاة',
     AppLanguage.french: 'Annulée',
     AppLanguage.english: 'Cancelled',
-  },
-  'فاتورة رقم: ': {
-    AppLanguage.arabic: 'فاتورة رقم: ',
-    AppLanguage.french: 'Facture N°: ',
-    AppLanguage.english: 'Invoice No: ',
   },
   'يتم إنشاؤه تلقائياً ويمكنك تعديله': {
     AppLanguage.arabic: 'يتم إنشاؤه تلقائياً ويمكنك تعديله',
@@ -3301,11 +2546,6 @@ This action cannot be undone!''',
     AppLanguage.french: 'Article',
     AppLanguage.english: 'Item',
   },
-  'النوع: ': {
-    AppLanguage.arabic: 'النوع: ',
-    AppLanguage.french: 'Type : ',
-    AppLanguage.english: 'Type: ',
-  },
   'سعر الوحدة: ': {
     AppLanguage.arabic: 'سعر الوحدة: ',
     AppLanguage.french: 'Prix unitaire : ',
@@ -3366,11 +2606,6 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'مثال: كادر، أوفرو...',
     AppLanguage.french: 'Ex: Cadre, Ouvrant...',
     AppLanguage.english: 'e.g. Frame, Sash...',
-  },
-  'إضافة للفاتورة': {
-    AppLanguage.arabic: 'إضافة للفاتورة',
-    AppLanguage.french: 'Ajouter à la facture',
-    AppLanguage.english: 'Add to Invoice',
   },
   'إضافة: ': {
     AppLanguage.arabic: 'إضافة: ',
@@ -3448,11 +2683,6 @@ This action cannot be undone!''',
     AppLanguage.french: 'Rosette Décor',
     AppLanguage.english: 'Decor Rosette',
   },
-  'زجاج': {
-    AppLanguage.arabic: 'زجاج',
-    AppLanguage.french: 'Vitrage',
-    AppLanguage.english: 'Glass',
-  },
   'إنتركال': {
     AppLanguage.arabic: 'إنتركال',
     AppLanguage.french: 'Intercalaire',
@@ -3482,16 +2712,6 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'الأبعاد',
     AppLanguage.french: 'Dimensions',
     AppLanguage.english: 'Dimensions',
-  },
-  'مم': {
-    AppLanguage.arabic: 'مم',
-    AppLanguage.french: 'mm',
-    AppLanguage.english: 'mm',
-  },
-  'العرض': {
-    AppLanguage.arabic: 'العرض',
-    AppLanguage.french: 'Largeur',
-    AppLanguage.english: 'Width',
   },
   'العرض الظاهر': {
     AppLanguage.arabic: 'العرض الظاهر',
@@ -3543,11 +2763,6 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'مكوّنات الستار',
     AppLanguage.french: 'Composants du volet',
     AppLanguage.english: 'Shutter Components',
-  },
-  'ستار': {
-    AppLanguage.arabic: 'ستار',
-    AppLanguage.french: 'Volet',
-    AppLanguage.english: 'Shutter',
   },
   'Volet': {
     AppLanguage.arabic: 'ستار',
@@ -3639,20 +2854,10 @@ This action cannot be undone!''',
     AppLanguage.french: 'Prix des joints :',
     AppLanguage.english: 'Joints price:',
   },
-  'أخرى': {
-    AppLanguage.arabic: 'أخرى',
-    AppLanguage.french: 'Autre',
-    AppLanguage.english: 'Other',
-  },
   'سعر أخرى:': {
     AppLanguage.arabic: 'سعر أخرى:',
     AppLanguage.french: 'Autre prix :',
     AppLanguage.english: 'Other price:',
-  },
-  'براغي التجميع': {
-    AppLanguage.arabic: 'براغي التجميع',
-    AppLanguage.french: 'Vis d\'assemblage',
-    AppLanguage.english: 'Assembly Screws',
   },
   'المجموع الإجمالي:': {
     AppLanguage.arabic: 'المجموع الإجمالي:',
@@ -3800,55 +3005,20 @@ This action cannot be undone!''',
     AppLanguage.french: 'Coulisse',
     AppLanguage.english: 'Track',
   },
-  'محرك': {
-    AppLanguage.arabic: 'محرك',
-    AppLanguage.french: 'Moteur',
-    AppLanguage.english: 'Motor',
-  },
   'كيت (Kit)': {
     AppLanguage.arabic: 'كيت (Kit)',
     AppLanguage.french: 'Kit',
     AppLanguage.english: 'Kit',
-  },
-  'أنبوب المحرك (L\'axe)': {
-    AppLanguage.arabic: 'أنبوب المحرك (L\'axe)',
-    AppLanguage.french: 'Axe',
-    AppLanguage.english: 'Motor tube (Shaft)',
   },
   'الشفرة النهائية': {
     AppLanguage.arabic: 'الشفرة النهائية',
     AppLanguage.french: 'Lame finale',
     AppLanguage.english: 'Final Blade',
   },
-  'أطاش (Attache)': {
-    AppLanguage.arabic: 'أطاش (Attache)',
-    AppLanguage.french: 'Attache',
-    AppLanguage.english: 'Attache',
-  },
-  'سيبور موتور (Support Moteur)': {
-    AppLanguage.arabic: 'سيبور موتور (Support Moteur)',
-    AppLanguage.french: 'Support Moteur',
-    AppLanguage.english: 'Motor Support',
-  },
-  'الامبو (Embout)': {
-    AppLanguage.arabic: 'الامبو (Embout)',
-    AppLanguage.french: 'Embout',
-    AppLanguage.english: 'End Cap',
-  },
-  'سيبور رولمو (Support Roulement)': {
-    AppLanguage.arabic: 'سيبور رولمو (Support Roulement)',
-    AppLanguage.french: 'Support Roulement',
-    AppLanguage.english: 'Bearing Support',
-  },
   'طانديم (Tandem)': {
     AppLanguage.arabic: 'طانديم (Tandem)',
     AppLanguage.french: 'Tandem',
     AppLanguage.english: 'Tandem',
-  },
-  'أغطية الشفرات (Bouchons Lames)': {
-    AppLanguage.arabic: 'أغطية الشفرات (Bouchons Lames)',
-    AppLanguage.french: 'Bouchons Lames',
-    AppLanguage.english: 'Blade end caps',
   },
   'رولمان (Roulement)': {
     AppLanguage.arabic: 'رولمان (Roulement)',
@@ -3980,20 +3150,10 @@ This action cannot be undone!''',
     AppLanguage.french: 'Épaisseur des bouchons :',
     AppLanguage.english: 'Caps thickness:',
   },
-  'اختر العامل': {
-    AppLanguage.arabic: 'اختر العامل',
-    AppLanguage.french: 'Sélectionner un employé',
-    AppLanguage.english: 'Select worker',
-  },
   'اختر المكون': {
     AppLanguage.arabic: 'اختر المكون',
     AppLanguage.french: 'Sélectionner le composant',
     AppLanguage.english: 'Select Component',
-  },
-  'الألوان': {
-    AppLanguage.arabic: 'الألوان',
-    AppLanguage.french: 'Couleurs',
-    AppLanguage.english: 'Colors',
   },
   'تخصيص للزجاج': {
     AppLanguage.arabic: 'تخصيص للزجاج',
@@ -4038,41 +3198,6 @@ This action cannot be undone!''',
     AppLanguage.english:
         'No glass bead sections registered for this series in the database',
   },
-  'تقسيم متساوي': {
-    AppLanguage.arabic: 'تقسيم متساوي',
-    AppLanguage.french: 'Division égale',
-    AppLanguage.english: 'Equal Split',
-  },
-  'قياس مخصص': {
-    AppLanguage.arabic: 'قياس مخصص',
-    AppLanguage.french: 'Dimension personnalisée',
-    AppLanguage.english: 'Custom Measurement',
-  },
-  'إجمالي القياس الصافي': {
-    AppLanguage.arabic: 'إجمالي القياس الصافي',
-    AppLanguage.french: 'Taille nette totale',
-    AppLanguage.english: 'Total net size',
-  },
-  'من أين يبدأ القياس؟ ': {
-    AppLanguage.arabic: 'من أين يبدأ القياس؟ ',
-    AppLanguage.french: "D'où commence la mesure ?",
-    AppLanguage.english: 'Where does measurement start?',
-  },
-  'المتبقي': {
-    AppLanguage.arabic: 'المتبقي',
-    AppLanguage.french: 'Restant',
-    AppLanguage.english: 'Remaining',
-  },
-  'القطعة الوسطى': {
-    AppLanguage.arabic: 'القطعة الوسطى',
-    AppLanguage.french: 'Pièce du milieu',
-    AppLanguage.english: 'Middle piece',
-  },
-  'تخصيص البروفيل': {
-    AppLanguage.arabic: 'تخصيص البروفيل',
-    AppLanguage.french: 'Personnaliser le profil',
-    AppLanguage.english: 'Customize Profile',
-  },
   'تخصيص الإكسسوارات': {
     AppLanguage.arabic: 'تخصيص الإكسسوارات',
     AppLanguage.french: 'Personnaliser les accessoires',
@@ -4087,11 +3212,6 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'فضي',
     AppLanguage.french: 'Argent',
     AppLanguage.english: 'Silver',
-  },
-  'أحمر': {
-    AppLanguage.arabic: 'أحمر',
-    AppLanguage.french: 'Rouge',
-    AppLanguage.english: 'Red',
   },
   'ذهبي': {
     AppLanguage.arabic: 'ذهبي',
@@ -4323,16 +3443,6 @@ This action cannot be undone!''',
     AppLanguage.french: '🇧🇪 Gris Belge',
     AppLanguage.english: '🇧🇪 Belgian Grey',
   },
-  '🇧🇪 ازرق بلجيكي ': {
-    AppLanguage.arabic: '🇧🇪 ازرق بلجيكي ',
-    AppLanguage.french: '🇧🇪 Bleu Belge',
-    AppLanguage.english: '🇧🇪 Belgian Blue',
-  },
-  '🇧🇪 رمادي بلجيكي ': {
-    AppLanguage.arabic: '🇧🇪 رمادي بلجيكي ',
-    AppLanguage.french: '🇧🇪 Gris Belge',
-    AppLanguage.english: '🇧🇪 Belgian Grey',
-  },
   '🇧🇪الأزرق البلجيكي': {
     AppLanguage.arabic: '🇧🇪الأزرق البلجيكي',
     AppLanguage.french: '🇧🇪 Bleu Belge',
@@ -4419,17 +3529,7 @@ This action cannot be undone!''',
     AppLanguage.french: 'Nouveau',
     AppLanguage.english: 'New',
   },
-  'إجمالي': {
-    AppLanguage.arabic: 'إجمالي',
-    AppLanguage.french: 'Total',
-    AppLanguage.english: 'Total',
-  },
 
-  'المنتجات': {
-    AppLanguage.arabic: 'المنتجات',
-    AppLanguage.french: 'Produits',
-    AppLanguage.english: 'Products',
-  },
 
   'المستودع الرئيسي': {
     AppLanguage.arabic: 'المستودع الرئيسي',
@@ -4442,20 +3542,10 @@ This action cannot be undone!''',
     AppLanguage.french: 'D.A.',
     AppLanguage.english: 'D.A.',
   },
-  'د.ج': {
-    AppLanguage.arabic: 'د.ج',
-    AppLanguage.french: 'D.A.',
-    AppLanguage.english: 'D.A.',
-  },
   'دينار جزائري': {
     AppLanguage.arabic: 'دينار جزائري',
     AppLanguage.french: 'D.A.',
     AppLanguage.english: 'D.A.',
-  },
-  'الكل': {
-    AppLanguage.arabic: 'الكل',
-    AppLanguage.french: 'Tout',
-    AppLanguage.english: 'All',
   },
   'مدفوعة': {
     AppLanguage.arabic: 'مدفوعة',
@@ -4583,17 +3673,7 @@ This action cannot be undone!''',
     AppLanguage.french: 'Extrudé',
     AppLanguage.english: 'Extruded',
   },
-  'م': {
-    AppLanguage.arabic: 'م',
-    AppLanguage.french: 'm',
-    AppLanguage.english: 'm',
-  },
 
-  'فاتورة مشتريات': {
-    AppLanguage.arabic: 'فاتورة مشتريات',
-    AppLanguage.french: 'Facture d\'achat',
-    AppLanguage.english: 'Purchase Invoice',
-  },
 
   'doc_devis_menu': {
     AppLanguage.arabic: 'تسعيرة (Devis)',
@@ -4655,11 +3735,6 @@ This action cannot be undone!''',
     AppLanguage.french: 'Bon de charge',
     AppLanguage.english: 'Loading Note',
   },
-  'ورقة التقطيع (Fiche de Coupe)': {
-    AppLanguage.arabic: 'ورقة التقطيع (Fiche de Coupe)',
-    AppLanguage.french: 'Fiche de coupe',
-    AppLanguage.english: 'Cutting Sheet',
-  },
   'سلع الطلبية وموادها (تقرير النواقص)': {
     AppLanguage.arabic: 'سلع الطلبية وموادها (تقرير النواقص)',
     AppLanguage.french: 'Rapport des articles manquants',
@@ -4694,11 +3769,6 @@ This action cannot be undone!''',
     AppLanguage.english: 'Confirm Order',
   },
 
-  'تقرير النواقص الشامل': {
-    AppLanguage.arabic: 'تقرير النواقص الشامل',
-    AppLanguage.french: 'Rapport global des articles manquants',
-    AppLanguage.english: 'Global Missing Items Report',
-  },
   'نواقص كل الطلبيات (Aluminium, Verre, Acc)': {
     AppLanguage.arabic: 'نواقص كل الطلبيات (Aluminium, Verre, Acc)',
     AppLanguage.french:
@@ -4919,20 +3989,10 @@ This action cannot be undone!''',
     AppLanguage.french: 'Largeur du battant',
     AppLanguage.english: 'Sash width',
   },
-  'عرض الضلفة (سم)': {
-    AppLanguage.arabic: 'عرض الضلفة (سم)',
-    AppLanguage.french: 'Largeur du battant (cm)',
-    AppLanguage.english: 'Sash width (cm)',
-  },
   'طول الضلفة': {
     AppLanguage.arabic: 'طول الضلفة',
     AppLanguage.french: 'Hauteur du battant',
     AppLanguage.english: 'Sash height',
-  },
-  'طول الضلفة (سم)': {
-    AppLanguage.arabic: 'طول الضلفة (سم)',
-    AppLanguage.french: 'Hauteur du battant (cm)',
-    AppLanguage.english: 'Sash height (cm)',
   },
   'جودة رفيعة': {
     AppLanguage.arabic: 'جودة رفيعة',
@@ -4989,16 +4049,6 @@ This action cannot be undone!''',
     AppLanguage.french: 'Ajouter',
     AppLanguage.english: 'Add',
   },
-  'لا توجد نتائج مطابقة': {
-    AppLanguage.arabic: 'لا توجد نتائج مطابقة',
-    AppLanguage.french: 'Aucun résultat correspondant',
-    AppLanguage.english: 'No matching results',
-  },
-  'بارة': {
-    AppLanguage.arabic: 'بارة',
-    AppLanguage.french: 'Barre',
-    AppLanguage.english: 'Bar',
-  },
   'مجموعة': {
     AppLanguage.arabic: 'مجموعة',
     AppLanguage.french: 'Groupe',
@@ -5045,35 +4095,10 @@ This action cannot be undone!''',
     AppLanguage.french: 'Par type (Simple/Double Ouvrant)',
     AppLanguage.english: 'By type (Simple/Double Ouvrant)',
   },
-  'الكمية': {
-    AppLanguage.arabic: 'الكمية',
-    AppLanguage.french: 'Quantité',
-    AppLanguage.english: 'Quantity',
-  },
   'القياس المرجعي:': {
     AppLanguage.arabic: 'القياس المرجعي:',
     AppLanguage.french: 'Mesure de référence :',
     AppLanguage.english: 'Reference Measure:',
-  },
-  'الوحدة': {
-    AppLanguage.arabic: 'الوحدة',
-    AppLanguage.french: 'Unité',
-    AppLanguage.english: 'Unit',
-  },
-  'لا توجد مركبات بعد': {
-    AppLanguage.arabic: 'لا توجد مركبات بعد',
-    AppLanguage.french: 'Aucun composant pour le moment',
-    AppLanguage.english: 'No components yet',
-  },
-  'النطاقات': {
-    AppLanguage.arabic: 'النطاقات',
-    AppLanguage.french: 'Plages',
-    AppLanguage.english: 'Ranges',
-  },
-  'المتغيرات': {
-    AppLanguage.arabic: 'المتغيرات',
-    AppLanguage.french: 'Variantes',
-    AppLanguage.english: 'Variants',
   },
   'بالنطاق': {
     AppLanguage.arabic: 'بالنطاق',
@@ -5106,21 +4131,6 @@ This action cannot be undone!''',
     AppLanguage.french: 'Vis',
     AppLanguage.english: 'Screws',
   },
-  'نوع القفل:': {
-    AppLanguage.arabic: 'نوع القفل:',
-    AppLanguage.french: 'Type de serrure :',
-    AppLanguage.english: 'Lock Type:',
-  },
-  'قفل بمفتاح (Clef)': {
-    AppLanguage.arabic: 'قفل بمفتاح (Clef)',
-    AppLanguage.french: 'Serrure à clé (Clef)',
-    AppLanguage.english: 'Key Lock (Clef)',
-  },
-  'قفل Condamnation': {
-    AppLanguage.arabic: 'قفل Condamnation',
-    AppLanguage.french: 'Serrure Condamnation',
-    AppLanguage.english: 'Condamnation Lock',
-  },
   'التجميع': {
     AppLanguage.arabic: 'التجميع',
     AppLanguage.french: 'Assemblage',
@@ -5131,11 +4141,6 @@ This action cannot be undone!''',
     AppLanguage.french: 'Assemblage du coffre',
     AppLanguage.english: 'Box assembly',
   },
-  'حديد الدعم': {
-    AppLanguage.arabic: 'حديد الدعم',
-    AppLanguage.french: 'Renfort en fer',
-    AppLanguage.english: 'Iron reinforcement',
-  },
   'التثبيت': {
     AppLanguage.arabic: 'التثبيت',
     AppLanguage.french: 'Fixation',
@@ -5145,11 +4150,6 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'كيت الستار',
     AppLanguage.french: 'Kit de volet',
     AppLanguage.english: 'Shutter kit',
-  },
-  'الباتمو': {
-    AppLanguage.arabic: 'الباتمو',
-    AppLanguage.french: 'Battelement',
-    AppLanguage.english: 'Battelement',
   },
   'إضافة أكسسوار جديد': {
     AppLanguage.arabic: 'إضافة أكسسوار جديد',
@@ -5261,23 +4261,10 @@ This action cannot be undone!''',
     AppLanguage.french: 'Hauteur max :',
     AppLanguage.english: 'Max Height:',
   },
-  'ملم': {
-    AppLanguage.arabic: 'ملم',
-    AppLanguage.french: 'mm',
-    AppLanguage.english: 'mm',
-  },
   'أقصى ارتفاع يحتمله الصندوق (ملم)': {
     AppLanguage.arabic: 'أقصى ارتفاع يحتمله الصندوق (ملم)',
     AppLanguage.french: 'Hauteur maximale du caisson (mm)',
     AppLanguage.english: 'Maximum box height (mm)',
-  },
-  "يرجى تحديد ألوان النظام أولاً من تبويب 'ألوان الأنظمة'.": {
-    AppLanguage.arabic:
-        "يرجى تحديد ألوان النظام أولاً من تبويب 'ألوان الأنظمة'.",
-    AppLanguage.french:
-        "Veuillez d'abord sélectionner les couleurs du système dans l'onglet 'Couleurs des Systèmes'.",
-    AppLanguage.english:
-        "Please select system colors first from the 'System Colors' tab.",
   },
 
   // --- Order Editing Screen (add_commande) ---
@@ -5381,11 +4368,6 @@ This action cannot be undone!''',
     AppLanguage.french: 'Commun',
     AppLanguage.english: 'Common',
   },
-  'إطار': {
-    AppLanguage.arabic: 'إطار',
-    AppLanguage.french: 'Cadre',
-    AppLanguage.english: 'Frame',
-  },
   'ورقة': {
     AppLanguage.arabic: 'ورقة',
     AppLanguage.french: 'Ouvrant',
@@ -5401,11 +4383,6 @@ This action cannot be undone!''',
     AppLanguage.french: 'Vitrage / Remplissage',
     AppLanguage.english: 'Glass / Fillings',
   },
-  'الصندوق': {
-    AppLanguage.arabic: 'الصندوق',
-    AppLanguage.french: 'Coffre',
-    AppLanguage.english: 'Box',
-  },
   'الشفرات': {
     AppLanguage.arabic: 'الشفرات',
     AppLanguage.french: 'Lames',
@@ -5415,11 +4392,6 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'السكك',
     AppLanguage.french: 'Coulisses',
     AppLanguage.english: 'Tracks',
-  },
-  'نوع الستار': {
-    AppLanguage.arabic: 'نوع الستار',
-    AppLanguage.french: 'Type de volet',
-    AppLanguage.english: 'Shutter type',
   },
   'تقسيم أفقي': {
     AppLanguage.arabic: 'تقسيم أفقي',
@@ -5461,11 +4433,6 @@ This action cannot be undone!''',
     AppLanguage.french: 'Aucun prix modifié en attente d’enregistrement.',
     AppLanguage.english: 'No modified prices are waiting to be saved.',
   },
-  'طلبية جديدة': {
-    AppLanguage.arabic: 'طلبية جديدة',
-    AppLanguage.french: 'Nouvelle commande',
-    AppLanguage.english: 'New order',
-  },
   'زبون جديد': {
     AppLanguage.arabic: 'زبون جديد',
     AppLanguage.french: 'Nouveau client',
@@ -5491,11 +4458,6 @@ This action cannot be undone!''',
     AppLanguage.french:
         'Afficher poignées, paumelles et cavités sur la face externe',
     AppLanguage.english: 'Show handles, hinges and cavities on the outer face',
-  },
-  'خصائص الستار': {
-    AppLanguage.arabic: 'خصائص الستار',
-    AppLanguage.french: 'Propriétés du volet',
-    AppLanguage.english: 'Shutter properties',
   },
   'empty': {
     AppLanguage.arabic: 'فارغة',
@@ -5536,13 +4498,6 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'منزلق 4',
     AppLanguage.french: 'Coulissant 4',
     AppLanguage.english: 'Sliding 4',
-  },
-  'نظام المنزلق لا يدعم الشكل المائل والمقوس': {
-    AppLanguage.arabic: 'نظام المنزلق لا يدعم الشكل المائل والمقوس',
-    AppLanguage.french:
-        'Le système coulissant ne supporte pas les formes inclinées et cintrées',
-    AppLanguage.english:
-        'The sliding system does not support inclined or arched shapes',
   },
   'حذف بلانت الضلفة': {
     AppLanguage.arabic: 'حذف بلانت الضلفة',
@@ -5746,16 +4701,6 @@ This action cannot be undone!''',
     AppLanguage.french: 'Tracé du mur',
     AppLanguage.english: 'Wall Drawing',
   },
-  'لون الجدار': {
-    AppLanguage.arabic: 'لون الجدار',
-    AppLanguage.french: 'Couleur du mur',
-    AppLanguage.english: 'Wall Color',
-  },
-  'رمادي 9007': {
-    AppLanguage.arabic: 'رمادي 9007',
-    AppLanguage.french: 'Gris 9007',
-    AppLanguage.english: 'Grey 9007',
-  },
   'اختر الغطاء الجانبي': {
     AppLanguage.arabic: 'اختر الغطاء الجانبي',
     AppLanguage.french: 'Choisir l\'covre joint',
@@ -5888,26 +4833,6 @@ This action cannot be undone!''',
     AppLanguage.french: 'Hauteur coffre tunnel :',
     AppLanguage.english: 'Tunnel box height:',
   },
-  'نوع الستار (Mechanism):': {
-    AppLanguage.arabic: 'نوع الستار (Mechanism):',
-    AppLanguage.french: 'Type de mécanisme :',
-    AppLanguage.english: 'Shutter mechanism:',
-  },
-  'جهة الستار (Drive Side):': {
-    AppLanguage.arabic: 'جهة الستار (Drive Side):',
-    AppLanguage.french: 'Sens du volet :',
-    AppLanguage.english: 'Shutter drive side:',
-  },
-  'يمين (Droite)': {
-    AppLanguage.arabic: 'يمين (Droite)',
-    AppLanguage.french: 'Droite',
-    AppLanguage.english: 'Right',
-  },
-  'يسار (Gauche)': {
-    AppLanguage.arabic: 'يسار (Gauche)',
-    AppLanguage.french: 'Gauche',
-    AppLanguage.english: 'Left',
-  },
   'وضع الستار (Position):': {
     AppLanguage.arabic: 'وضع الستار (Position):',
     AppLanguage.french: 'Position du volet :',
@@ -5932,11 +4857,6 @@ This action cannot be undone!''',
         'Les articles suivants ont atteint la limite minimale ou sont en rupture de stock, veuillez les réapprovisionner bientôt :',
     AppLanguage.english:
         'The following items have reached the minimum limit or are out of stock, please reorder them soon:',
-  },
-  'إغلاق': {
-    AppLanguage.arabic: 'إغلاق',
-    AppLanguage.french: 'Fermer',
-    AppLanguage.english: 'Close',
   },
   'إجمالي كل المبيعات المؤكدة': {
     AppLanguage.arabic: 'إجمالي كل المبيعات المؤكدة',
@@ -6045,11 +4965,6 @@ This action cannot be undone!''',
     AppLanguage.french: 'Date',
     AppLanguage.english: 'Date',
   },
-  'الحالة': {
-    AppLanguage.arabic: 'الحالة',
-    AppLanguage.french: 'Statut',
-    AppLanguage.english: 'Status',
-  },
   'سعر التكلفة': {
     AppLanguage.arabic: 'سعر التكلفة',
     AppLanguage.french: 'Coût de revient',
@@ -6116,11 +5031,6 @@ This action cannot be undone!''',
     AppLanguage.french: 'Paramètres des prix',
     AppLanguage.english: 'Price Settings',
   },
-  'إكسسوارات السلاسل': {
-    AppLanguage.arabic: 'إكسسوارات السلاسل',
-    AppLanguage.french: 'Accessoires des séries',
-    AppLanguage.english: 'Series Accessories',
-  },
 
   'لا توجد سلاسل': {
     AppLanguage.arabic: 'لا توجد سلاسل',
@@ -6141,11 +5051,6 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'حدد البروفيل من الشريط العلوي',
     AppLanguage.french: 'Sélectionnez le profilé dans la barre supérieure',
     AppLanguage.english: 'Select the profile from the top bar',
-  },
-  'اختر سلسلة': {
-    AppLanguage.arabic: 'اختر سلسلة',
-    AppLanguage.french: 'Sélectionnez une série',
-    AppLanguage.english: 'Select a Series',
   },
   'لا توجد إكسسوارات': {
     AppLanguage.arabic: 'لا توجد إكسسوارات',
@@ -6179,74 +5084,11 @@ This action cannot be undone!''',
     AppLanguage.english: 'Try another keyword',
   },
 
-  'لا توجد بيانات': {
-    AppLanguage.arabic: 'لا توجد بيانات',
-    AppLanguage.french: 'Aucune donnée',
-    AppLanguage.english: 'No data',
-  },
-  'براغي المحرك': {
-    AppLanguage.arabic: 'براغي المحرك',
-    AppLanguage.french: 'Vis de moteur',
-    AppLanguage.english: 'Motor screws',
-  },
-  'براغي الصندوق': {
-    AppLanguage.arabic: 'براغي الصندوق',
-    AppLanguage.french: 'Vis de caisson',
-    AppLanguage.english: 'Box screws',
-  },
-  'براغي الباتمو': {
-    AppLanguage.arabic: 'براغي الباتمو',
-    AppLanguage.french: 'Vis de battement',
-    AppLanguage.english: 'Meeting stile screws',
-  },
-  'براغي بوشون باتمو': {
-    AppLanguage.arabic: 'براغي بوشون باتمو',
-    AppLanguage.french: 'Vis de bouchon de battement',
-    AppLanguage.english: 'Meeting stile cap screws',
-  },
-  'براغي حديد الدعم (Renfort)': {
-    AppLanguage.arabic: 'براغي حديد الدعم (Renfort)',
-    AppLanguage.french: 'Vis de renfort',
-    AppLanguage.english: 'Reinforcement screws',
-  },
-  'براغي المانيفال': {
-    AppLanguage.arabic: 'براغي المانيفال',
-    AppLanguage.french: 'Vis de manivelle',
-    AppLanguage.english: 'Crank handle screws',
-  },
 
-  'براغي الإكسسوارات': {
-    AppLanguage.arabic: 'براغي الإكسسوارات',
-    AppLanguage.french: 'Vis d\'accessoires',
-    AppLanguage.english: 'Accessory screws',
-  },
-  'براغي التركيب': {
-    AppLanguage.arabic: 'براغي التركيب',
-    AppLanguage.french: 'Vis d\'installation',
-    AppLanguage.english: 'Installation screws',
-  },
-  'براغي الكيت': {
-    AppLanguage.arabic: 'براغي الكيت',
-    AppLanguage.french: 'Vis de kit',
-    AppLanguage.english: 'Kit screws',
-  },
-  'الرجاء اختيار سلسلة واحدة على الأقل عند اختيار نطاق خاص بالسلسلة!': {
-    AppLanguage.arabic:
-        'الرجاء اختيار سلسلة واحدة على الأقل عند اختيار نطاق خاص بالسلسلة!',
-    AppLanguage.french:
-        'Veuillez sélectionner au moins une série lors du choix d\'une portée spécifique à la série !',
-    AppLanguage.english:
-        'Please select at least one series when choosing a series-specific scope!',
-  },
   'الستار': {
     AppLanguage.arabic: 'الستار',
     AppLanguage.french: 'Volet Roulant',
     AppLanguage.english: 'Roller Shutter',
-  },
-  'الزجاج': {
-    AppLanguage.arabic: 'الزجاج',
-    AppLanguage.french: 'Vitrage',
-    AppLanguage.english: 'Glass',
   },
   'الإطار (Frame)': {
     AppLanguage.arabic: 'الإطار (Frame)',
@@ -6333,11 +5175,6 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'مرتبط',
     AppLanguage.french: 'Lié',
     AppLanguage.english: 'Linked',
-  },
-  'غير مرتبط': {
-    AppLanguage.arabic: 'غير مرتبط',
-    AppLanguage.french: 'Non lié',
-    AppLanguage.english: 'Unlinked',
   },
   'برغي': {
     AppLanguage.arabic: 'برغي',
@@ -6965,11 +5802,6 @@ This action cannot be undone!''',
     AppLanguage.french: 'Imprimer le reçu',
     AppLanguage.english: 'Print Receipt',
   },
-  'العنوان': {
-    AppLanguage.arabic: 'العنوان',
-    AppLanguage.french: 'Adresse',
-    AppLanguage.english: 'Address',
-  },
   'رقم الطلبية': {
     AppLanguage.arabic: 'رقم الطلبية',
     AppLanguage.french: 'N° Commande',
@@ -7009,11 +5841,6 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'إمضاء الورشة',
     AppLanguage.french: 'Cachet et Signature',
     AppLanguage.english: 'Stamp & Signature',
-  },
-  'كشف حساب الزبائن': {
-    AppLanguage.arabic: 'كشف حساب الزبائن',
-    AppLanguage.french: 'Chrono / Relevé Client',
-    AppLanguage.english: 'Chrono / Client Ledger',
   },
   'عرض كشف الحساب التفصيلي (Chrono)': {
     AppLanguage.arabic: 'عرض كشف الحساب التفصيلي (Chrono)',
@@ -7135,16 +5962,6 @@ This action cannot be undone!''',
     AppLanguage.french: 'Fabrication partielle',
     AppLanguage.english: 'Partial Manufacturing',
   },
-  'توزيع جزئي': {
-    AppLanguage.arabic: 'توزيع جزئي',
-    AppLanguage.french: 'Livraison partielle',
-    AppLanguage.english: 'Partial Distribution',
-  },
-  'توزيع كامل': {
-    AppLanguage.arabic: 'توزيع كامل',
-    AppLanguage.french: 'Livraison complète',
-    AppLanguage.english: 'Full Distribution',
-  },
   'توزيع كلي': {
     AppLanguage.arabic: 'توزيع كلي',
     AppLanguage.french: 'Livraison complète',
@@ -7154,11 +5971,6 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'تأكيد القياسات',
     AppLanguage.french: 'Confirmation des mesures',
     AppLanguage.english: 'In Progress',
-  },
-  'تحت التحفظ': {
-    AppLanguage.arabic: 'تحت التحفظ',
-    AppLanguage.french: 'Sous réserve',
-    AppLanguage.english: 'Under Reserve',
   },
   'المستودع': {
     AppLanguage.arabic: 'المستودع',
@@ -7205,20 +6017,10 @@ This action cannot be undone!''',
     AppLanguage.french: 'Acompte pour commande N°',
     AppLanguage.english: 'Advance for order No.',
   },
-  'دفعة لطلبية رقم ': {
-    AppLanguage.arabic: 'دفعة لطلبية رقم ',
-    AppLanguage.french: 'Acompte pour commande N° ',
-    AppLanguage.english: 'Advance for order No. ',
-  },
   'دفعة لطلبية رقم:': {
     AppLanguage.arabic: 'دفعة لطلبية رقم:',
     AppLanguage.french: 'Acompte pour commande N°:',
     AppLanguage.english: 'Advance for order No.:',
-  },
-  'دفعة لطلبية رقم: ': {
-    AppLanguage.arabic: 'دفعة لطلبية رقم: ',
-    AppLanguage.french: 'Acompte pour commande N°: ',
-    AppLanguage.english: 'Advance for order No.: ',
   },
   'فاتورة رقم:': {
     AppLanguage.arabic: 'فاتورة رقم:',
@@ -7263,16 +6065,6 @@ This action cannot be undone!''',
     AppLanguage.french: 'Retirer couvre-joint',
     AppLanguage.english: 'Remove Side Cover',
   },
-  'الصورة': {
-    AppLanguage.arabic: 'الصورة',
-    AppLanguage.french: 'Photo',
-    AppLanguage.english: 'Photo',
-  },
-  'التكلفة': {
-    AppLanguage.arabic: 'التكلفة',
-    AppLanguage.french: 'Montant',
-    AppLanguage.english: 'Total Cost',
-  },
   'التكلفة الفعلية': {
     AppLanguage.arabic: 'التكلفة الفعلية',
     AppLanguage.french: 'Coût réel',
@@ -7282,16 +6074,6 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'الطول',
     AppLanguage.french: 'Longueur',
     AppLanguage.english: 'Length',
-  },
-  'اللون': {
-    AppLanguage.arabic: 'اللون',
-    AppLanguage.french: 'Couleur',
-    AppLanguage.english: 'Color',
-  },
-  'تفعيل': {
-    AppLanguage.arabic: 'تفعيل',
-    AppLanguage.french: 'Actif',
-    AppLanguage.english: 'Active',
   },
   'التفاصيل': {
     AppLanguage.arabic: 'التفاصيل',
@@ -7338,11 +6120,6 @@ This action cannot be undone!''',
         'Enregistrement impossible : un article a un prix nul. Vérifiez les prix des profilés, du verre et du volet, puis réessayez.',
     AppLanguage.english:
         'Cannot save: an item has a zero price. Check profile, glass, and shutter prices, then try again.',
-  },
-  'سعر الوحدة': {
-    AppLanguage.arabic: 'سعر الوحدة',
-    AppLanguage.french: 'Prix unitaire',
-    AppLanguage.english: 'Unit price',
   },
   'المطلوب الفعلي': {
     AppLanguage.arabic: 'المطلوب الفعلي',
@@ -7522,16 +6299,6 @@ This action cannot be undone!''',
     AppLanguage.french: 'Aucune poignée activée pour cette série',
     AppLanguage.english: 'No handles enabled for this series',
   },
-  'لا توجد إطارات متوفرة لهذه السلسلة': {
-    AppLanguage.arabic: 'لا توجد إطارات متوفرة لهذه السلسلة',
-    AppLanguage.french: 'Aucun dormant disponible pour cette série',
-    AppLanguage.english: 'No frames available for this series',
-  },
-  'لا توجد درف متوفرة لهذه السلسلة': {
-    AppLanguage.arabic: 'لا توجد درف متوفرة لهذه السلسلة',
-    AppLanguage.french: 'Aucun ouvrant disponible pour cette série',
-    AppLanguage.english: 'No sashes available for this series',
-  },
   'بروفيل الزاوية 90° (Tube carré)': {
     AppLanguage.arabic: 'بروفيل الزاوية 90° (تيبيكاري)',
     AppLanguage.french: 'Profilé d\'angle 90° (Tube carré)',
@@ -7619,16 +6386,6 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'عرض الضلفة اليمنى (مم)',
     AppLanguage.french: 'Largeur du battant droit (mm)',
     AppLanguage.english: 'Right sash width (mm)',
-  },
-  'تعديل عرض الدلفة اليسرى': {
-    AppLanguage.arabic: 'تعديل عرض الدلفة اليسرى',
-    AppLanguage.french: 'Modifier la largeur de l\'ouvrant gauche',
-    AppLanguage.english: 'Edit left sash width',
-  },
-  'تعديل عرض الدلفة اليمنى': {
-    AppLanguage.arabic: 'تعديل عرض الدلفة اليمنى',
-    AppLanguage.french: 'Modifier la largeur de l\'ouvrant droit',
-    AppLanguage.english: 'Edit right sash width',
   },
   'الجهتين معاً (90° Les deux côtés)': {
     AppLanguage.arabic: 'الجهتين معاً (90° الطرفين)',
@@ -7764,11 +6521,6 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'مشتريات محل المواد',
     AppLanguage.french: 'Achats magasin de matériaux',
     AppLanguage.english: 'Materials Store Purchases',
-  },
-  'مخزون الورشة': {
-    AppLanguage.arabic: 'مخزون الورشة',
-    AppLanguage.french: 'Stock atelier',
-    AppLanguage.english: 'Workshop Inventory',
   },
   'مخزون محل المواد': {
     AppLanguage.arabic: 'مخزون محل المواد',
@@ -8011,11 +6763,6 @@ This action cannot be undone!''',
     AppLanguage.arabic: 'مواد',
     AppLanguage.french: 'Matériaux',
     AppLanguage.english: 'Materials',
-  },
-  'مشترك': {
-    AppLanguage.arabic: 'مشترك',
-    AppLanguage.french: 'Commun',
-    AppLanguage.english: 'Common',
   },
   'نوافذ': {
     AppLanguage.arabic: 'نوافذ',

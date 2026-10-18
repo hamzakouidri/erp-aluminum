@@ -2623,35 +2623,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   // ─────────────────────────────────────────────────────────────────
   // بناء activeVariants من الـ model (مطابق لـ _fetchDefaults في material_consumption_screen)
   // ─────────────────────────────────────────────────────────────────
-  Map<String, bool> _buildActiveVariants(WindowModel model) {
-    final isTunnel = model.isCaissonTunnel;
-    final isMotor = model.shutterMechanism == 'محرك';
-    final isCrank =
-        model.shutterMechanism == 'منايفال' ||
-        model.shutterMechanism == 'مانيفال' ||
-        model.shutterMechanism == 'مانيفر';
-
-    return {
-      'Verrou Central':
-          model.canUseOpeningOnlyOptions && model.useVerrouCentral,
-      'System OB': model.effectiveUseSystemOB,
-      'Demi System OB': model.effectiveUseDemiOB,
-      'كيت (Kit)': false,
-      'طانديم (Tandem)': isTunnel,
-      'الامبو (Embout)': isMotor,
-      'سيبور رولمو (Support Roulement)': isMotor,
-      'سيبور موتور (Support Moteur)': isMotor || isTunnel,
-      'أغطية الشفرات (Bouchons Lames)': model.componentOverrides.containsKey(
-        'أغطية الشفرات (Bouchons Lames)',
-      ),
-      'كيت صندوق النفق (Kit Caisson Tunnel)': isTunnel,
-      'كيت فولي موتور (Kit Volet Moteur)': !isTunnel && isMotor,
-      'كيت فولي مانيفر (Kit Volet Manivelle)': !isTunnel && isCrank,
-      'كيت مانيفر (Kit Manivelle)': !isTunnel && isCrank,
-      'كيت فولي (Kit Volet)': !isTunnel && !isMotor && !isCrank,
-      'كيت حزام (Kit Sangle)': false,
-    };
-  }
+  Map<String, bool> _buildActiveVariants(WindowModel model) =>
+      ComponentCalculator.standardActiveVariants(model);
 
   // ─────────────────────────────────────────────────────────────────
   // حساب مجموع التكاليف الكلية
@@ -4847,6 +4820,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       }
     }
 
+    // Stock and remnants this order reserved stay available to it.
+    final reservationOrderId = _safeInt(widget.orderData['id']);
     final reports = <Map<String, dynamic>>[];
     for (final item in stockItemsByKey.values) {
       final itemId = item.catalogItemId;
@@ -4859,6 +4834,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         itemId: itemId,
         itemType: itemType,
         colorId: item.colorId,
+        forOrderId: reservationOrderId,
       );
       if (item.cuttingPieces.isNotEmpty && (item.stockLength ?? 0) > 0) {
         final seriesId = await _seriesIdFor(item);
@@ -4867,6 +4843,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           itemType: itemType,
           colorId: item.colorId,
           seriesId: seriesId,
+          forOrderId: reservationOrderId,
         );
         final remnantPlan = optimizeCuttingWithRemnants(
           pieces: item.cuttingPieces,
@@ -6508,12 +6485,12 @@ class _OrderShortageReportPageState extends State<_OrderShortageReportPage> {
     final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     String t(String key) => Localization.translate(key, lang);
     final newStatus = !_isStockReserved;
-    final remnantIds = _usedRemnantIds();
     try {
       await db.setOrderStockReservation(
         orderId: orderId,
         reserved: newStatus,
-        remnantIds: remnantIds,
+        remnantIds: _usedRemnantIds(),
+        stockDeductions: _stockDeductions(),
       );
       if (!context.mounted) return;
       setState(() {

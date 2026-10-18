@@ -1454,69 +1454,14 @@ class PdfFicheCoupeApi {
         }
         instanceModel.quantity = measuredQty;
 
-        List<BomItem> generateBom() => ComponentCalculator.generateBom(
+        final bom = await BomEngineV2(database: db).resolveManufacturingBom(
           instanceModel,
-          _activeVariants(instanceModel),
+          activeVariants: _activeVariants(instanceModel),
           kitBundleData: kitBundleData,
           kitPerLeafMap: kitPerLeafMap,
           kitBundleMetadata: kitBundleMetadata,
           kitBundlePrices: kitBundlePrices,
         );
-
-        var bom = generateBom();
-        final engine = BomEngineV2(database: db);
-        await engine.stabilizeSelections(window: instanceModel, items: bom);
-        bom = generateBom();
-        await engine.stabilizeSelections(window: instanceModel, items: bom);
-        final generatedForFiltering = generateBom();
-        // Workshop instructions (notably the orange customised side-cover
-        // warning) belong to the physical cut row.  Catalogue filtering may
-        // return a rebuilt BOM item, so retain and re-attach those notes by a
-        // stable component identity instead of relying on object identity.
-        List<String> productionNoteKeys(BomItem value) {
-          final keys = <String>[];
-          final overrideKey = value.overrideKey?.trim() ?? '';
-          if (overrideKey.isNotEmpty) {
-            keys.add('override:${overrideKey.toLowerCase()}');
-          }
-          final catalogId = value.catalogItemId;
-          if (catalogId != null) keys.add('catalog:$catalogId');
-          final profileCode = value.profileCode?.trim() ?? '';
-          if (profileCode.isNotEmpty) {
-            keys.add('profile:${profileCode.toLowerCase()}');
-          }
-          final role = (value.roleKey ?? value.selectorType ?? '').trim();
-          if (role.isNotEmpty) keys.add('role:${role.toLowerCase()}');
-          final originalName = value.originalName.trim();
-          if (originalName.isNotEmpty) {
-            keys.add('name:${originalName.toLowerCase()}');
-          }
-          return keys;
-        }
-
-        final productionNotes = <String, String>{};
-        for (final value in generatedForFiltering) {
-          final note = value.productionNote?.trim();
-          if (note == null || note.isEmpty) continue;
-          for (final key in productionNoteKeys(value)) {
-            productionNotes[key] = note;
-          }
-        }
-        bom = await engine.filterItemsByAvailableCandidates(
-          window: instanceModel,
-          items: generatedForFiltering,
-        );
-        if (productionNotes.isNotEmpty) {
-          bom = bom.map((value) {
-            if (value.productionNote?.trim().isNotEmpty == true) return value;
-            String? note;
-            for (final key in productionNoteKeys(value)) {
-              note = productionNotes[key];
-              if (note != null) break;
-            }
-            return note == null ? value : value.copyWith(productionNote: note);
-          }).toList(growable: false);
-        }
         final windowNumber = '$measurementGroupNumber';
         confirmedMeasurements.add(
           _ConfirmedMeasurement(
@@ -2524,34 +2469,8 @@ class PdfFicheCoupeApi {
 
   static String anglesFor(BomItem item) => _anglesFor(item);
 
-  static Map<String, bool> _activeVariants(WindowModel model) {
-    final isTunnel = model.isCaissonTunnel;
-    final isMotor = model.shutterMechanism == 'محرك';
-    final isCrank =
-        model.shutterMechanism == 'منايفال' ||
-        model.shutterMechanism == 'مانيفال' ||
-        model.shutterMechanism == 'مانيفر';
-    final isBelt = !isMotor && !isCrank;
-    return {
-      'Verrou Central':
-          model.canUseOpeningOnlyOptions && model.useVerrouCentral,
-      'System OB': model.effectiveUseSystemOB,
-      'Demi System OB': model.effectiveUseDemiOB,
-      'كيت (Kit)': true,
-      'طانديم (Tandem)': isTunnel,
-      'الامبو (Embout)': isMotor,
-      'سيبور رولمو (Support Roulement)': isMotor,
-      'سيبور موتور (Support Moteur)': isMotor || isTunnel,
-      'أغطية الشفرات (Bouchons Lames)': model.componentOverrides.containsKey(
-        'أغطية الشفرات (Bouchons Lames)',
-      ),
-      'كيت فولي موتور (Kit Volet Moteur)': !isTunnel && isMotor,
-      'كيت فولي مانيفر (Kit Volet Manivelle)': !isTunnel && isCrank,
-      'كيت مانيفر (Kit Manivelle)': !isTunnel && isCrank,
-      'كيت فولي (Kit Volet)': !isTunnel && isBelt,
-      'كيت حزام (Kit Sangle)': !isTunnel && isBelt,
-    };
-  }
+  static Map<String, bool> _activeVariants(WindowModel model) =>
+      ComponentCalculator.standardActiveVariants(model);
 
   static String _unit(String unit, AppLanguage lang) {
     final u = unit.trim().toLowerCase();

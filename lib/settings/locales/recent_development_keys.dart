@@ -3,10 +3,33 @@ import '../app_settings.dart';
 /// User-facing text introduced by the recent kit, decorated-panel, cutting
 /// and required-goods developments.
 const Map<String, Map<AppLanguage, String>> recentDevelopmentKeys = {
-  'أدخل رقمًا صالحًا أكبر من أو يساوي صفرًا': {
-    AppLanguage.arabic: 'أدخل رقمًا صالحًا أكبر من أو يساوي صفرًا',
-    AppLanguage.french: 'Saisissez un nombre valide supérieur ou égal à zéro',
-    AppLanguage.english: 'Enter a valid number greater than or equal to zero',
+  'تعذرت قراءة بعض بيانات الكتالوج؛ قد تكون بعض الأسعار أو المكونات ناقصة': {
+    AppLanguage.arabic:
+        'تعذرت قراءة بعض بيانات الكتالوج؛ قد تكون بعض الأسعار أو المكونات ناقصة',
+    AppLanguage.french:
+        'Certaines données du catalogue n’ont pas pu être lues ; des prix ou composants peuvent manquer',
+    AppLanguage.english:
+        'Some catalogue data could not be read; some prices or components may be missing',
+  },
+  'تعذر تحميل مكونات وعائلات الكت. أعد فتح الصفحة.': {
+    AppLanguage.arabic: 'تعذر تحميل مكونات وعائلات الكت. أعد فتح الصفحة.',
+    AppLanguage.french:
+        'Impossible de charger les composants et familles du kit. Rouvrez la page.',
+    AppLanguage.english:
+        'Could not load the kit components and families. Reopen the page.',
+  },
+  'يحتوي الرسم على مقاطع من سلسلة أخرى؛ الكميات والتكلفة غير موثوقة': {
+    AppLanguage.arabic:
+        'يحتوي الرسم على مقاطع من سلسلة أخرى؛ الكميات والتكلفة غير موثوقة',
+    AppLanguage.french:
+        "Le dessin contient des profilés d'une autre série ; quantités et coûts non fiables",
+    AppLanguage.english:
+        'The drawing contains profiles from another series; quantities and cost are unreliable',
+  },
+  'إزالة المقاطع غير المتوافقة': {
+    AppLanguage.arabic: 'إزالة المقاطع غير المتوافقة',
+    AppLanguage.french: 'Retirer les profilés incompatibles',
+    AppLanguage.english: 'Remove incompatible profiles',
   },
   'ورقة التقطيع': {
     AppLanguage.arabic: 'ورقة التقطيع',
@@ -182,26 +205,6 @@ const Map<String, Map<AppLanguage, String>> recentDevelopmentKeys = {
     AppLanguage.french: 'Attache',
     AppLanguage.english: 'Attachment',
   },
-  'براغي الصندوق': {
-    AppLanguage.arabic: 'براغي الصندوق',
-    AppLanguage.french: 'Vis du caisson',
-    AppLanguage.english: 'Shutter box screws',
-  },
-  'براغي المحرك': {
-    AppLanguage.arabic: 'براغي المحرك',
-    AppLanguage.french: 'Vis du moteur',
-    AppLanguage.english: 'Motor screws',
-  },
-  'براغي المانيفال': {
-    AppLanguage.arabic: 'براغي المانيفال',
-    AppLanguage.french: 'Vis de manivelle',
-    AppLanguage.english: 'Crank screws',
-  },
-  'براغي الكيت': {
-    AppLanguage.arabic: 'براغي الكيت',
-    AppLanguage.french: 'Vis du kit',
-    AppLanguage.english: 'Kit screws',
-  },
   'الامبو (Embout)': {
     AppLanguage.arabic: 'الامبو (Embout)',
     AppLanguage.french: 'Embout',
@@ -217,20 +220,10 @@ const Map<String, Map<AppLanguage, String>> recentDevelopmentKeys = {
     AppLanguage.french: 'Support moteur',
     AppLanguage.english: 'Motor support',
   },
-  'قطعة': {
-    AppLanguage.arabic: 'قطعة',
-    AppLanguage.french: 'pièce',
-    AppLanguage.english: 'piece',
-  },
   'حبة': {
     AppLanguage.arabic: 'حبة',
     AppLanguage.french: 'unité',
     AppLanguage.english: 'unit',
-  },
-  'متر': {
-    AppLanguage.arabic: 'متر',
-    AppLanguage.french: 'm',
-    AppLanguage.english: 'm',
   },
   'بارة': {
     AppLanguage.arabic: 'بارة',
@@ -262,11 +255,6 @@ const Map<String, Map<AppLanguage, String>> recentDevelopmentKeys = {
     AppLanguage.french: 'Cliquez ici pour choisir le profilé approprié',
     AppLanguage.english: 'Click here to choose the appropriate profile',
   },
-  'الكود': {
-    AppLanguage.arabic: 'الكود',
-    AppLanguage.french: 'Code',
-    AppLanguage.english: 'Code',
-  },
   'اللون': {
     AppLanguage.arabic: 'اللون',
     AppLanguage.french: 'Couleur',
@@ -297,20 +285,10 @@ const Map<String, Map<AppLanguage, String>> recentDevelopmentKeys = {
     AppLanguage.french: 'Gamme',
     AppLanguage.english: 'Series',
   },
-  'غير محدد': {
-    AppLanguage.arabic: 'غير محدد',
-    AppLanguage.french: 'Non défini',
-    AppLanguage.english: 'Not specified',
-  },
   'العناصر والمواد المحسوبة لهذا المنتج:': {
     AppLanguage.arabic: 'العناصر والمواد المحسوبة لهذا المنتج:',
     AppLanguage.french: 'Éléments et matériaux calculés pour ce produit :',
     AppLanguage.english: 'Calculated items and materials for this product:',
-  },
-  'اسم العنصر': {
-    AppLanguage.arabic: 'اسم العنصر',
-    AppLanguage.french: 'Nom de l’article',
-    AppLanguage.english: 'Item name',
   },
   'الوحدة': {
     AppLanguage.arabic: 'الوحدة',
@@ -464,40 +442,15 @@ const Map<String, Map<AppLanguage, String>> recentDevelopmentKeys = {
         'Utilisation du composant (plusieurs choix possibles) :',
     AppLanguage.english: 'Component usage (multiple choices allowed):',
   },
-  'حزام': {
-    AppLanguage.arabic: 'حزام',
-    AppLanguage.french: 'Sangle',
-    AppLanguage.english: 'Belt',
-  },
   'مانيفال': {
     AppLanguage.arabic: 'مانيفال',
     AppLanguage.french: 'Manivelle',
     AppLanguage.english: 'Crank',
   },
-  'محرك': {
-    AppLanguage.arabic: 'محرك',
-    AppLanguage.french: 'Moteur',
-    AppLanguage.english: 'Motor',
-  },
   'نوع الشفرة المرتبط بالمركب': {
     AppLanguage.arabic: 'نوع الشفرة المرتبط بالمركب',
     AppLanguage.french: 'Type de lame associé au composant',
     AppLanguage.english: 'Blade type linked to the component',
-  },
-  'كل الشفرات': {
-    AppLanguage.arabic: 'كل الشفرات',
-    AppLanguage.french: 'Toutes les lames',
-    AppLanguage.english: 'All blades',
-  },
-  'الشفرة العادية فقط': {
-    AppLanguage.arabic: 'الشفرة العادية فقط',
-    AppLanguage.french: 'Lame normale uniquement',
-    AppLanguage.english: 'Normal blade only',
-  },
-  'شفرة Extrudé فقط': {
-    AppLanguage.arabic: 'شفرة Extrudé فقط',
-    AppLanguage.french: 'Lame extrudée uniquement',
-    AppLanguage.english: 'Extruded blade only',
   },
   'الوحدة ثابتة: قطعة': {
     AppLanguage.arabic: 'الوحدة ثابتة: قطعة',
@@ -553,11 +506,6 @@ const Map<String, Map<AppLanguage, String>> recentDevelopmentKeys = {
     AppLanguage.arabic: 'تعديل النطاق',
     AppLanguage.french: 'Modifier la plage',
     AppLanguage.english: 'Edit range',
-  },
-  'من': {
-    AppLanguage.arabic: 'من',
-    AppLanguage.french: 'De',
-    AppLanguage.english: 'From',
   },
   'إلى': {
     AppLanguage.arabic: 'إلى',
@@ -961,24 +909,6 @@ const Map<String, Map<AppLanguage, String>> recentDevelopmentKeys = {
     AppLanguage.french: 'Actualiser',
     AppLanguage.english: 'Refresh',
   },
-  'تأكيد الحذف': {
-    AppLanguage.arabic: 'تأكيد الحذف',
-    AppLanguage.french: 'Confirmer la suppression',
-    AppLanguage.english: 'Confirm deletion',
-  },
-  'سيتم أرشفة هذا العنصر (إخفاؤه) ولن يتم حذفه نهائياً حفاظاً على سلامة بيانات المخزون والفواتير السابقة المرتبطة به.': {
-    AppLanguage.arabic:
-        'سيتم أرشفة هذا العنصر (إخفاؤه) ولن يتم حذفه نهائياً حفاظاً على سلامة بيانات المخزون والفواتير السابقة المرتبطة به.',
-    AppLanguage.french:
-        'Cet élément sera archivé (masqué), sans suppression définitive, afin de préserver les données du stock et des anciennes factures.',
-    AppLanguage.english:
-        'This item will be archived (hidden), not permanently deleted, to preserve stock data and previous invoices.',
-  },
-  'موافق، قم بالأرشفة': {
-    AppLanguage.arabic: 'موافق، قم بالأرشفة',
-    AppLanguage.french: 'Oui, archiver',
-    AppLanguage.english: 'Yes, archive',
-  },
   'تعذر حفظ سعر مكوّن الستارة.': {
     AppLanguage.arabic: 'تعذر حفظ سعر مكوّن الستارة.',
     AppLanguage.french:
@@ -1015,11 +945,6 @@ const Map<String, Map<AppLanguage, String>> recentDevelopmentKeys = {
     AppLanguage.french:
         'Changer le kit du volet (adapté puis tailles supérieures)',
     AppLanguage.english: 'Change shutter kit (matching size, then larger)',
-  },
-  'البروفيلات': {
-    AppLanguage.arabic: 'البروفيلات',
-    AppLanguage.french: 'Profilés',
-    AppLanguage.english: 'Profiles',
   },
   'بروفيل الإطار': {
     AppLanguage.arabic: 'بروفيل الإطار',

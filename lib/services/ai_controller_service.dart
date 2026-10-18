@@ -1,10 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:path/path.dart' as p;
-import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'ai_agent_service.dart';
+import 'gemini_gateway.dart';
 
 /// Representation of an executable action returned by the AI controller
 class AiAction {
@@ -36,20 +39,12 @@ class AiAction {
   }
 }
 
-class _GeminiGatewayResponse {
-  const _GeminiGatewayResponse({required this.statusCode, required this.body});
-
-  final int statusCode;
-  final String body;
-}
-
 class AiControllerService {
+  /// Reaches Gemini through the server (or the user's own key).
+  final GeminiGateway gateway;
   final SqlDatabase db = SqlDatabase();
 
-  /// Gemini requests are sent through the authenticated Supabase Edge
-  /// Function.  The Google key and production model therefore never reach a
-  /// phone or desktop installation.
-  AiControllerService();
+  AiControllerService({required this.gateway});
 
   static String getSystemInstruction(AppLanguage language) {
     final defaultLang = switch (language) {
@@ -130,37 +125,88 @@ Return strict JSON:
     return normalized;
   }
 
-  /// Calls the server-side Gemini gateway. The gateway owns the API key,
-  /// model selection and per-user quota checks.
-  Future<_GeminiGatewayResponse> _postThroughGateway(
+  /// Sends a request to the strongest available Gemini model, then the next
+  /// ones if it fails. The result keeps the shape of an HTTP response for the
+  /// callers below.
+  Future<http.Response> _postWithFallback(
     Map<String, dynamic> requestBody,
   ) async {
-    try {
-      final result = await Supabase.instance.client.functions.invoke(
-        'gemini-gateway',
-        body: {'request_body': requestBody},
-      );
-      final raw = result.data;
-      if (raw is! Map) {
-        return const _GeminiGatewayResponse(
-          statusCode: 599,
-          body: '{"error":"invalid_gateway_response"}',
+    Object? lastError;
+    final models = (await AiAgentService.modelsVia(gateway)).take(3);
+    for (final model in models) {
+      try {
+        final result = await gateway.generate(model, requestBody);
+        return http.Response(
+          jsonEncode(result),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
         );
+      } catch (e) {
+        lastError = e;
+        debugPrint('Gemini model $model failed: $e');
+        if (e is GeminiException && e.isQuota) break;
       }
-      final data = Map<String, dynamic>.from(raw);
-      final status = (data['status'] as num?)?.toInt() ?? 599;
-      final responseBody = data['body'];
-      return _GeminiGatewayResponse(
-        statusCode: status,
-        body: responseBody is String ? responseBody : jsonEncode(responseBody),
-      );
-    } catch (error) {
-      debugPrint('Gemini gateway request failed: $error');
-      return _GeminiGatewayResponse(
-        statusCode: 599,
-        body: jsonEncode({'error': 'gateway_unreachable'}),
-      );
     }
+    return http.Response(
+      jsonEncode({
+        'error': 'network_failure',
+        'details': lastError?.toString(),
+      }),
+      lastError is GeminiException ? lastError.status : 599,
+    );
+  }
+
+  /// Word-for-word transcription of a voice message by the strongest Gemini
+  /// model, which follows Algerian Darija mixed with French and the
+  /// workshop's vocabulary far better than the phone's speech engine.
+  /// Returns an empty string when nothing was said.
+  Future<String> transcribeAudio(File audioFile) async {
+    final bytes = await audioFile.readAsBytes();
+    final ext = p.extension(audioFile.path).toLowerCase();
+    final mimeType = switch (ext) {
+      '.wav' => 'audio/wav',
+      '.mp3' => 'audio/mp3',
+      '.aac' => 'audio/aac',
+      '.ogg' => 'audio/ogg',
+      '.flac' => 'audio/flac',
+      _ => 'audio/mp4',
+    };
+    final response = await _postWithFallback({
+      'contents': [
+        {
+          'role': 'user',
+          'parts': [
+            {
+              'text': '''
+Transcribe this voice message exactly, word for word, for an aluminium, PVC
+and glass joinery workshop app. The speaker may use Algerian Darija, Modern
+Standard Arabic, French or English, often mixed in one sentence; keep each
+word in the language it was spoken (write French words in Latin letters,
+Arabic and Darija in Arabic letters). Write numbers and dimensions as digits
+(e.g. 1200, 2.5, 4/16/4). Workshop words you may hear: fenêtre, porte,
+coulissant, ouvrant, battant, oscillo-battant, soufflet, volet roulant,
+caisson, moustiquaire, pré-cadre, profilé, dormant, ouvrant, traverse,
+montant, chicane, parclose, joint, vitrage, double vitrage, trempé, stop sol,
+commande, client, devis, facture, caisse, stock, بروفيل، ظلفة، إطار، زجاج،
+سيليكون، جوان، طلبية، زبون، صندوق، مخزون.
+Do not answer, summarise or correct the speaker. Output only the transcript.
+If there is no speech, output nothing.
+''',
+            },
+            {
+              'inlineData': {'mimeType': mimeType, 'data': base64Encode(bytes)},
+            },
+          ],
+        },
+      ],
+      'generationConfig': {'temperature': 0.0},
+    });
+    if (response.statusCode != 200) {
+      throw GeminiException(response.statusCode, response.body);
+    }
+    return GeminiGateway.textOf(
+      jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>,
+    );
   }
 
   /// Sends text query to Gemini and parses structured action and speech readout
@@ -169,6 +215,7 @@ Return strict JSON:
     List<Map<String, String>> chatHistory = const [],
     AppLanguage language = AppLanguage.arabic,
   }) async {
+
     try {
       final contents = _normalizedHistory(chatHistory);
 
@@ -190,7 +237,7 @@ Return strict JSON:
         ],
       });
 
-      final response = await _postThroughGateway({
+      final response = await _postWithFallback({
         'system_instruction': {
           'parts': [
             {'text': getSystemInstruction(language)},
@@ -207,19 +254,24 @@ Return strict JSON:
         debugPrint(
           'Gemini API Error: ${response.statusCode} - ${response.body}',
         );
-        final isConfigurationError = response.statusCode == 503;
+        final isKeyError =
+            response.body.contains('API_KEY_INVALID') ||
+            response.body.contains('API key not valid') ||
+            response.statusCode == 401 ||
+            response.statusCode == 403;
         final isQuota = response.statusCode == 429;
         final isNetworkFailure = response.statusCode == 599;
-        final isProviderFailure =
-            response.statusCode >= 500 && response.statusCode != 599;
+        final isProviderFailure = response.statusCode >= 500 &&
+            response.statusCode != 599;
 
-        final errMsg = isConfigurationError
+        final errMsg = isKeyError
             ? switch (language) {
                 AppLanguage.french =>
-                  'Le service IA doit être configuré par l’administrateur.',
+                  'Clé API Gemini invalide. Veuillez vérifier votre clé dans les Paramètres.',
                 AppLanguage.english =>
-                  'The AI service must be configured by an administrator.',
-                _ => 'يلزم أن يهيئ المدير خدمة الذكاء الاصطناعي على الخادم.',
+                  'Invalid Gemini API key. Please check your key in Settings.',
+                _ =>
+                  'مفتاح Gemini API غير صالح. يرجى التأكد من نسخه في الإعدادات بشكل صحيح.',
               }
             : isQuota
             ? switch (language) {
@@ -306,6 +358,7 @@ Return strict JSON:
     List<Map<String, String>> chatHistory = const [],
     AppLanguage language = AppLanguage.arabic,
   }) async {
+
     try {
       final bytes = await audioFile.readAsBytes();
       final base64Audio = base64Encode(bytes);
@@ -338,7 +391,7 @@ Return strict JSON:
               '3. أرجع كائن JSON حصراً.',
       };
 
-      final response = await _postThroughGateway({
+      final response = await _postWithFallback({
         'system_instruction': {
           'parts': [
             {'text': getSystemInstruction(language)},
@@ -418,6 +471,7 @@ Return strict JSON:
     File imageFile, {
     AppLanguage language = AppLanguage.arabic,
   }) async {
+
     try {
       final bytes = await imageFile.readAsBytes();
       final base64Image = base64Encode(bytes);
@@ -434,7 +488,7 @@ Return strict JSON:
               '${_sketchExtractionInstruction('ar')}',
       };
 
-      final response = await _postThroughGateway({
+      final response = await _postWithFallback({
         'system_instruction': {
           'parts': [
             {'text': getSystemInstruction(language)},
@@ -502,8 +556,7 @@ Return strict JSON:
     };
   }
 
-  static String _sketchExtractionInstruction(String language) =>
-      '''
+  static String _sketchExtractionInstruction(String language) => '''
 Read the complete handwritten measurement sheet and the drawn window/door diagram. Recognize Arabic, French, Latin letters and Algerian workshop abbreviations.
 Inspect dimension arrows, outer width/height, internal divisions, quantities, series/system name, glass, colour, shutter, fixed zones, opening/sliding leaves and opening directions.
 Never invent a value. If a field is unreadable, keep it empty and list it in uncertain_fields. Convert centimetres to millimetres; preserve values already written in millimetres.

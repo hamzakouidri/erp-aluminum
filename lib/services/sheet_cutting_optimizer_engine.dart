@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:math' as math;
 
-import '../Commande/Systeme/calculate_component.dart';
+import '../Commande/Systeme/bom_engine_v2.dart';
 import '../Commande/Systeme/model.dart';
 import '../Commande/Systeme/model_serialization.dart';
 import '../sql_database.dart';
@@ -474,11 +474,11 @@ class SheetCuttingOptimizerEngine {
   }
 
   /// استخراج قطع الألواح والصفائح المطلوبة من تفاصيل الطلبيات
-  static List<SheetDemandPiece> extractPiecesFromOrderDetails({
+  static Future<List<SheetDemandPiece>> extractPiecesFromOrderDetails({
     required List<Map<String, dynamic>> orderDetails,
     required SqlDatabase db,
     bool includeGlass = false,
-  }) {
+  }) async {
     final pieces = <SheetDemandPiece>[];
 
     for (final detail in orderDetails) {
@@ -489,8 +489,15 @@ class SheetCuttingOptimizerEngine {
         final data = jsonDecode(rawJson);
         if (data is! Map) continue;
 
+        // Resolve the BOM like the cutting sheet does, so panels and glass
+        // come from the same catalogue selections.
         final window = WindowModel(db: db);
-        applyWindowModelFromMap(window, Map<String, dynamic>.from(data));
+        await applyWindowModelAndLoadCatalog(
+          window,
+          Map<String, dynamic>.from(data),
+        );
+        applyStoredOrderDetailColorToWindowModel(window, detail);
+        await window.updateShutterDefaultsIfNeeded();
 
         final rawQty = detail['quantity'] ?? detail['quantite'] ?? 1;
         final quantity = (rawQty is num ? rawQty.toInt() : int.tryParse('$rawQty') ?? 1).clamp(1, 1000);
@@ -498,7 +505,9 @@ class SheetCuttingOptimizerEngine {
         final windowName = detail['window_type'] ?? detail['type'] ?? 'عنصر $detailId';
         final orderId = (detail['commande_id'] as num?)?.toInt() ?? 0;
 
-        final bom = ComponentCalculator.generateBom(window, const {});
+        final bom = await BomEngineV2(
+          database: db,
+        ).resolveManufacturingBom(window);
 
         for (final item in bom) {
           if (!item.isActive) continue;

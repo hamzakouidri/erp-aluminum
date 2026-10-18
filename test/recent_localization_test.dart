@@ -16,7 +16,7 @@ void main() {
       Localization.translate('الشرائح (Lames)', AppLanguage.english),
       'Slats',
     );
-    expect(Localization.translate('قطعة', AppLanguage.english), 'piece');
+    expect(Localization.translate('قطعة', AppLanguage.english), 'piece(s)');
   });
 
   test('new interface keys never fall back to Arabic', () {

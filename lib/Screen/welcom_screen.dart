@@ -679,7 +679,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
       }
       final unreadOrders = allCmds.where((order) {
         final id = _dashboardOrderId(order);
-        return id > 0 && seenVersions[id] != _dashboardOrderVersion(order);
+        return id > 0 &&
+            !SqlDatabase.isOwnLatestOrderEdit(order) &&
+            seenVersions[id] != _dashboardOrderVersion(order);
       }).length;
 
       if (!mounted || loadToken != _statsLoadToken) return;

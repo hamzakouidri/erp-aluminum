@@ -9,7 +9,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: HomeBackBoundary(
       label: 'Home', onBack: () => backs++, child: const Scaffold(body: Text('Quote')),
     )));
-    await tester.tap(find.text('Home'));
+    // The home button is an overlaid back icon (the label is not shown).
+    await tester.tap(find.byType(BackButtonIcon));
     expect(backs, 1);
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();

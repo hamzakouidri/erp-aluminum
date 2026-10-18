@@ -1,3 +1,4 @@
+import 'package:database_data/services/system_publication_service.dart';
 import 'dart:async';
 import 'package:database_data/widgets/app_material.dart';
 import 'package:database_data/sql_database.dart';
@@ -57,19 +58,29 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
 
   Future<void> _readLocalModes() async {
     final prefs = await SharedPreferences.getInstance();
+    // A system the owner has not published is off whatever the workshop
+    // selected (the owner sees it).
+    final unpublished = await SystemPublicationService.instance
+        .hiddenForCurrentUser();
+    bool active(String id) =>
+        (prefs.getBool('system_active_$id') ?? true) &&
+        !unpublished.contains(SystemPublicationService.modeKey(id));
     if (!mounted) return;
     setState(() {
       _defaultOpeningSeriesId = prefs.getInt('default_opening_series_id');
       _defaultSlidingSeriesId = prefs.getInt('default_sliding_series_id');
       _activeModes = {
-        'sliding': prefs.getBool('system_active_sliding') ?? true,
-        'french': prefs.getBool('system_active_french') ?? true,
-        'mixed': prefs.getBool('system_active_mixed') ?? true,
-        'rolling': prefs.getBool('system_active_rolling') ?? true,
-        'caisson_tunnel': prefs.getBool('system_active_caisson_tunnel') ?? true,
-        'moustiquaire': prefs.getBool('system_active_moustiquaire') ?? true,
-        'precadre': prefs.getBool('system_active_precadre') ?? true,
-        'verre': prefs.getBool('system_active_verre') ?? true,
+        for (final id in const [
+          'sliding',
+          'french',
+          'mixed',
+          'rolling',
+          'caisson_tunnel',
+          'moustiquaire',
+          'precadre',
+          'verre',
+        ])
+          id: active(id),
       };
     });
   }
@@ -520,6 +531,46 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
     }
   }
 
+  /// Opens a new drawing on the series last used for the same kind of
+  /// drawing in this order, else on the configured default series. Only the
+  /// identity is set; the drawing resolves its profiles from the catalogue.
+  void _applyInitialSeries(
+    WindowModel model, {
+    required bool opening,
+    required bool sliding,
+    bool slidingIsPrimary = false,
+  }) {
+    final s = widget.initialSettings;
+    int? readInt(dynamic value) {
+      if (value is num) return value.toInt();
+      return int.tryParse(value?.toString() ?? '');
+    }
+
+    String? readName(String key) {
+      final value = s?[key]?.toString().trim();
+      return value == null || value.isEmpty ? null : value;
+    }
+
+    if (opening) {
+      final inherited = readInt(s?['lastOpeningSeriesId']);
+      model.loadedSeriesId = inherited ?? _defaultOpeningSeriesId;
+      model.loadedSeriesName = inherited == null
+          ? null
+          : readName('lastOpeningSeriesName');
+    }
+    if (sliding) {
+      final inherited = readInt(s?['lastSlidingSeriesId']);
+      model.loadedSlidingSeriesId = inherited ?? _defaultSlidingSeriesId;
+      model.loadedSlidingSeriesName = inherited == null
+          ? null
+          : readName('lastSlidingSeriesName');
+      if (slidingIsPrimary) {
+        model.loadedSeriesId = model.loadedSlidingSeriesId;
+        model.loadedSeriesName = model.loadedSlidingSeriesName;
+      }
+    }
+  }
+
   WindowModel _makeModel({double w = 0, double h = 0, double thickness = 60}) {
     final m = WindowModel(
       width: w,
@@ -529,21 +580,7 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
     );
     final s = widget.initialSettings;
     if (s != null) {
-      int? readInt(dynamic value) {
-        if (value is num) return value.toInt();
-        return int.tryParse(value?.toString() ?? '');
-      }
-
-      final activeSeries = s['activeSeries'];
-      final activeSlidingSeries = s['activeSlidingSeries'];
-      if (activeSeries is AluminumSeries) m.activeSeries = activeSeries;
-      if (activeSlidingSeries is AluminumSeries) {
-        m.activeSlidingSeries = activeSlidingSeries;
-      }
-      m.loadedSeriesId = readInt(s['loadedSeriesId']);
-      m.loadedSlidingSeriesId = readInt(s['loadedSlidingSeriesId']);
-      m.loadedSeriesName = s['loadedSeriesName']?.toString();
-      m.loadedSlidingSeriesName = s['loadedSlidingSeriesName']?.toString();
+      // The series is applied per drawing kind by [_applyInitialSeries].
       final drawingDefaults = s['drawingDefaults'];
       if (drawingDefaults is Map) {
         _applyDrawingDefaults(m, Map<String, dynamic>.from(drawingDefaults));
@@ -568,15 +605,10 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
         final inheritedGlass = glassSpecificationFromMap(
           Map<String, dynamic>.from(glassSpec),
         );
-        WindowZone.globalDefaultGlass =
-            inheritedGlass.structure == GlassStructure.closed
+        m.defaultGlass = inheritedGlass.structure == GlassStructure.closed
             ? const GlassSpecification()
             : inheritedGlass;
-      } else {
-        WindowZone.globalDefaultGlass = const GlassSpecification();
       }
-    } else {
-      WindowZone.globalDefaultGlass = const GlassSpecification();
     }
 
     if (m.selectedDbColor == null) {
@@ -1157,28 +1189,22 @@ class _ChooseSystemeState extends State<ChooseSysteme> {
     switch (systemType) {
       case 'sliding':
         final model = _makeModel(thickness: 45);
-        if (_defaultSlidingSeriesId != null && model.loadedSeriesId == null) {
-          model.loadedSeriesId = _defaultSlidingSeriesId;
-          model.loadedSlidingSeriesId = _defaultSlidingSeriesId;
-        }
+        _applyInitialSeries(
+          model,
+          opening: false,
+          sliding: true,
+          slidingIsPrimary: true,
+        );
         targetPage = WindowView(systemMode: 'sliding', model: model);
         break;
       case 'french':
         final model = _makeModel(thickness: 60);
-        if (_defaultOpeningSeriesId != null && model.loadedSeriesId == null) {
-          model.loadedSeriesId = _defaultOpeningSeriesId;
-        }
+        _applyInitialSeries(model, opening: true, sliding: false);
         targetPage = WindowView(systemMode: 'french', model: model);
         break;
       case 'mixed':
         final model = _makeModel(thickness: 60);
-        if (_defaultOpeningSeriesId != null && model.loadedSeriesId == null) {
-          model.loadedSeriesId = _defaultOpeningSeriesId;
-        }
-        if (_defaultSlidingSeriesId != null &&
-            model.loadedSlidingSeriesId == null) {
-          model.loadedSlidingSeriesId = _defaultSlidingSeriesId;
-        }
+        _applyInitialSeries(model, opening: true, sliding: true);
         targetPage = WindowView(systemMode: 'mixed', model: model);
         break;
       case 'rolling':

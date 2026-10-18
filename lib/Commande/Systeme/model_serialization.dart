@@ -234,6 +234,7 @@ extension GlassSpecificationSerialization on GlassSpecification {
       'jointTwoSides': jointTwoSides,
       'fittedJoints': fittedJoints,
       'glazingFitValid': glazingFitValid,
+      if (manualIntercall) 'manualIntercall': true,
       'temperedOuter': temperedOuter,
       'temperedInner': temperedInner,
     };
@@ -308,6 +309,7 @@ GlassSpecification glassSpecificationFromMap(Map<String, dynamic> map) {
     rosetteShape: (map['rosetteShape'] as num?)?.toInt() ?? 1,
     jointTwoSides: map['jointTwoSides'] as bool? ?? true,
     glazingFitValid: map['glazingFitValid'] as bool?,
+    manualIntercall: map['manualIntercall'] as bool? ?? false,
     fittedJoints: (map['fittedJoints'] as List? ?? const [])
         .whereType<Map>()
         .map((row) => Map<String, dynamic>.from(row))
@@ -550,6 +552,7 @@ extension WindowModelSerialization on WindowModel {
     // only sliding leaves; `activeSeries` alone can be an old UI default.
     final savedPrimarySeries = activeFrameSeries ?? activeSeries;
     return {
+      'drawingSchemaVersion': currentDrawingSchemaVersion,
       'width': width,
       'height': height,
       'systemMode': () {
@@ -661,6 +664,9 @@ extension WindowModelSerialization on WindowModel {
       'groovedMullionCavityOnPositiveSide': groovedMullionCavityOnPositiveSide,
       'mullionSectionOverrides': mullionSectionOverrides,
       'componentOverrides': componentOverrides,
+      'defaultGlass': defaultGlass.toMap(),
+      'shutterVariantChoices': shutterVariantChoices,
+      'shutterVariantChoicesContext': shutterVariantChoicesContext,
       'isReplaced': isReplaced,
       'replacementReason': replacementReason,
       'frameOverride': frameOverride,
@@ -692,7 +698,65 @@ extension WindowModelSerialization on WindowModel {
   }
 }
 
-void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
+/// Version of the drawing map written by [WindowModelSerialization.toMap].
+///
+/// Bump it whenever the meaning or shape of a stored field changes, and add
+/// the matching step to [migrateSavedWindowModelMap]. Maps saved before the
+/// version existed are treated as version 1.
+///
+/// History:
+/// * 1 — legacy drawings without `drawingSchemaVersion`.
+/// * 2 — `defaultGlass` is stored per drawing instead of a process-wide
+///   static shared by every open drawing.
+const int currentDrawingSchemaVersion = 2;
+
+int savedDrawingSchemaVersion(Map<String, dynamic> map) {
+  final raw = map['drawingSchemaVersion'];
+  final version = raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}');
+  return version == null || version < 1 ? 1 : version;
+}
+
+/// Upgrades a saved drawing map step by step to
+/// [currentDrawingSchemaVersion]. The input map is never modified.
+Map<String, dynamic> migrateSavedWindowModelMap(Map<String, dynamic> map) {
+  var version = savedDrawingSchemaVersion(map);
+  if (version > currentDrawingSchemaVersion) {
+    debugPrint(
+      'Drawing saved with schema v$version, newer than the supported '
+      'v$currentDrawingSchemaVersion; unknown fields are ignored.',
+    );
+    return map;
+  }
+  var result = Map<String, dynamic>.from(map);
+  if (version < 2) {
+    result = _migrateDrawingV1ToV2(result);
+    version = 2;
+  }
+  result['drawingSchemaVersion'] = version;
+  return result;
+}
+
+/// v1 kept the glazing default in a static. The closest per-drawing value is
+/// the glass of its first glazed zone; a panneau is never a glazing default.
+Map<String, dynamic> _migrateDrawingV1ToV2(Map<String, dynamic> map) {
+  if (map['defaultGlass'] is Map) return map;
+  final zones = map['zones'];
+  if (zones is List) {
+    for (final zone in zones) {
+      if (zone is! Map || zone['glass'] is! Map) continue;
+      final glass = Map<String, dynamic>.from(zone['glass'] as Map);
+      if (glassSpecificationFromMap(glass).structure == GlassStructure.closed) {
+        continue;
+      }
+      map['defaultGlass'] = glass;
+      break;
+    }
+  }
+  return map;
+}
+
+void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> savedMap) {
+  final map = migrateSavedWindowModelMap(savedMap);
   model.width = (map['width'] as num?)?.toDouble() ?? 0.0;
   model.height = (map['height'] as num?)?.toDouble() ?? 0.0;
   model.lastLayoutSize = null; // أجبر إعادة حساب canvasScale عند تحميل رسم جديد
@@ -962,6 +1026,19 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> map) {
   model.slidingSashOverride = map['slidingSashOverride'] != null
       ? Map<String, dynamic>.from(map['slidingSashOverride'])
       : null;
+
+  model.defaultGlass = map['defaultGlass'] is Map
+      ? glassSpecificationFromMap(
+          Map<String, dynamic>.from(map['defaultGlass'] as Map),
+        )
+      : const GlassSpecification();
+  model.shutterVariantChoices = map['shutterVariantChoices'] is Map
+      ? (map['shutterVariantChoices'] as Map).map(
+          (key, value) => MapEntry(key.toString(), value == true),
+        )
+      : <String, bool>{};
+  model.shutterVariantChoicesContext = map['shutterVariantChoicesContext']
+      ?.toString();
 
   if (map['componentOverrides'] != null) {
     final raw = map['componentOverrides'] as Map;

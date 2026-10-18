@@ -66,16 +66,6 @@ const Map<String, Map<AppLanguage, String>> drawerKeys = {
     AppLanguage.french: 'Volets Roulants',
     AppLanguage.english: 'Shutters',
   },
-  'إدارة الأسعار': {
-    AppLanguage.arabic: 'إدارة الأسعار',
-    AppLanguage.french: 'Gérer les prix',
-    AppLanguage.english: 'Manage Prices',
-  },
-  'أجرة للعامل': {
-    AppLanguage.arabic: 'أجرة للعامل',
-    AppLanguage.french: 'Salaire pour l\'employé',
-    AppLanguage.english: 'Wage for the worker',
-  },
   'إدارة الصلاحية': {
     AppLanguage.arabic: 'إدارة الصلاحية',
     AppLanguage.french: 'Gestion des rôles',
@@ -96,21 +86,6 @@ const Map<String, Map<AppLanguage, String>> drawerKeys = {
     AppLanguage.french: 'Gérer les rôles de \$email',
     AppLanguage.english: 'Manage roles of \$email',
   },
-  'إنشاء ورشة (مدير)': {
-    AppLanguage.arabic: 'إنشاء ورشة (مدير)',
-    AppLanguage.french: 'Créer un atelier (Gérant)',
-    AppLanguage.english: 'Create Workshop (Manager)',
-  },
-  'الانضمام إلى ورشة موجودة': {
-    AppLanguage.arabic: 'الانضمام إلى ورشة موجودة',
-    AppLanguage.french: 'Rejoindre un atelier existant',
-    AppLanguage.english: 'Join an existing workshop',
-  },
-  'اسم المصنع / الورشة': {
-    AppLanguage.arabic: 'اسم المصنع / الورشة',
-    AppLanguage.french: 'Nom de l\'usine / atelier',
-    AppLanguage.english: 'Factory / Workshop Name',
-  },
   'اشتراك مدفوع وفعال': {
     AppLanguage.arabic: 'اشتراك مدفوع وفعال',
     AppLanguage.french: 'Abonnement payé & actif',
@@ -125,11 +100,6 @@ const Map<String, Map<AppLanguage, String>> drawerKeys = {
     AppLanguage.arabic: 'المخزون والمستودع',
     AppLanguage.french: 'Stock & Entrepôt',
     AppLanguage.english: 'Stock & Warehouse',
-  },
-  'انتهى الاشتراك': {
-    AppLanguage.arabic: 'انتهى الاشتراك',
-    AppLanguage.french: 'Abonnement expiré',
-    AppLanguage.english: 'Subscription Expired',
   },
   'انتهى وقت الاتصال بالسيرفر. تأكد من جودة الإنترنت وحاول مجدداً.': {
     AppLanguage.arabic: 'انتهى وقت الاتصال بالسيرفر. تأكد من جودة الإنترنت وحاول مجدداً.',
@@ -156,16 +126,6 @@ const Map<String, Map<AppLanguage, String>> drawerKeys = {
     AppLanguage.french: 'Abonnement activé pour \$days jours pour l\'utilisateur \$email',
     AppLanguage.english: 'Subscription activated for \$days days for user \$email',
   },
-  'تم مزامنة العمال بنجاح': {
-    AppLanguage.arabic: 'تم مزامنة العمال بنجاح',
-    AppLanguage.french: 'Synchronisation des employés réussie',
-    AppLanguage.english: 'Workers synced successfully',
-  },
-  'تواصل لتجديد الاشتراك (WhatsApp)': {
-    AppLanguage.arabic: 'تواصل لتجديد الاشتراك (WhatsApp)',
-    AppLanguage.french: 'Contacter pour renouveler (WhatsApp)',
-    AppLanguage.english: 'Contact to renew (WhatsApp)',
-  },
   '\'\'\'حدث خطأ أثناء فحص الاشتراك: \$': {
     AppLanguage.arabic: 'حدث خطأ أثناء فحص الاشتراك: \${snapshot.error}',
     AppLanguage.french: 'Une erreur est survenue lors de la vérification de l\'abonnement: \${snapshot.error}',
@@ -191,11 +151,6 @@ const Map<String, Map<AppLanguage, String>> drawerKeys = {
     AppLanguage.french: 'Historique de l\'employé: \${worker[',
     AppLanguage.english: 'Worker history: \${worker[',
   },
-  'سلفة للعامل': {
-    AppLanguage.arabic: 'سلفة للعامل',
-    AppLanguage.french: 'Avance pour l\'employé',
-    AppLanguage.english: 'Advance for the worker',
-  },
   'سلفيات وأجور العمال': {
     AppLanguage.arabic: 'سلفيات وأجور العمال',
     AppLanguage.french: 'Avances & Salaires des employés',
@@ -206,50 +161,20 @@ const Map<String, Map<AppLanguage, String>> drawerKeys = {
     AppLanguage.french: 'Permissions: \${worker[',
     AppLanguage.english: 'Permissions: \${worker[',
   },
-  'عامل': {
-    AppLanguage.arabic: 'عامل',
-    AppLanguage.french: 'Ouvrier',
-    AppLanguage.english: 'Worker',
-  },
   'عامل جديد': {
     AppLanguage.arabic: 'عامل جديد',
     AppLanguage.french: 'Nouvel employé',
     AppLanguage.english: 'New Worker',
-  },
-  'كود الورشة (ضروري)': {
-    AppLanguage.arabic: 'كود الورشة (ضروري)',
-    AppLanguage.french: 'Code de l\'atelier (Obligatoire)',
-    AppLanguage.english: 'Workshop Code (Required)',
   },
   'لا يوجد اتصال بالإنترنت، يرجى التحقق من الشبكة الخاصة بك.': {
     AppLanguage.arabic: 'لا يوجد اتصال بالإنترنت، يرجى التحقق من الشبكة الخاصة بك.',
     AppLanguage.french: 'Pas de connexion Internet. Veuillez vérifier votre réseau.',
     AppLanguage.english: 'No internet connection. Please check your network.',
   },
-  'لا يوجد عمال مسجلين في ورشتك حالياً': {
-    AppLanguage.arabic: 'لا يوجد عمال مسجلين في ورشتك حالياً',
-    AppLanguage.french: 'Aucun employé inscrit dans votre atelier actuellement',
-    AppLanguage.english: 'No registered workers in your workshop currently',
-  },
-  'للاستمرار في استخدام النظام والوصول إلى بياناتك، يرجى تفعيل الاشتراك عن طريق التواصل مع الإدارة.': {
-    AppLanguage.arabic: 'للاستمرار في استخدام النظام والوصول إلى بياناتك، يرجى تفعيل الاشتراك عن طريق التواصل مع الإدارة.',
-    AppLanguage.french: 'Pour continuer à utiliser le système, veuillez activer votre abonnement en contactant l\'administration.',
-    AppLanguage.english: 'To continue using the system, please activate your subscription by contacting the administration.',
-  },
   'مدير الورشة': {
     AppLanguage.arabic: 'مدير الورشة',
     AppLanguage.french: 'Gérant de l\'atelier',
     AppLanguage.english: 'Workshop Manager',
-  },
-  'مراسلة الإدارة وتقييم التطبيق': {
-    AppLanguage.arabic: 'مراسلة الإدارة وتقييم التطبيق',
-    AppLanguage.french: 'Contacter l\'administration & Évaluer l\'app',
-    AppLanguage.english: 'Contact Admin & Rate App',
-  },
-  'معاملة جديدة': {
-    AppLanguage.arabic: 'معاملة جديدة',
-    AppLanguage.french: 'Nouvelle transaction',
-    AppLanguage.english: 'New Transaction',
   },
   'مغلق (بدون اشتراك)': {
     AppLanguage.arabic: 'مغلق (بدون اشتراك)',
@@ -260,26 +185,6 @@ const Map<String, Map<AppLanguage, String>> drawerKeys = {
     AppLanguage.arabic: 'ورشة النجارة',
     AppLanguage.french: 'Atelier de menuiserie',
     AppLanguage.english: 'Carpentry Workshop',
-  },
-  'يرجى إدخال اسم المصنع أو الورشة.': {
-    AppLanguage.arabic: 'يرجى إدخال اسم المصنع أو الورشة.',
-    AppLanguage.french: 'Veuillez saisir le nom de l\'usine ou de latelier.',
-    AppLanguage.english: 'Please enter the factory or workshop name.',
-  },
-  r'''إدارة صلاحيات المستخدمين''': {
-    AppLanguage.arabic: r'''إدارة صلاحيات المستخدمين''',
-    AppLanguage.french: r'''Gestion des permissions utilisateurs''',
-    AppLanguage.english: r'''User Permissions Management''',
-  },
-  r'''تقرير النواقص الشامل''': {
-    AppLanguage.arabic: r'''تقرير النواقص الشامل''',
-    AppLanguage.french: r'''Rapport complet des manques''',
-    AppLanguage.english: r'''Comprehensive Shortage Report''',
-  },
-  r'''إدارة شؤون وأجور العمال''': {
-    AppLanguage.arabic: r'''إدارة شؤون وأجور العمال''',
-    AppLanguage.french: r'''Gestion des affaires et salaires des ouvriers''',
-    AppLanguage.english: r'''Worker Affairs and Wages Management''',
   },
   'Code': {
     AppLanguage.arabic: 'الكود',
@@ -331,11 +236,6 @@ const Map<String, Map<AppLanguage, String>> drawerKeys = {
     AppLanguage.french: 'Tout activer',
     AppLanguage.english: 'Activate All',
   },
-  'إلغاء الكل': {
-    AppLanguage.arabic: 'إلغاء الكل',
-    AppLanguage.french: 'Tout désactiver',
-    AppLanguage.english: 'Deactivate All',
-  },
   'تم تفعيل النظام': {
     AppLanguage.arabic: 'تم تفعيل النظام',
     AppLanguage.french: 'Système activé',
@@ -351,11 +251,6 @@ const Map<String, Map<AppLanguage, String>> drawerKeys = {
     AppLanguage.french: 'Actif à l\'atelier',
     AppLanguage.english: 'Active in workshop',
   },
-  'معطل': {
-    AppLanguage.arabic: 'معطل',
-    AppLanguage.french: 'Désactivé',
-    AppLanguage.english: 'Disabled',
-  },
   'تعديل الأنظمة المفعلة': {
     AppLanguage.arabic: 'تعديل الأنظمة المفعلة',
     AppLanguage.french: 'Modifier les systèmes actifs',
@@ -365,11 +260,6 @@ const Map<String, Map<AppLanguage, String>> drawerKeys = {
     AppLanguage.arabic: 'كود انضمام العمال',
     AppLanguage.french: 'Code d\'adhésion des ouvriers',
     AppLanguage.english: 'Worker Joining Code',
-  },
-  'مهامي وتصنيعاتي': {
-    AppLanguage.arabic: 'مهامي وتصنيعاتي',
-    AppLanguage.french: 'Mes Tâches & Fabrications',
-    AppLanguage.english: 'My Tasks & Manufacturing',
   },
   'صفحة مهامي': {
     AppLanguage.arabic: 'مهامي وتصنيعاتي',
@@ -400,11 +290,6 @@ const Map<String, Map<AppLanguage, String>> drawerKeys = {
     AppLanguage.arabic: 'بطاقة مهامي وتصنيعاتي',
     AppLanguage.french: 'Carte Mes Tâches',
     AppLanguage.english: 'My Tasks Card',
-  },
-  'مراجعة الاشتراك': {
-    AppLanguage.arabic: 'مراجعة الاشتراك',
-    AppLanguage.french: 'Mon abonnement',
-    AppLanguage.english: 'Subscription Review',
   },
   'الاشتراك والمدة المتبقية': {
     AppLanguage.arabic: 'الاشتراك والمدة المتبقية',
@@ -456,16 +341,6 @@ const Map<String, Map<AppLanguage, String>> drawerKeys = {
     AppLanguage.french: 'Répartition des données',
     AppLanguage.english: 'Data Distribution',
   },
-  'إلغاء التحديد': {
-    AppLanguage.arabic: 'إلغاء التحديد',
-    AppLanguage.french: 'Désélectionner',
-    AppLanguage.english: 'Deselect',
-  },
-  'المساحة الإجمالية': {
-    AppLanguage.arabic: 'المساحة الإجمالية',
-    AppLanguage.french: 'Espace Total',
-    AppLanguage.english: 'Total Space',
-  },
   'تفاصيل الفئات والأقسام': {
     AppLanguage.arabic: 'تفاصيل الفئات والأقسام',
     AppLanguage.french: 'Détails des catégories & modules',
@@ -510,11 +385,6 @@ const Map<String, Map<AppLanguage, String>> drawerKeys = {
     AppLanguage.arabic: 'عدد المستخدمين المسجلين: ',
     AppLanguage.french: 'Utilisateurs enregistrés : ',
     AppLanguage.english: 'Registered users: ',
-  },
-  'نشط': {
-    AppLanguage.arabic: 'نشط',
-    AppLanguage.french: 'Actif',
-    AppLanguage.english: 'Active',
   },
   'حائط [M]': {
     AppLanguage.arabic: 'حائط [M]',
@@ -625,10 +495,5 @@ const Map<String, Map<AppLanguage, String>> drawerKeys = {
     AppLanguage.arabic: 'شراء المواد',
     AppLanguage.french: 'Achat de matières',
     AppLanguage.english: 'Material Purchases',
-  },
-  'مشتريات محل المواد': {
-    AppLanguage.arabic: 'مشتريات محل المواد',
-    AppLanguage.french: 'Achats du magasin',
-    AppLanguage.english: 'Store Purchases',
   },
 };

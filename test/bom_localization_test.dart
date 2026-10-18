@@ -13,7 +13,7 @@ void main() {
         name: 'Cache dormant (Coulissant)',
       );
       expect(item.getLocalizedName('fr'), 'Cache dormant');
-      expect(item.getLocalizedName('ar'), 'كاش دورمو');
+      expect(item.getLocalizedName('ar'), 'كاش دورمو (Cache dormant)');
     });
 
     test('Seuil localized cleanly in FR and AR', () {
@@ -26,7 +26,7 @@ void main() {
         name: 'Seuil (Coulissant)',
       );
       expect(item.getLocalizedName('fr'), 'Seuil');
-      expect(item.getLocalizedName('ar'), 'سوي');
+      expect(item.getLocalizedName('ar'), 'سوي (Seuil)');
     });
 
     test('Cache-rail localized cleanly in FR and AR', () {
@@ -39,7 +39,7 @@ void main() {
         name: 'Cache-rail (Coulissant)',
       );
       expect(item.getLocalizedName('fr'), 'Cache-rail');
-      expect(item.getLocalizedName('ar'), 'كاش راي');
+      expect(item.getLocalizedName('ar'), 'كاش راي (Cache-rail)');
     });
 
     test(
@@ -54,7 +54,7 @@ void main() {
           name: 'الشيكان (Chicane)',
         );
         expect(item.getLocalizedName('fr'), 'Chicane');
-        expect(item.getLocalizedName('ar'), 'شيكان');
+        expect(item.getLocalizedName('ar'), 'شيكان (Chicane)');
       },
     );
 
@@ -69,8 +69,12 @@ void main() {
           originalName: 'الظلفة المنزلقة (Sliding Sash)',
           name: 'الظلفة المنزلقة (Sliding Sash)',
         );
-        expect(item.getLocalizedName('fr'), 'Ouvrant');
-        expect(item.getLocalizedName('ar'), 'الضلفة');
+        expect(item.getLocalizedName('fr'), 'Ouvrant Coulissant');
+        expect(item.getLocalizedName('en'), 'Sliding Sash');
+        expect(
+          item.getLocalizedName('ar'),
+          'الضلفة المنزلقة (Ouvrant Coulissant)',
+        );
       },
     );
 
@@ -86,7 +90,10 @@ void main() {
           name: 'كومبليمو دورمو (Complément Dormant)',
         );
         expect(item.getLocalizedName('fr'), 'Complément Dormant');
-        expect(item.getLocalizedName('ar'), 'كومبليمو دورمو');
+        expect(
+          item.getLocalizedName('ar'),
+          'كومبليمو دورمو (Complément Dormant)',
+        );
       },
     );
 
@@ -95,10 +102,8 @@ void main() {
       () {
         const sub = '(المطلوب الفعلي: 1.37 بارة / 1.37 bar)';
         expect(BomItem.localizeSubText(sub, 'fr'), '(Besoin réel: 1.37 bar)');
-        expect(
-          BomItem.localizeSubText(sub, 'ar'),
-          '(المطلوب الفعلي: 1.37 بارة)',
-        );
+        // Arabic keeps the full line, including the bars breakdown.
+        expect(BomItem.localizeSubText(sub, 'ar'), sub);
         expect(
           BomItem.localizeSubText(sub, 'en'),
           '(Actual requirement: 1.37 bar)',

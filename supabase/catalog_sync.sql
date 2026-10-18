@@ -18,9 +18,7 @@ as $$
     select 1
     from public.app_admins
     where user_id = (select auth.uid())
-  ) or lower(coalesce((
-    select email from auth.users where id = (select auth.uid())
-  ), '')) = 'kouidrihamza45@gmail.com';
+  );
 $$;
 
 create table if not exists public.catalog_manifest (

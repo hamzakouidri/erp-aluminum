@@ -146,6 +146,11 @@ class WindowsGoogleSignIn {
 
       final redirectUri =
           'http://127.0.0.1:${callbackServer.port}/google-oauth-callback';
+      // Any local web page can send requests to this loopback port. Session
+      // tokens are accepted only together with this per-attempt secret, which
+      // is written into the page served to the browser and nowhere else, so
+      // a foreign page cannot sign the app into another account.
+      final completionNonce = _randomUrlSafeValue();
 
       final authClient = supabase.Supabase.instance.client.auth;
       final oauthRes = await authClient.getOAuthSignInUrl(
@@ -243,8 +248,8 @@ class WindowsGoogleSignIn {
   <script>
     const hash = window.location.hash;
     const search = window.location.search;
-    const payload = hash ? ('?' + hash.substring(1)) : search;
-    fetch('/complete-auth' + payload)
+    const payload = hash ? hash.substring(1) : search.substring(1);
+    fetch('/complete-auth?nonce=$completionNonce' + (payload ? '&' + payload : ''))
       .then(res => res.json())
       .then(data => {
         document.getElementById('spinner').style.display = 'none';
@@ -274,6 +279,11 @@ class WindowsGoogleSignIn {
 
         if (path == '/complete-auth') {
           final q = request.uri.queryParameters;
+          if (!_sameText(q['nonce'], completionNonce)) {
+            request.response.statusCode = HttpStatus.forbidden;
+            await request.response.close();
+            return;
+          }
           final error = q['error'];
           final errorDescription = q['error_description'];
           final code = q['code'];

@@ -56,6 +56,81 @@ class BomEngineV2 {
       );
   }
 
+  /// The one resolution path for a drawing's manufacturing BOM: generate,
+  /// stabilise the catalogue selections twice (the second pass sees the
+  /// sections chosen by the first), then keep only rows with a catalogue
+  /// candidate. Every document derived from a drawing must use it so the
+  /// cutting sheet, required goods and consumption report count the same
+  /// pieces. [activeVariants] defaults to
+  /// [ComponentCalculator.standardActiveVariants].
+  Future<List<BomItem>> resolveManufacturingBom(
+    WindowModel window, {
+    Map<String, bool>? activeVariants,
+    Map<String, List<Map<String, dynamic>>> kitBundleData = const {},
+    Map<String, bool> kitPerLeafMap = const {},
+    Map<String, double> kitBundlePrices = const {},
+    Map<String, Map<String, dynamic>> kitBundleMetadata = const {},
+  }) async {
+    List<BomItem> generate() => ComponentCalculator.generateBom(
+      window,
+      activeVariants ?? ComponentCalculator.standardActiveVariants(window),
+      kitBundleData: kitBundleData,
+      kitPerLeafMap: kitPerLeafMap,
+      kitBundlePrices: kitBundlePrices,
+      kitBundleMetadata: kitBundleMetadata,
+    );
+    await stabilizeSelections(window: window, items: generate());
+    await stabilizeSelections(window: window, items: generate());
+    final generated = generate();
+    // Workshop instructions (notably the orange customised side-cover
+    // warning) belong to the physical cut row. Catalogue filtering may
+    // return a rebuilt BOM item, so retain and re-attach those notes by a
+    // stable component identity instead of relying on object identity.
+    List<String> productionNoteKeys(BomItem value) {
+      final keys = <String>[];
+      final overrideKey = value.overrideKey?.trim() ?? '';
+      if (overrideKey.isNotEmpty) {
+        keys.add('override:${overrideKey.toLowerCase()}');
+      }
+      final catalogId = value.catalogItemId;
+      if (catalogId != null) keys.add('catalog:$catalogId');
+      final profileCode = value.profileCode?.trim() ?? '';
+      if (profileCode.isNotEmpty) {
+        keys.add('profile:${profileCode.toLowerCase()}');
+      }
+      final role = (value.roleKey ?? value.selectorType ?? '').trim();
+      if (role.isNotEmpty) keys.add('role:${role.toLowerCase()}');
+      final originalName = value.originalName.trim();
+      if (originalName.isNotEmpty) {
+        keys.add('name:${originalName.toLowerCase()}');
+      }
+      return keys;
+    }
+
+    final productionNotes = <String, String>{};
+    for (final value in generated) {
+      final note = value.productionNote?.trim();
+      if (note == null || note.isEmpty) continue;
+      for (final key in productionNoteKeys(value)) {
+        productionNotes[key] = note;
+      }
+    }
+    final filtered = await filterItemsByAvailableCandidates(
+      window: window,
+      items: generated,
+    );
+    if (productionNotes.isEmpty) return filtered;
+    return filtered.map((value) {
+      if (value.productionNote?.trim().isNotEmpty == true) return value;
+      String? note;
+      for (final key in productionNoteKeys(value)) {
+        note = productionNotes[key];
+        if (note != null) break;
+      }
+      return note == null ? value : value.copyWith(productionNote: note);
+    }).toList(growable: false);
+  }
+
   Future<void> stabilizeSelections({
     required WindowModel window,
     required List<BomItem> items,
@@ -1013,11 +1088,27 @@ class BomEngineV2 {
             return _catalogInt(rule['series_id']) == context.id;
           })
           .toList(growable: false);
+      // With a dedicated sliding kit present, a generic `kit` rule is only
+      // additive when it is linked to a specific (reinforced) montant; an
+      // unlinked one is the opening kit of the same series.
+      final hasDedicatedSlidingKit =
+          context.sliding &&
+          candidates.any((candidate) {
+            final rule = candidate['catalog_rule'] as Map;
+            return (rule['role_key']?.toString() ?? '').startsWith(
+              'sliding_kit',
+            );
+          });
       for (final candidate in candidates) {
         final rule = Map<String, dynamic>.from(
           candidate['catalog_rule'] as Map,
         );
         final linkedProfiles = assemblySectionIds(rule);
+        if (hasDedicatedSlidingKit &&
+            (rule['role_key']?.toString() ?? 'kit') == 'kit' &&
+            linkedProfiles.isEmpty) {
+          continue;
+        }
         // A linked profile is a presence condition, not merely editor
         // metadata. In particular, a 4NF kit linked to Batmo must disappear
         // when that Batmo profile is not part of the actual BOM.

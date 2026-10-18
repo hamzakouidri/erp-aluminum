@@ -8,8 +8,11 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:file_picker/file_picker.dart';
 import '../settings/app_settings.dart';
+import '../services/ai_agent_service.dart';
 import '../services/ai_controller_service.dart';
+import '../services/gemini_gateway.dart';
 import '../services/tts_service.dart';
+import '../settings/localization.dart';
 
 class ChatMessage {
   String text;
@@ -17,11 +20,15 @@ class ChatMessage {
   final String? actionType;
   final bool isWarning;
 
+  /// The tools the assistant used for this answer.
+  final List<String> steps;
+
   ChatMessage({
     required this.text,
     required this.isUser,
     this.actionType,
     this.isWarning = false,
+    this.steps = const [],
   });
 }
 
@@ -30,10 +37,7 @@ class AiGuideChatDialog extends StatefulWidget {
 
   const AiGuideChatDialog({super.key, this.onNavigateRequested});
 
-  static Future<void> show(
-    BuildContext context, {
-    Function(String)? onNavigate,
-  }) {
+  static Future<void> show(BuildContext context, {Function(String)? onNavigate}) {
     return showDialog(
       context: context,
       barrierDismissible: true,
@@ -60,6 +64,11 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
   bool _isVoiceMuted = false;
   String? _recordingPath;
 
+  /// The model chosen by the user, null for the strongest available, and
+  /// the one that answered last.
+  String? _model;
+  String? _activeModel;
+
   StreamSubscription<Amplitude>? _amplitudeSub;
   double _currentAmplitudeDb = -160.0;
 
@@ -85,29 +94,29 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
     final lang = context.read<AppSettingsProvider>().language;
     return switch (lang) {
       AppLanguage.french => [
-        'Résumé des caisses d\'aujourd\'hui',
-        'Caisse atelier aujourd\'hui',
-        'Caisse magasin aujourd\'hui',
-        'Disponibilité profilé tube 40 en stock ?',
-        'Comment utiliser l\'optimisation de coupe ?',
-        'Ouvrir les commandes',
-      ],
+          'Quelles commandes sont en attente et que reste-t-il à encaisser ?',
+          'Résumé des caisses d\'aujourd\'hui',
+          'Combien reste-t-il de tube 40 et pour quelles commandes est-il réservé ?',
+          'D\'où vient le dernier achat de joint et à quel prix ?',
+          'Vue d\'ensemble de l\'atelier',
+          'Ouvrir les commandes',
+        ],
       AppLanguage.english => [
-        'Today\'s cashbox summary',
-        'Today\'s workshop cashbox',
-        'Today\'s store cashbox',
-        'Check profile tube 40 availability',
-        'How to use cutting optimizer?',
-        'Open orders screen',
-      ],
+          'Which orders are pending and how much is left to collect?',
+          'Today\'s cashbox summary',
+          'How much tube 40 is left and which orders is it reserved for?',
+          'Where did the last joint purchase come from, and at what price?',
+          'Workshop overview',
+          'Open orders screen',
+        ],
       _ => [
-        'ملخص الصناديق لليوم (الورشة والمحل)',
-        'لخص لي صندوق الورشة لليوم',
-        'لخص لي صندوق المحل لليوم',
-        'هل بروفيل تيوب 40 متوفر في المخزون؟',
-        'كيف أستخدم تحسين قص الألمنيوم؟',
-        'افتح شاشة الطلبيات',
-      ],
+          'ما الطلبيات المتوقفة في الانتظار وكم بقي لنا عند زبائنها؟',
+          'ملخص الصناديق لليوم (الورشة والمحل)',
+          'كم بقي من تيوب 40 ولأي طلبيات هو محجوز؟',
+          'من أين جاء آخر شراء للجوان وبأي سعر؟',
+          'أعطني نظرة عامة على الورشة',
+          'افتح شاشة الطلبيات',
+        ],
     };
   }
 
@@ -115,36 +124,21 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
   void initState() {
     super.initState();
     _ttsService.init();
+    AiAgentService.savedModel().then((model) {
+      if (mounted) setState(() => _model = model);
+    });
 
-    // Check if native streaming STT is available (Android, iOS, Web)
-    _speechToText
-        .initialize(
-          onError: (val) => debugPrint('STT onError: $val'),
-          onStatus: (val) {
-            debugPrint('STT status: $val');
-            if ((val == 'done' || val == 'notListening') &&
-                _isListening &&
-                _isUsingStt) {
-              _stopListeningAndProcess();
-            }
-          },
-        )
-        .then((available) {
-          if (mounted) {
-            setState(() => _isSttEngineAvailable = available);
-          }
-        })
-        .catchError((e) {
-          debugPrint('STT init exception: $e');
-        });
+    // Voice is always recorded and transcribed by Gemini: the phone's speech
+    // engine drops Darija and mixed French words too often. The native
+    // engine (_isSttEngineAvailable) therefore stays off.
 
     // Welcome message with localized speech and text
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final welcome = _t(
-        ar: 'مرحباً بك! أنا مساعدك الذكي لتطبيق الألمنيوم والزجاج. يمكنك التحدث بالميكروفون وسأكتب ما تقوله لحظياً وأنفذ أوامرك بدقة متناهية، أو الاستفسار عن الصناديق والمخزون.',
-        fr: 'Bienvenue ! Je suis votre assistant IA pour l’atelier d’aluminium et verre. Parlez dans le microphone pour dicter vos ordres en temps réel ou interroger les caisses et le stock.',
-        en: 'Welcome! I am your AI assistant for the aluminum & glass workshop. Speak into the microphone to dictate commands in real time or inquire about cashboxes and inventory.',
+        ar: 'مرحباً! أعمل معك كأحد عمال الورشة: أبحث في الطلبيات والزبائن والمخزون وحركة المواد والصندوق مباشرة من بيانات التطبيق، وأنفذ ما تطلبه من تعديلات بعد موافقتك. اكتب أو تحدث بالميكروفون.',
+        fr: 'Bonjour ! Je travaille avec vous comme un employé de l’atelier : je consulte directement les commandes, clients, stock, mouvements et caisses de l’application, et j’effectue les modifications demandées après votre accord. Écrivez ou parlez.',
+        en: 'Hello! I work with you like one of the workshop staff: I look up orders, clients, stock, material movements and cashboxes straight from the app, and make the changes you ask for once you approve them. Type or speak.',
       );
       if (_messages.isEmpty) {
         setState(() {
@@ -179,6 +173,9 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
       }
     });
   }
+
+  /// Gemini through the server (the gemini-proxy Edge Function).
+  Future<GeminiGateway> _gateway() => GeminiGateway.current();
 
   /// Voice Listener handler: starts/stops listening with live real-time typing
   Future<void> _toggleVoiceRecording() async {
@@ -241,13 +238,11 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(
-                _t(
-                  ar: 'يرجى منح إذن استخدام الميكروفون',
-                  fr: 'Veuillez accorder l\'autorisation du microphone',
-                  en: 'Please grant microphone permission',
-                ),
-              ),
+              content: Text(_t(
+                ar: 'يرجى منح إذن استخدام الميكروفون',
+                fr: 'Veuillez accorder l\'autorisation du microphone',
+                en: 'Please grant microphone permission',
+              )),
             ),
           );
         }
@@ -257,21 +252,26 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
       final tempDir = await getTemporaryDirectory();
       final filePath = p.join(
         tempDir.path,
-        'voice_query_${DateTime.now().millisecondsSinceEpoch}.m4a',
+        'voice_query_${DateTime.now().millisecondsSinceEpoch}.wav',
       );
 
       await _audioRecorder.start(
-        const RecordConfig(encoder: AudioEncoder.aacLc),
+        // 16 kHz mono WAV: a format Gemini always accepts, clear for speech.
+        const RecordConfig(
+          encoder: AudioEncoder.wav,
+          sampleRate: 16000,
+          numChannels: 1,
+        ),
         path: filePath,
       );
 
       _amplitudeSub = _audioRecorder
           .onAmplitudeChanged(const Duration(milliseconds: 100))
           .listen((amp) {
-            if (mounted) {
-              setState(() => _currentAmplitudeDb = amp.current);
-            }
-          });
+        if (mounted) {
+          setState(() => _currentAmplitudeDb = amp.current);
+        }
+      });
 
       _isUsingStt = false;
       setState(() {
@@ -283,13 +283,11 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              _t(
-                ar: 'تعذر تشغيل الميكروفون: $e',
-                fr: 'Impossible de démarrer le microphone : $e',
-                en: 'Could not start microphone: $e',
-              ),
-            ),
+            content: Text(_t(
+              ar: 'تعذر تشغيل الميكروفون: $e',
+              fr: 'Impossible de démarrer le microphone : $e',
+              en: 'Could not start microphone: $e',
+            )),
           ),
         );
       }
@@ -317,7 +315,6 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
       final audioPath = path ?? _recordingPath;
       if (audioPath == null || !File(audioPath).existsSync()) return;
 
-      final lang = context.read<AppSettingsProvider>().language;
       final userBubble = ChatMessage(
         text: _t(
           ar: '🎤 [جاري تفريغ الصوت وكتابته بدقة...]',
@@ -333,42 +330,40 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
       });
       _scrollToBottom();
 
-      final aiService = AiControllerService();
-
-      final history = _messages
-          .take(_messages.length - 1)
-          .where((m) => !m.text.startsWith('🎤 ['))
-          .map((m) => {'role': m.isUser ? 'user' : 'model', 'content': m.text})
-          .toList();
-
-      final response = await aiService.processVoiceAudio(
+      final aiService = AiControllerService(gateway: await _gateway());
+      final transcribed = (await aiService.transcribeAudio(
         File(audioPath),
-        chatHistory: history,
-        language: lang,
-      );
-
+      )).trim();
       if (!mounted) return;
 
-      // Populate text field with what the user said (Real-time live synchronization)
-      final transcribed = response.transcribedQuery?.trim() ?? '';
-      if (transcribed.isNotEmpty) {
-        userBubble.text = '🗣️ $transcribed';
-        _textController.text = transcribed;
-      } else {
-        userBubble.text = _t(
-          ar: '🗣️ أمر صوتي',
-          fr: '🗣️ Commande vocale',
-          en: '🗣️ Voice command',
-        );
+      if (transcribed.isEmpty) {
+        setState(() {
+          _isLoading = false;
+          userBubble.text = _t(
+            ar: '🎤 لم أسمع كلاماً، أعد المحاولة.',
+            fr: '🎤 Aucune parole entendue, réessayez.',
+            en: '🎤 No speech heard, please try again.',
+          );
+        });
+        return;
       }
-
-      await _processAiResponse(aiService, response);
+      // What Gemini heard, then the agent answers it like typed text.
+      setState(() => userBubble.text = '🗣️ $transcribed');
+      await _runAgent(transcribed);
     } catch (e) {
       debugPrint('Voice listener error: $e');
       if (mounted) {
         setState(() {
           _isListening = false;
           _isLoading = false;
+          _messages.add(ChatMessage(
+            text: _t(
+              ar: 'تعذر تفريغ الصوت. تحقق من الاتصال وأعد المحاولة.',
+              fr: 'Transcription impossible. Vérifiez la connexion et réessayez.',
+              en: 'Could not transcribe. Check the connection and try again.',
+            ),
+            isUser: false,
+          ));
         });
       }
     }
@@ -387,20 +382,18 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
     final file = File(result.files.single.path!);
     setState(() {
       _isLoading = true;
-      _messages.add(
-        ChatMessage(
-          text: _t(
-            ar: '📷 تم إرسال صورة المخطط للتحليل الهندسي بالذكاء الاصطناعي...',
-            fr: '📷 Image du croquis envoyée pour analyse par l\'IA...',
-            en: '📷 Sketch image sent for AI engineering analysis...',
-          ),
-          isUser: true,
+      _messages.add(ChatMessage(
+        text: _t(
+          ar: '📷 تم إرسال صورة المخطط للتحليل الهندسي بالذكاء الاصطناعي...',
+          fr: '📷 Image du croquis envoyée pour analyse par l\'IA...',
+          en: '📷 Sketch image sent for AI engineering analysis...',
         ),
-      );
+        isUser: true,
+      ));
     });
     _scrollToBottom();
 
-    final aiService = AiControllerService();
+    final aiService = AiControllerService(gateway: await _gateway());
 
     final action = await aiService.processSketchImage(file, language: lang);
 
@@ -408,13 +401,11 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
 
     setState(() {
       _isLoading = false;
-      _messages.add(
-        ChatMessage(
-          text: action.speechResponse,
-          isUser: false,
-          actionType: action.actionType,
-        ),
-      );
+      _messages.add(ChatMessage(
+        text: action.speechResponse,
+        isUser: false,
+        actionType: action.actionType,
+      ));
     });
     _scrollToBottom();
 
@@ -424,10 +415,7 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
     }
 
     if (action.actionType == 'create_order') {
-      final res = await aiService.executeCreateOrder(
-        action.parameters,
-        language: lang,
-      );
+      final res = await aiService.executeCreateOrder(action.parameters, language: lang);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(res), backgroundColor: Colors.teal),
@@ -449,107 +437,152 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
     });
     _scrollToBottom();
 
-    final lang = context.read<AppSettingsProvider>().language;
-    final aiService = AiControllerService();
+    await _runAgent(text);
+  }
 
+  /// Answers [text] with the workshop agent: it reads the app's data through
+  /// its tools, under this user's permissions, and asks before any change.
+  Future<void> _runAgent(String text) async {
+    final settings = context.read<AppSettingsProvider>();
+    final lang = settings.language;
+    final permissions = AiAgentPermissions.fromSettings(settings);
+    final gateway = await _gateway();
+    if (!mounted) return;
     final history = _messages
         .take(_messages.length - 1)
         .where((m) => !m.text.startsWith('🎤 ['))
-        .map((m) => {'role': m.isUser ? 'user' : 'model', 'content': m.text})
+        .map((m) => {
+              'role': m.isUser ? 'user' : 'model',
+              'content': m.text.replaceFirst('🗣️ ', ''),
+            })
         .toList();
 
-    final response = await aiService.processQuery(
-      query: text,
-      chatHistory: history,
+    final result = await AiAgentService(
+      gateway: gateway,
+      preferredModel: _model,
+    ).run(
+      userText: text,
+      history: history,
       language: lang,
+      permissions: permissions,
+      confirm: _confirmAction,
     );
-
-    if (!mounted) return;
-    await _processAiResponse(aiService, response);
-  }
-
-  Future<void> _processAiResponse(
-    AiControllerService aiService,
-    AiAction response,
-  ) async {
-    final lang = context.read<AppSettingsProvider>().language;
-    String finalVoiceText = response.speechResponse;
-    bool isWarning = false;
-
-    // Handle Specialized Precision Actions with strict language localization
-    if (response.actionType == 'caisse_summary') {
-      final target = response.parameters['target_caisse']?.toString();
-      final summary = await aiService.getDailyCaisseSummary(
-        targetCaisse: target,
-        language: lang,
-      );
-      finalVoiceText = '$finalVoiceText\n\n$summary';
-    } else if (response.actionType == 'check_stock') {
-      final item = response.parameters['item_name']?.toString() ?? '';
-      final stockResult = await aiService.checkItemStock(item, language: lang);
-      finalVoiceText = '$finalVoiceText\n\n$stockResult';
-    } else if (response.actionType == 'create_order') {
-      final res = await aiService.executeCreateOrder(
-        response.parameters,
-        language: lang,
-      );
-      finalVoiceText = '$finalVoiceText\n\n$res';
-      if (res.contains('تنبيه هندسي') ||
-          res.contains('Alerte') ||
-          res.contains('Warning')) {
-        isWarning = true;
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(res),
-            backgroundColor: isWarning ? Colors.orange : Colors.teal,
-          ),
-        );
-      }
-    } else if (response.actionType == 'create_client') {
-      final res = await aiService.executeCreateClient(
-        response.parameters,
-        language: lang,
-      );
-      finalVoiceText = '$finalVoiceText\n\n$res';
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(res), backgroundColor: Colors.teal),
-        );
-      }
-    } else if (response.actionType == 'search_client') {
-      final res = await aiService.executeSearchClient(
-        response.parameters,
-        language: lang,
-      );
-      finalVoiceText = '$finalVoiceText\n\n$res';
-    } else if (response.actionType == 'navigate') {
-      final target = response.parameters['target']?.toString();
-      if (target != null && widget.onNavigateRequested != null) {
-        widget.onNavigateRequested!(target);
-      }
-    }
-
     if (!mounted) return;
 
     setState(() {
       _isLoading = false;
-      _messages.add(
-        ChatMessage(
-          text: finalVoiceText,
-          isUser: false,
-          actionType: response.actionType,
-          isWarning: isWarning,
-        ),
-      );
+      _activeModel = result.model ?? _activeModel;
+      _messages.add(ChatMessage(
+        text: result.text,
+        isUser: false,
+        steps: result.steps,
+      ));
     });
     _scrollToBottom();
 
-    if (!_isVoiceMuted) {
-      final ttsLang = response.detectedLanguage ?? _currentLangCode;
-      await _ttsService.speak(finalVoiceText, languageCode: ttsLang);
+    final target = result.navigateTo;
+    if (target != null && widget.onNavigateRequested != null) {
+      widget.onNavigateRequested!(target);
+      return;
     }
+    if (!_isVoiceMuted && !result.isError) {
+      await _ttsService.speak(result.text, languageCode: _currentLangCode);
+    }
+  }
+
+  static const _toolLabels = {
+    'search_orders': 'بحث في الطلبيات',
+    'get_order': 'تفاصيل طلبية',
+    'search_clients': 'بحث في الزبائن',
+    'search_stock': 'بحث في المخزون',
+    'get_product_history': 'حركة المنتج',
+    'cashbox_summary': 'ملخص الصندوق',
+    'list_suppliers': 'الموردون',
+    'workshop_overview': 'نظرة عامة على الورشة',
+    'create_client': 'إضافة زبون جديد',
+    'update_order_status': 'تغيير حالة طلبية',
+    'record_client_payment': 'تسجيل دفعة زبون',
+    'open_screen': 'فتح شاشة',
+  };
+
+  /// "🔎 search_orders" shown as "🔎 بحث في الطلبيات" in the user's language.
+  String _stepLabel(String step) {
+    final lang = context.read<AppSettingsProvider>().language;
+    final space = step.indexOf(' ');
+    if (space < 0) return step;
+    final name = step.substring(space + 1);
+    final label = _toolLabels[name];
+    return label == null
+        ? step
+        : '${step.substring(0, space)} ${Localization.translate(label, lang)}';
+  }
+
+  Future<bool> _confirmAction(String title, String details) async {
+    if (!mounted) return false;
+    final lang = context.read<AppSettingsProvider>().language;
+    String tr(String key) => Localization.translate(key, lang);
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.verified_user_outlined, color: Colors.blueAccent),
+        title: Text(tr(title)),
+        content: Text(
+          '$details\n\n${tr('المساعد يطلب موافقتك قبل التنفيذ.')}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(tr('إلغاء')),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            icon: const Icon(Icons.check_rounded),
+            label: Text(tr('موافقة وتنفيذ')),
+          ),
+        ],
+      ),
+    );
+    return approved == true;
+  }
+
+  Future<void> _pickModel() async {
+    final gateway = await _gateway();
+    if (!mounted) return;
+    final lang = context.read<AppSettingsProvider>().language;
+    String tr(String key) => Localization.translate(key, lang);
+    final models = await AiAgentService(gateway: gateway).availableModels();
+    if (!mounted) return;
+    final chosen = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: Text(tr('نموذج الذكاء الاصطناعي')),
+        children: [
+          for (final model in ['', ...models])
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(dialogContext, model),
+              child: Row(
+                children: [
+                  Icon(
+                    (model.isEmpty ? _model == null : _model == model)
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      model.isEmpty ? tr('تلقائي (أقوى نموذج متاح)') : model,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    if (chosen == null) return;
+    await AiAgentService.saveModel(chosen);
+    if (mounted) setState(() => _model = chosen.isEmpty ? null : chosen);
   }
 
   /// Builds a responsive visual sound wave based on microphone amplitude
@@ -601,11 +634,7 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
                     ),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(
-                    Icons.psychology,
-                    color: Colors.white,
-                    size: 24,
-                  ),
+                  child: const Icon(Icons.psychology, color: Colors.white, size: 24),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -618,17 +647,16 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
                           fr: 'Assistant IA Vocal pour Atelier & Magasin',
                           en: 'AI Voice Assistant for Workshop & Store',
                         ),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                       ),
                       Text(
-                        _t(
-                          ar: 'كتابة صوتية لحظية • تنفيذ دقيق للأوامر • ناطق فصيح',
-                          fr: 'Transcription en direct • Exécution précise • Synthèse vocale',
-                          en: 'Real-time dictation • Precision execution • Voice speech',
-                        ),
+                        _model ??
+                            _activeModel ??
+                            _t(
+                              ar: 'يعمل على بيانات التطبيق • ينفذ بعد موافقتك',
+                              fr: 'Travaille sur les données • Agit après accord',
+                              en: 'Works on the app data • Acts after approval',
+                            ),
                         style: TextStyle(
                           fontSize: 12,
                           color: isDark ? Colors.white70 : Colors.black54,
@@ -637,19 +665,20 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
                     ],
                   ),
                 ),
+                IconButton(
+                  tooltip: _t(
+                    ar: 'نموذج الذكاء الاصطناعي',
+                    fr: 'Modèle d’IA',
+                    en: 'AI model',
+                  ),
+                  icon: const Icon(Icons.tune_rounded),
+                  onPressed: _pickModel,
+                ),
                 // Speaker Mute/Unmute
                 IconButton(
                   tooltip: _isVoiceMuted
-                      ? _t(
-                          ar: 'تفعيل مكبر الصوت',
-                          fr: 'Activer le haut-parleur',
-                          en: 'Unmute speaker',
-                        )
-                      : _t(
-                          ar: 'كتم مكبر الصوت',
-                          fr: 'Couper le son',
-                          en: 'Mute speaker',
-                        ),
+                      ? _t(ar: 'تفعيل مكبر الصوت', fr: 'Activer le haut-parleur', en: 'Unmute speaker')
+                      : _t(ar: 'كتم مكبر الصوت', fr: 'Couper le son', en: 'Mute speaker'),
                   icon: Icon(
                     _isVoiceMuted ? Icons.volume_off : Icons.volume_up,
                     color: _isVoiceMuted ? Colors.grey : Colors.blueAccent,
@@ -679,15 +708,12 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
                   final isWarning = msg.isWarning;
 
                   return Align(
-                    alignment: msg.isUser
-                        ? Alignment.centerRight
-                        : Alignment.centerLeft,
+                    alignment:
+                        msg.isUser ? Alignment.centerRight : Alignment.centerLeft,
                     child: Container(
                       margin: const EdgeInsets.symmetric(vertical: 4),
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 10,
-                      ),
+                          horizontal: 14, vertical: 10),
                       constraints: BoxConstraints(
                         maxWidth: MediaQuery.of(context).size.width * 0.75,
                       ),
@@ -695,12 +721,8 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
                         color: msg.isUser
                             ? Theme.of(context).primaryColor
                             : (isWarning
-                                  ? Colors.amber.shade900.withValues(
-                                      alpha: 0.15,
-                                    )
-                                  : (isDark
-                                        ? const Color(0xFF2A2E3D)
-                                        : const Color(0xFFF0F4F8))),
+                                ? Colors.amber.shade900.withValues(alpha: 0.15)
+                                : (isDark ? const Color(0xFF2A2E3D) : const Color(0xFFF0F4F8))),
                         border: isWarning
                             ? Border.all(color: Colors.amber, width: 1.5)
                             : null,
@@ -715,11 +737,7 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Icon(
-                                    Icons.warning_amber_rounded,
-                                    color: Colors.amber,
-                                    size: 18,
-                                  ),
+                                  const Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 18),
                                   const SizedBox(width: 6),
                                   Text(
                                     _t(
@@ -736,7 +754,7 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
                                 ],
                               ),
                             ),
-                          Text(
+                          SelectableText(
                             msg.text,
                             style: TextStyle(
                               color: msg.isUser
@@ -746,6 +764,33 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
                               height: 1.4,
                             ),
                           ),
+                          if (msg.steps.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Wrap(
+                                spacing: 4,
+                                runSpacing: 4,
+                                children: [
+                                  for (final step in msg.steps)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blueAccent.withValues(
+                                          alpha: 0.1,
+                                        ),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        _stepLabel(step),
+                                        style: const TextStyle(fontSize: 11),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
                           if (!msg.isUser)
                             Padding(
                               padding: const EdgeInsets.only(top: 6),
@@ -753,10 +798,7 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   InkWell(
-                                    onTap: () => _ttsService.speak(
-                                      msg.text,
-                                      languageCode: _currentLangCode,
-                                    ),
+                                    onTap: () => _ttsService.speak(msg.text, languageCode: _currentLangCode),
                                     child: Row(
                                       children: [
                                         const Icon(
@@ -773,9 +815,7 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
                                           ),
                                           style: TextStyle(
                                             fontSize: 11,
-                                            color: Colors.blueAccent.withValues(
-                                              alpha: 0.9,
-                                            ),
+                                            color: Colors.blueAccent.withValues(alpha: 0.9),
                                             fontWeight: FontWeight.w600,
                                           ),
                                         ),
@@ -820,10 +860,7 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
             if (_isListening)
               Container(
                 margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 8,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
                   color: Colors.red.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(12),
@@ -876,19 +913,12 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.red,
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         minimumSize: const Size(60, 32),
                       ),
                       onPressed: () => _stopListeningAndProcess(),
                       child: Text(
-                        _t(
-                          ar: 'إرسال وتنفيذ',
-                          fr: 'Envoyer & Exécuter',
-                          en: 'Send & Execute',
-                        ),
+                        _t(ar: 'إرسال وتنفيذ', fr: 'Envoyer & Exécuter', en: 'Send & Execute'),
                         style: const TextStyle(fontSize: 11),
                       ),
                     ),
@@ -916,19 +946,14 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: isDark
-                    ? const Color(0xFF262A36)
-                    : const Color(0xFFF5F5F5),
+                color: isDark ? const Color(0xFF262A36) : const Color(0xFFF5F5F5),
                 borderRadius: BorderRadius.circular(24),
               ),
               child: Row(
                 children: [
                   // Camera / Image picker button for sketch vision
                   IconButton(
-                    icon: const Icon(
-                      Icons.document_scanner_rounded,
-                      color: Colors.blueAccent,
-                    ),
+                    icon: const Icon(Icons.document_scanner_rounded, color: Colors.blueAccent),
                     tooltip: _t(
                       ar: 'قراءة مخطط يدوي بالكاميرا (Sketch-to-Order)',
                       fr: 'Scanner un croquis manuel (Sketch-to-Order)',
@@ -939,9 +964,7 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
                   // Microphone button for live STT
                   IconButton(
                     icon: Icon(
-                      _isListening
-                          ? Icons.stop_circle_rounded
-                          : Icons.mic_rounded,
+                      _isListening ? Icons.stop_circle_rounded : Icons.mic_rounded,
                       color: _isListening ? Colors.red : Colors.blueAccent,
                       size: 26,
                     ),
@@ -980,10 +1003,7 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(
-                      Icons.send_rounded,
-                      color: Colors.blueAccent,
-                    ),
+                    icon: const Icon(Icons.send_rounded, color: Colors.blueAccent),
                     onPressed: () => _handleSend(),
                     tooltip: _t(ar: 'إرسال', fr: 'Envoyer', en: 'Send'),
                   ),

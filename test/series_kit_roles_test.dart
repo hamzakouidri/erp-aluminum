@@ -165,7 +165,9 @@ void main() {
     ).filterItemsByAvailableCandidates(window: window, items: []);
 
     expect(items.single.quantity, 2);
-    expect(items.single.name, contains('\n'));
+    // The exact catalogue kit name is the title; a code line is appended
+    // only when the kit has a code distinct from its name.
+    expect(items.single.name, 'Hardware 10');
   });
 
   test('mixed drawing resolves each series kit independently', () async {
@@ -219,7 +221,9 @@ void main() {
     );
   });
 
-  test('three sliding leaves use one kit and four alignment squares', () async {
+  // One sliding kit serves at most two leaves (3 leaves => 2 kits), and the
+  // alignment square is an opening-sash corner, never a sliding supplement.
+  test('three sliding leaves use two kits and no alignment squares', () async {
     final db = fixtures.RuleDatabase();
     db.rules
       ..clear()
@@ -253,13 +257,12 @@ void main() {
       database: db,
     ).filterItemsByAvailableCandidates(window: window, items: []);
     final kit = items.singleWhere((item) => item.roleKey == 'sliding_kit');
-    final alignment = items.singleWhere(
-      (item) => item.roleKey == 'alignment_square',
-    );
 
-    expect(kit.quantity, 1);
-    expect(alignment.quantity, 4);
-    expect(alignment.unit, 'حبة');
+    expect(kit.quantity, 2);
+    expect(
+      items.where((item) => item.roleKey == 'alignment_square'),
+      isEmpty,
+    );
   });
 
   test('two sliding leaves do not add standalone alignment squares', () async {

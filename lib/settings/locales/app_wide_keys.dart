@@ -57,14 +57,6 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.english:
         'Incomplete setup: open Firebase Console -> Authentication -> Get Started, then enable Email/Password.',
   },
-  'بيانات الدخول غير صحيحة، يرجى التأكد من البريد وكلمة المرور.': {
-    AppLanguage.arabic:
-        'بيانات الدخول غير صحيحة، يرجى التأكد من البريد وكلمة المرور.',
-    AppLanguage.french:
-        'Identifiants incorrects, veuillez vérifier l’e-mail et le mot de passe.',
-    AppLanguage.english:
-        'Incorrect login details. Please check the email and password.',
-  },
   'التطبيق غير متصل بالإنترنت، يرجى فحص الإنترنت.': {
     AppLanguage.arabic: 'التطبيق غير متصل بالإنترنت، يرجى فحص الإنترنت.',
     AppLanguage.french:
@@ -86,13 +78,6 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
         'Aucun compte trouvé avec cet e-mail. Veuillez le vérifier.',
     AppLanguage.english:
         'No account was found with this email. Please check it.',
-  },
-  'هذا البريد الإلكتروني مسجل لدينا بالفعل، جرب تسجيل الدخول.': {
-    AppLanguage.arabic:
-        'هذا البريد الإلكتروني مسجل لدينا بالفعل، جرب تسجيل الدخول.',
-    AppLanguage.french:
-        'Cet e-mail est déjà enregistré. Essayez de vous connecter.',
-    AppLanguage.english: 'This email is already registered. Try logging in.',
   },
   'تم حفظ تقرير السلع بنجاح': {
     AppLanguage.arabic: 'تم حفظ تقرير السلع بنجاح',
@@ -122,13 +107,6 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.arabic: 'إجمالي القياس الصافي: \$',
     AppLanguage.french: 'Mesure nette totale : \$',
     AppLanguage.english: 'Total net measurement: \$',
-  },
-  'البريد الإلكتروني غير صالح، يرجى كتابته بشكل صحيح.': {
-    AppLanguage.arabic: 'البريد الإلكتروني غير صالح، يرجى كتابته بشكل صحيح.',
-    AppLanguage.french:
-        'L’adresse e-mail est invalide. Veuillez la saisir correctement.',
-    AppLanguage.english:
-        'The email address is invalid. Please enter it correctly.',
   },
   'التحقق من مطابقة المقاطع الواردة مع كتالوج الألمنيوم المحلي في قاعدة البيانات:': {
     AppLanguage.arabic:
@@ -189,13 +167,6 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.french: 'Facture N° : \$',
     AppLanguage.english: 'Invoice No.: \$',
   },
-  'كلمة المرور ضعيفة جداً، يرجى استخدام 6 أحرف أو أكثر.': {
-    AppLanguage.arabic: 'كلمة المرور ضعيفة جداً، يرجى استخدام 6 أحرف أو أكثر.',
-    AppLanguage.french:
-        'Le mot de passe est trop faible. Utilisez au moins 6 caractères.',
-    AppLanguage.english:
-        'The password is too weak. Please use 6 characters or more.',
-  },
   'لا يمكن فتح التطبيق. يرجى التأكد من تثبيت واتساب.': {
     AppLanguage.arabic: 'لا يمكن فتح التطبيق. يرجى التأكد من تثبيت واتساب.',
     AppLanguage.french:
@@ -241,21 +212,6 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.arabic: 'المتبقي: \$',
     AppLanguage.french: 'Restant : \$',
     AppLanguage.english: 'Remaining: \$',
-  },
-  'تم تسجيل العملية بنجاح وخصمها من الصندوق': {
-    AppLanguage.arabic: 'تم تسجيل العملية بنجاح وخصمها من الصندوق',
-    AppLanguage.french:
-        'Opération enregistrée avec succès et déduite de la caisse',
-    AppLanguage.english:
-        'Transaction saved successfully and deducted from the cash register',
-  },
-  'للتجديد، يرجى الدفع عبر بريدي موب (BaridiMob) ثم إرسال الوصل عبر واتساب.': {
-    AppLanguage.arabic:
-        'للتجديد، يرجى الدفع عبر بريدي موب (BaridiMob) ثم إرسال الوصل عبر واتساب.',
-    AppLanguage.french:
-        'Pour renouveler, payez via BaridiMob puis envoyez le reçu par WhatsApp.',
-    AppLanguage.english:
-        'To renew, please pay via BaridiMob then send the receipt by WhatsApp.',
   },
   'هل أنت متأكد من رغبتك في إلغاء عملية الشراء للفاتورة رقم: \$invoiceNumber؟ \\nسيؤدي هذا إلى تجميد الفاتورة واستبعاد قيمتها من إجمالي الإحصائيات.': {
     AppLanguage.arabic:
@@ -473,11 +429,6 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.french: 'Choisir le caisson',
     AppLanguage.english: 'Choose box',
   },
-  'اختر الطلبية': {
-    AppLanguage.arabic: 'اختر الطلبية',
-    AppLanguage.french: 'Choisir la commande',
-    AppLanguage.english: 'Choose order',
-  },
   'اختر الظلفة (Sash)': {
     AppLanguage.arabic: 'اختر الضلفة',
     AppLanguage.french: 'Choisir l’ouvrant',
@@ -592,11 +543,6 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
         'Veuillez saisir des valeurs valides pour la hauteur et la largeur.',
     AppLanguage.english: 'Please enter valid height and width values.',
   },
-  'الزبائن': {
-    AppLanguage.arabic: 'الزبائن',
-    AppLanguage.french: 'Clients',
-    AppLanguage.english: 'Customers',
-  },
   'الزبون والمشروع': {
     AppLanguage.arabic: 'الزبون والمشروع',
     AppLanguage.french: 'Client et projet',
@@ -627,11 +573,6 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.french: 'Saisi par',
     AppLanguage.english: 'Entered by',
   },
-  'العدد': {
-    AppLanguage.arabic: 'العدد',
-    AppLanguage.french: 'Nombre',
-    AppLanguage.english: 'Count',
-  },
   'العنصر داخل النطاق': {
     AppLanguage.arabic: 'العنصر داخل النطاق',
     AppLanguage.french: 'Élément dans la portée',
@@ -641,11 +582,6 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.arabic: 'العنوان:',
     AppLanguage.french: 'Adresse :',
     AppLanguage.english: 'Address:',
-  },
-  'الكمية الإجمالية': {
-    AppLanguage.arabic: 'الكمية الإجمالية',
-    AppLanguage.french: 'Quantité totale',
-    AppLanguage.english: 'Total quantity',
   },
   'الكمية الكلية:': {
     AppLanguage.arabic: 'الكمية الكلية:',
@@ -746,11 +682,6 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.arabic: 'بدون بيان',
     AppLanguage.french: 'Non indiqué',
     AppLanguage.english: 'Not specified',
-  },
-  'تأكيد': {
-    AppLanguage.arabic: 'تأكيد',
-    AppLanguage.french: 'Confirmer',
-    AppLanguage.english: 'Confirm',
   },
   'تأكيد الإرجاع': {
     AppLanguage.arabic: 'تأكيد الإرجاع',
@@ -908,11 +839,6 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.english:
         'Save a local backup as an external file or import one.',
   },
-  'خطأ في حفظ الملف': {
-    AppLanguage.arabic: 'خطأ في حفظ الملف',
-    AppLanguage.french: 'Erreur lors de l’enregistrement du fichier',
-    AppLanguage.english: 'Error saving file',
-  },
   'خطة جديدة': {
     AppLanguage.arabic: 'خطة جديدة',
     AppLanguage.french: 'Nouveau plan',
@@ -948,11 +874,6 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.arabic: 'رفع الكتالوج الآن',
     AppLanguage.french: 'Téléverser le catalogue maintenant',
     AppLanguage.english: 'Upload catalog now',
-  },
-  'رقم الطلبية:': {
-    AppLanguage.arabic: 'رقم الطلبية:',
-    AppLanguage.french: 'N° commande :',
-    AppLanguage.english: 'Order No.:',
   },
   'سجل عمليات الصندوق': {
     AppLanguage.arabic: 'سجل عمليات الصندوق',
@@ -1274,11 +1195,6 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.arabic: 'السرعة الحالية:',
     AppLanguage.french: 'Vitesse actuelle :',
     AppLanguage.english: 'Current speed:',
-  },
-  'السعر: ': {
-    AppLanguage.arabic: 'السعر: ',
-    AppLanguage.french: 'Prix : ',
-    AppLanguage.english: 'Price: ',
   },
   'السكك (Coulisses) — سعر لكل نوع': {
     AppLanguage.arabic: 'السكك (Coulisses) — سعر لكل نوع',
@@ -1763,11 +1679,6 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
         'Aucun type de lame. Ajoutez-en depuis les paramètres du volet.',
     AppLanguage.english: 'No blade types. Add them from shutter settings.',
   },
-  'لا توجد إطارات متوفرة لهذه السلسلة': {
-    AppLanguage.arabic: 'لا توجد إطارات متوفرة لهذه السلسلة',
-    AppLanguage.french: 'Aucun cadre disponible pour cette gamme',
-    AppLanguage.english: 'No frames available for this series',
-  },
   'لا توجد بيانات.': {
     AppLanguage.arabic: 'لا توجد بيانات.',
     AppLanguage.french: 'Aucune donnée.',
@@ -1926,11 +1837,6 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.french: 'Dépense générale non liée à une facture',
     AppLanguage.english: 'General expense not linked to an invoice',
   },
-  'معلومات الورشة': {
-    AppLanguage.arabic: 'معلومات الورشة',
-    AppLanguage.french: 'Informations de l’atelier',
-    AppLanguage.english: 'Workshop information',
-  },
   'مقاس الصندوق': {
     AppLanguage.arabic: 'مقاس الصندوق',
     AppLanguage.french: 'Dimension du caisson',
@@ -2020,11 +1926,6 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.arabic: 'نوافذ مصغرة',
     AppLanguage.french: 'Fenêtres miniatures',
     AppLanguage.english: 'Mini windows',
-  },
-  'نوع الشفرة': {
-    AppLanguage.arabic: 'نوع الشفرة',
-    AppLanguage.french: 'Type de lame',
-    AppLanguage.english: 'Blade type',
   },
   'نوع الناموسية (Subtype)': {
     AppLanguage.arabic: 'نوع الناموسية (Subtype)',
@@ -2271,11 +2172,6 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.french: 'Copie de la mesure du cadre précédent : activée',
     AppLanguage.english: 'Copy previous frame size: enabled',
   },
-  'مسح الرسم': {
-    AppLanguage.arabic: 'مسح الرسم',
-    AppLanguage.french: 'Effacer le dessin',
-    AppLanguage.english: 'Clear drawing',
-  },
   'شفاف': {
     AppLanguage.arabic: 'شفاف',
     AppLanguage.french: 'Clair',
@@ -2436,11 +2332,6 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.french: 'Simple',
     AppLanguage.english: 'Simple',
   },
-  'حسناً': {
-    AppLanguage.arabic: 'حسناً',
-    AppLanguage.french: 'D’accord',
-    AppLanguage.english: 'OK',
-  },
   'تعديل عرض الخلية الداخلية': {
     AppLanguage.arabic: 'تعديل عرض الخلية الداخلية',
     AppLanguage.french: 'Modifier la largeur de la cellule intérieure',
@@ -2531,16 +2422,6 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.french: 'le bas',
     AppLanguage.english: 'bottom',
   },
-  'اليسار': {
-    AppLanguage.arabic: 'اليسار',
-    AppLanguage.french: 'la gauche',
-    AppLanguage.english: 'left',
-  },
-  'اليمين': {
-    AppLanguage.arabic: 'اليمين',
-    AppLanguage.french: 'la droite',
-    AppLanguage.english: 'right',
-  },
   'اليمنى': {
     AppLanguage.arabic: 'اليمنى',
     AppLanguage.french: 'droite',
@@ -2629,11 +2510,6 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
     AppLanguage.french: 'Couleurs',
     AppLanguage.english: 'Colors',
   },
-  'تأكيد الحذف': {
-    AppLanguage.arabic: 'تأكيد الحذف',
-    AppLanguage.french: 'Confirmer la suppression',
-    AppLanguage.english: 'Confirm deletion',
-  },
   'سيتم أرشفة هذا اللون (إخفاؤه) ولن يتم حذفه نهائياً حفاظاً على سلامة بيانات المخزون والفواتير السابقة المرتبطة به.': {
     AppLanguage.arabic:
         'سيتم أرشفة هذا اللون (إخفاؤه) ولن يتم حذفه نهائياً حفاظاً على سلامة بيانات المخزون والفواتير السابقة المرتبطة به.',
@@ -2641,19 +2517,6 @@ const Map<String, Map<AppLanguage, String>> appWideKeys = {
         'Cette couleur sera archivée (masquée) et ne sera pas supprimée définitivement afin de préserver les données de stock et les anciennes factures associées.',
     AppLanguage.english:
         'This color will be archived (hidden), not permanently deleted, to preserve stock data and related previous invoices.',
-  },
-  'موافق، قم بالأرشفة': {
-    AppLanguage.arabic: 'موافق، قم بالأرشفة',
-    AppLanguage.french: 'OK, archiver',
-    AppLanguage.english: 'OK, archive',
-  },
-  'سيتم أرشفة هذا العنصر (إخفاؤه) ولن يتم حذفه نهائياً حفاظاً على سلامة بيانات المخزون والفواتير السابقة المرتبطة به.': {
-    AppLanguage.arabic:
-        'سيتم أرشفة هذا العنصر (إخفاؤه) ولن يتم حذفه نهائياً حفاظاً على سلامة بيانات المخزون والفواتير السابقة المرتبطة به.',
-    AppLanguage.french:
-        'Cet élément sera archivé (masqué) et ne sera pas supprimé définitivement afin de préserver les données de stock et les anciennes factures associées.',
-    AppLanguage.english:
-        'This item will be archived (hidden), not permanently deleted, to preserve stock data and related previous invoices.',
   },
   'اسم السلسلة (مثال: سلسلة 45)': {
     AppLanguage.arabic: 'اسم السلسلة (مثال: سلسلة 45)',

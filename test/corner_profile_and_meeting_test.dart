@@ -106,6 +106,9 @@ void main() {
       );
 
       model.activeSeries = openingSeries;
+      // The current frame carries a cover; a frame already without cover
+      // needs no switch and would yield no compatible frame.
+      model.frameOverride = openingSeries.sections.first.toMap();
       model.hasSideCovers = true;
       model.profileAngleMode = 1;
       model.profileAngleJunctionsDisabled = false;
@@ -127,12 +130,14 @@ void main() {
       model.zones = [
         WindowZone(
           id: 'zone_left',
-          boundary: const Rect.fromLTWH(0, 0, 1000, 1200),
+          // Two physical frames: each glazed zone sits inside its own frame
+          // profiles, so the frames meet at one junction.
+          boundary: const Rect.fromLTRB(40, 40, 960, 1160),
           content: ZoneContent.singleSash,
         ),
         WindowZone(
           id: 'zone_right',
-          boundary: const Rect.fromLTWH(1000, 0, 1000, 1200),
+          boundary: const Rect.fromLTRB(1040, 40, 1960, 1160),
           content: ZoneContent.slidingSash,
         ),
       ];
@@ -197,6 +202,9 @@ void main() {
 
       model.activeSeries = openingSeries;
       model.activeSlidingSeries = slidingSeries;
+      model.coupleFrames = true;
+      model.frameOverride = openingSeries.sections.first.toMap();
+      model.slidingFrameOverride = slidingSeries.sections.first.toMap();
       model.hasSideCovers = true;
       model.profileAngleMode = 1;
       model.profileAngleJunctionsDisabled = false;

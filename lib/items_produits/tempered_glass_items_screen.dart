@@ -74,6 +74,7 @@ class _TemperedGlassItemsScreenState extends State<TemperedGlassItemsScreen> {
       'fixation' => _tr('التثبيت والمشابك', 'Fixations & Pinces', 'Clamps & Fixations'),
       'joint' => _tr('الجوانات والعوازل', 'Joints d\'étanchéité', 'Seals & Gaskets'),
       'serrure' => _tr('الأقفال والمزاليج', 'Serrures & Verrous', 'Locks'),
+      'faconnage' => _tr('الخدمات والتشطيب', 'Façonnage & Sablage', 'Finishing services'),
       _ => _tr('أخرى', 'Autres', 'Others'),
     };
   }
@@ -86,6 +87,7 @@ class _TemperedGlassItemsScreenState extends State<TemperedGlassItemsScreen> {
       'fixation' => Icons.hardware_outlined,
       'joint' => Icons.linear_scale_outlined,
       'serrure' => Icons.lock_outline,
+      'faconnage' => Icons.auto_fix_high_outlined,
       _ => Icons.category_outlined,
     };
   }
@@ -226,7 +228,7 @@ class _TemperedGlassItemsScreenState extends State<TemperedGlassItemsScreen> {
                             labelText: _tr('الفئة', 'Catégorie', 'Category'),
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                           ),
-                          items: const ['poignee', 'charniere', 'profile', 'fixation', 'joint', 'serrure', 'autre']
+                          items: const ['poignee', 'charniere', 'profile', 'fixation', 'joint', 'serrure', 'faconnage', 'autre']
                               .map((c) => DropdownMenuItem(value: c, child: Text(_categoryLabel(c))))
                               .toList(),
                           onChanged: (v) => setDlg(() => category = v ?? 'poignee'),
@@ -262,6 +264,7 @@ class _TemperedGlassItemsScreenState extends State<TemperedGlassItemsScreen> {
                           items: [
                             DropdownMenuItem(value: 'piece', child: Text(_tr('قطعة (Pièce)', 'Pièce', 'Piece'))),
                             DropdownMenuItem(value: 'meter', child: Text(_tr('متر طولي (m)', 'Mètre linéaire', 'Linear meter'))),
+                            DropdownMenuItem(value: 'sqm', child: Text(_tr('متر مربع (m²)', 'Mètre carré (m²)', 'Square meter (m²)'))),
                           ],
                           onChanged: (v) => setDlg(() => unit = v ?? 'piece'),
                         ),
@@ -478,6 +481,7 @@ class _TemperedGlassItemsScreenState extends State<TemperedGlassItemsScreen> {
                       'fixation',
                       'joint',
                       'serrure',
+                      'faconnage',
                     ].map((cat) {
                       final isSelected = _selectedCategory == cat;
                       return Padding(
@@ -635,7 +639,11 @@ class _TemperedGlassItemsScreenState extends State<TemperedGlassItemsScreen> {
                                         ),
                                       ),
                                       Text(
-                                        unit == 'meter' ? _tr('للمتر', '/m', '/m') : _tr('للقطعة', '/pièce', '/pc'),
+                                        unit == 'meter'
+                                            ? _tr('للمتر', '/m', '/m')
+                                            : unit == 'sqm'
+                                                ? _tr('للمتر المربع', '/m²', '/m²')
+                                                : _tr('للقطعة', '/pièce', '/pc'),
                                         style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                                       ),
                                       if (cost > 0)
