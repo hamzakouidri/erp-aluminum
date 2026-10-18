@@ -6723,6 +6723,33 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
         ),
         const PopupMenuDivider(height: 8),
         PopupMenuItem<String>(
+          value: 'divide_zones',
+          height: 38,
+          child: Row(
+            children: [
+              Icon(
+                Icons.view_agenda_outlined,
+                size: 19,
+                color: Colors.teal.shade700,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _tr(
+                    'تقسيم الواجهة إلى مناطق...',
+                    'Diviser en zones...',
+                    'Divide into zones...',
+                  ),
+                  style: TextStyle(
+                    color: Colors.teal.shade800,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
           value: 'add_region',
           height: 38,
           child: Row(
@@ -6805,6 +6832,11 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     if (selected == 'add_region') {
       setState(() => _sablageDrawingActive = false);
       await _addSablageRegion();
+      return;
+    }
+    if (selected == 'divide_zones') {
+      setState(() => _sablageDrawingActive = false);
+      await _divideSablageZones();
       return;
     }
     if (selected == 'draw_bands') {
@@ -7280,6 +7312,27 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // Several zones at once (e.g. bands at the top and the
+                  // bottom, full frosting in the middle).
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: TextButton.icon(
+                      icon: const Icon(Icons.view_agenda_outlined, size: 18),
+                      label: Text(
+                        _tr(
+                          'تقسيم الواجهة إلى عدة مناطق...',
+                          'Diviser la face en plusieurs zones...',
+                          'Divide the glass into several zones...',
+                        ),
+                      ),
+                      onPressed: () {
+                        Navigator.pop(dialogContext);
+                        Future.microtask(() {
+                          if (mounted) _divideSablageZones();
+                        });
+                      },
+                    ),
+                  ),
                   DropdownButtonFormField<_SablageRegionType>(
                     value: type,
                     decoration: InputDecoration(
@@ -7582,6 +7635,318 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
       _sablageMode = _SablageMode.decorative;
       _sablageRegions.add(region);
       _sablageRegions.sort((a, b) => a.startMm.compareTo(b.startMm));
+    });
+  }
+
+  /// Divides the glass, from top to bottom, into consecutive frosting
+  /// zones (clear, full or bands), replacing the current zones. One zone may
+  /// leave its height empty to take what the others leave.
+  Future<void> _divideSablageZones() async {
+    final total = _overallHeightMm;
+    final zones = <({
+      ValueNotifier<_SablageRegionType> type,
+      TextEditingController height,
+      TextEditingController band,
+      TextEditingController gap,
+    })>[];
+    void addZone(_SablageRegionType type, String height) => zones.add((
+      type: ValueNotifier(type),
+      height: TextEditingController(text: height),
+      band: TextEditingController(text: _sablageBandWidthController.text),
+      gap: TextEditingController(
+        text: _sablageTransparentWidthController.text,
+      ),
+    ));
+    void preset() {
+      zones.clear();
+      addZone(_SablageRegionType.bands, '400');
+      addZone(_SablageRegionType.full, '');
+      addZone(_SablageRegionType.bands, '400');
+    }
+
+    preset();
+    String? error;
+    final regions = await showDialog<List<_SablageRegion>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          String typeLabel(_SablageRegionType type) => switch (type) {
+            _SablageRegionType.clear => _tr('شفاف', 'Transparent', 'Clear'),
+            _SablageRegionType.full => _tr(
+              'سابلاج كامل',
+              'Sablage plein',
+              'Full frosting',
+            ),
+            _SablageRegionType.bands => _tr(
+              'سابلاج بخطوط',
+              'Sablage par bandes',
+              'Striped frosting',
+            ),
+          };
+
+          void apply() {
+            final heights = [
+              for (final zone in zones)
+                zone.height.text.trim().isEmpty
+                    ? null
+                    : _parseMillimeters(zone.height.text),
+            ];
+            final ranges = splitGlassHeight(total, heights);
+            if (ranges == null) {
+              setDialogState(
+                () => error = _tr(
+                  'مجموع الارتفاعات (مع منطقة واحدة على الأكثر بلا ارتفاع) يجب ألا يتجاوز ارتفاع الزجاج ${total.toStringAsFixed(0)} مم، وكل ارتفاع أكبر من 0.',
+                  'La somme des hauteurs (une seule zone sans hauteur au plus) ne doit pas dépasser la hauteur du verre (${total.toStringAsFixed(0)} mm), et chaque hauteur doit être supérieure à 0.',
+                  'The heights (at most one zone without a height) must not exceed the glass height (${total.toStringAsFixed(0)} mm), and each must be above 0.',
+                ),
+              );
+              return;
+            }
+            final result = <_SablageRegion>[];
+            for (var i = 0; i < zones.length; i++) {
+              final range = ranges[i];
+              if (range.endMm - range.startMm <= 0) continue;
+              final band = _parseMillimeters(zones[i].band.text) ?? 40;
+              final gap = _parseMillimeters(zones[i].gap.text) ?? 40;
+              if (zones[i].type.value == _SablageRegionType.bands &&
+                  band <= 0) {
+                setDialogState(
+                  () => error = _tr(
+                    'عرض الخط الصبغي يجب أن يكون أكبر من 0.',
+                    'La largeur de bande sablée doit être supérieure à 0.',
+                    'Frosted band width must be greater than 0.',
+                  ),
+                );
+                return;
+              }
+              result.add(
+                _SablageRegion(
+                  type: zones[i].type.value,
+                  startMm: range.startMm,
+                  endMm: range.endMm,
+                  fromBottom: false,
+                  opaqueBandMm: band,
+                  clearBandMm: gap,
+                ),
+              );
+            }
+            Navigator.pop(dialogContext, result);
+          }
+
+          InputDecoration mm(String label) => InputDecoration(
+            labelText: label,
+            suffixText: 'mm',
+            isDense: true,
+            border: const OutlineInputBorder(),
+          );
+
+          return AlertDialog(
+            title: Text(
+              _tr(
+                'تقسيم الواجهة إلى مناطق (من الأعلى إلى الأسفل)',
+                'Diviser la face en zones (de haut en bas)',
+                'Divide the glass into zones (top to bottom)',
+              ),
+            ),
+            content: SizedBox(
+              width: 480,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      _tr(
+                        'ارتفاع الزجاج ${total.toStringAsFixed(0)} مم. اترك ارتفاع منطقة واحدة فارغًا لتأخذ الباقي.',
+                        'Hauteur du verre ${total.toStringAsFixed(0)} mm. Laissez la hauteur d\'une zone vide pour qu\'elle prenne le reste.',
+                        'Glass height ${total.toStringAsFixed(0)} mm. Leave one zone\'s height empty to take the rest.',
+                      ),
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: TextButton.icon(
+                        icon: const Icon(Icons.auto_awesome_outlined, size: 18),
+                        label: Text(
+                          _tr(
+                            'شرائط أعلى وأسفل وسابلاج كامل في الوسط',
+                            'Bandes en haut et en bas, sablage plein au milieu',
+                            'Bands at top and bottom, full frosting in the middle',
+                          ),
+                        ),
+                        onPressed: () => setDialogState(() {
+                          preset();
+                          error = null;
+                        }),
+                      ),
+                    ),
+                    for (var i = 0; i < zones.length; i++)
+                      Card(
+                        margin: const EdgeInsets.symmetric(vertical: 4),
+                        child: Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 12,
+                                    child: Text(
+                                      '${i + 1}',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: DropdownButtonFormField<
+                                      _SablageRegionType
+                                    >(
+                                      value: zones[i].type.value,
+                                      isDense: true,
+                                      decoration: InputDecoration(
+                                        labelText: _tr(
+                                          'النمط',
+                                          'Motif',
+                                          'Pattern',
+                                        ),
+                                        border: const OutlineInputBorder(),
+                                        isDense: true,
+                                      ),
+                                      items: _SablageRegionType.values
+                                          .map(
+                                            (t) => DropdownMenuItem(
+                                              value: t,
+                                              child: Text(typeLabel(t)),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: (v) => setDialogState(() {
+                                        zones[i].type.value =
+                                            v ?? zones[i].type.value;
+                                        error = null;
+                                      }),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  SizedBox(
+                                    width: 110,
+                                    child: TextField(
+                                      controller: zones[i].height,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      decoration: mm(
+                                        _tr('الارتفاع', 'Hauteur', 'Height'),
+                                      ).copyWith(
+                                        hintText: _tr('الباقي', 'Reste', 'Rest'),
+                                      ),
+                                      onChanged: (_) =>
+                                          setDialogState(() => error = null),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    tooltip: _tr('حذف', 'Supprimer', 'Delete'),
+                                    icon: const Icon(
+                                      Icons.delete_outline,
+                                      color: Colors.red,
+                                    ),
+                                    onPressed: zones.length <= 1
+                                        ? null
+                                        : () => setDialogState(() {
+                                            zones.removeAt(i);
+                                            error = null;
+                                          }),
+                                  ),
+                                ],
+                              ),
+                              if (zones[i].type.value ==
+                                  _SablageRegionType.bands) ...[
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextField(
+                                        controller: zones[i].band,
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
+                                        decoration: mm(
+                                          _tr(
+                                            'عرض الخط الصبغي',
+                                            'Bande sablée',
+                                            'Frosted band',
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: TextField(
+                                        controller: zones[i].gap,
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
+                                        decoration: mm(
+                                          _tr(
+                                            'عرض الفراغ الشفاف',
+                                            'Bande transparente',
+                                            'Clear gap',
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: TextButton.icon(
+                        icon: const Icon(Icons.add),
+                        label: Text(
+                          _tr('إضافة منطقة', 'Ajouter une zone', 'Add zone'),
+                        ),
+                        onPressed: () => setDialogState(() {
+                          addZone(_SablageRegionType.clear, '');
+                          error = null;
+                        }),
+                      ),
+                    ),
+                    if (error != null)
+                      Text(error!, style: const TextStyle(color: Colors.red)),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text(_tr('إلغاء', 'Annuler', 'Cancel')),
+              ),
+              FilledButton(
+                onPressed: apply,
+                child: Text(_tr('تطبيق', 'Appliquer', 'Apply')),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (regions == null || !mounted) return;
+    _pushHistory();
+    setState(() {
+      _sablageMode = _SablageMode.decorative;
+      _sablageBands.clear();
+      _sablageRegions
+        ..clear()
+        ..addAll(regions);
     });
   }
 
@@ -13670,3 +14035,26 @@ List<TemperedHoleIssue> findTemperedHoleIssues({
   return issues;
 }
 
+/// Splits a glass of [totalMm] into consecutive zones from the top. Each
+/// entry of [heightsMm] is a zone height; at most one may be null to take
+/// what the others leave. Returns null when a height is not positive, when
+/// more than one zone has no height, or when the heights exceed the glass.
+/// Without a null entry, the glass below the last zone stays as it is.
+List<({double startMm, double endMm})>? splitGlassHeight(
+  double totalMm,
+  List<double?> heightsMm,
+) {
+  if (heightsMm.where((h) => h == null).length > 1) return null;
+  if (heightsMm.any((h) => h != null && h <= 0)) return null;
+  final fixed = heightsMm.whereType<double>().fold(0.0, (a, b) => a + b);
+  if (fixed > totalMm + 0.01) return null;
+  final rest = totalMm - fixed;
+  final ranges = <({double startMm, double endMm})>[];
+  var top = 0.0;
+  for (final height in heightsMm) {
+    final h = height ?? rest;
+    ranges.add((startMm: top, endMm: top + h));
+    top += h;
+  }
+  return ranges;
+}
