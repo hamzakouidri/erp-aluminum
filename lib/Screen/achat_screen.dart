@@ -1783,6 +1783,8 @@ class _AchatScreenState extends State<AchatScreen>
                         showCloseIcon: true,
                         closeIconColor: Colors.white70,
                         dismissDirection: DismissDirection.horizontal,
+                        // An action keeps a SnackBar open until it is dismissed.
+                        persist: false,
                         action: SnackBarAction(
                           label: Localization.translate('استرجاع', lang),
                           textColor: Colors.amberAccent,

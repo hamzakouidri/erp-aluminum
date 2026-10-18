@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 /// Where a tempered glass accessory is mounted.
@@ -234,4 +235,53 @@ class SlidingGlassProfiles {
   /// Gasket between the profiles and the fixed glass: wherever the glass
   /// enters a profile (both U channels and the rail along the fixed glass).
   double get profileGasketMm => uChannelMm + fixedWidthMm;
+}
+
+/// The price of an accessory in one of its colours (chrome, matt black,
+/// gold, brushed stainless...).
+class GlassItemColorPrice {
+  const GlassItemColorPrice({required this.color, required this.price});
+
+  final String color;
+  final double price;
+
+  Map<String, dynamic> toMap() => {'color': color, 'price': price};
+}
+
+/// Reads the `color_prices` column of a TemperedGlassItems row: a JSON list
+/// of {color, price}. Rows without a colour or a price are skipped.
+List<GlassItemColorPrice> parseColorPrices(Object? value) {
+  final text = value?.toString().trim() ?? '';
+  if (text.isEmpty) return const [];
+  try {
+    final decoded = jsonDecode(text);
+    if (decoded is! List) return const [];
+    return [
+      for (final entry in decoded)
+        if (entry is Map &&
+            (entry['color']?.toString().trim().isNotEmpty ?? false) &&
+            entry['price'] is num)
+          GlassItemColorPrice(
+            color: entry['color'].toString().trim(),
+            price: (entry['price'] as num).toDouble(),
+          ),
+    ];
+  } catch (_) {
+    return const [];
+  }
+}
+
+String encodeColorPrices(List<GlassItemColorPrice> prices) =>
+    prices.isEmpty ? '' : jsonEncode([for (final p in prices) p.toMap()]);
+
+/// The price of [item] in [color]: its colour price when it has one, else
+/// its base price.
+double glassItemPriceForColor(Map<String, dynamic> item, String color) {
+  final base = (item['price'] as num?)?.toDouble() ?? 0.0;
+  if (color.trim().isEmpty) return base;
+  final wanted = color.trim().toLowerCase();
+  for (final entry in parseColorPrices(item['color_prices'])) {
+    if (entry.color.toLowerCase() == wanted) return entry.price;
+  }
+  return base;
 }

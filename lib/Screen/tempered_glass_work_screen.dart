@@ -344,6 +344,11 @@ class TemperedGlassWorkScreen extends StatefulWidget {
       fabricationOnly: fabricationOnly,
       showSlidingProfiles:
           payload['slidingRule'] != null && payload['showProfiles'] != false,
+      dimensionReferenceLabel:
+          payload['holeDimensionModeLabel']?.toString() ??
+          (payload['holeDimensionMode'] == 'center'
+              ? "Cotes des trous : à l'axe du trou"
+              : 'Cotes des trous : au bord du trou'),
       gasketEdges: {
         if (payload['gasketItems'] is Map)
           for (final e in (payload['gasketItems'] as Map).entries)
@@ -458,6 +463,26 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
 
   /// Gasket chosen for each [GlassGasketLocation].
   final Map<String, int> _gasketItems = {};
+
+  /// Colour of the hardware (handles, hinges, profiles, gaskets...); each
+  /// accessory is priced in this colour when it has a price for it.
+  String _hardwareColor = '';
+
+  double _colorPrice(Map<String, dynamic> item, double fallback) =>
+      item['price'] is num
+      ? glassItemPriceForColor(item, _hardwareColor)
+      : fallback;
+
+  /// Every colour some catalogue accessory has a price for.
+  List<String> get _hardwareColors {
+    final colors = <String, String>{};
+    for (final item in _catalogAccessories) {
+      for (final entry in parseColorPrices(item['color_prices'])) {
+        colors.putIfAbsent(entry.color.toLowerCase(), () => entry.color);
+      }
+    }
+    return colors.values.toList()..sort();
+  }
 
   /// A kit fixes the drillings, hinges and accessories of its glass: nothing
   /// can be added to it, moved or removed. Free drawing (no kit) allows it.
@@ -904,6 +929,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
             ?.toDouble() ??
         10.0;
     _showProfiles = payload['showProfiles'] != false;
+    _hardwareColor = payload['hardwareColor']?.toString() ?? '';
     for (final entry in [
       (payload['profileItems'], _profileItems),
       (payload['gasketItems'], _gasketItems),
@@ -1053,6 +1079,20 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
       _ => _tr('ناعم', 'Poli', 'Smooth'),
     };
   }
+
+  /// Where every hole distance on the drawing and the sheets is measured.
+  String _holeDimensionReferenceLabel() =>
+      _holeDimensionMode == _HoleDimensionMode.center
+      ? _tr(
+          'أبعاد الثقوب: من مركز الثقب',
+          "Cotes des trous : à l'axe du trou",
+          'Hole distances: to the hole centre',
+        )
+      : _tr(
+          'أبعاد الثقوب: من حافة الثقب',
+          'Cotes des trous : au bord du trou',
+          'Hole distances: to the hole edge',
+        );
 
   String _glassTypeLabel(String value) {
     return switch (value) {
@@ -3448,6 +3488,8 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                       content: Text(
                         _tr('تم حذف الثقب', 'Trou supprimé', 'Hole deleted'),
                       ),
+                      // An action keeps a SnackBar open until it is dismissed.
+                      persist: false,
                       action: SnackBarAction(
                         label: _tr('تراجع', 'Annuler', 'Undo'),
                         onPressed: _undo,
@@ -3865,6 +3907,8 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
             '4 corner holes applied successfully',
           ),
         ),
+        // An action keeps a SnackBar open until it is dismissed.
+        persist: false,
         action: SnackBarAction(
           label: _tr('تراجع', 'Annuler', 'Undo'),
           onPressed: _undo,
@@ -3896,6 +3940,8 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                 'Hole deleted',
               ),
             ),
+            // An action keeps a SnackBar open until it is dismissed.
+            persist: false,
             action: SnackBarAction(
               label: _tr('تراجع', 'Annuler', 'Undo'),
               onPressed: _undo,
@@ -3923,6 +3969,8 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
               content: Text(
                 _tr('تم حذف المفصلة', 'Charnière supprimée', 'Hinge deleted'),
               ),
+              // An action keeps a SnackBar open until it is dismissed.
+              persist: false,
               action: SnackBarAction(
                 label: _tr('تراجع', 'Annuler', 'Undo'),
                 onPressed: _undo,
@@ -4260,7 +4308,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                   itemBuilder: (context, idx) {
                     final item = handles[idx];
                     final name = item['name']?.toString() ?? '';
-                    final price = (item['price'] as num?)?.toDouble() ?? 0.0;
+                    final price = _colorPrice(item, 0.0);
                     final entraxe =
                         (item['entraxe'] as num?)?.toDouble() ?? 200.0;
                     final isKnob = entraxe == 0;
@@ -6035,6 +6083,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
       'edgeFinish': _edgeFinish,
       'edgeFinishLabel': _edgeFinishLabel(_edgeFinish),
       'holeDimensionMode': _holeDimensionMode.name,
+      'holeDimensionModeLabel': _holeDimensionReferenceLabel(),
       'selectedAccessories': _selectedAccessories.map(
         (k, v) => MapEntry(k.toString(), v),
       ),
@@ -6047,6 +6096,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
           : _overallHeightMm,
       'drawingVersion': 1,
       'showProfiles': _showProfiles,
+      'hardwareColor': _hardwareColor,
       'profileItems': Map<String, int>.from(_profileItems),
       'gasketItems': Map<String, int>.from(_gasketItems),
       'slidingRule': _isSlidingStraight
@@ -7771,7 +7821,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                         final id = item['id'] as int;
                         final name = item['name']?.toString() ?? '';
                         final price =
-                            (item['price'] as num?)?.toDouble() ?? 0.0;
+                            _colorPrice(item, 0.0);
                         final unit = item['unit']?.toString() ?? 'piece';
                         final qty = _selectedAccessories[id] ?? 0;
                         final isSelected = qty > 0;
@@ -8193,7 +8243,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                 'unit': 'piece',
               },
             );
-            final price = (handleItem['price'] as num?)?.toDouble() ?? 4500.0;
+            final price = _colorPrice(handleItem, 4500.0);
             appliedAccessories.add({
               'estimated': handleItem['id'] == null,
               'name':
@@ -8226,7 +8276,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                 'unit': 'piece',
               },
             );
-            final price = (towelItem['price'] as num?)?.toDouble() ?? 4800.0;
+            final price = _colorPrice(towelItem, 4800.0);
             appliedAccessories.add({
               'estimated': towelItem['id'] == null,
               'name':
@@ -8259,7 +8309,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                 'unit': 'piece',
               },
             );
-            final price = (railItem['price'] as num?)?.toDouble() ?? 16500.0;
+            final price = _colorPrice(railItem, 16500.0);
             appliedAccessories.add({
               'estimated': railItem['id'] == null,
               'name':
@@ -8289,7 +8339,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                 'unit': 'piece',
               },
             );
-            final price = (hingeItem['price'] as num?)?.toDouble() ?? 3800.0;
+            final price = _colorPrice(hingeItem, 3800.0);
             appliedAccessories.add({
               'estimated': hingeItem['id'] == null,
               'name':
@@ -8320,7 +8370,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
               },
             );
             final mult = _workType == GlassWorkType.vitrineDoubleDoor ? 2 : 1;
-            final price = (pivotItem['price'] as num?)?.toDouble() ?? 14000.0;
+            final price = _colorPrice(pivotItem, 14000.0);
             appliedAccessories.add({
               'estimated': pivotItem['id'] == null,
               'name':
@@ -8374,7 +8424,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                 ),
               );
               final jPrice =
-                  (magnetJointItem['price'] as num?)?.toDouble() ?? 2000.0;
+                  _colorPrice(magnetJointItem, 2000.0);
               appliedAccessories.add({
                 'estimated': magnetJointItem['id'] == null,
                 'name':
@@ -8402,7 +8452,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                 },
               );
               final fPrice =
-                  (fJointItem['price'] as num?)?.toDouble() ?? 1600.0;
+                  _colorPrice(fJointItem, 1600.0);
               appliedAccessories.add({
                 'estimated': fJointItem['id'] == null,
                 'name': fJointItem['name'] ?? 'جوان حرف F مانع تسرب الماء',
@@ -8426,7 +8476,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
               orElse: () => <String, dynamic>{},
             );
             if (item.isNotEmpty && entry.value > 0) {
-              final price = (item['price'] as num?)?.toDouble() ?? 0.0;
+              final price = _colorPrice(item, 0.0);
               final tot = price * entry.value;
               appliedAccessories.add({
                 'estimated': item['id'] == null,
@@ -8900,7 +8950,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     final lines = <Map<String, dynamic>>[];
     void add(Map<String, dynamic>? item, double qty, String unit) {
       if (item == null || qty <= 0) return;
-      final price = (item['price'] as num?)?.toDouble() ?? 0.0;
+      final price = _colorPrice(item, 0.0);
       final rounded = double.parse(qty.toStringAsFixed(2));
       lines.add({
         'estimated': false,
@@ -9008,6 +9058,32 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    DropdownButtonFormField<String>(
+                      value: _hardwareColors.contains(_hardwareColor)
+                          ? _hardwareColor
+                          : '',
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: _tr(
+                          'لون الإكسسوارات',
+                          'Couleur de la quincaillerie',
+                          'Hardware colour',
+                        ),
+                        border: const OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      items: [
+                        DropdownMenuItem(
+                          value: '',
+                          child: Text(_tr('السعر الأساسي', 'Prix de base', 'Base price')),
+                        ),
+                        ..._hardwareColors.map(
+                          (c) => DropdownMenuItem(value: c, child: Text(c)),
+                        ),
+                      ],
+                      onChanged: (v) => update(() => _hardwareColor = v ?? ''),
+                    ),
+                    const SizedBox(height: 14),
                     if (sliding) ...[
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
@@ -10224,6 +10300,9 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                                       ),
                                       showSlidingProfiles:
                                           _showProfiles && _isSlidingStraight,
+                                      dimensionReferenceLabel:
+                                          _holeDimensionReferenceLabel(),
+                                      glassThicknessMm: _glassThicknessMm,
                                       gasketEdges: _gasketItems.entries
                                           .where((e) => e.value > 0)
                                           .map((e) => e.key)
@@ -10757,6 +10836,10 @@ class _GlassManufacturingSheet extends StatelessWidget {
                             showHandles:
                                 false, // المقابض لا تظهر في الفيش دو فابريكاسيون
                             fabricationOnly: true,
+                            dimensionReferenceLabel:
+                                payload['holeDimensionModeLabel']
+                                    ?.toString() ??
+                                '',
                           ),
                         ),
                       ),
@@ -10954,6 +11037,8 @@ class _GlassPanelDrawingPainter extends CustomPainter {
     this.frostedLabel = 'S (Sablé)',
     this.showSlidingProfiles = false,
     this.gasketEdges = const {},
+    this.dimensionReferenceLabel = '',
+    this.glassThicknessMm = 0,
   });
 
   final List<_GlassPanel> panels;
@@ -10990,6 +11075,14 @@ class _GlassPanelDrawingPainter extends CustomPainter {
 
   /// Door edges carrying a gasket ([GlassGasketLocation] values).
   final Set<String> gasketEdges;
+
+  /// Says whether hole distances run to the hole edge or to its centre;
+  /// written on the drawing so the measure is never misread.
+  final String dimensionReferenceLabel;
+
+  /// Holes breaking the tempered-glass limits for this thickness are
+  /// circled in red (0 disables the check).
+  final double glassThicknessMm;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -11045,6 +11138,7 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       _paintHoleDimensions(canvas, panel);
     }
     _paintOuterAndPanelDimensions(canvas, size);
+    _paintHoleIssues(canvas);
     if (selectedPanelIndex != null &&
         selectedPanelIndex! >= 0 &&
         selectedPanelIndex! < panels.length) {
@@ -11055,6 +11149,87 @@ class _GlassPanelDrawingPainter extends CustomPainter {
       canvas.drawRect(panels[selectedPanelIndex!].rect, selectionPaint);
     }
     canvas.restore();
+    if (dimensionReferenceLabel.isNotEmpty) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: dimensionReferenceLabel,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFFBF360C),
+          ),
+        ),
+        textDirection: TextDirection.rtl,
+      )..layout(maxWidth: math.max(40.0, size.width - 16));
+      final origin = Offset(
+        size.width - painter.width - 8,
+        size.height - painter.height - 6,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(
+            origin.dx - 6,
+            origin.dy - 3,
+            painter.width + 12,
+            painter.height + 6,
+          ),
+          const Radius.circular(4),
+        ),
+        Paint()..color = Colors.white.withValues(alpha: 0.9),
+      );
+      painter.paint(canvas, origin);
+    }
+  }
+
+  /// Circles in red the holes too close to the glass edge or to another
+  /// hole, or too small, for tempered glass of [glassThicknessMm].
+  void _paintHoleIssues(Canvas canvas) {
+    if (glassThicknessMm <= 0) return;
+    final issues = findTemperedHoleIssues(
+      thicknessMm: glassThicknessMm,
+      panels: [
+        for (final panel in panels)
+          (
+            widthMm: panel.widthMm,
+            heightMm: panel.heightMm,
+            holes: [
+              for (final hole in panel.holes)
+                (
+                  xMm: hole.xMm,
+                  yMm: hole.yMm,
+                  diameterMm: hole.diameterMm,
+                  purpose: hole.purpose,
+                ),
+            ],
+          ),
+      ],
+    );
+    if (issues.isEmpty) return;
+    final ring = Paint()
+      ..color = Colors.red.shade700
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    for (final issue in issues) {
+      if (issue.panelIndex >= panels.length) continue;
+      final panel = panels[issue.panelIndex];
+      if (panel.widthMm <= 0 || panel.heightMm <= 0) continue;
+      final scaleX = panel.rect.width / panel.widthMm;
+      final scaleY = panel.rect.height / panel.heightMm;
+      final purposes = issue.purpose.split(' / ').toSet();
+      for (final hole in panel.holes.where(
+        (h) => purposes.contains(h.purpose),
+      )) {
+        final center = Offset(
+          panel.rect.left + hole.xMm * scaleX,
+          panel.rect.top + hole.yMm * scaleY,
+        );
+        final radius = math.max(
+          6.0,
+          hole.diameterMm * math.min(scaleX, scaleY) / 2,
+        );
+        canvas.drawCircle(center, radius + 5, ring);
+      }
+    }
   }
 
   void _paintHinges(Canvas canvas, _GlassPanel panel) {

@@ -151,6 +151,9 @@ class _TemperedGlassItemsScreenState extends State<TemperedGlassItemsScreen> {
         GlassGasketType.values.contains(existing?['joint_type'])
         ? existing!['joint_type'].toString()
         : '';
+    final colorPrices = [...parseColorPrices(existing?['color_prices'])];
+    final newColorCtrl = TextEditingController();
+    final newColorPriceCtrl = TextEditingController();
     String profileRole =
         GlassProfileRole.values.contains(existing?['profile_role'])
         ? existing!['profile_role'].toString()
@@ -499,6 +502,73 @@ class _TemperedGlassItemsScreenState extends State<TemperedGlassItemsScreen> {
                     ],
                   ),
                   const SizedBox(height: 12),
+                  // Price of the accessory in each of its colours; without a
+                  // colour price the selling price above applies.
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Text(
+                      _tr('الأسعار حسب اللون', 'Prix par couleur', 'Price by colour'),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  for (var i = 0; i < colorPrices.length; i++)
+                    ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.palette_outlined, size: 18),
+                      title: Text(colorPrices[i].color),
+                      subtitle: Text('${colorPrices[i].price.toStringAsFixed(0)} DZD'),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Colors.red, size: 18),
+                        onPressed: () => setDlg(() => colorPrices.removeAt(i)),
+                      ),
+                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: TextField(
+                          controller: newColorCtrl,
+                          decoration: InputDecoration(
+                            labelText: _tr('اللون', 'Couleur', 'Colour'),
+                            hintText: _tr('أسود مطفي، ذهبي، كروم…', 'Noir mat, doré, chromé…', 'Matt black, gold, chrome…'),
+                            isDense: true,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 2,
+                        child: TextField(
+                          controller: newColorPriceCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: InputDecoration(
+                            labelText: _tr('السعر (د.ج)', 'Prix (DZD)', 'Price (DZD)'),
+                            isDense: true,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: _tr('إضافة اللون', 'Ajouter la couleur', 'Add colour'),
+                        icon: const Icon(Icons.add_circle, color: Colors.teal),
+                        onPressed: () {
+                          final color = newColorCtrl.text.trim();
+                          final price = double.tryParse(newColorPriceCtrl.text.trim().replaceAll(',', '.'));
+                          if (color.isEmpty || price == null || price < 0) return;
+                          setDlg(() {
+                            colorPrices.removeWhere((c) => c.color.toLowerCase() == color.toLowerCase());
+                            colorPrices.add(GlassItemColorPrice(color: color, price: price));
+                            newColorCtrl.clear();
+                            newColorPriceCtrl.clear();
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
                   TextField(
                     controller: notesCtrl,
                     maxLines: 2,
@@ -556,6 +626,7 @@ class _TemperedGlassItemsScreenState extends State<TemperedGlassItemsScreen> {
         'glass_thickness_mm': glassThickness,
         'joint_type': category == 'joint' ? jointType : '',
         'profile_role': category == 'profile' ? profileRole : '',
+        'color_prices': encodeColorPrices(colorPrices),
         'notes': notes,
         'is_active': 1,
       };

@@ -5725,6 +5725,8 @@ extension SqlDatabaseSchema on SqlDatabase {
       'glass_thickness_mm REAL DEFAULT 0.0',
       "joint_type TEXT DEFAULT ''",
       "profile_role TEXT DEFAULT ''",
+      // JSON list of {color, price}: the accessory's price in each colour.
+      "color_prices TEXT DEFAULT ''",
     ]) {
       try {
         await dbInstance.execute(

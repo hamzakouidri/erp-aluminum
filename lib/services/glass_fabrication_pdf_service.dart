@@ -165,6 +165,17 @@ class GlassFabricationPdfService {
                   overallW: overallW,
                   overallH: overallH,
                   sablageDesc: sablageDesc,
+                  holeReference: payload['holeDimensionMode'] == 'center'
+                      ? switch (lang) {
+                          AppLanguage.arabic => 'من مركز الثقب',
+                          AppLanguage.french => "À l'axe du trou",
+                          AppLanguage.english => 'To the hole centre',
+                        }
+                      : switch (lang) {
+                          AppLanguage.arabic => 'من حافة الثقب',
+                          AppLanguage.french => 'Au bord du trou',
+                          AppLanguage.english => 'To the hole edge',
+                        },
                   lang: lang,
                   fonts: fonts,
                 ),
@@ -323,6 +334,7 @@ class GlassFabricationPdfService {
     required double overallW,
     required double overallH,
     required String sablageDesc,
+    required String holeReference,
     required AppLanguage lang,
     required PdfFontBundle fonts,
   }) {
@@ -353,6 +365,14 @@ class GlassFabricationPdfService {
           ),
           _specDivider(),
           _specItem(isAr ? 'السابلانج' : 'Sablage', sablageDesc, fonts),
+          _specDivider(),
+          // Every hole distance is measured to this point of the hole.
+          _specItem(
+            isAr ? 'أبعاد الثقوب' : (lang == AppLanguage.french ? 'Cotes des trous' : 'Hole distances'),
+            holeReference,
+            fonts,
+            isHighlight: true,
+          ),
         ],
       ),
     );

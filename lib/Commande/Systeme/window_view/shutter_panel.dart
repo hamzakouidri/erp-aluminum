@@ -1788,6 +1788,8 @@ extension _WindowViewShutter on _WindowViewState {
                       content: Text(warning),
                       backgroundColor: Colors.orange.shade900,
                       duration: const Duration(seconds: 8),
+                      // An action keeps a SnackBar open until it is dismissed.
+                      persist: false,
                       action: rec != null
                           ? SnackBarAction(
                               label: lang == AppLanguage.french

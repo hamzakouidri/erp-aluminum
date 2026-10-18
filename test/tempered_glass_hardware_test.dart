@@ -58,4 +58,21 @@ void main() {
     expect(GlassGasketType.soldByMetre(GlassGasketType.rail), isTrue);
     expect(GlassGasketType.soldByMetre(GlassGasketType.magnetic90), isFalse);
   });
+
+  test('an accessory is priced by its colour, else by its base price', () {
+    final item = {
+      'price': 1500,
+      'color_prices': encodeColorPrices(const [
+        GlassItemColorPrice(color: 'Noir mat', price: 2100),
+        GlassItemColorPrice(color: 'Doré', price: 2600),
+      ]),
+    };
+
+    expect(parseColorPrices(item['color_prices']).length, 2);
+    expect(glassItemPriceForColor(item, 'noir mat'), 2100);
+    expect(glassItemPriceForColor(item, 'Doré'), 2600);
+    expect(glassItemPriceForColor(item, 'Chromé'), 1500);
+    expect(glassItemPriceForColor(item, ''), 1500);
+    expect(parseColorPrices('not json'), isEmpty);
+  });
 }
