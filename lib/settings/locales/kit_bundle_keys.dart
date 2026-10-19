@@ -72,10 +72,53 @@ const Map<String, Map<AppLanguage, String>> kitBundleKeys = {
     AppLanguage.french: 'Console spéciale',
     AppLanguage.english: 'Special console',
   },
-  'خصم المحور (مم)': {
-    AppLanguage.arabic: 'خصم المحور (مم)',
-    AppLanguage.french: "Déduction de l'axe (mm)",
-    AppLanguage.english: 'Axe deduction (mm)',
+  'حسابات ستار النفق': {
+    AppLanguage.arabic: 'حسابات ستار النفق',
+    AppLanguage.french: 'Calculs du volet tunnel',
+    AppLanguage.english: 'Tunnel shutter calculations',
+  },
+  'المحور = العرض − خصم الكونسول. الشفرة والشفرة النهائية = العرض − خصم الشفرة. عدد الشفرات = (الارتفاع − ارتفاع النفق + الإضافة) ÷ ارتفاع الشفرة + الشفرات الإضافية. السكة = الارتفاع + الإضافة، وجوان الفرشاة = طول السكك مرتين.': {
+    AppLanguage.arabic:
+        'المحور = العرض − خصم الكونسول. الشفرة والشفرة النهائية = العرض − خصم الشفرة. عدد الشفرات = (الارتفاع − ارتفاع النفق + الإضافة) ÷ ارتفاع الشفرة + الشفرات الإضافية. السكة = الارتفاع + الإضافة، وجوان الفرشاة = طول السكك مرتين.',
+    AppLanguage.french:
+        'Axe = largeur − déduction de la console. Lame et lame finale = largeur − déduction de la lame. Nombre de lames = (hauteur − hauteur du tunnel + ajout) ÷ hauteur de lame + lames supplémentaires. Coulisse = hauteur + ajout ; le joint brosse = deux fois la longueur des coulisses.',
+    AppLanguage.english:
+        'Axe = width − console deduction. Blade and final blade = width − blade deduction. Blades = (height − tunnel height + addition) ÷ blade height + extra blades. Rail = height + addition; the brush joint = twice the rails\' length.',
+  },
+  'خصم المحور مع كونسول ستاندار (مم)': {
+    AppLanguage.arabic: 'خصم المحور مع كونسول ستاندار (مم)',
+    AppLanguage.french: 'Déduction de l\'axe, console standard (mm)',
+    AppLanguage.english: 'Axe deduction, standard console (mm)',
+  },
+  'خصم المحور مع كونسول سبيسيال (مم)': {
+    AppLanguage.arabic: 'خصم المحور مع كونسول سبيسيال (مم)',
+    AppLanguage.french: 'Déduction de l\'axe, console spéciale (mm)',
+    AppLanguage.english: 'Axe deduction, special console (mm)',
+  },
+  'خصم طول الشفرة (مم)': {
+    AppLanguage.arabic: 'خصم طول الشفرة (مم)',
+    AppLanguage.french: 'Déduction de longueur de lame (mm)',
+    AppLanguage.english: 'Blade length deduction (mm)',
+  },
+  'إضافة إلى الارتفاع لعدد الشفرات (مم)': {
+    AppLanguage.arabic: 'إضافة إلى الارتفاع لعدد الشفرات (مم)',
+    AppLanguage.french: 'Ajout à la hauteur pour le nombre de lames (mm)',
+    AppLanguage.english: 'Height addition for the blade count (mm)',
+  },
+  'شفرات إضافية': {
+    AppLanguage.arabic: 'شفرات إضافية',
+    AppLanguage.french: 'Lames supplémentaires',
+    AppLanguage.english: 'Extra blades',
+  },
+  'إضافة إلى طول السكة (مم)': {
+    AppLanguage.arabic: 'إضافة إلى طول السكة (مم)',
+    AppLanguage.french: 'Ajout à la longueur de coulisse (mm)',
+    AppLanguage.english: 'Rail length addition (mm)',
+  },
+  'تم حفظ حسابات ستار النفق': {
+    AppLanguage.arabic: 'تم حفظ حسابات ستار النفق',
+    AppLanguage.french: 'Calculs du volet tunnel enregistrés',
+    AppLanguage.english: 'Tunnel shutter calculations saved',
   },
   'عائلة:': {
     AppLanguage.arabic: 'عائلة:',

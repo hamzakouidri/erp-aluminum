@@ -13,6 +13,7 @@ import '../utils/real_color_resolver.dart';
 import '../widgets/section_image.dart';
 import '../widgets/price_sync_banner.dart';
 import 'standard_sheets_screen.dart';
+import '../widgets/tunnel_calc_rules_card.dart';
 
 class GlassDisplayItem {
   final Map<String, dynamic> glass;
@@ -4754,8 +4755,11 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
             child: ListView.builder(
               key: const PageStorageKey<String>('price-caisson-tunnel-list'),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              itemCount: caissonTypesList.length,
-              itemBuilder: (context, index) {
+              // The tunnel shutter calculation values come first.
+              itemCount: caissonTypesList.length + 1,
+              itemBuilder: (context, row) {
+                if (row == 0) return const TunnelCalcRulesCard();
+                final index = row - 1;
                 final caissonName = caissonTypesList[index];
 
                 double currentPrice =

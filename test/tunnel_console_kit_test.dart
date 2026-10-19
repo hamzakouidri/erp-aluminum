@@ -1,5 +1,6 @@
 import 'package:database_data/Commande/Systeme/calculate_component.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
+import 'package:database_data/Commande/Systeme/shutter_calc_rules.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -37,13 +38,7 @@ List<BomItem> _bom(int console, {double width = 1700}) {
     model,
     const {},
     kitBundleMetadata: {
-      _kit: {
-        'id': 1,
-        'name': _kit,
-        'description': 'CT',
-        'compatibility_group_1_axe_deduction': 60.0,
-        'compatibility_group_2_axe_deduction': 90.0,
-      },
+      _kit: {'id': 1, 'name': _kit, 'description': 'CT'},
     },
     kitBundleData: {
       _kit: [
@@ -52,10 +47,7 @@ List<BomItem> _bom(int console, {double width = 1700}) {
           'qty_mode': 'by_range',
           'dimension': 'shutter_weight',
           'mechanism_scopes': 'belt,crank,motor',
-          'ranges': [
-            _range('Tandem standard', 1),
-            _range('Embout galva', 2),
-          ],
+          'ranges': [_range('Tandem standard', 1), _range('Embout galva', 2)],
         },
         {
           'component_type': 'Attache',
@@ -72,7 +64,14 @@ List<BomItem> _bom(int console, {double width = 1700}) {
 bool _has(List<BomItem> bom, String name) => bom.any((i) => i.name == name);
 
 void main() {
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    ShutterCalcRules.apply({
+      ShutterCalcRules.tunnelAxeStandard: 60,
+      ShutterCalcRules.tunnelAxeSpecial: 90,
+    });
+  });
+  tearDown(() => ShutterCalcRules.apply({}));
 
   test('the chosen console picks its kit parts and its axe deduction', () {
     final standard = _bom(1);
@@ -97,5 +96,26 @@ void main() {
     // 1700 mm: 4 attaches, all of the kit's type.
     expect(bom.firstWhere((i) => i.name == 'Attache 25 kg').quantity, 4);
     expect(bom.any((i) => i.originalName == 'أطاش (Attache)'), isFalse);
+  });
+
+  test('the workshop values drive the tunnel blades and rails', () {
+    ShutterCalcRules.apply({
+      ShutterCalcRules.tunnelBladeDeduction: 50,
+      ShutterCalcRules.tunnelRailAdd: 30,
+    });
+    final bom = _bom(1);
+    final blades = bom.firstWhere((i) => i.originalName == 'الشرائح (Lames)');
+    expect(blades.pieces!.first, closeTo(1.65, 1e-9));
+    final rails = bom.firstWhere((i) => i.originalName == 'السكك (Coulisses)');
+    expect(rails.pieces, [1.43, 1.43]);
+    final joint = bom.firstWhere(
+      (i) => i.originalName == 'جوان بروس للستار (Joint Brosse Shutter)',
+    );
+    // 2 × 2.86 m of rails = 5.72 m, sold by the whole metre.
+    expect(joint.quantity, 6);
+    // The defaults keep the former axe deduction.
+    ShutterCalcRules.apply({});
+    final axe = _bom(1).firstWhere((i) => i.originalName == 'المحور (Axe)');
+    expect(axe.pieces, [1.625]);
   });
 }

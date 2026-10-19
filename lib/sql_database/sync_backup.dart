@@ -2308,6 +2308,9 @@ extension SqlDatabaseSync on SqlDatabase {
     // Configuration tables are replaceable: an explicit deletion made by the
     // manager must also delete the old row on the receiving phone.
     await importAllData(configuration);
+    if (configuration.containsKey('ShutterCalcRules')) {
+      await ShutterCalcRules.load(this);
+    }
   }
 
   Future<void> importWorkshopData(

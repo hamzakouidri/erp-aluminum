@@ -1632,6 +1632,16 @@ extension SqlDatabaseSchema on SqlDatabase {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_profile_compat_series ON ProfileCompatibilityGroups(series_id, is_active);',
     );
+    // The workshop's shutter calculation values (axe and blade deductions,
+    // rail length of a tunnel box...), see ShutterCalcRules.
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ShutterCalcRules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        rule_key TEXT NOT NULL UNIQUE,
+        value REAL NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT ''
+      )
+    ''');
     for (final statement in const [
       "ALTER TABLE SeriesDesignRoles ADD COLUMN usage_scope TEXT NOT NULL DEFAULT 'auto';",
       "ALTER TABLE SeriesDesignRoles ADD COLUMN show_when_glass TEXT NOT NULL DEFAULT 'any';",
@@ -1755,9 +1765,6 @@ extension SqlDatabaseSchema on SqlDatabase {
       'ALTER TABLE KitItemRanges ADD COLUMN family_id INTEGER;',
       "ALTER TABLE KitBundles ADD COLUMN compatibility_group_1_name TEXT NOT NULL DEFAULT 'Console Quissonnel Standard';",
       "ALTER TABLE KitBundles ADD COLUMN compatibility_group_2_name TEXT NOT NULL DEFAULT 'Console Quissonnel Spécial';",
-      // Axe deduction (mm) of a tunnel box with each console.
-      'ALTER TABLE KitBundles ADD COLUMN compatibility_group_1_axe_deduction REAL NOT NULL DEFAULT 75;',
-      'ALTER TABLE KitBundles ADD COLUMN compatibility_group_2_axe_deduction REAL NOT NULL DEFAULT 75;',
       "ALTER TABLE KitBundles ADD COLUMN price REAL NOT NULL DEFAULT 0.0;",
       "ALTER TABLE KitBundles ADD COLUMN material_type TEXT NOT NULL DEFAULT 'all';",
     ]) {

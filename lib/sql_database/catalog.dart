@@ -693,6 +693,38 @@ extension SqlDatabaseCatalog on SqlDatabase {
     return group..remove(sectionId);
   }
 
+  /// The workshop's shutter calculation values, by rule key.
+  Future<Map<String, double>> readShutterCalcRules() async {
+    final myDb = await db;
+    if (myDb == null) return {};
+    await _ensureSeriesDesignTables(myDb);
+    final rows = await myDb.query('ShutterCalcRules');
+    return {
+      for (final row in rows)
+        if (row['rule_key'] != null && row['value'] is num)
+          row['rule_key'].toString(): (row['value'] as num).toDouble(),
+    };
+  }
+
+  Future<void> saveShutterCalcRules(Map<String, double> values) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureSeriesDesignTables(myDb);
+    final now = DateTime.now().toUtc().toIso8601String();
+    for (final entry in values.entries) {
+      await myDb.rawInsert(
+        '''
+        INSERT INTO ShutterCalcRules (rule_key, value, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(rule_key)
+        DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+      ''',
+        [entry.key, entry.value, now],
+      );
+    }
+    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+  }
+
   /// The compatibility groups defined for [seriesId], each with its
   /// `members` (Sections ids) parsed.
   Future<List<Map<String, dynamic>>> readProfileCompatibilityGroups(
@@ -2747,8 +2779,6 @@ extension SqlDatabaseCatalog on SqlDatabase {
     int kitId, {
     required String group1Name,
     required String group2Name,
-    double? group1AxeDeduction,
-    double? group2AxeDeduction,
   }) async {
     final database = await db;
     if (database == null) return;
@@ -2756,8 +2786,6 @@ extension SqlDatabaseCatalog on SqlDatabase {
     await database.update(
       'KitBundles',
       {
-        'compatibility_group_1_axe_deduction': ?group1AxeDeduction,
-        'compatibility_group_2_axe_deduction': ?group2AxeDeduction,
         'compatibility_group_1_name': group1Name.trim().isEmpty
             ? 'Console Quissonnel Standard'
             : group1Name.trim(),

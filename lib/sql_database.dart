@@ -17,6 +17,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/model_serialization.dart';
+import 'package:database_data/Commande/Systeme/shutter_calc_rules.dart';
 import 'package:database_data/Commande/capture_image.dart';
 import 'package:database_data/Commande/order_status_order.dart';
 import 'package:database_data/services/auth_service.dart';
@@ -440,6 +441,7 @@ class SqlDatabase {
     'SectionSharingRules',
     'FrameJoinRules',
     'ProfileCompatibilityGroups',
+    'ShutterCalcRules',
     'CatalogItemRules',
     'ProfileCalculationRules',
     'SectionJointLinks',
