@@ -11,6 +11,7 @@ import '../widgets/section_image.dart';
 import '../widgets/auto_scroll_expansion_tile.dart';
 import '../widgets/desktop_scroll_behavior.dart';
 import '../Commande/Systeme/accessory_assembly.dart';
+import 'profile_compatibility_groups_view.dart';
 
 class CatalogRulesScreen extends StatefulWidget {
   const CatalogRulesScreen({super.key, required this.db});
@@ -111,7 +112,11 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
+    // The groups tab saves as it goes: it hides the rules save button.
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) setState(() {});
+    });
     _searchControllers = {
       for (final table in _tables) table: TextEditingController(),
     };
@@ -1393,6 +1398,10 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               icon: const Icon(Icons.linear_scale_outlined),
               text: _t('الجوانات', 'Joints'),
             ),
+            Tab(
+              icon: const Icon(Icons.link_rounded),
+              text: _t('مجموعات التوافق', 'Groupes de compatibilité'),
+            ),
           ],
         ),
         actions: [
@@ -1444,10 +1453,24 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                   ),
                 ),
                 _tableView('Joints'),
+                ProfileCompatibilityGroupsView(
+                  db: widget.db,
+                  seriesId: _selectedSeriesId,
+                  seriesName: _selectedSeries?['name']?.toString() ?? '',
+                  canEdit: () {
+                    final s = context.watch<AppSettingsProvider>();
+                    return s.isAdmin || s.isManager;
+                  }(),
+                  header: [
+                    _profileSelector(),
+                    if (_selectedProfile != null) _seriesSelector(),
+                  ],
+                ),
               ],
             ),
       floatingActionButton:
           (_selectedSeriesId == null ||
+              _tabController.index == 2 ||
               !(() {
                 final s = context.watch<AppSettingsProvider>();
                 return s.isAdmin || s.isManager;

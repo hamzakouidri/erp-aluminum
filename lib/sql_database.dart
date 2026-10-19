@@ -439,6 +439,7 @@ class SqlDatabase {
     'SeriesDesignRoles',
     'SectionSharingRules',
     'FrameJoinRules',
+    'ProfileCompatibilityGroups',
     'CatalogItemRules',
     'ProfileCalculationRules',
     'SectionJointLinks',

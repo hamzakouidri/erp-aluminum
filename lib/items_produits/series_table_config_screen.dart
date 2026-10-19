@@ -596,7 +596,10 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
 
     final joinMap = <int, Set<int>>{};
     for (final sId in myFrameSectionIds) {
-      final partners = await widget.db.readFrameJoinPartnerIds(sId);
+      final partners = await widget.db.readFrameJoinPartnerIds(
+        sId,
+        includeGroups: false,
+      );
       if (partners.isNotEmpty) joinMap[sId] = partners;
     }
 

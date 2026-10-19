@@ -1616,6 +1616,22 @@ extension SqlDatabaseSchema on SqlDatabase {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_frame_join_b ON FrameJoinRules(section_b_id);',
     );
+    // A group of profiles that fit together (frames with or without side
+    // cover, mullions...): every member is compatible with every other.
+    // member_ids lists Sections ids, comma separated.
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ProfileCompatibilityGroups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        series_id INTEGER NOT NULL,
+        name TEXT NOT NULL DEFAULT '',
+        member_ids TEXT NOT NULL DEFAULT '',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL DEFAULT ''
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_profile_compat_series ON ProfileCompatibilityGroups(series_id, is_active);',
+    );
     for (final statement in const [
       "ALTER TABLE SeriesDesignRoles ADD COLUMN usage_scope TEXT NOT NULL DEFAULT 'auto';",
       "ALTER TABLE SeriesDesignRoles ADD COLUMN show_when_glass TEXT NOT NULL DEFAULT 'any';",

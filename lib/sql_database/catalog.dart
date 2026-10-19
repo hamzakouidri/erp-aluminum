@@ -1,5 +1,12 @@
 part of '../sql_database.dart';
 
+/// Parses the `member_ids` column of ProfileCompatibilityGroups.
+Set<int> parseProfileGroupMembers(Object? value) => (value?.toString() ?? '')
+    .split(',')
+    .map((part) => int.tryParse(part.trim()))
+    .whereType<int>()
+    .toSet();
+
 /// Catalogue: profiles, series, sections, colours, accessories, joints, glass, shutters, kits and series design rules.
 extension SqlDatabaseCatalog on SqlDatabase {
   //////////////////////////////////// Profile //////////////////////////////////////
@@ -653,8 +660,12 @@ extension SqlDatabaseCatalog on SqlDatabase {
 
   /// Returns the other frames of [sectionId]'s compatibility group: every
   /// frame linked to it, directly or through other linked frames (1 ↔ 2 and
-  /// 2 ↔ 3 put 1, 2 and 3 in one group).
-  Future<Set<int>> readFrameJoinPartnerIds(int sectionId) async {
+  /// 2 ↔ 3 put 1, 2 and 3 in one group), and, with [includeGroups], every
+  /// profile of its compatibility groups.
+  Future<Set<int>> readFrameJoinPartnerIds(
+    int sectionId, {
+    bool includeGroups = true,
+  }) async {
     final myDb = await db;
     if (myDb == null) return {};
     await _ensureSeriesDesignTables(myDb);
@@ -676,7 +687,94 @@ extension SqlDatabaseCatalog on SqlDatabase {
         if (group.add(next)) pending.add(next);
       }
     }
+    if (includeGroups) {
+      group.addAll(await readProfileCompatibilityPartnerIds(sectionId));
+    }
     return group..remove(sectionId);
+  }
+
+  /// The compatibility groups defined for [seriesId], each with its
+  /// `members` (Sections ids) parsed.
+  Future<List<Map<String, dynamic>>> readProfileCompatibilityGroups(
+    int seriesId,
+  ) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    await _ensureSeriesDesignTables(myDb);
+    final rows = await myDb.query(
+      'ProfileCompatibilityGroups',
+      where: 'series_id = ? AND is_active = 1',
+      whereArgs: [seriesId],
+      orderBy: 'id ASC',
+    );
+    return [
+      for (final row in rows)
+        {...row, 'members': parseProfileGroupMembers(row['member_ids'])},
+    ];
+  }
+
+  /// Every profile sharing a compatibility group with [sectionId], whatever
+  /// series the group was defined in.
+  Future<Set<int>> readProfileCompatibilityPartnerIds(int sectionId) async {
+    final myDb = await db;
+    if (myDb == null) return {};
+    await _ensureSeriesDesignTables(myDb);
+    final rows = await myDb.query(
+      'ProfileCompatibilityGroups',
+      columns: ['member_ids'],
+      where: 'is_active = 1',
+    );
+    final result = <int>{};
+    for (final row in rows) {
+      final members = parseProfileGroupMembers(row['member_ids']);
+      if (members.contains(sectionId)) result.addAll(members);
+    }
+    return result..remove(sectionId);
+  }
+
+  /// Creates the group when [id] is null, else replaces its name and
+  /// members. Returns the group id.
+  Future<int> saveProfileCompatibilityGroup({
+    int? id,
+    required int seriesId,
+    required String name,
+    required Iterable<int> memberIds,
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    await _ensureSeriesDesignTables(myDb);
+    final values = {
+      'series_id': seriesId,
+      'name': name.trim(),
+      'member_ids': memberIds.toSet().join(','),
+      'is_active': 1,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
+    final savedId = id == null
+        ? await myDb.insert('ProfileCompatibilityGroups', values)
+        : await myDb
+              .update(
+                'ProfileCompatibilityGroups',
+                values,
+                where: 'id = ?',
+                whereArgs: [id],
+              )
+              .then((_) => id);
+    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+    return savedId;
+  }
+
+  Future<void> deleteProfileCompatibilityGroup(int id) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureSeriesDesignTables(myDb);
+    await myDb.update(
+      'ProfileCompatibilityGroups',
+      {'is_active': 0, 'updated_at': DateTime.now().toUtc().toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
   }
 
   /// Takes [sectionId] out of its compatibility group: drops its links to
