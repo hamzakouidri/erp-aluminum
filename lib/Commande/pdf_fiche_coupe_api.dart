@@ -1401,7 +1401,7 @@ class PdfFicheCoupeApi {
         openingType: '',
         configuration: '',
         shutterInfo: '',
-        colorName: item['color']?.toString() ?? '',
+        colorName: Localization.colorName(item['color'], lang),
         width: width,
         height: height,
         qty: qty,
@@ -2643,8 +2643,8 @@ class PdfFicheCoupeApi {
 
   static String _colorDetailLabel(String color, AppLanguage lang) {
     return switch (lang) {
-      AppLanguage.french => 'Couleur : $color',
-      AppLanguage.english => 'Color: $color',
+      AppLanguage.french => 'Couleur : ${Localization.colorName(color, lang)}',
+      AppLanguage.english => 'Color: ${Localization.colorName(color, lang)}',
       AppLanguage.arabic => 'اللون: $color',
     };
   }

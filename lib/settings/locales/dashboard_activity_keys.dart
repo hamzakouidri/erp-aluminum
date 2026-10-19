@@ -31,6 +31,11 @@ final Map<String, Map<AppLanguage, String>> dashboardActivityKeys = {
     AppLanguage.french: 'Commande modifiée',
     AppLanguage.english: 'Order updated',
   },
+  'dashboard_activity_order_opened': {
+    AppLanguage.arabic: 'فتح طلبية',
+    AppLanguage.french: 'Commande ouverte',
+    AppLanguage.english: 'Order opened',
+  },
   'dashboard_activity_delivery_added': {
     AppLanguage.arabic: 'إضافة وصل تسليم',
     AppLanguage.french: 'Bon de livraison ajouté',

@@ -22,7 +22,6 @@ import 'package:database_data/Commande/Systeme/profile_selector_dialog.dart'; //
 import 'package:provider/provider.dart'; // لإدارة حالة الإعدادات العامة (اللغة...)
 import 'package:database_data/settings/app_settings.dart';
 import 'package:database_data/settings/localization.dart'; // دالة الترجمة حسب اللغة
-import 'package:database_data/utils/color_name_localization.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:database_data/widgets/section_image.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart'; // نوع Database لاستعلامات SQL المباشرة

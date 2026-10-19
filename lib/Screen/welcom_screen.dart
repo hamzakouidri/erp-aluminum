@@ -2965,7 +2965,9 @@ class _WelcomScreenState extends State<WelcomScreen> {
       _openTreasury();
       return;
     }
-    if (type == 'order_added' || type == 'order_updated') {
+    if (type == 'order_added' ||
+        type == 'order_updated' ||
+        type == 'order_opened') {
       openAdaptiveScreen(
         context,
         title: _desktopText(
@@ -3047,6 +3049,14 @@ class _WelcomScreenState extends State<WelcomScreen> {
             'order_updated' => (
               Icons.edit_note_rounded,
               const Color(0xFF7C3AED),
+            ),
+            'order_opened' => (
+              Icons.folder_open_rounded,
+              const Color(0xFF64748B),
+            ),
+            'client_added' => (
+              Icons.person_add_alt_1_rounded,
+              const Color(0xFFDB2777),
             ),
             'delivery_added' => (
               Icons.local_shipping_rounded,

@@ -12,9 +12,9 @@ import 'package:database_data/Commande/Systeme/calculate_component.dart';
 import 'package:database_data/arabic_reshaper/arabic_reshaper.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 import '../Screen/order_allocation_screen.dart';
 import '../services/cloud_sync_service.dart';
+import '../services/labels/label_print_service.dart';
 
 int measurementQuantityValue(dynamic value, {int fallback = 0}) {
   if (value is num) return value.toInt();
@@ -874,12 +874,11 @@ class _OrderMeasurementsConfirmScreenState
     }
 
     try {
-      await Printing.layoutPdf(
-        onLayout: (PdfPageFormat format) async => pdf.save(),
+      // The system dialog, or ZPL straight to the label printer.
+      await LabelPrintService.printLabels(
+        pdf,
         name: 'Stickers-Order-$orderSequenceNumber.pdf',
         format: labelPageFormat,
-        dynamicLayout: false,
-        usePrinterSettings: true,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

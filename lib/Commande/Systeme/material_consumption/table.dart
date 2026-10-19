@@ -1525,12 +1525,9 @@ extension _MaterialTable on _MaterialConsumptionScreenState {
                                   item.category == 'other') &&
                               (item.colorName ?? '').trim().isEmpty
                           ? ''
-                          : localizedColorName(
+                          : Localization.colorName(
                               item.colorName ?? '-',
-                              Provider.of<AppSettingsProvider>(
-                                context,
-                                listen: false,
-                              ).language,
+                              lang,
                             )),
                 style: TextStyle(
                   fontSize: 12,

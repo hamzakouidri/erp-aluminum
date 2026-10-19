@@ -35,6 +35,7 @@ import 'package:database_data/Commande/Systeme/profile_selector_dialog.dart'
 import 'package:database_data/Commande/Systeme/glass_joint_fit.dart';
 import 'package:database_data/Commande/Systeme/parclose_cut_mode_selector.dart';
 import 'package:database_data/Commande/Systeme/glazing_fit_message.dart';
+import 'package:database_data/utils/real_color_resolver.dart';
 import 'package:database_data/widgets/section_image.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:provider/provider.dart';
@@ -127,6 +128,10 @@ class _WindowViewState extends State<WindowView> {
 
   String _tr(String key) =>
       Localization.translate(key, context.read<AppSettingsProvider>().language);
+
+  /// A catalogue colour name in the app language.
+  String _trColor(Object? name) =>
+      Localization.colorName(name, context.read<AppSettingsProvider>().language);
 
 
 

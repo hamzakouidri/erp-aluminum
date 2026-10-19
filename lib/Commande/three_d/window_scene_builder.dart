@@ -894,9 +894,6 @@ class WindowSceneBuilder {
         (n.contains('بني') && n.contains('خشب'))) {
       return TextureCache.woodTextureAntique ?? TextureCache.woodTexture;
     }
-    if (n.contains('grey') || n.contains('gray') || n.contains('رمادي')) {
-      return TextureCache.woodTextureGrey ?? TextureCache.woodTexture;
-    }
     return TextureCache.woodTexture;
   }
 

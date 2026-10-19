@@ -84,8 +84,15 @@ class WindowPainter extends CustomPainter {
       return;
     }
 
-    // Determine texture and shader to use (No color filters applied to preserve raw look)
-    _woodColorFilter = null;
+    // Raw textures, except Faux Bois Marron: the faux-bois grain lightened.
+    final bool isFauxBoisMarron =
+        cleanName.contains('faux bois marron') ||
+        cleanName.contains('marron faux bois') ||
+        (cleanName.contains('marron') && cleanName.contains('bois')) ||
+        (cleanName.contains('بني') && cleanName.contains('خشب'));
+    _woodColorFilter = isFauxBoisMarron
+        ? const ColorFilter.mode(Color(0x5CFFD9B0), BlendMode.screen)
+        : null;
 
     final bool isOakTexture =
         cleanName.contains('d0') ||
@@ -97,35 +104,25 @@ class WindowPainter extends CustomPainter {
         cleanName.contains('antique') ||
         cleanName.contains('انتيك') ||
         cleanName.contains('onteak') ||
-        cleanName.contains('faux bois marron') ||
-        cleanName.contains('marron faux bois') ||
-        (cleanName.contains('marron') && cleanName.contains('bois')) ||
-        (cleanName.contains('بني') && cleanName.contains('خشب')) ||
         cleanName.contains('╪º┘å╪¬┘è┘â');
 
-    final bool isGreyTexture =
-        cleanName.contains('grey') ||
-        cleanName.contains('gray') ||
-        cleanName.contains('رمادي') ||
-        cleanName.contains('Gris 7024');
-
-    // "Faux bois marron clair" must win over the generic marron+bois
-    // match above, which maps to the antique texture.
+    // "Faux bois marron clair" has its own texture: it wins over the
+    // generic marron+bois match above and keeps its raw colours.
     final bool isLightBrownTexture =
         cleanName.contains('marron clair') ||
         cleanName.contains('light brown') ||
         cleanName.contains('بني فاتح');
 
     if (isLightBrownTexture) {
+      _woodColorFilter = null;
       _woodShader = TextureCache.getShaderLightBrown();
     } else if (isOakTexture) {
       _woodShader = TextureCache.getShaderD0();
     } else if (isAntiqueTexture) {
       _woodShader = TextureCache.getShaderAntique();
-    } else if (isGreyTexture) {
-      _woodShader = TextureCache.getShaderGrey();
     } else {
-      // Default wood (الخشبي) and dark wood use the raw mahogany texture (wood_texture.png)
+      // Default wood (الخشبي), dark wood and Faux Bois Marron use the
+      // mahogany faux-bois texture (wood_texture.png).
       _woodShader = TextureCache.getShaderMahogany();
     }
   }
@@ -825,7 +822,8 @@ class WindowPainter extends CustomPainter {
           .replaceAll('ى', 'ي')
           .replaceAll('ة', 'ه');
 
-      final result = cleanName.contains('خشب') ||
+      final result =
+          cleanName.contains('خشب') ||
           cleanName.contains('wood') ||
           cleanName.contains('bois') ||
           cleanName.contains('╪«╪┤╪¿') ||
@@ -961,12 +959,6 @@ class WindowPainter extends CustomPainter {
             cleanName.contains('onteak') ||
             cleanName.contains('╪º┘å╪¬┘è┘â');
 
-        final bool isGreyTexture =
-            cleanName.contains('grey') ||
-            cleanName.contains('gray') ||
-            cleanName.contains('رمادي') ||
-            cleanName.contains('gris');
-
         final bool isLightBrownTexture =
             cleanName.contains('marron clair') ||
             cleanName.contains('light brown') ||
@@ -978,10 +970,7 @@ class WindowPainter extends CustomPainter {
             ? TextureCache.woodTextureD0
             : (isAntiqueTexture
                   ? TextureCache.woodTextureAntique
-                  : (isGreyTexture
-                        ? TextureCache.woodTextureGrey
-                        : (TextureCache.woodTexture ??
-                              TextureCache.woodTextureD0)));
+                  : (TextureCache.woodTexture ?? TextureCache.woodTextureD0));
 
         if (texture != null) {
           final shader = ui.ImageShader(
@@ -996,7 +985,6 @@ class WindowPainter extends CustomPainter {
               isLightBrownTexture ||
               isOakTexture ||
               isAntiqueTexture ||
-              isGreyTexture ||
               TextureCache.woodTexture != null;
           if (isIntendedTexture) {
             if (_woodShaderCache.length > 64) _woodShaderCache.clear();
@@ -1042,15 +1030,17 @@ class WindowPainter extends CustomPainter {
     final structure = spec.structure;
     final colorP = spec.colorP;
     // A slanted-division cell passes its own polygon.
-    final glassPath = shapePath ?? _buildGlassLayerPath(
-      r,
-      t,
-      topOffset,
-      isTopBound,
-      isInsideSash: isInsideSash,
-      sashTop: sashTop,
-      topW: topW,
-    );
+    final glassPath =
+        shapePath ??
+        _buildGlassLayerPath(
+          r,
+          t,
+          topOffset,
+          isTopBound,
+          isInsideSash: isInsideSash,
+          sashTop: sashTop,
+          topW: topW,
+        );
     // Under a raised slant or an arch the glass path rises above the zone
     // rectangle. Fill (and texture) the whole clipped shape, otherwise the
     // head stays in the backing colour and the glass looks rectangular.
@@ -2114,7 +2104,6 @@ class WindowPainter extends CustomPainter {
   void _drawProfileAngle(Canvas canvas, double w, double h, double top) {
     if (!model.usesProfileAngle) return;
 
-
     // ─────────────────────────────────────────────────────────────────────────
     // A.  Inter-frame junctions (two frames side-by-side with angle profile)
     // ─────────────────────────────────────────────────────────────────────────
@@ -2163,10 +2152,7 @@ class WindowPainter extends CustomPainter {
         final edgeX = isRight ? w : 0.0;
 
         // 90° badge at the center of the corner edge without covering frame miters.
-        _draw90DegreeCornerBadge(
-          canvas,
-          Offset(edgeX, (top + h) / 2),
-        );
+        _draw90DegreeCornerBadge(canvas, Offset(edgeX, (top + h) / 2));
       }
     }
   }
@@ -2316,7 +2302,11 @@ class WindowPainter extends CustomPainter {
       canvas.save();
       canvas.clipPath(clip);
       final mid = (x0 + x1) / 2;
-      canvas.drawLine(Offset(mid, top - 5), Offset(mid, bottom + 5), profilePaint);
+      canvas.drawLine(
+        Offset(mid, top - 5),
+        Offset(mid, bottom + 5),
+        profilePaint,
+      );
       for (var i = 1; i <= 2; i++) {
         final ratio = i / 3;
         final yOuter = top + depth + (bottom - top - depth * 2) * ratio;
@@ -2356,7 +2346,10 @@ class WindowPainter extends CustomPainter {
 
     label('${f1.width.toInt()} mm', Offset(cardX + 30, cardY + 24));
     label('${f2.width.toInt()} mm', Offset(cardX + cardW - 90, cardY + 24));
-    label('${math.max(f1.height, f2.height).toInt()} mm', Offset(cardX + 8, bottom - 8));
+    label(
+      '${math.max(f1.height, f2.height).toInt()} mm',
+      Offset(cardX + 8, bottom - 8),
+    );
   }
 
   double _slidingFrameWidth(double fallback) {
@@ -2867,18 +2860,12 @@ class WindowPainter extends CustomPainter {
       // outside margin with the dimension labels it covered their leading
       // digits and could itself be cropped in the cutting-sheet image.
       final center = switch (side) {
-        'left' => Offset(
-          8,
-          topY + (start + end - labelPainter.height) / 2,
-        ),
+        'left' => Offset(8, topY + (start + end - labelPainter.height) / 2),
         'right' => Offset(
           math.max(8.0, w - labelPainter.width - 8),
           topY + (start + end - labelPainter.height) / 2,
         ),
-        'top' => Offset(
-          (start + end - labelPainter.width) / 2,
-          topY + 8,
-        ),
+        'top' => Offset((start + end - labelPainter.width) / 2, topY + 8),
         'bottom' => Offset(
           (start + end - labelPainter.width) / 2,
           math.max(topY + 8, h - labelPainter.height - 8),
@@ -3004,22 +2991,22 @@ class WindowPainter extends CustomPainter {
         continue;
       }
 
-      final edgeFrame = edge.frameRect ??
+      final edgeFrame =
+          edge.frameRect ??
           model.getFrameRects().cast<Rect?>().firstWhere(
-                (r) =>
-                    r != null &&
-                    (isHorizontal(edge.side)
-                        ? (edge.side == 'top'
-                            ? (r.top - edge.coordinate).abs() <= 2.0
-                            : (r.bottom - edge.coordinate).abs() <= 2.0)
-                        : (edge.side == 'left'
-                            ? (r.left - edge.coordinate).abs() <= 2.0
-                            : (r.right - edge.coordinate).abs() <= 2.0)),
-                orElse: () => null,
-              );
+            (r) =>
+                r != null &&
+                (isHorizontal(edge.side)
+                    ? (edge.side == 'top'
+                          ? (r.top - edge.coordinate).abs() <= 2.0
+                          : (r.bottom - edge.coordinate).abs() <= 2.0)
+                    : (edge.side == 'left'
+                          ? (r.left - edge.coordinate).abs() <= 2.0
+                          : (r.right - edge.coordinate).abs() <= 2.0)),
+            orElse: () => null,
+          );
       if (edgeFrame != null) {
-        if (edge.side == 'bottom' &&
-            !model.hasBottomFrameForRect(edgeFrame)) {
+        if (edge.side == 'bottom' && !model.hasBottomFrameForRect(edgeFrame)) {
           continue;
         }
         final hasCover = model.isIntegratedFrame
@@ -3403,7 +3390,8 @@ class WindowPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
 
-    final frame = model.getFrameRects().firstOrNull ?? Rect.fromLTWH(0, 0, w, h);
+    final frame =
+        model.getFrameRects().firstOrNull ?? Rect.fromLTWH(0, 0, w, h);
     final isInternal = overrideIsInternalView ?? model.isInternalView;
     final sideL = isInternal ? 'left' : 'right';
     final sideR = isInternal ? 'right' : 'left';
@@ -3421,18 +3409,20 @@ class WindowPainter extends CustomPainter {
         ? model.frameSideHasIntegratedCover(frame, 'bottom')
         : model.frameSideAllowsSideCover(frame, 'bottom');
 
-    final hasL = (isInternal
+    final hasL =
+        (isInternal
             ? !model.removedShutterSides.contains('left')
             : !model.removedShutterSides.contains('right')) &&
         hasSideCoverL;
-    final hasR = (isInternal
+    final hasR =
+        (isInternal
             ? !model.removedShutterSides.contains('right')
             : !model.removedShutterSides.contains('left')) &&
         hasSideCoverR;
     final hasT = !model.removedShutterSides.contains('top') && hasSideCoverT;
     final hasBottomFrameForJoin = _hasEffectiveBottomFrame && hasSideCoverB;
-    final hasB = !model.removedShutterSides.contains('bottom') &&
-        hasBottomFrameForJoin;
+    final hasB =
+        !model.removedShutterSides.contains('bottom') && hasBottomFrameForJoin;
 
     // The frame outline (_buildOuterShapePath) is never mirrored, so the
     // cover hugging it must follow the same slant in both views; mirroring
@@ -4335,8 +4325,8 @@ class WindowPainter extends CustomPainter {
     final isSlidingZone = zone.content == ZoneContent.slidingSash;
     final sashOverride = isSlidingZone
         ? (zone.slidingSashOverride ??
-            model.slidingSashOverride ??
-            model.sashOverride)
+              model.slidingSashOverride ??
+              model.sashOverride)
         : (zone.sashOverride ?? model.sashOverride);
     final overriddenSashCode = (sashOverride?['code'] ?? '').toString().trim();
     final sashCode = overriddenSashCode.isNotEmpty
@@ -4443,7 +4433,8 @@ class WindowPainter extends CustomPainter {
           totalCutWidth * (1.0 - effectiveRatio) - finishedSashWeldLoss;
       displayHeight = r.height + overlap * 2 - finishedSashWeldLoss;
     } else if (zone.content == ZoneContent.slidingSash) {
-      final slidingSashOverride = zone.slidingSashOverride ??
+      final slidingSashOverride =
+          zone.slidingSashOverride ??
           model.slidingSashOverride ??
           model.sashOverride;
       double slidingOverlap = slidingSashOverride != null
@@ -4890,7 +4881,9 @@ class WindowPainter extends CustomPainter {
     final double glassInset = isInsideSash && sashTop != null && topW != null
         ? _sashInset(sashTop, t, topOffset) + topW
         : t;
-    double yTL = isTopBound ? getInnerTopY(r.left, glassInset, topOffset) : r.top;
+    double yTL = isTopBound
+        ? getInnerTopY(r.left, glassInset, topOffset)
+        : r.top;
     double yTR = isTopBound
         ? getInnerTopY(r.right, glassInset, topOffset)
         : r.top;
@@ -4924,15 +4917,17 @@ class WindowPainter extends CustomPainter {
     double? topW,
     Path? shapePath,
   }) {
-    final Path glassPath = shapePath ?? _buildGlassLayerPath(
-      r,
-      t,
-      topOffset,
-      isTopBound,
-      isInsideSash: isInsideSash,
-      sashTop: sashTop,
-      topW: topW,
-    );
+    final Path glassPath =
+        shapePath ??
+        _buildGlassLayerPath(
+          r,
+          t,
+          topOffset,
+          isTopBound,
+          isInsideSash: isInsideSash,
+          sashTop: sashTop,
+          topW: topW,
+        );
     canvas.save();
     canvas.clipPath(glassPath);
 
@@ -5074,8 +5069,9 @@ class WindowPainter extends CustomPainter {
           ? null
           : model.getPanneauProductForSpec(effectiveSpec);
       final savedDesignCode = effectiveSpec?.decorDesignCode?.trim();
-      final directDesignCode =
-          selectedProduct?['decor_design_code']?.toString().trim();
+      final directDesignCode = selectedProduct?['decor_design_code']
+          ?.toString()
+          .trim();
       final designCode = DecorPanelDesignCatalog.isSupported(savedDesignCode)
           ? savedDesignCode
           : DecorPanelDesignCatalog.isSupported(directDesignCode)
@@ -5416,8 +5412,7 @@ class WindowPainter extends CustomPainter {
         out.add(q1);
         continue;
       }
-      final t =
-          ((q1.dx - p1.dx) * s2.dy - (q1.dy - p1.dy) * s2.dx) / denom;
+      final t = ((q1.dx - p1.dx) * s2.dy - (q1.dy - p1.dy) * s2.dx) / denom;
       out.add(p1 + r * t);
     }
     return out;
@@ -5683,10 +5678,7 @@ class WindowPainter extends CustomPainter {
     // When disabled by user, sashes become normal telescopic overlapping sashes.
     final bool hasCentralMeeting =
         zone.slidingFaceToFace &&
-        isSlidingFaceToFaceLayout(
-          trackCount: trackCount,
-          sashCount: count,
-        );
+        isSlidingFaceToFaceLayout(trackCount: trackCount, sashCount: count);
     final double meetingCenterX = r.left + r.width / 2.0;
 
     // sashWidth is calculated using chicaneT (overlap).
@@ -5799,8 +5791,7 @@ class WindowPainter extends CustomPainter {
       final int halfSashes = count ~/ 2;
       final bool isMeetingJunctionRight =
           hasCentralMeeting && (i == halfSashes - 1);
-      final bool isMeetingJunctionLeft =
-          hasCentralMeeting && (i == halfSashes);
+      final bool isMeetingJunctionLeft = hasCentralMeeting && (i == halfSashes);
 
       final bool isLateralLeft = (i == 0) || isMeetingJunctionLeft;
       final bool isLateralRight = (i == count - 1) || isMeetingJunctionRight;
@@ -7225,8 +7216,8 @@ class WindowPainter extends CustomPainter {
       }
     }
     // 3. Fallback to main sash section visible width if available
-    final sashSection = model.getSlidingSectionByType('sash') ??
-        model.getSectionByType('sash');
+    final sashSection =
+        model.getSlidingSectionByType('sash') ?? model.getSectionByType('sash');
     if (sashSection != null) {
       if (sashSection.visibleWidth > 0) return sashSection.visibleWidth;
       if (sashSection.thickness > 0) return sashSection.thickness;
@@ -7685,11 +7676,12 @@ class WindowPainter extends CustomPainter {
     final bool canUseEntrematique =
         isSlidingSash && model.supportsSlidingEntrematique;
 
-    bool isSlidingHandle =
-        canUseEntrematique && zone?.useClassicHandle != true;
+    bool isSlidingHandle = canUseEntrematique && zone?.useClassicHandle != true;
 
     bool isClassicSlidingHandle =
-        isSlidingSash && !model.isPVC && !model.isSlidingPVC &&
+        isSlidingSash &&
+        !model.isPVC &&
+        !model.isSlidingPVC &&
         (zone?.useClassicHandle == true || !canUseEntrematique);
 
     // A sliding handle place chosen on its own (see slidingHandleTypeFor).
@@ -8368,7 +8360,11 @@ class WindowPainter extends CustomPainter {
           joint,
         );
         for (final x in [rect.left + 7, rect.right - 7]) {
-          canvas.drawLine(Offset(x, rect.top + 1), Offset(x, rect.bottom - 1), cap);
+          canvas.drawLine(
+            Offset(x, rect.top + 1),
+            Offset(x, rect.bottom - 1),
+            cap,
+          );
         }
       } else {
         canvas.drawLine(
@@ -8377,7 +8373,11 @@ class WindowPainter extends CustomPainter {
           joint,
         );
         for (final y in [rect.top + 7, rect.bottom - 7]) {
-          canvas.drawLine(Offset(rect.left + 1, y), Offset(rect.right - 1, y), cap);
+          canvas.drawLine(
+            Offset(rect.left + 1, y),
+            Offset(rect.right - 1, y),
+            cap,
+          );
         }
       }
     }
@@ -8462,13 +8462,7 @@ class WindowPainter extends CustomPainter {
       for (final c in centers) {
         drawHinge(c, false);
       }
-      record(
-        Offset(x, sashR.bottom),
-        Offset(x, top),
-        positions,
-        centers,
-        true,
-      );
+      record(Offset(x, sashR.bottom), Offset(x, top), positions, centers, true);
     } else if (onTop || onBottom) {
       final y = onBottom
           ? sashR.bottom + revealOffset
@@ -8482,9 +8476,7 @@ class WindowPainter extends CustomPainter {
       double yAt(double x) => onTop
           ? getSashTopY(x, sashR.top, t, topOffset, isTopBound) - revealOffset
           : y;
-      final centers = [
-        for (final p in positions) Offset(xAt(p), yAt(xAt(p))),
-      ];
+      final centers = [for (final p in positions) Offset(xAt(p), yAt(xAt(p)))];
       for (final c in centers) {
         drawHinge(c, true);
       }
@@ -9075,7 +9067,10 @@ class WindowPainter extends CustomPainter {
     final innerInset = outerInset + pT;
     if (isTopBound) {
       outerPath.moveTo(rect.left, rect.bottom);
-      outerPath.lineTo(rect.left, getInnerTopY(rect.left, outerInset, topOffset));
+      outerPath.lineTo(
+        rect.left,
+        getInnerTopY(rect.left, outerInset, topOffset),
+      );
       _lineAlongHead(outerPath, rect.left, rect.right, outerInset, topOffset);
       outerPath.lineTo(rect.right, rect.bottom);
       outerPath.close();

@@ -123,6 +123,25 @@ class DevisData {
   final Map<String, dynamic>? rawOrder;
   final List<Map<String, dynamic>>? rawItems;
 
+  /// Payments belong to a confirmed order: a quote for a new, draft or
+  /// pending order shows its totals (gross, discount, net, VAT, total)
+  /// without the amount paid and the balance.
+  bool get showsPayments {
+    final status = (rawOrder?['status'] ?? '').toString().trim().toLowerCase();
+    const pending = {
+      'nouveau',
+      'new',
+      'جديد',
+      'جديدة',
+      'pending',
+      'draft',
+      'en attente',
+      'en_attente',
+      'في الانتظار',
+    };
+    return !pending.contains(status);
+  }
+
   const DevisData({
     required this.orderId,
     required this.orderDate,
@@ -1198,7 +1217,7 @@ class DevisBuilder {
             final String hStr = (hMm / 10.0).toStringAsFixed(0);
             final String fColor = it['frameColor']?.toString() ?? itemColorStr;
             details.add(
-              'Moustiquaire N°${i + 1}: القياس: $wStr × $hStr سم | المساحة: ${area.toStringAsFixed(2)} m² | اللون: $fColor | العدد: $qty',
+              'Moustiquaire N°${i + 1}: ${t('القياس:')} $wStr × $hStr ${t('سم')} | ${t('المساحة:')} ${area.toStringAsFixed(2)} m² | ${t('اللون:')} ${Localization.colorName(fColor, _currentLang)} | ${t('العدد:')} $qty',
             );
           }
         }
@@ -1207,7 +1226,7 @@ class DevisBuilder {
             .toDouble();
         final totalQty = (payload['totalQuantity'] as num? ?? 1).toInt();
         details.add(
-          'النوع: $subTypeStr | المساحة الكلية: ${totalArea.toStringAsFixed(2)} m² | اللون: $itemColorStr | العدد: $totalQty',
+          '${t('النوع:')} ${t(subTypeStr)} | ${t('المساحة الكلية:')} ${totalArea.toStringAsFixed(2)} m² | ${t('اللون:')} ${Localization.colorName(itemColorStr, _currentLang)} | ${t('العدد:')} $totalQty',
         );
       }
 
@@ -1222,7 +1241,7 @@ class DevisBuilder {
         replacementReason: replacementReason,
         width: width,
         height: height,
-        color: itemColorStr,
+        color: Localization.colorName(itemColorStr, _currentLang),
         detailId: detailId,
       );
     }

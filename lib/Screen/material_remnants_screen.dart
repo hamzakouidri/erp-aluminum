@@ -2,6 +2,7 @@ import 'package:database_data/widgets/app_material.dart';
 import 'package:provider/provider.dart';
 
 import '../settings/app_settings.dart';
+import '../settings/localization.dart';
 import '../sql_database.dart';
 import '../widgets/section_image.dart';
 
@@ -637,7 +638,7 @@ class _MaterialRemnantsScreenState extends State<MaterialRemnantsScreen> {
                                     Text(
                                       [
                                         if (color.isNotEmpty)
-                                          '${isArabic ? 'اللون:' : 'Couleur:'} $color',
+                                          '${isArabic ? 'اللون:' : 'Couleur:'} ${Localization.colorName(color, lang)}',
                                         if (rack.isNotEmpty)
                                           '${isArabic ? 'الحامل:' : 'Râtelier:'} $rack',
                                         if (shelf.isNotEmpty)

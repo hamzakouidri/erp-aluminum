@@ -655,7 +655,7 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
                                         (c) => DropdownMenuItem(
                                           value: c,
                                           child: Text(
-                                            c,
+                                            Localization.colorName(c, lang),
                                             style: const TextStyle(
                                               fontFamily: 'Cairo',
                                             ),
@@ -702,7 +702,7 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
                                         (c) => DropdownMenuItem(
                                           value: c,
                                           child: Text(
-                                            c,
+                                            Localization.colorName(c, lang),
                                             style: const TextStyle(
                                               fontFamily: 'Cairo',
                                             ),
@@ -851,7 +851,7 @@ class _MoustiquaireScreenState extends State<MoustiquaireScreen> {
                             ),
                           ),
                           subtitle: Text(
-                            '${Localization.translate('النوع:', lang)} ${_getTypeLabel(item.type, lang)} | ${Localization.translate('إطار:', lang)} ${item.frameColor} | ${Localization.translate('المساحة:', lang)} ${item.totalAreaSqm.toStringAsFixed(2)} m²',
+                            '${Localization.translate('النوع:', lang)} ${_getTypeLabel(item.type, lang)} | ${Localization.translate('إطار:', lang)} ${Localization.colorName(item.frameColor, lang)} | ${Localization.translate('المساحة:', lang)} ${item.totalAreaSqm.toStringAsFixed(2)} m²',
                             style: const TextStyle(
                               fontFamily: 'Cairo',
                               fontSize: 12,

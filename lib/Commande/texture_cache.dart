@@ -9,16 +9,12 @@ class TextureCache {
   static ui.Image? woodTexture;
   static ui.Image? woodTextureD0;
   static ui.Image? woodTextureAntique;
-  static ui.Image? woodTextureDark;
-  static ui.Image? woodTextureGrey;
   static ui.Image? woodTextureLightBrown;
 
   // Static cached shaders to avoid allocations during drawing
   static ui.Shader? _shaderD0;
   static ui.Shader? _shaderMahogany;
   static ui.Shader? _shaderAntique;
-  static ui.Shader? _shaderDark;
-  static ui.Shader? _shaderGrey;
   static ui.Shader? _shaderLightBrown;
 
   static Future<void> init() async {
@@ -56,27 +52,6 @@ class TextureCache {
         woodTextureAntique = await completer.future;
       }
 
-      if (woodTextureDark == null) {
-        final ByteData data = await rootBundle.load(
-          'assets/images/wood_texture_dark.png',
-        );
-        final Completer<ui.Image> completer = Completer();
-        ui.decodeImageFromList(data.buffer.asUint8List(), (ui.Image img) {
-          completer.complete(img);
-        });
-        woodTextureDark = await completer.future;
-      }
-
-      if (woodTextureGrey == null) {
-        final ByteData data = await rootBundle.load(
-          'assets/images/wood_texture_grey.png',
-        );
-        final Completer<ui.Image> completer = Completer();
-        ui.decodeImageFromList(data.buffer.asUint8List(), (ui.Image img) {
-          completer.complete(img);
-        });
-        woodTextureGrey = await completer.future;
-      }
 
       if (woodTextureLightBrown == null) {
         final ByteData data = await rootBundle.load(
@@ -109,22 +84,6 @@ class TextureCache {
       if (woodTextureAntique != null) {
         _shaderAntique = ui.ImageShader(
           woodTextureAntique!,
-          ui.TileMode.repeated,
-          ui.TileMode.repeated,
-          Matrix4.identity().scaled(0.5).storage,
-        );
-      }
-      if (woodTextureDark != null) {
-        _shaderDark = ui.ImageShader(
-          woodTextureDark!,
-          ui.TileMode.repeated,
-          ui.TileMode.repeated,
-          Matrix4.identity().scaled(0.5).storage,
-        );
-      }
-      if (woodTextureGrey != null) {
-        _shaderGrey = ui.ImageShader(
-          woodTextureGrey!,
           ui.TileMode.repeated,
           ui.TileMode.repeated,
           Matrix4.identity().scaled(0.5).storage,
@@ -187,32 +146,6 @@ class TextureCache {
       );
     }
     return _shaderAntique;
-  }
-
-  static ui.Shader? getShaderDark() {
-    if (woodTextureDark == null) ensureLoading();
-    if (_shaderDark == null && woodTextureDark != null) {
-      _shaderDark = ui.ImageShader(
-        woodTextureDark!,
-        ui.TileMode.repeated,
-        ui.TileMode.repeated,
-        Matrix4.identity().scaled(0.5).storage,
-      );
-    }
-    return _shaderDark;
-  }
-
-  static ui.Shader? getShaderGrey() {
-    if (woodTextureGrey == null) ensureLoading();
-    if (_shaderGrey == null && woodTextureGrey != null) {
-      _shaderGrey = ui.ImageShader(
-        woodTextureGrey!,
-        ui.TileMode.repeated,
-        ui.TileMode.repeated,
-        Matrix4.identity().scaled(0.5).storage,
-      );
-    }
-    return _shaderGrey;
   }
 
   static ui.Shader? getShaderLightBrown() {

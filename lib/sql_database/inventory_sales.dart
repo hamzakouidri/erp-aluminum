@@ -3699,6 +3699,15 @@ extension SqlDatabaseInventory on SqlDatabase {
         whereArgs: [saleId],
       );
     });
+    try {
+      // A sale saved right after it was created stays one "sale added".
+      await _recordDashboardActivity(
+        activityType: 'sale_updated',
+        entityId: saleId,
+        userName: editor,
+        mergeInto: const {'sale_added'},
+      );
+    } catch (_) {}
     CloudSyncService().notifyChange();
   }
 

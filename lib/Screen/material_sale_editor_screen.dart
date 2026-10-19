@@ -37,6 +37,12 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
 
   final _fmt = NumberFormat('#,##0.00');
 
+  /// A catalogue colour name in the app language.
+  String _tColor(Object? name) => Localization.colorName(
+    name,
+    Provider.of<AppSettingsProvider>(context, listen: false).language,
+  );
+
   String _t(String key) {
     final lang = Provider.of<AppSettingsProvider>(
       context,
@@ -2332,7 +2338,7 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
                   ),
                 ),
               if (colorName.isNotEmpty)
-                Text(colorName, style: regular.copyWith(fontSize: 10.5, color: Colors.blueGrey)),
+                Text(_tColor(colorName), style: regular.copyWith(fontSize: 10.5, color: Colors.blueGrey)),
             ],
           ),
           centered((item['item_code'] ?? '—').toString()),
@@ -2665,7 +2671,7 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
                     ),
                     if (colorName.isNotEmpty)
                       Text(
-                        colorName,
+                        _tColor(colorName),
                         style: const TextStyle(
                           fontFamily: 'Cairo',
                           fontSize: 10.5,

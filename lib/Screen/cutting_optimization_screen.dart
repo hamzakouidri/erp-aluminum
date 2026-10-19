@@ -20,6 +20,9 @@ import '../services/pdf_branding.dart';
 import '../Commande/order_measurements_confirm_screen.dart';
 import '../Commande/production_measurements.dart';
 import '../widgets/auto_scroll_expansion_tile.dart';
+import '../widgets/label_printer_settings_dialog.dart';
+import '../services/labels/cut_piece_labels.dart';
+import '../services/labels/label_print_service.dart';
 
 enum OptimizationMode {
   singleOrder, // 1. طلبية كاملة
@@ -422,6 +425,55 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
     return (_detailBatchQuantities[detailId] ?? ordered).clamp(1, ordered);
   }
 
+  /// One label per cut, in cutting order (profile, bar, cuts along the bar).
+  Future<void> _printCutPieceLabels() async {
+    final report = _report;
+    if (report == null || report.groups.isEmpty) return;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    final messenger = ScaffoldMessenger.of(context);
+    final labels = cutPieceLabelsFor(report);
+    if (labels.isEmpty) return;
+    const format = PdfPageFormat(
+      50 * PdfPageFormat.mm,
+      30 * PdfPageFormat.mm,
+      marginAll: 1 * PdfPageFormat.mm,
+    );
+    try {
+      final fonts = await PdfFontCache.load();
+      final document = cutPieceLabelsDocument(
+        labels,
+        format: format,
+        regular: fonts.regular,
+        bold: fonts.bold,
+        lang: lang,
+      );
+      await LabelPrintService.printLabels(
+        document,
+        format: format,
+        name: 'cut-piece-labels.pdf',
+      );
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            '${Localization.translate('تم إرسال ملصقات القطع', lang)}: ${labels.length}',
+          ),
+        ),
+      );
+    } catch (error) {
+      messenger.showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.red.shade700,
+          content: Text(
+            '${Localization.translate('تعذر الاتصال بالطابعة', lang)}: $error',
+          ),
+        ),
+      );
+    }
+  }
+
   Future<void> _exportPdfReport() async {
     if (_report == null || _report!.groups.isEmpty) return;
 
@@ -598,6 +650,11 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
               onPressed: _exportPdfReport,
             ),
             IconButton(
+              icon: const Icon(Icons.label_rounded),
+              tooltip: Localization.translate('ملصق لكل قطعة مقصوصة', lang),
+              onPressed: _printCutPieceLabels,
+            ),
+            IconButton(
               icon: const Icon(Icons.qr_code_2_rounded),
               tooltip: Localization.translate('طباعة ملصقات الباركود للقطع', lang),
               onPressed: () {
@@ -630,6 +687,11 @@ class _CuttingOptimizationScreenState extends State<CuttingOptimizationScreen>
               },
             ),
           ],
+          IconButton(
+            icon: const Icon(Icons.print_rounded),
+            tooltip: Localization.translate('طابعة الملصقات', lang),
+            onPressed: () => showLabelPrinterSettingsDialog(context),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: Localization.translate('إعادة الحساب والتحسين', lang),

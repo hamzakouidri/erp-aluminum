@@ -34,6 +34,8 @@ import 'locales/system_publication_keys.dart';
 import 'locales/moustiquaire_price_keys.dart';
 import 'locales/kit_bundle_keys.dart';
 import '../utils/color_name_localization.dart';
+import 'locales/color_keys.dart';
+import 'locales/workshop_scan_keys.dart';
 
 class Localization {
   static final Map<String, Map<AppLanguage, String>> _dictionary = {
@@ -71,6 +73,8 @@ class Localization {
     ...auditLogKeys,
     ...dashboardActivityKeys,
     ...drawingValidationKeys,
+    ...colorKeys,
+    ...workshopScanKeys,
   };
 
   static String translate(String key, AppLanguage lang) {
@@ -242,5 +246,20 @@ class Localization {
     if (color != key) return color;
 
     return key; // Fallback to key if not found
+  }
+
+  /// A colour name from the catalogue (stored in Arabic, sometimes as
+  /// "عربي (Latin)") in [lang]. Unknown names fall back to their Latin part,
+  /// then to the stored name.
+  static String colorName(Object? name, AppLanguage lang) {
+    final raw = (name ?? '').toString().trim();
+    if (raw.isEmpty || lang == AppLanguage.arabic) return raw;
+    final translated = translate(raw, lang);
+    if (translated != raw) return translated;
+    final latin = RegExp(r'\(([^()]*[A-Za-z][^()]*)\)').firstMatch(raw);
+    if (latin != null && RegExp(r'[\u0600-\u06FF]').hasMatch(raw)) {
+      return latin.group(1)!.trim();
+    }
+    return raw;
   }
 }

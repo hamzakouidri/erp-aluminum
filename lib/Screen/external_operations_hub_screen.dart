@@ -2,6 +2,7 @@ import 'package:database_data/widgets/app_material.dart';
 import 'package:provider/provider.dart';
 import '../sql_database.dart';
 import '../settings/app_settings.dart';
+import '../settings/localization.dart';
 import 'glass_order_reception_screen.dart';
 import 'achat_screen.dart';
 import '../widgets/lazy_window_image.dart';
@@ -2983,7 +2984,7 @@ class _MissingItemsSheet extends StatelessWidget {
                                                 ': $glass',
                                           if (color.isNotEmpty)
                                             _tr('لون', 'Couleur', 'Color') +
-                                                ': $color',
+                                                ': ${Localization.colorName(color, Provider.of<AppSettingsProvider>(context, listen: false).language)}',
                                         ].join(' — '),
                                         style: TextStyle(
                                           fontFamily: 'Cairo',

@@ -2460,16 +2460,18 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
             ],
             if (showTva) _totalRow(tvaLabel, data.tvaAmount),
             _totalRow(totalTtcLabel, data.totalTTC, highlight: true),
-            if (isDevis)
-              _totalRow(t('Montant payé'), data.amountPaid)
-            else if (data.amountPaid > 0)
-              _totalRow(
-                t('Montant payé'),
-                data.amountPaid,
-                color: Colors.green,
-              ),
-            if (!isDevis && (data.amountPaid > 0 || isOfficial))
-              _totalRow(t('Remaining:'), amountRemaining, color: Colors.red),
+            if (data.showsPayments) ...[
+              if (isDevis)
+                _totalRow(t('Montant payé'), data.amountPaid)
+              else if (data.amountPaid > 0)
+                _totalRow(
+                  t('Montant payé'),
+                  data.amountPaid,
+                  color: Colors.green,
+                ),
+              if (!isDevis && (data.amountPaid > 0 || isOfficial))
+                _totalRow(t('Remaining:'), amountRemaining, color: Colors.red),
+            ],
           ],
         ),
       ),

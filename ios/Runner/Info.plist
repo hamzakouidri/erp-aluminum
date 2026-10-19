@@ -53,5 +53,7 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>The camera scans barcode labels of profiles, offcuts and orders.</string>
 </dict>
 </plist>

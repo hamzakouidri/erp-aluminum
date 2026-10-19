@@ -331,7 +331,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
 
                         return CheckboxListTile(
                           title: Text(
-                            color['name'].toString(),
+                            Localization.colorName(color['name'], lang),
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                           secondary: Container(
@@ -540,7 +540,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
                                     );
 
                                     return CheckboxListTile(
-                                      title: Text(cName),
+                                      title: Text(Localization.colorName(cName, lang)),
                                       secondary: Container(
                                         width: 24,
                                         height: 24,
@@ -792,7 +792,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
                                   final isMapped = aColors.contains(cId);
                                   return CheckboxListTile(
                                     title: Text(
-                                      color['name'].toString(),
+                                      Localization.colorName(color['name'], lang),
                                       style: const TextStyle(
                                         fontWeight: FontWeight.bold,
                                       ),
@@ -977,8 +977,8 @@ class _ColorsScreenState extends State<ColorsScreen> {
                                   return CheckboxListTile(
                                     title: Text(
                                       isGreyBaseColor
-                                          ? 'رمادي (السعر الأساسي)'
-                                          : color['name'].toString(),
+                                          ? Localization.translate('رمادي (السعر الأساسي)', lang)
+                                          : Localization.colorName(color['name'], lang),
                                       style: const TextStyle(
                                         fontWeight: FontWeight.bold,
                                       ),

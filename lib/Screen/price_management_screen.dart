@@ -890,7 +890,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                   ],
                 ),
                 child: PriceEditRow(
-                  title: color['name'].toString(),
+                  title: Localization.colorName(color['name'], lang),
                   titleIcon: _buildColorCircle(color, size: 24),
                   subtitle: Localization.translate('سعر المتر الطولي', lang),
                   currentPrice: currentPrice,
@@ -1843,7 +1843,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                     children: [
                       Expanded(
                         child: PriceEditRow(
-                          title: colMap['name'].toString(),
+                          title: Localization.colorName(colMap['name'], lang),
                           titleIcon: _buildColorCircle(colMap, size: 22),
                           subtitle: subtitle,
                           currentPrice: currentPrice,
@@ -2339,7 +2339,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                           final cId = color['id'] as int;
                           return ListTile(
                             leading: _buildColorCircle(color, size: 28),
-                            title: Text(color['name'].toString()),
+                            title: Text(Localization.colorName(color['name'], lang)),
                             trailing: Icon(
                               Icons.add_circle_outline,
                               color: accentColor,
@@ -2994,7 +2994,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                         orElse: () => {'name': 'Color ${entry.key}'},
                       );
                       return _buildDesktopAccessoryPriceBox(
-                        label: (color['name'] ?? '').toString(),
+                        label: Localization.colorName(color['name'], lang),
                         icon: _buildColorCircle(color, size: 24),
                         price: entry.value,
                         onSave: (price) => _updateAccessoryColorPrice(
@@ -3184,7 +3184,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                         orElse: () => {'name': 'Color ${entry.key}'},
                       );
                       return PriceEditRow(
-                        title: (color['name'] ?? '').toString(),
+                        title: Localization.colorName(color['name'], lang),
                         titleIcon: _buildColorCircle(color, size: 24),
                         currentPrice: entry.value,
                         canChangePrices: canChangePrices,
@@ -3542,8 +3542,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                         vertical: 8,
                       ),
                       leading: _buildColorCircle(color, size: 30),
-                      title: Text(
-                        color['name'].toString(),
+                      title: Text(Localization.colorName(color['name'], lang),
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
@@ -3846,7 +3845,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 8.0),
                             child: PriceEditRow(
-                              title: color['name'].toString(),
+                              title: Localization.colorName(color['name'], lang),
                               currentPrice: currentPrice,
                               canChangePrices: canChangePrices,
                               onSave: (parsed) =>
@@ -5504,7 +5503,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                                   final isMapped = aColors.containsKey(cId);
 
                                   return CheckboxListTile(
-                                    title: Text(color['name'].toString()),
+                                    title: Text(Localization.colorName(color['name'], lang)),
                                     secondary: _buildColorCircle(
                                       color,
                                       size: 24,

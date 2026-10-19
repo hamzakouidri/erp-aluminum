@@ -1885,16 +1885,22 @@ class PdfInvoiceApi {
                 ],
               ),
             ),
-            if (isDevis)
-              _totalRow(t('Montant payé'), data.amountPaid)
-            else if (data.amountPaid > 0)
-              _totalRow(
-                t('Montant payé'),
-                data.amountPaid,
-                color: PdfColors.green,
-              ),
-            if (!isDevis && (data.amountPaid > 0 || isOfficial))
-              _totalRow(t('Remaining:'), amountRemaining, color: PdfColors.red),
+            if (data.showsPayments) ...[
+              if (isDevis)
+                _totalRow(t('Montant payé'), data.amountPaid)
+              else if (data.amountPaid > 0)
+                _totalRow(
+                  t('Montant payé'),
+                  data.amountPaid,
+                  color: PdfColors.green,
+                ),
+              if (!isDevis && (data.amountPaid > 0 || isOfficial))
+                _totalRow(
+                  t('Remaining:'),
+                  amountRemaining,
+                  color: PdfColors.red,
+                ),
+            ],
           ],
         ),
       ),
