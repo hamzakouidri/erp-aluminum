@@ -4454,145 +4454,43 @@ extension _WindowViewDrawers on _WindowViewState {
                   onChanged: widget.model.toggleOptionalTriangle,
                 ),
 
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          Localization.translate(
-                            "بروفيل الزاوية 90° (Tube carré)",
-                            lang,
-                          ),
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        TextButton.icon(
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
+              // The corner profile goes only between two touching frames:
+              // one switch puts it at every junction (the bottom bar keeps
+              // the per-junction choice).
+              Builder(
+                builder: (context) {
+                  final hasJunctions = widget.model
+                      .getAdjacentFrameJunctions()
+                      .isNotEmpty;
+                  return SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      Localization.translate(
+                        "بروفيل الزاوية 90° (Tube carré)",
+                        lang,
+                      ),
+                    ),
+                    subtitle: hasJunctions
+                        ? null
+                        : Text(
+                            Localization.translate(
+                              'بروفيل الزاوية يركب بين إطارين متلاصقين فقط، وليس على أطراف الإطار. ألصق إطاراً بإطار ثم فعّله بينهما.',
+                              lang,
                             ),
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          icon: const Icon(Icons.settings, size: 14),
-                          label: Text(
-                            Localization.translate('تخصيص', lang),
                             style: const TextStyle(fontSize: 11),
                           ),
-                          onPressed: () => _showProfileAngleDialog(context),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Builder(
-                      builder: (context) {
-                        final junctions = widget.model
-                            .getAdjacentFrameJunctions();
-                        if (junctions.isNotEmpty) {
-                          final active =
-                              widget.model.activeProfileAngleJunctions;
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Wrap(
-                                spacing: 6,
-                                runSpacing: 4,
-                                children: junctions.map((j) {
-                                  final isSel = active.contains(j.index);
-                                  return FilterChip(
-                                    label: Text(
-                                      j.localizedLabel(lang),
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: isSel
-                                            ? FontWeight.bold
-                                            : FontWeight.normal,
-                                      ),
-                                    ),
-                                    selected: isSel,
-                                    onSelected: (val) {
-                                      _setViewState(() {
-                                        widget.model.toggleProfileAngleJunction(
-                                          j.index,
-                                          val,
-                                        );
-                                        _warnProfileAngleFrames();
-                                      });
-                                    },
-                                  );
-                                }).toList(),
-                              ),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  TextButton(
-                                    style: TextButton.styleFrom(
-                                      padding: EdgeInsets.zero,
-                                      minimumSize: Size.zero,
-                                      tapTargetSize:
-                                          MaterialTapTargetSize.shrinkWrap,
-                                    ),
-                                    child: Text(
-                                      Localization.translate('الكل', lang),
-                                      style: const TextStyle(fontSize: 11),
-                                    ),
-                                    onPressed: () {
-                                      _setViewState(() {
-                                        widget.model
-                                            .setAllProfileAngleJunctions(true);
-                                      });
-                                    },
-                                  ),
-                                  const SizedBox(width: 8),
-                                  TextButton(
-                                    style: TextButton.styleFrom(
-                                      padding: EdgeInsets.zero,
-                                      minimumSize: Size.zero,
-                                      tapTargetSize:
-                                          MaterialTapTargetSize.shrinkWrap,
-                                    ),
-                                    child: Text(
-                                      Localization.translate('إلغاء', lang),
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.red,
-                                      ),
-                                    ),
-                                    onPressed: () {
-                                      _setViewState(() {
-                                        widget.model
-                                            .setAllProfileAngleJunctions(false);
-                                      });
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ],
-                          );
-                        }
-                        // The corner profile goes only between two
-                        // touching frames, never on a frame's outer edge.
-                        return Text(
-                          Localization.translate(
-                            'بروفيل الزاوية يركب بين إطارين متلاصقين فقط، وليس على أطراف الإطار. ألصق إطاراً بإطار ثم فعّله بينهما.',
-                            lang,
-                          ),
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: Colors.orange.shade900,
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
+                    value: widget.model.activeProfileAngleJunctions.isNotEmpty,
+                    activeThumbColor: Colors.blue,
+                    onChanged: hasJunctions
+                        ? (value) {
+                            _setViewState(() {
+                              widget.model.setAllProfileAngleJunctions(value);
+                              _warnProfileAngleFrames();
+                            });
+                          }
+                        : null,
+                  );
+                },
               ),
 
               if (widget.model.getConfiguredSectionForRole(
