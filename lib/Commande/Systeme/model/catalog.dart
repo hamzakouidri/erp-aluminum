@@ -973,7 +973,9 @@ extension WindowModelCatalog on WindowModel {
           activeSlidingSeries!.name.trim().toLowerCase(),
       };
 
-      for (var pData in profilesData) {
+      Future<AluminumProfileSystem> loadSystem(
+        Map<String, dynamic> pData,
+      ) async {
         var system = AluminumProfileSystem.fromMap(pData);
         final seriesData = <Map<String, dynamic>>[
           ...(await db.readSeriesByProfile(system.id)),
@@ -1009,22 +1011,33 @@ extension WindowModelCatalog on WindowModel {
           }
         }
 
-        for (var sData in seriesData) {
-          var series = AluminumSeries.fromMap(sData);
-          final sectionsData = await db.readAvailableSectionsBySeries(
-            series.id,
-          );
-          series.sections = sectionsData
-              .map((e) => AluminumSection.fromMap(e))
-              .toList();
-          // Cache role ownership for every loaded series. This lets shared
-          // components such as couvre-joint be collected across series while
-          // keeping frames and sashes tied to their own role rows.
-          _rememberSeriesRoleKeys(
-            series,
-            await db.getSeriesDesignRoles(series.id),
-          );
-
+        // The sections and roles of each series load together rather than
+        // one query after another: the series list appeared late.
+        final loadedSeries = await Future.wait(
+          seriesData.map((sData) async {
+            final series = AluminumSeries.fromMap(sData);
+            final results = await Future.wait<Object>([
+              db.readAvailableSectionsBySeries(series.id),
+              db.getSeriesDesignRoles(series.id),
+            ]);
+            series.sections = (results[0] as List)
+                .map(
+                  (e) => AluminumSection.fromMap(
+                    Map<String, dynamic>.from(e as Map),
+                  ),
+                )
+                .toList();
+            // Cache role ownership for every loaded series. This lets shared
+            // components such as couvre-joint be collected across series
+            // while keeping frames and sashes tied to their own role rows.
+            _rememberSeriesRoleKeys(
+              series,
+              List<Map<String, dynamic>>.from(results[1] as List),
+            );
+            return series;
+          }),
+        );
+        for (final series in loadedSeries) {
           // Keep every active catalogue row available to the drawing page.
           // Opening/sliding classification is used later to resolve the
           // correct role and calculation path; it must never remove an
@@ -1033,10 +1046,19 @@ extension WindowModelCatalog on WindowModel {
           // contain an exact opening/sliding label.
           system.series.add(series);
         }
+        return system;
+      }
+
+      // Every system loads at the same time, kept in catalogue order.
+      final loadedSystems = await Future.wait(profilesData.map(loadSystem));
+      for (final system in loadedSystems) {
         if (system.series.isNotEmpty) newAvailableSystems.add(system);
       }
       if (newAvailableSystems.isNotEmpty) {
         availableSystems = newAvailableSystems;
+        // Show the series list now; the active series, prices and defaults
+        // below still take a moment.
+        _notifyModelListeners();
       }
 
       if (availableSystems.isNotEmpty) {
@@ -2304,7 +2326,9 @@ extension WindowModelCatalog on WindowModel {
       // 🟢 جلب سعر الإطار (frameOverride) من قاعدة البيانات
       if (frameOverride != null) {
         final rawFId = frameOverride!['id'];
-        final fId = rawFId is num ? rawFId.toInt() : int.tryParse('${rawFId ?? ''}');
+        final fId = rawFId is num
+            ? rawFId.toInt()
+            : int.tryParse('${rawFId ?? ''}');
         if (fId != null) {
           double fPrice = await db.getSectionPrice(fId, colorId);
           if (fPrice == 800.0) fPrice = 0.0;
@@ -2316,7 +2340,9 @@ extension WindowModelCatalog on WindowModel {
       // 🟢 جلب سعر الظلفة (sashOverride) من قاعدة البيانات
       if (sashOverride != null) {
         final rawSId = sashOverride!['id'];
-        final sId = rawSId is num ? rawSId.toInt() : int.tryParse('${rawSId ?? ''}');
+        final sId = rawSId is num
+            ? rawSId.toInt()
+            : int.tryParse('${rawSId ?? ''}');
         if (sId != null) {
           double sPrice = await db.getSectionPrice(sId, colorId);
           if (sPrice == 800.0) sPrice = 0.0;
@@ -2334,7 +2360,9 @@ extension WindowModelCatalog on WindowModel {
       // 🟢 جلب سعر التغطية الجانبية (sideCoverOverride) من قاعدة البيانات
       if (sideCoverOverride != null) {
         final rawScId = sideCoverOverride!['id'];
-        final scId = rawScId is num ? rawScId.toInt() : int.tryParse('${rawScId ?? ''}');
+        final scId = rawScId is num
+            ? rawScId.toInt()
+            : int.tryParse('${rawScId ?? ''}');
         if (scId != null) {
           double scPrice = await db.getSectionPrice(scId, colorId);
           if (scPrice == 800.0) scPrice = 0.0;
