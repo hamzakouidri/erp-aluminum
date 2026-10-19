@@ -2747,6 +2747,8 @@ extension SqlDatabaseCatalog on SqlDatabase {
     int kitId, {
     required String group1Name,
     required String group2Name,
+    double? group1AxeDeduction,
+    double? group2AxeDeduction,
   }) async {
     final database = await db;
     if (database == null) return;
@@ -2754,6 +2756,8 @@ extension SqlDatabaseCatalog on SqlDatabase {
     await database.update(
       'KitBundles',
       {
+        'compatibility_group_1_axe_deduction': ?group1AxeDeduction,
+        'compatibility_group_2_axe_deduction': ?group2AxeDeduction,
         'compatibility_group_1_name': group1Name.trim().isEmpty
             ? 'Console Quissonnel Standard'
             : group1Name.trim(),

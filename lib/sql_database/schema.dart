@@ -1755,6 +1755,9 @@ extension SqlDatabaseSchema on SqlDatabase {
       'ALTER TABLE KitItemRanges ADD COLUMN family_id INTEGER;',
       "ALTER TABLE KitBundles ADD COLUMN compatibility_group_1_name TEXT NOT NULL DEFAULT 'Console Quissonnel Standard';",
       "ALTER TABLE KitBundles ADD COLUMN compatibility_group_2_name TEXT NOT NULL DEFAULT 'Console Quissonnel Spécial';",
+      // Axe deduction (mm) of a tunnel box with each console.
+      'ALTER TABLE KitBundles ADD COLUMN compatibility_group_1_axe_deduction REAL NOT NULL DEFAULT 75;',
+      'ALTER TABLE KitBundles ADD COLUMN compatibility_group_2_axe_deduction REAL NOT NULL DEFAULT 75;',
       "ALTER TABLE KitBundles ADD COLUMN price REAL NOT NULL DEFAULT 0.0;",
       "ALTER TABLE KitBundles ADD COLUMN material_type TEXT NOT NULL DEFAULT 'all';",
     ]) {

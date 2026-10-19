@@ -380,6 +380,9 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
   List<String> _suggestedNames = [];
   late String _group1Name;
   late String _group2Name;
+  // Axe deduction (mm) of a tunnel box with each console.
+  late double _group1Axe;
+  late double _group2Axe;
 
   @override
   void initState() {
@@ -400,6 +403,14 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
             true
         ? widget.kit['compatibility_group_2_name'].toString()
         : 'Console Quissonnel Spécial';
+    _group1Axe =
+        (widget.kit['compatibility_group_1_axe_deduction'] as num?)
+            ?.toDouble() ??
+        75;
+    _group2Axe =
+        (widget.kit['compatibility_group_2_axe_deduction'] as num?)
+            ?.toDouble() ??
+        75;
     _loadItems();
     _loadSuggestions();
   }
@@ -505,6 +516,21 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
     ).language;
     final first = TextEditingController(text: _group1Name);
     final second = TextEditingController(text: _group2Name);
+    String mm(double v) => v == v.roundToDouble() ? '${v.toInt()}' : '$v';
+    final firstAxe = TextEditingController(text: mm(_group1Axe));
+    final secondAxe = TextEditingController(text: mm(_group2Axe));
+    Widget axeField(TextEditingController controller) => Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: TextField(
+        controller: controller,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: InputDecoration(
+          labelText: Localization.translate('خصم المحور (مم)', lang),
+          border: const OutlineInputBorder(),
+          isDense: true,
+        ),
+      ),
+    );
     final saved = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -519,6 +545,7 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
                 border: const OutlineInputBorder(),
               ),
             ),
+            axeField(firstAxe),
             const SizedBox(height: 12),
             TextField(
               controller: second,
@@ -527,6 +554,7 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
                 border: const OutlineInputBorder(),
               ),
             ),
+            axeField(secondAxe),
           ],
         ),
         actions: [
@@ -542,13 +570,19 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
       ),
     );
     if (saved != true) return;
+    final axe1 = double.tryParse(firstAxe.text.replaceAll(',', '.'));
+    final axe2 = double.tryParse(secondAxe.text.replaceAll(',', '.'));
     await widget.db.updateKitCompatibilityGroupNames(
       widget.kit['id'],
       group1Name: first.text,
       group2Name: second.text,
+      group1AxeDeduction: axe1,
+      group2AxeDeduction: axe2,
     );
     if (mounted) {
       setState(() {
+        _group1Axe = axe1 ?? _group1Axe;
+        _group2Axe = axe2 ?? _group2Axe;
         _group1Name = first.text.trim().isEmpty
             ? 'Console Quissonnel Standard'
             : first.text.trim();

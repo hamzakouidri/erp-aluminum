@@ -57,6 +57,26 @@ const Map<String, Map<AppLanguage, String>> kitBundleKeys = {
     AppLanguage.french: 'Composant :',
     AppLanguage.english: 'Component:',
   },
+  'الكونسول:': {
+    AppLanguage.arabic: 'الكونسول:',
+    AppLanguage.french: 'Console :',
+    AppLanguage.english: 'Console:',
+  },
+  'كونسول ستاندار': {
+    AppLanguage.arabic: 'كونسول ستاندار',
+    AppLanguage.french: 'Console standard',
+    AppLanguage.english: 'Standard console',
+  },
+  'كونسول سبيسيال': {
+    AppLanguage.arabic: 'كونسول سبيسيال',
+    AppLanguage.french: 'Console spéciale',
+    AppLanguage.english: 'Special console',
+  },
+  'خصم المحور (مم)': {
+    AppLanguage.arabic: 'خصم المحور (مم)',
+    AppLanguage.french: "Déduction de l'axe (mm)",
+    AppLanguage.english: 'Axe deduction (mm)',
+  },
   'عائلة:': {
     AppLanguage.arabic: 'عائلة:',
     AppLanguage.french: 'Famille :',

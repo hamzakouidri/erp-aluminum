@@ -3509,6 +3509,9 @@ class ComponentCalculator {
       String? variantValue,
       bool includeFamilyItems = false,
       bool groupExpandedItems = true,
+      // The console the customer has (tunnel box): its parts are taken
+      // whatever the weight, instead of the group the weights point to.
+      int? forcedCompatibilityGroup,
     }) {
       final result = <BomItem>[];
       final String? expandedItemGroupName = groupExpandedItems ? kitName : null;
@@ -3557,7 +3560,9 @@ class ComponentCalculator {
       }
 
       final applicableKitItems = kitItems.where(familyApplies).toList();
-      final selectedCompatibilityGroup = selectKitCompatibilityGroup(
+      final selectedCompatibilityGroup =
+          forcedCompatibilityGroup ??
+          selectKitCompatibilityGroup(
         kitItems: applicableKitItems,
         shutterWeightKg: shutterWeightKg,
         mechanismScope: mechanismScope,
@@ -3628,7 +3633,7 @@ class ComponentCalculator {
             final rangeGroup =
                 ((r['compatibility_group'] as num?)?.toInt() ?? 0).clamp(0, 2);
             final groupMatches =
-                !isWeight ||
+                (!isWeight && forcedCompatibilityGroup == null) ||
                 selectedCompatibilityGroup == null ||
                 ((rangeGroup == 0 || rangeGroup == selectedCompatibilityGroup));
             if (groupMatches &&
@@ -3669,6 +3674,7 @@ class ComponentCalculator {
                   variantValue: variantValue,
                   includeFamilyItems: true,
                   groupExpandedItems: groupExpandedItems,
+                  forcedCompatibilityGroup: forcedCompatibilityGroup,
                 );
                 result.addAll(
                   familyItems.map(
@@ -7183,6 +7189,18 @@ class ComponentCalculator {
 
       // ===== 1. الكيت (Kit) - أول مركب، فقط لغير النفق =====
       bool hasTunnelManoeuvreKit = false;
+      // Attaches: 2 below 1200 mm, 3 from 1200 mm, 4 from 1600 mm and 5 from
+      // 2000 mm of shutter width.
+      int attachesForWidth(double widthMm) => widthMm >= 2000
+          ? 5
+          : (widthMm >= 1600 ? 4 : (widthMm >= 1200 ? 3 : 2));
+      // Attaches a tunnel kit supplies (their type chosen by weight in the
+      // kit, their number by width); not listed again on their own.
+      int tunnelKitAttaches = 0;
+      // The axe deduction of the console of each tunnel section, from its
+      // CT kit, in section order.
+      final tunnelAxeDeductions = <double>[];
+      String? lastExpandedKitName;
       void addAndExpandKit(
         String uiKey,
         String descriptionCode, {
@@ -7196,8 +7214,10 @@ class ComponentCalculator {
         bool showKitRow = true,
         List<String> preferredKitTokens = const [],
         List<String> requiredKitTokens = const [],
+        int? forcedCompatibilityGroup,
       }) {
         String? matchedKitName;
+        lastExpandedKitName = null;
         // Only a KitBundles selection may override the bundle chosen below;
         // legacy values saved from ShutterComponents are ignored.
         final savedKitSelection = window.componentOverrides[uiKey];
@@ -7305,6 +7325,7 @@ class ComponentCalculator {
         // bundle exists on the Kits page.
         if (matchedKitName == null) return;
         final String groupName = matchedKitName;
+        lastExpandedKitName = groupName;
         if (isTunnel && descriptionCode == 'M') {
           hasTunnelManoeuvreKit = true;
         }
@@ -7357,7 +7378,30 @@ class ComponentCalculator {
             // renders one collapsed Kit row and reveals these children only
             // after the user expands it.
             groupExpandedItems: true,
+            forcedCompatibilityGroup: forcedCompatibilityGroup,
           );
+          if (descriptionCode == 'CT') {
+            // The kit chooses the attache type by weight; their number
+            // follows the section width.
+            final count = attachesForWidth(
+              sectionWidthMm ?? window.width.toDouble(),
+            );
+            expandedItems = [
+              for (final bi in expandedItems)
+                if (_textHasAny(bi.name, const ['أطاش', 'attache']) ||
+                    _textHasAny(bi.originalName, const ['أطاش', 'attache']))
+                  bi.copyWith(qty: count.toDouble())
+                else
+                  bi,
+            ];
+            if (expandedItems.any(
+              (bi) =>
+                  _textHasAny(bi.name, const ['أطاش', 'attache']) ||
+                  _textHasAny(bi.originalName, const ['أطاش', 'attache']),
+            )) {
+              tunnelKitAttaches += count;
+            }
+          }
           // If Axe is 60mm (separate row), exclude axe items already inside kit bundle
           if (filterAxeItems) {
             expandedItems = expandedItems.where((bi) {
@@ -7475,6 +7519,19 @@ class ComponentCalculator {
             showKitRow: true,
             preferredKitTokens: [tunnelKitType, tunnelSize],
             requiredKitTokens: tunnelMechanismTokens,
+            forcedCompatibilityGroup: window.tunnelConsoleGroup,
+          );
+          // The axe length depends on the console.
+          final ctKit = lastExpandedKitName == null
+              ? null
+              : kitBundleMetadata[lastExpandedKitName];
+          tunnelAxeDeductions.add(
+            (ctKit?[window.tunnelConsoleGroup == 2
+                        ? 'compatibility_group_2_axe_deduction'
+                        : 'compatibility_group_1_axe_deduction']
+                    as num?)
+                ?.toDouble() ??
+                75.0,
           );
           if (isCrankMechanism(mechanism)) {
             // A manoeuvre tunnel is made of two distinct kits: the tunnel
@@ -7525,11 +7582,18 @@ class ComponentCalculator {
       // directly or supplied by a kit. Keep it as an explicit BOM row so its
       // quantity and official catalogue price never disappear.
       {
-        List<double> axePieces = [(window.width - 75) / 1000.0];
+        // A tunnel takes its console's deduction from the CT kit.
+        double axeDeduction(int section) =>
+            isTunnel && section < tunnelAxeDeductions.length
+            ? tunnelAxeDeductions[section]
+            : 75.0;
+        List<double> axePieces = [(window.width - axeDeduction(0)) / 1000.0];
         if (window.isShutterSplit && window.effectiveShutterSplits.isNotEmpty) {
-          axePieces = window.effectiveShutterSplits
-              .map((s) => math.max(0.0, (s.width - 75.0) / 1000.0))
-              .toList();
+          final splits = window.effectiveShutterSplits;
+          axePieces = [
+            for (var i = 0; i < splits.length; i++)
+              math.max(0.0, (splits[i].width - axeDeduction(i)) / 1000.0),
+          ];
         }
         items.add(
           createShutter('المحور (Axe)', pieces: axePieces, unit: 'بارة'),
@@ -7778,19 +7842,14 @@ class ComponentCalculator {
       int totalAttaches = 0;
       if (window.isShutterSplit && window.effectiveShutterSplits.isNotEmpty) {
         for (final split in window.effectiveShutterSplits) {
-          final w = split.width;
-          totalAttaches += w >= 2000
-              ? 5
-              : (w >= 1600 ? 4 : (w >= 1200 ? 3 : 2));
+          totalAttaches += attachesForWidth(split.width);
         }
       } else {
-        totalAttaches = window.width >= 2000
-            ? 5
-            : (window.width >= 1600 ? 4 : (window.width >= 1200 ? 3 : 2));
+        totalAttaches = attachesForWidth(window.width.toDouble());
       }
       final int attachesIncludedByKit = isKitActive
           ? (2 * shutterSplitCount)
-          : 0;
+          : tunnelKitAttaches;
       final int attachesToAdd = (totalAttaches - attachesIncludedByKit)
           .clamp(0, totalAttaches)
           .toInt();

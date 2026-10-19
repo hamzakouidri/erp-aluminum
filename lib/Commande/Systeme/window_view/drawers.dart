@@ -4089,6 +4089,38 @@ extension _WindowViewDrawers on _WindowViewState {
                       ),
                     ],
                   ),
+                  // The console the customer has; the CT kit takes its parts
+                  // and its axe deduction.
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10, bottom: 4),
+                    child: Text(
+                      Localization.translate('الكونسول:', lang),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final group in const [1, 2])
+                        _ContentButton(
+                          label: Localization.translate(
+                            group == 1 ? 'كونسول ستاندار' : 'كونسول سبيسيال',
+                            lang,
+                          ),
+                          icon: Icons.view_agenda_outlined,
+                          selected: widget.model.tunnelConsoleGroup == group,
+                          onPressed: () {
+                            _setViewState(() {
+                              widget.model.setTunnelConsoleGroup(group);
+                            });
+                          },
+                        ),
+                    ],
+                  ),
                   const SizedBox(height: 10),
                 ],
                 Padding(

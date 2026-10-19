@@ -1052,6 +1052,14 @@ extension WindowModelShutter on WindowModel {
     }
   }
 
+  void setTunnelConsoleGroup(int group) {
+    final value = group == 2 ? 2 : 1;
+    if (tunnelConsoleGroup == value) return;
+    _saveSnapshot();
+    tunnelConsoleGroup = value;
+    _notifyModelListeners();
+  }
+
   void setCaissonTunnelHeight(double value) {
     if (caissonTunnelHeight == value) return;
     _saveSnapshot();

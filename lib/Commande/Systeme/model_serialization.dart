@@ -618,6 +618,7 @@ extension WindowModelSerialization on WindowModel {
       'isGlassWork': isGlassWork,
       'glassWorkPayload': glassWorkPayload,
       'caissonTunnelHeight': caissonTunnelHeight,
+      'tunnelConsoleGroup': tunnelConsoleGroup,
       'showBottomWall': showBottomWall,
       'showWall': showWall,
       'wallColor': wallColor,
@@ -944,6 +945,8 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> savedMap) {
   model.primaryMullionAxis = map['primaryMullionAxis'];
   model.caissonTunnelHeight =
       (map['caissonTunnelHeight'] as num?)?.toDouble() ?? 300.0;
+  model.tunnelConsoleGroup =
+      (map['tunnelConsoleGroup'] as num?)?.toInt() == 2 ? 2 : 1;
 
   if (map['removedShutterSides'] != null) {
     model.removedShutterSides = Set<String>.from(map['removedShutterSides']);

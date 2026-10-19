@@ -3848,6 +3848,10 @@ class WindowModel extends ChangeNotifier {
   String? workshopName;
 
   double caissonTunnelHeight = 300.0; // default 30 cm (300 mm)
+
+  /// The console the customer's tunnel box takes: 1 Standard, 2 Special
+  /// (the two compatibility groups of the CT kit). Chosen, not computed.
+  int tunnelConsoleGroup = 1;
   double? customShutterBoxHeight;
 
 
