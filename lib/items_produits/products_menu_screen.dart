@@ -21,6 +21,7 @@ import 'tempered_glass_items_screen.dart';
 import 'glass_systems_rules_screen.dart';
 import '../widgets/price_sync_banner.dart';
 import '../Screen/standard_sheets_screen.dart';
+import 'tunnel_box_settings_screen.dart';
 
 class ProductsMenuScreen extends StatefulWidget {
   final SqlDatabase db;
@@ -260,6 +261,27 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
                         MaterialPageRoute(
                           builder: (context) =>
                               SeriesTableConfigScreen(db: widget.db),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                if (settings.isAdmin) ...[
+                  _buildMenuCard(
+                    context,
+                    title: Localization.translate(
+                      'صندوق النفق (Caisson Tunnel)',
+                      lang,
+                    ),
+                    icon: Icons.view_in_ar_rounded,
+                    color: Colors.deepOrange,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              const TunnelBoxSettingsScreen(),
                         ),
                       );
                     },

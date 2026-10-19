@@ -41,6 +41,8 @@ import 'package:provider/provider.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
+import 'package:database_data/Commande/Systeme/shutter_calc_rules.dart';
+import 'package:database_data/widgets/tunnel_calc_rules_card.dart';
 
 part 'window_view/shutter_panel.dart';
 part 'window_view/glass_panel.dart';

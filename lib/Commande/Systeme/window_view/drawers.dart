@@ -4037,6 +4037,13 @@ extension _WindowViewDrawers on _WindowViewState {
                   activeThumbColor: Colors.blue,
                   onChanged: (value) {
                     widget.model.toggleCaissonTunnel(value);
+                    if (value) {
+                      widget.model.setTunnelConsoleGroup(
+                        ShutterCalcRules.defaultTunnelConsole(
+                          widget.model.caissonTunnelHeight,
+                        ),
+                      );
+                    }
                   },
                 ),
                 if (widget.model.isCaissonTunnel) ...[
@@ -4064,6 +4071,9 @@ extension _WindowViewDrawers on _WindowViewState {
                         onPressed: () {
                           _setViewState(() {
                             widget.model.setCaissonTunnelHeight(250.0);
+                            widget.model.setTunnelConsoleGroup(
+                              ShutterCalcRules.defaultTunnelConsole(250.0),
+                            );
                           });
                         },
                       ),
@@ -4074,6 +4084,9 @@ extension _WindowViewDrawers on _WindowViewState {
                         onPressed: () {
                           _setViewState(() {
                             widget.model.setCaissonTunnelHeight(300.0);
+                            widget.model.setTunnelConsoleGroup(
+                              ShutterCalcRules.defaultTunnelConsole(300.0),
+                            );
                           });
                         },
                       ),
@@ -4084,13 +4097,17 @@ extension _WindowViewDrawers on _WindowViewState {
                         onPressed: () {
                           _setViewState(() {
                             widget.model.setCaissonTunnelHeight(400.0);
+                            widget.model.setTunnelConsoleGroup(
+                              ShutterCalcRules.defaultTunnelConsole(400.0),
+                            );
                           });
                         },
                       ),
                     ],
                   ),
                   // The console the customer has; the CT kit takes its parts
-                  // and its axe deduction.
+                  // and the axe its deduction. Each tunnel height brings its
+                  // default console.
                   Padding(
                     padding: const EdgeInsets.only(top: 10, bottom: 4),
                     child: Text(
@@ -4120,6 +4137,19 @@ extension _WindowViewDrawers on _WindowViewState {
                           },
                         ),
                     ],
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      Localization.translate(
+                        TunnelCalcRulesCard.nonStandardWarning,
+                        lang,
+                      ),
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: Colors.amber.shade900,
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 10),
                 ],

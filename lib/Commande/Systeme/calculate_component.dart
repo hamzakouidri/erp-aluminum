@@ -7666,8 +7666,11 @@ class ComponentCalculator {
       final extraBlades = isTunnel
           ? ShutterCalcRules.value(ShutterCalcRules.tunnelExtraBlades)
           : 2.0;
+      // A tunnel height is measured under the box: the blades cover it
+      // plus the workshop's addition. Any other box sits inside the height.
       int bladeCountFor(double heightMm) =>
-          ((heightMm - window.shutterBoxHeight + bladeHeightAdd) /
+          ((heightMm - (isTunnel ? 0.0 : window.shutterBoxHeight) +
+                          bladeHeightAdd) /
                       safeBladeHeightMm +
                   extraBlades)
               .ceil()

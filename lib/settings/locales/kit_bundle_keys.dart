@@ -77,13 +77,13 @@ const Map<String, Map<AppLanguage, String>> kitBundleKeys = {
     AppLanguage.french: 'Calculs du volet tunnel',
     AppLanguage.english: 'Tunnel shutter calculations',
   },
-  'المحور = العرض − خصم الكونسول. الشفرة والشفرة النهائية = العرض − خصم الشفرة. عدد الشفرات = (الارتفاع − ارتفاع النفق + الإضافة) ÷ ارتفاع الشفرة + الشفرات الإضافية. السكة = الارتفاع + الإضافة، وجوان الفرشاة = طول السكك مرتين.': {
+  'المحور = العرض − خصم الكونسول. الشفرة والشفرة النهائية = العرض − خصم الشفرة. عدد الشفرات = (الارتفاع + الإضافة) ÷ ارتفاع الشفرة + الشفرات الإضافية، والارتفاع يُقاس تحت النفق. السكة = الارتفاع + الإضافة، وجوان الفرشاة = طول السكك مرتين.': {
     AppLanguage.arabic:
-        'المحور = العرض − خصم الكونسول. الشفرة والشفرة النهائية = العرض − خصم الشفرة. عدد الشفرات = (الارتفاع − ارتفاع النفق + الإضافة) ÷ ارتفاع الشفرة + الشفرات الإضافية. السكة = الارتفاع + الإضافة، وجوان الفرشاة = طول السكك مرتين.',
+        'المحور = العرض − خصم الكونسول. الشفرة والشفرة النهائية = العرض − خصم الشفرة. عدد الشفرات = (الارتفاع + الإضافة) ÷ ارتفاع الشفرة + الشفرات الإضافية، والارتفاع يُقاس تحت النفق. السكة = الارتفاع + الإضافة، وجوان الفرشاة = طول السكك مرتين.',
     AppLanguage.french:
-        'Axe = largeur − déduction de la console. Lame et lame finale = largeur − déduction de la lame. Nombre de lames = (hauteur − hauteur du tunnel + ajout) ÷ hauteur de lame + lames supplémentaires. Coulisse = hauteur + ajout ; le joint brosse = deux fois la longueur des coulisses.',
+        'Axe = largeur − déduction de la console. Lame et lame finale = largeur − déduction de la lame. Nombre de lames = (hauteur + ajout) ÷ hauteur de lame + lames supplémentaires, la hauteur étant mesurée sous le tunnel. Coulisse = hauteur + ajout ; le joint brosse = deux fois la longueur des coulisses.',
     AppLanguage.english:
-        'Axe = width − console deduction. Blade and final blade = width − blade deduction. Blades = (height − tunnel height + addition) ÷ blade height + extra blades. Rail = height + addition; the brush joint = twice the rails\' length.',
+        'Axe = width − console deduction. Blade and final blade = width − blade deduction. Blades = (height + addition) ÷ blade height + extra blades, the height measured under the tunnel. Rail = height + addition; the brush joint = twice the rails\' length.',
   },
   'خصم المحور مع كونسول ستاندار (مم)': {
     AppLanguage.arabic: 'خصم المحور مع كونسول ستاندار (مم)',
@@ -124,5 +124,23 @@ const Map<String, Map<AppLanguage, String>> kitBundleKeys = {
     AppLanguage.arabic: 'عائلة:',
     AppLanguage.french: 'Famille :',
     AppLanguage.english: 'Family:',
+  },
+  'الكونسول الافتراضي لكل ارتفاع نفق': {
+    AppLanguage.arabic: 'الكونسول الافتراضي لكل ارتفاع نفق',
+    AppLanguage.french: 'Console par défaut pour chaque hauteur de tunnel',
+    AppLanguage.english: 'Default console for each tunnel height',
+  },
+  'تنبيه: إذا رُكّب صندوق النفق خارج المعايير القانونية، قد يتغير حساب المحور فقط. راجع خصم المحور في إعدادات صندوق النفق.': {
+    AppLanguage.arabic:
+        'تنبيه: إذا رُكّب صندوق النفق خارج المعايير القانونية، قد يتغير حساب المحور فقط. راجع خصم المحور في إعدادات صندوق النفق.',
+    AppLanguage.french:
+        'Attention : si le caisson tunnel est posé hors des normes, seul le calcul de l\'axe peut changer. Vérifiez la déduction de l\'axe dans les réglages du caisson tunnel.',
+    AppLanguage.english:
+        'Warning: if the tunnel box is fitted off standard, only the axe calculation may change. Check the axe deduction in the tunnel box settings.',
+  },
+  'صندوق النفق (Caisson Tunnel)': {
+    AppLanguage.arabic: 'صندوق النفق (Caisson Tunnel)',
+    AppLanguage.french: 'Caisson tunnel',
+    AppLanguage.english: 'Tunnel box (Caisson Tunnel)',
   },
 };

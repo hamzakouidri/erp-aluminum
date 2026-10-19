@@ -118,4 +118,19 @@ void main() {
     final axe = _bom(1).firstWhere((i) => i.originalName == 'المحور (Axe)');
     expect(axe.pieces, [1.625]);
   });
+
+  test('tunnel blades cover the height measured under the box + 10 cm', () {
+    ShutterCalcRules.apply({});
+    final blades = _bom(
+      1,
+    ).firstWhere((i) => i.originalName == 'الشرائح (Lames)');
+    // (1400 + 100) ÷ 43 + 2 = 36.9 → 37 blades.
+    expect(blades.pieces, hasLength(37));
+  });
+
+  test('each tunnel height brings its default console', () {
+    ShutterCalcRules.apply({ShutterCalcRules.tunnelConsoleForHeight(400): 2});
+    expect(ShutterCalcRules.defaultTunnelConsole(400), 2);
+    expect(ShutterCalcRules.defaultTunnelConsole(300), 1);
+  });
 }
