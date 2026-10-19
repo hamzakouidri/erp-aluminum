@@ -289,10 +289,6 @@ class _WindowViewState extends State<WindowView> {
 
 
   void _onModelChanged() {
-    // An undo snapshot may restore the touch move mode; Windows has none.
-    if (_isWindowsDesktop && !widget.model.isDrawingMode) {
-      widget.model.setDrawingMode(true);
-    }
     // A regular window can have both zones and a shutter. Catalogue refreshes
     // must not dismiss the shutter panel simply because those zones exist.
     if (_isShutterSelected &&
@@ -505,7 +501,7 @@ class _WindowViewState extends State<WindowView> {
         setState(() => _hidePresetCard = hidePreset);
       }
     });
-    // Touch devices start in move mode; Windows is always editable.
+    // Touch devices start in move mode; Windows starts in design mode.
     widget.model.setDrawingMode(_isWindowsDesktop);
   }
 

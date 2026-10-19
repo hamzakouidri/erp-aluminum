@@ -546,8 +546,7 @@ extension _WindowViewToolbars on _WindowViewState {
     }
 
     // 11. Toggle drawing mode if matches registered shortcut
-    if (!_isWindowsDesktop &&
-        ShortcutBindings.instance.matches('drawing_mode', event)) {
+    if (ShortcutBindings.instance.matches('drawing_mode', event)) {
       _toggleDrawingInteractionMode();
       return true;
     }
@@ -709,9 +708,8 @@ extension _WindowViewToolbars on _WindowViewState {
           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
         ),
       ),
-      // On Windows the drawing is always editable and the mouse pans
-      // (middle button or Space + drag): the mode switch is for touch only.
-      if (!_isWindowsDesktop)
+      // Design mode edits the drawing; move mode only pans and zooms. On
+      // Windows design is the default and stays on until switched.
       TextButton.icon(
         style: widget.model.isDrawingMode
             ? buttonStyle.copyWith(

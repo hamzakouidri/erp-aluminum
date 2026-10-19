@@ -723,8 +723,7 @@ extension _WindowViewCanvas on _WindowViewState {
 
   void _stopDrawingTimer() {
     _drawingTimer?.cancel();
-    // Windows has no move mode: the drawing stays editable.
-    widget.model.setDrawingMode(_isWindowsDesktop);
+    widget.model.setDrawingMode(false);
   }
 
   Offset _getModelPos(Offset screenPos) {
