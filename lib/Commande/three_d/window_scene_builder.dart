@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../Systeme/model.dart';
 import '../texture_cache.dart';
+import '../../utils/real_color_resolver.dart';
 import 'mesh3d.dart';
 
 /// Result of [WindowSceneBuilder.build]: the triangles plus the bounds the
@@ -879,9 +880,8 @@ class WindowSceneBuilder {
     ];
     if (!woodWords.any(n.contains)) return null;
     TextureCache.ensureLoading();
-    if (n.contains('marron clair') ||
-        n.contains('light brown') ||
-        n.contains('بني فاتح')) {
+    // Faux Bois Marron is the light brown wood, never the grey antique.
+    if (isLightBrownWoodName(n)) {
       return TextureCache.woodTextureLightBrown ?? TextureCache.woodTexture;
     }
     if (n.contains('d0') || n.contains('di zero') || n.contains('desert')) {
@@ -889,9 +889,7 @@ class WindowSceneBuilder {
     }
     if (n.contains('antique') ||
         n.contains('انتيك') ||
-        n.contains('onteak') ||
-        (n.contains('marron') && n.contains('bois')) ||
-        (n.contains('بني') && n.contains('خشب'))) {
+        n.contains('onteak')) {
       return TextureCache.woodTextureAntique ?? TextureCache.woodTexture;
     }
     return TextureCache.woodTexture;

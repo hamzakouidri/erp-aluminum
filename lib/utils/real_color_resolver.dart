@@ -74,13 +74,15 @@ bool isWoodColorName(Object? value) {
       name.contains('di zero');
 }
 
-/// "Faux bois marron clair" / "خشبي بني فاتح" / "Light brown wood grain".
-/// Checked before the generic marron+bois rule, which maps to antique.
+/// The light brown wood grain: "Faux bois marron clair" / "خشبي بني فاتح" /
+/// "Light brown wood grain", and Faux Bois Marron, which is the faux-bois
+/// grain in light wood (never the grey antique).
 bool isLightBrownWoodName(Object? value) {
   final name = normalizeColorName(value);
   return name.contains('marron clair') ||
       name.contains('light brown') ||
-      name.contains('بني فاتح');
+      name.contains('بني فاتح') ||
+      _isFauxBoisMarron(name);
 }
 
 bool isWoodColorData(Map<String, dynamic>? colorData) {
@@ -110,13 +112,6 @@ DecorationImage? realColorTextureImage(Map<String, dynamic>? colorData) {
       name.contains('ديزير') ||
       name.contains('╪»┘è╪▓╪▒')) {
     assetPath = 'assets/images/wood_texture_d0.png';
-  } else if (_isFauxBoisMarron(name)) {
-    // The faux-bois grain, lighter: not the aged grey antique.
-    return const DecorationImage(
-      image: AssetImage('assets/images/wood_texture.png'),
-      fit: BoxFit.cover,
-      colorFilter: ColorFilter.mode(Color(0x5CFFD9B0), BlendMode.screen),
-    );
   } else if (name.contains('antique') ||
       name.contains('انتيك') ||
       name.contains('onteak') ||
