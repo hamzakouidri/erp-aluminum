@@ -477,7 +477,9 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
   String _dimLabel(String? dim, AppLanguage lang) {
     if (dim == 'leaf_height') return Localization.translate('طول الضلفة', lang);
     if (dim == 'leaf_width') return Localization.translate('عرض الضلفة', lang);
-    if (dim == 'shutter_weight') return 'وزن الستار';
+    if (dim == 'shutter_weight') {
+      return Localization.translate('وزن الستار', lang);
+    }
     return '';
   }
 
@@ -570,7 +572,7 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
     return _mechanismOptions
         .where((option) => scopes.contains(option.$1))
         .map((option) => Localization.translate(option.$2, lang))
-        .join('، ');
+        .join(lang == AppLanguage.arabic ? '، ' : ', ');
   }
 
   Future<void> _showAddEditFamilyDialog({Map<String, dynamic>? family}) async {
@@ -1215,11 +1217,11 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
                                 (r['compatibility_group'] as num?)?.toInt() ??
                                 0;
                             final groupLabel = rawGroup == 0
-                                ? 'مشترك'
+                                ? Localization.translate('مشترك', lang)
                                 : rawGroup == 1
                                 ? _group1Name
                                 : _group2Name;
-                            return '$minCm-$maxCm${isWeight ? " كغ، $groupLabel" : ""}: $qty';
+                            return '$minCm-$maxCm${isWeight ? " ${Localization.translate('كغ', lang)}، $groupLabel" : ""}: $qty';
                           })
                           .join(', ') +
                       ')';
@@ -1268,7 +1270,7 @@ class _KitItemsScreenState extends State<KitItemsScreen> {
                     subtitle: Text(
                       '${_qtyModeLabel(mode, lang)}$modeDetails'
                       '${dim != null ? " | ${_dimLabel(dim, lang)}" : ""}'
-                      ' | $mechanismLabel | $bladeLabel | قطعة',
+                      ' | $mechanismLabel | $bladeLabel | ${Localization.translate('قطعة', lang)}',
                     ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -1577,7 +1579,7 @@ class _KitItemRangesScreenState extends State<KitItemRangesScreen> {
                           value:
                               'component:${(component['id'] as num).toInt()}',
                           child: Text(
-                            'مركّب: ${component['name']}',
+                            '${Localization.translate('مركّب:', lang)} ${component['name']}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -1587,7 +1589,7 @@ class _KitItemRangesScreenState extends State<KitItemRangesScreen> {
                         (family) => DropdownMenuItem<String>(
                           value: 'family:${(family['id'] as num).toInt()}',
                           child: Text(
-                            'عائلة: ${family['name']}',
+                            '${Localization.translate('عائلة:', lang)} ${family['name']}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -1870,7 +1872,7 @@ class _KitItemRangesScreenState extends State<KitItemRangesScreen> {
                     title: Text(
                       r['family_id'] == null
                           ? r['product_name'] ?? ''
-                          : 'عائلة: ${r['product_name'] ?? ''}',
+                          : '${Localization.translate('عائلة:', lang)} ${r['product_name'] ?? ''}',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     subtitle: Text(

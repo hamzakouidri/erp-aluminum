@@ -6840,7 +6840,7 @@ class _OrderShortageReportPageState extends State<_OrderShortageReportPage> {
                       ],
                     ),
                     if (item.colorName?.trim().isNotEmpty == true)
-                      Text('${t('اللون')}: ${item.colorName}'),
+                      Text('${t('اللون')}: ${t(item.colorName!)}'),
                     if (unlinked)
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
