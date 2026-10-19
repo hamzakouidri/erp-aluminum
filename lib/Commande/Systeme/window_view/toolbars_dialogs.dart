@@ -4663,7 +4663,7 @@ extension _WindowViewToolbars on _WindowViewState {
       }
     }
 
-    final baseT = (base['thickness'] as num?)?.toDouble() ?? 0.0;
+    final baseSection = AluminumSection.fromMap(base);
     final candidates = <Map<String, dynamic>>[];
     final seen = <String>{};
     for (final item in allRows) {
@@ -4678,12 +4678,12 @@ extension _WindowViewToolbars on _WindowViewState {
       // Check sliding vs opening compatibility
       if (isRowSliding(item) != sliding) continue;
 
-      // Check depth / thickness compatibility
-      final itemT = (item['thickness'] as num?)?.toDouble() ?? 0.0;
-      if (baseT > 0 && itemT > 0 && (baseT - itemT).abs() > 2.0) continue;
-
-      // Check join compatibility
-      if (widget.model.frameMapsCanJoin(base, item)) {
+      // Same depth and the same visible width as the frame, or a frame of
+      // another series linked to it by the frame join rules.
+      if (widget.model.frameFitsSideOf(
+        baseSection,
+        AluminumSection.fromMap(item),
+      )) {
         candidates.add(item);
       }
     }
@@ -4699,13 +4699,15 @@ extension _WindowViewToolbars on _WindowViewState {
           Widget sideButton(String side, IconData icon, String label) {
             final selected = selectedSides.contains(side);
             final override = widget.model.frameSideOverrideForRect(frame, side);
+            final automatic = widget.model.frameSideIsAutomatic(frame, side);
             return FilterChip(
               selected: selected,
               avatar: Icon(icon, size: 18),
               label: Text(
                 override == null
                     ? label
-                    : '$label • ${(override['code'] ?? override['name'] ?? '').toString()}',
+                    : '$label • ${(override['code'] ?? override['name'] ?? '').toString()}'
+                          '${automatic ? ' (${tr('تلقائي: بروفيل الزاوية', 'Auto : profil d\'angle', 'Auto: corner profile')})' : ''}',
               ),
               onSelected: (value) => setDialogState(() {
                 value ? selectedSides.add(side) : selectedSides.remove(side);
@@ -4730,9 +4732,9 @@ extension _WindowViewToolbars on _WindowViewState {
                   children: [
                     Text(
                       tr(
-                        'حدد جهة أو عدة جهات، ثم اختر الإطار الذي ستُقطع منه. تظهر هنا فقط الإطارات المرتبطة والمتوافقة.',
-                        'Sélectionnez un ou plusieurs côtés, puis le dormant utilisé. Seuls les dormants liés et compatibles sont affichés.',
-                        'Select one or more sides, then choose the frame profile. Only linked compatible frames are shown.',
+                        'حدد جهة أو عدة جهات، ثم اختر الإطار الذي ستُقطع منه. تظهر فقط إطارات السلسلة نفسها بالعرض الظاهر نفسه، أو الإطارات المرتبطة يدويًا. الجهة الملاصقة لبروفيل الزاوية تتغير تلقائيًا.',
+                        'Sélectionnez un ou plusieurs côtés, puis le dormant utilisé. Seuls les dormants de la même gamme et de même largeur visible, ou liés manuellement, sont affichés. Le côté contre un profil d\'angle change automatiquement.',
+                        'Select one or more sides, then choose the frame profile. Only frames of the same series with the same visible width, or linked by hand, are shown. The side against a corner profile changes automatically.',
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -4798,7 +4800,9 @@ extension _WindowViewToolbars on _WindowViewState {
                           [code, name].where((e) => e.isNotEmpty).join(' - '),
                         ),
                         subtitle: Text(
-                          ((item['couvre_joint_width'] as num?)?.toDouble() ??
+                          '${tr('العرض الظاهر', 'Largeur visible', 'Visible width')}: '
+                          '${widget.model.frameSectionFaceWidth(AluminumSection.fromMap(item)).toStringAsFixed(0)} mm • '
+                          '${((item['couvre_joint_width'] as num?)?.toDouble() ??
                                       0) >
                                   0
                               ? tr(
@@ -4810,7 +4814,7 @@ extension _WindowViewToolbars on _WindowViewState {
                                   'بدون غطاء جانبي مدمج',
                                   'Sans couvre-joint intégré',
                                   'Without integrated side cover',
-                                ),
+                                )}',
                         ),
                         enabled: selectedSides.isNotEmpty,
                         onTap: selectedSides.isEmpty

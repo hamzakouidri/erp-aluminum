@@ -651,28 +651,53 @@ extension SqlDatabaseCatalog on SqlDatabase {
     ''');
   }
 
-  /// Returns all active partner section IDs for a given section.
-  /// Symmetric: returns partner regardless of whether section is stored as A or B.
+  /// Returns the other frames of [sectionId]'s compatibility group: every
+  /// frame linked to it, directly or through other linked frames (1 ↔ 2 and
+  /// 2 ↔ 3 put 1, 2 and 3 in one group).
   Future<Set<int>> readFrameJoinPartnerIds(int sectionId) async {
     final myDb = await db;
     if (myDb == null) return {};
     await _ensureSeriesDesignTables(myDb);
     final rows = await myDb.rawQuery(
-      '''
-      SELECT section_a_id, section_b_id FROM FrameJoinRules
-      WHERE is_active = 1
-        AND (section_a_id = ? OR section_b_id = ?)
-    ''',
-      [sectionId, sectionId],
+      'SELECT section_a_id, section_b_id FROM FrameJoinRules WHERE is_active = 1',
     );
-    final result = <int>{};
+    final links = <int, Set<int>>{};
     for (final row in rows) {
       final a = (row['section_a_id'] as num?)?.toInt();
       final b = (row['section_b_id'] as num?)?.toInt();
-      if (a != null && a != sectionId) result.add(a);
-      if (b != null && b != sectionId) result.add(b);
+      if (a == null || b == null || a == b) continue;
+      links.putIfAbsent(a, () => {}).add(b);
+      links.putIfAbsent(b, () => {}).add(a);
     }
-    return result;
+    final group = <int>{sectionId};
+    final pending = [sectionId];
+    while (pending.isNotEmpty) {
+      for (final next in links[pending.removeLast()] ?? const <int>{}) {
+        if (group.add(next)) pending.add(next);
+      }
+    }
+    return group..remove(sectionId);
+  }
+
+  /// Takes [sectionId] out of its compatibility group: drops its links to
+  /// every frame of [group].
+  Future<void> removeFrameFromJoinGroup(int sectionId, Set<int> group) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureSeriesDesignTables(myDb);
+    final now = DateTime.now().toUtc().toIso8601String();
+    for (final other in group) {
+      if (other == sectionId) continue;
+      final lo = sectionId < other ? sectionId : other;
+      final hi = sectionId < other ? other : sectionId;
+      await myDb.update(
+        'FrameJoinRules',
+        {'is_active': 0, 'updated_at': now},
+        where: 'section_a_id = ? AND section_b_id = ?',
+        whereArgs: [lo, hi],
+      );
+    }
+    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
   }
 
   Future<int> saveFrameJoinRule(int sectionAId, int sectionBId) async {

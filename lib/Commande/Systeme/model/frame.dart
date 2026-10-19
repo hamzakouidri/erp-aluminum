@@ -1018,6 +1018,47 @@ extension WindowModelFrame on WindowModel {
     'left',
   ].any((side) => frameSideOverrideForRect(frame, side) != null);
 
+  /// Whether [side] of [frame] takes the frame its corner profile needs
+  /// rather than one chosen by hand.
+  bool frameSideIsAutomatic(Rect frame, String side) {
+    final prefix = _frameSideStoragePrefix(frame);
+    if (prefix != null &&
+        componentOverrides['$prefix:${side.toLowerCase()}'] is Map) {
+      return false;
+    }
+    return frameSideOverrideForRect(frame, side) != null;
+  }
+
+  /// The face width a frame shows, its thickness when the catalogue gives
+  /// none.
+  double frameSectionFaceWidth(AluminumSection section) =>
+      section.visibleWidth > 0 ? section.visibleWidth : section.thickness;
+
+  /// Whether [candidate] may be cut for one side of a frame made of [base].
+  /// A frame in a compatibility group (frame join rules) takes only the
+  /// frames of its group. Without a group, only a frame of the same series
+  /// (one depth) showing exactly the same visible width.
+  bool frameFitsSideOf(AluminumSection base, AluminumSection candidate) {
+    if (candidate.id == base.id) return true;
+    final group = _frameJoinPartners[base.id];
+    if (group != null && group.isNotEmpty) return group.contains(candidate.id);
+    if (!framesCanJoin(base, candidate)) return false;
+    if (base.seriesId != 0 &&
+        candidate.seriesId != 0 &&
+        base.seriesId != candidate.seriesId) {
+      return false;
+    }
+    final baseWidth = frameSectionFaceWidth(base);
+    final candidateWidth = frameSectionFaceWidth(candidate);
+    return baseWidth > 0 &&
+        candidateWidth > 0 &&
+        (baseWidth - candidateWidth).abs() < 0.01;
+  }
+
+  @visibleForTesting
+  void setFrameJoinGroupsForTest(Map<int, Set<int>> partners) =>
+      _frameJoinPartners = partners;
+
   double frameSideVisibleWidth(
     Rect frame,
     String side, {
@@ -3315,9 +3356,11 @@ extension WindowModelFrame on WindowModel {
 
       // A frame the series design lists for the corner profile is trusted;
       // any other must fit the corner rule (in aluminium: never accept a
-      // separate cover).
-      return compatibleIdSet.contains(section.id) ||
-          frameFitsProfileAngle(section, sliding: sliding);
+      // separate cover) and belong to the frame's compatibility group, or,
+      // without a group, show exactly the same visible width.
+      if (compatibleIdSet.contains(section.id)) return true;
+      if (!frameFitsProfileAngle(section, sliding: sliding)) return false;
+      return frameFitsSideOf(currentFrame, section);
     }).toList();
 
     if (candidateSections.isEmpty) return null;

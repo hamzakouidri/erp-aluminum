@@ -2051,8 +2051,8 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                             Expanded(
                               child: Text(
                                 _t(
-                                  'إطارات متوافقة للالتقاء مع هذا الإطار',
-                                  'Dormants compatibles pour jonction',
+                                  'مجموعة توافق هذا الإطار',
+                                  'Groupe de compatibilité de ce dormant',
                                 ),
                                 style: const TextStyle(
                                   fontWeight: FontWeight.bold,
@@ -2064,8 +2064,8 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                         const SizedBox(height: 4),
                         Text(
                           _t(
-                            'الربط متماثل وعكسي تلقائياً: تحديد إطار من سلسلة أخرى يعني أن كلا الإطارين يقبلان بعضهما البعض عند دمج الإطارات.',
-                            'Le lien est symétrique et réciproque : cocher un dormant d\'une autre série lie les deux profils mutuellement pour la jonction.',
+                            'حدد الإطارات التي تتوافق مع هذا الإطار، من هذه السلسلة أو من غيرها. الإطارات المربوطة ببعضها تصير مجموعة واحدة: إذا رُبط الأول بالثاني والثاني بالثالث، تتوافق الثلاثة. عند تخصيص جهات الإطار لا تظهر إلا إطارات مجموعته، وإن لم تكن له مجموعة تظهر إطارات سلسلته بالعرض الظاهر نفسه.',
+                            'Cochez les dormants compatibles avec celui-ci, de cette série ou d\'une autre. Les dormants liés forment un groupe : si le premier est lié au deuxième et le deuxième au troisième, les trois sont compatibles. Pour personnaliser les côtés, seuls les dormants du groupe sont proposés ; sans groupe, ceux de la série de même largeur visible.',
                           ),
                           style: const TextStyle(
                             fontSize: 11,
@@ -2083,20 +2083,19 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                         else
                           Builder(
                             builder: (context) {
-                              final currentSeriesId = _seriesId;
-                              final otherFrames = _allFrameSections.where((fs) {
-                                final fSeriesId =
-                                    (fs['series_id'] as num?)?.toInt() ??
-                                    (fs['source_series_id'] as num?)?.toInt();
-                                return fSeriesId != null &&
-                                    fSeriesId != currentSeriesId;
-                              }).toList();
+                              final otherFrames = _allFrameSections
+                                  .where(
+                                    (fs) =>
+                                        (fs['id'] as num?)?.toInt() !=
+                                        sectionId,
+                                  )
+                                  .toList();
 
                               if (otherFrames.isEmpty) {
                                 return Text(
                                   _t(
-                                    'لا توجد إطارات في سلاسل أخرى بعد.',
-                                    'Aucun dormant dans d\'autres séries.',
+                                    'لا توجد إطارات أخرى بعد.',
+                                    'Aucun autre dormant.',
                                   ),
                                   style: const TextStyle(
                                     fontSize: 12,
@@ -2183,9 +2182,9 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                                             );
                                           } else {
                                             await widget.db
-                                                .deleteFrameJoinRuleBetween(
-                                                  sectionId,
+                                                .removeFrameFromJoinGroup(
                                                   fsId,
+                                                  {sectionId, ...partnerIds},
                                                 );
                                           }
                                           await _loadFrameJoinData();
