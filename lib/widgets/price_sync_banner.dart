@@ -289,9 +289,23 @@ Future<void> showPriceSyncSettingsDialog(
   final requestedAction = await showDialog<String>(
     context: context,
     builder: (dialogCtx) {
+      final mediaQuery = MediaQuery.of(dialogCtx);
+      final isCompact = mediaQuery.size.width < 600;
+      final availableHeight =
+          mediaQuery.size.height -
+          mediaQuery.padding.vertical -
+          mediaQuery.viewInsets.vertical;
+      final maxContentHeight = (availableHeight * 0.62)
+          .clamp(220.0, 600.0)
+          .toDouble();
+
       return StatefulBuilder(
         builder: (ctx, setStateDialog) {
           return AlertDialog(
+            insetPadding: EdgeInsets.symmetric(
+              horizontal: isCompact ? 16 : 40,
+              vertical: 24,
+            ),
             title: Row(
               children: [
                 Icon(
@@ -299,21 +313,28 @@ Future<void> showPriceSyncSettingsDialog(
                   color: Theme.of(context).primaryColor,
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  Localization.translate('مزامنة الأسعار', lang),
-                  style: const TextStyle(
-                    fontFamily: 'Cairo',
-                    fontWeight: FontWeight.bold,
+                Expanded(
+                  child: Text(
+                    Localization.translate('مزامنة الأسعار', lang),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ],
             ),
-            content: SizedBox(
-              width: 500,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            content: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: 500,
+                maxHeight: maxContentHeight,
+              ),
+              child: SizedBox(
+                width: 500,
+                child: ListView(
+                  shrinkWrap: true,
                   children: [
                     Text(
                       lang == AppLanguage.arabic
@@ -344,26 +365,37 @@ Future<void> showPriceSyncSettingsDialog(
                           ),
                         ),
                         child: SwitchListTile.adaptive(
-                          secondary: Icon(
-                            cat.icon,
-                            color: isEnabled ? Colors.green : Colors.grey,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: isCompact ? 12 : 16,
+                            vertical: isCompact ? 4 : 0,
                           ),
+                          isThreeLine: isCompact,
+                          secondary: isCompact
+                              ? null
+                              : Icon(
+                                  cat.icon,
+                                  color: isEnabled ? Colors.green : Colors.grey,
+                                ),
                           title: Text(
                             title,
-                            style: const TextStyle(
+                            maxLines: isCompact ? 2 : 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
                               fontFamily: 'Cairo',
                               fontWeight: FontWeight.bold,
-                              fontSize: 13,
+                              fontSize: isCompact ? 12 : 13,
                             ),
                           ),
                           subtitle: Text(
                             isEnabled
                                 ? (lang == AppLanguage.arabic
-                                    ? 'متزامنة مع الإدارة'
-                                    : 'Synchronisé avec l\'admin')
+                                      ? 'متزامنة مع الإدارة'
+                                      : 'Synchronisé avec l\'admin')
                                 : (lang == AppLanguage.arabic
-                                    ? 'أسعار مستقلة خاصة بالورشة'
-                                    : 'Prix indépendants de l\'atelier'),
+                                      ? 'أسعار مستقلة خاصة بالورشة'
+                                      : 'Prix indépendants de l\'atelier'),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontFamily: 'Cairo',
                               fontSize: 11,
@@ -390,6 +422,10 @@ Future<void> showPriceSyncSettingsDialog(
                 ),
               ),
             ),
+            actionsOverflowAlignment: isCompact
+                ? OverflowBarAlignment.center
+                : OverflowBarAlignment.end,
+            actionsOverflowButtonSpacing: 8,
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogCtx),
@@ -399,7 +435,16 @@ Future<void> showPriceSyncSettingsDialog(
                 ElevatedButton.icon(
                   icon: const Icon(Icons.cloud_upload),
                   label: Text(
-                    Localization.translate('نشر وتحديث الأسعار لجميع الورشات', lang),
+                    isCompact
+                        ? switch (lang) {
+                            AppLanguage.arabic => 'نشر الأسعار',
+                            AppLanguage.french => 'Publier les prix',
+                            AppLanguage.english => 'Publish prices',
+                          }
+                        : Localization.translate(
+                            'نشر وتحديث الأسعار لجميع الورشات',
+                            lang,
+                          ),
                   ),
                   onPressed: () => Navigator.pop(dialogCtx, 'upload'),
                 )
@@ -407,7 +452,16 @@ Future<void> showPriceSyncSettingsDialog(
                 ElevatedButton.icon(
                   icon: const Icon(Icons.cloud_download),
                   label: Text(
-                    Localization.translate('تحديث الأسعار الآن من السحابة', lang),
+                    isCompact
+                        ? switch (lang) {
+                            AppLanguage.arabic => 'تحديث الأسعار',
+                            AppLanguage.french => 'Actualiser les prix',
+                            AppLanguage.english => 'Update prices',
+                          }
+                        : Localization.translate(
+                            'تحديث الأسعار الآن من السحابة',
+                            lang,
+                          ),
                   ),
                   onPressed: () => Navigator.pop(dialogCtx, 'download'),
                 ),

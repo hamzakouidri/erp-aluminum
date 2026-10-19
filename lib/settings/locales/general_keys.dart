@@ -561,6 +561,11 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Aucune commande liée à ce projet actuellement',
     AppLanguage.english: 'No orders linked to this project currently',
   },
+  'لا توجد طلبيات بعد': {
+    AppLanguage.arabic: 'لا توجد طلبيات بعد',
+    AppLanguage.french: 'Aucune commande pour le moment',
+    AppLanguage.english: 'No orders yet',
+  },
   'هل أنت متأكد من حذف هذا المشروع؟ سيتم فك ارتباط الطلبيات المرتبطة به دون حذفها.': {
     AppLanguage.arabic:
         'هل أنت متأكد من حذف هذا المشروع؟ سيتم فك ارتباط الطلبيات المرتبطة به دون حذفها.',

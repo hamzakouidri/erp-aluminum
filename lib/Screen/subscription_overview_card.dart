@@ -272,7 +272,10 @@ class SubscriptionOverviewCard extends StatelessWidget {
                               'نهاية الاشتراك:',
                               lang,
                             ),
-                            date: details.formattedEndDate,
+                            date: Localization.translate(
+                              details.formattedEndDate,
+                              lang,
+                            ),
                             isDark: isDark,
                             dateColor: details.isLifetime
                                 ? Colors.purple.shade600

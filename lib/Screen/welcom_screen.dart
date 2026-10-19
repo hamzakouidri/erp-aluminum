@@ -7785,7 +7785,7 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
   // ── مخطط الدونات (حسب الحالة) ─────────────────────────────────────────────
   Widget _buildDonutView(int total) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
-    if (total == 0) return _emptyState();
+    if (total == 0) return _emptyState(lang);
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Row(
@@ -7891,7 +7891,7 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
       listen: false,
     ).language;
     final entries = widget.byMonth.entries.toList();
-    if (entries.isEmpty) return _emptyState();
+    if (entries.isEmpty) return _emptyState(lang);
     final maxVal = entries.map((e) => e.value).fold(0, (a, b) => a > b ? a : b);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
@@ -8017,7 +8017,7 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
       listen: false,
     ).language;
     final entries = widget.byMonth.entries.toList();
-    if (entries.isEmpty) return _emptyState();
+    if (entries.isEmpty) return _emptyState(lang);
     final maxVal = entries.map((e) => e.value).fold(0, (a, b) => a > b ? a : b);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
@@ -8065,17 +8065,21 @@ class _OrdersChartCardState extends State<_OrdersChartCard>
     );
   }
 
-  Widget _emptyState() {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 40),
+  Widget _emptyState(AppLanguage lang) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 40),
       child: Center(
         child: Column(
           children: [
-            Icon(Icons.bar_chart_outlined, size: 40, color: Color(0xFFCBD5E1)),
-            SizedBox(height: 8),
+            const Icon(
+              Icons.bar_chart_outlined,
+              size: 40,
+              color: Color(0xFFCBD5E1),
+            ),
+            const SizedBox(height: 8),
             Text(
-              'لا توجد طلبيات بعد',
-              style: TextStyle(
+              Localization.translate('لا توجد طلبيات بعد', lang),
+              style: const TextStyle(
                 color: Color(0xFF94A3B8),
                 fontFamily: 'Cairo',
                 fontSize: 13,

@@ -139,6 +139,14 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   String? _pdfError;
   Uint8List? _pdfBytes;
   Future<Uint8List?>? _pdfBuildFuture;
+  int? _pdfBuildRevision;
+  int _pdfRevision = 0;
+
+  void _invalidatePdfCache() {
+    _pdfRevision++;
+    _pdfBytes = null;
+    _pdfError = null;
+  }
 
   String t(String key) {
     try {
@@ -412,32 +420,6 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     }
   }
 
-  Future<void> _initializePreviewLanguage() async {
-    try {
-      final rawOrder = widget.data.rawOrder;
-      final rawItems = widget.data.rawItems;
-      if (rawOrder != null && rawItems != null) {
-        final rebuilt = await DevisBuilder.build(
-          order: rawOrder,
-          items: rawItems,
-          workshop: widget.data.workshop,
-          isPartial: widget.data.isPartial,
-          hidePrices: widget.data.hidePrices,
-          isProForma: widget.data.isProForma,
-          documentTitleKey: widget.data.documentTitleKey,
-          overrideLang: _invoiceLanguage,
-          chequeNumber: _chequeNumber,
-        ).timeout(const Duration(seconds: 30));
-        if (mounted) _currentDevisData = rebuilt;
-      }
-    } catch (error) {
-      debugPrint('Initial document language refresh failed: $error');
-    }
-    if (!mounted) return;
-    setState(() => _isLoading = false);
-    _initPdfGeneration();
-  }
-
   @override
   void dispose() {
     _debounceTimer?.cancel();
@@ -445,19 +427,16 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   }
 
   Future<void> _initPdfGeneration() async {
-    if (_pdfBuildFuture != null) return;
     if (mounted) {
       setState(() {
         _isPdfGenerating = true;
         _pdfError = null;
       });
     }
-    _pdfBuildFuture = _buildPdfBytes(showErrors: false);
     try {
-      final bytes = await _pdfBuildFuture;
+      final bytes = await _obtainLatestPdfBytes(showErrors: false);
       if (mounted) {
         setState(() {
-          _pdfBytes = bytes;
           if (bytes == null) {
             _pdfError = _pdfGenerationErrorMessage;
           }
@@ -471,7 +450,6 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         });
       }
     } finally {
-      _pdfBuildFuture = null;
       if (mounted) setState(() => _isPdfGenerating = false);
     }
   }
@@ -481,14 +459,18 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       ? 'La génération du document a échoué. Réessayez.'
       : 'تعذر توليد الوثيقة. اضغط لإعادة المحاولة.';
 
-  Future<Uint8List?> _buildPdfBytes({bool showErrors = true}) async {
+  Future<Uint8List?> _buildPdfBytes({
+    required DevisData pdfData,
+    required AppLanguage language,
+    required int imageMode,
+    bool showErrors = true,
+  }) async {
     try {
-      await PdfInvoiceApi.preloadFonts().timeout(const Duration(seconds: 30));
       return await PdfInvoiceApi.buildPdfBytes(
-        _effectiveDevisData,
-        overrideLang: _invoiceLanguage,
-        imageMode: _imageMode,
-      ).timeout(const Duration(seconds: 90));
+        pdfData,
+        overrideLang: language,
+        imageMode: imageMode,
+      );
     } catch (e) {
       debugPrint('PDF generation error: $e');
       if (showErrors && mounted) {
@@ -506,6 +488,47 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     }
   }
 
+  Future<Uint8List?> _obtainLatestPdfBytes({bool showErrors = true}) async {
+    while (mounted) {
+      final cached = _pdfBytes;
+      if (cached != null) return cached;
+
+      final requestedRevision = _pdfRevision;
+      var future = _pdfBuildFuture;
+
+      if (future == null) {
+        final pdfData = _effectiveDevisData;
+        final language = _invoiceLanguage;
+        final imageMode = _imageMode;
+        future = _buildPdfBytes(
+          pdfData: pdfData,
+          language: language,
+          imageMode: imageMode,
+          showErrors: showErrors,
+        );
+        _pdfBuildFuture = future;
+        _pdfBuildRevision = requestedRevision;
+      }
+
+      final runningRevision = _pdfBuildRevision;
+      final bytes = await future;
+
+      if (identical(_pdfBuildFuture, future)) {
+        _pdfBuildFuture = null;
+        _pdfBuildRevision = null;
+      }
+      if (!mounted) return null;
+
+      // The user changed language, image placement, pricing, or cheque data
+      // while this build was running. Discard it and build the latest state.
+      if (runningRevision != _pdfRevision) continue;
+
+      if (bytes != null) _pdfBytes = bytes;
+      return bytes;
+    }
+    return null;
+  }
+
   Future<Uint8List?> _ensurePdfBytes() async {
     if (_pdfBytes != null) return _pdfBytes;
 
@@ -516,8 +539,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       });
     }
     try {
-      _pdfBuildFuture ??= _buildPdfBytes();
-      final bytes = await _pdfBuildFuture;
+      final bytes = await _obtainLatestPdfBytes();
       if (mounted && bytes != null) {
         setState(() => _pdfBytes = bytes);
       } else if (mounted) {
@@ -525,7 +547,6 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       }
       return bytes;
     } finally {
-      _pdfBuildFuture = null;
       if (mounted) setState(() => _isPdfGenerating = false);
     }
   }
@@ -535,6 +556,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     setState(() {
       _isLoading = true;
       _invoiceLanguage = newLang;
+      _invalidatePdfCache();
     });
 
     try {
@@ -550,19 +572,14 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         chequeNumber: _chequeNumber,
       );
 
-      final bytes = await PdfInvoiceApi.buildPdfBytes(
-        rebuiltData,
-        overrideLang: newLang,
-        imageMode: _imageMode,
-      ).timeout(const Duration(seconds: 90));
-
       if (mounted) {
         setState(() {
           _currentDevisData = rebuiltData;
-          _pdfBytes = bytes;
-          _isLoading = false;
+          _invalidatePdfCache();
         });
       }
+      await _initPdfGeneration();
+      if (mounted) setState(() => _isLoading = false);
     } catch (e) {
       debugPrint('Error changing invoice language: $e');
       if (mounted) {
@@ -593,6 +610,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     setState(() {
       _chequeNumber = number;
       _isLoading = true;
+      _invalidatePdfCache();
     });
 
     try {
@@ -608,19 +626,14 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         chequeNumber: number,
       );
 
-      final bytes = await PdfInvoiceApi.buildPdfBytes(
-        rebuiltData,
-        overrideLang: _invoiceLanguage,
-        imageMode: _imageMode,
-      ).timeout(const Duration(seconds: 90));
-
       if (mounted) {
         setState(() {
           _currentDevisData = rebuiltData;
-          _pdfBytes = bytes;
-          _isLoading = false;
+          _invalidatePdfCache();
         });
       }
+      await _initPdfGeneration();
+      if (mounted) setState(() => _isLoading = false);
     } catch (e) {
       debugPrint('Error updating cheque number: $e');
       if (mounted) {
@@ -1316,7 +1329,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                     onTap: _pdfError == null
                         ? null
                         : () {
-                            _pdfBytes = null;
+                            setState(_invalidatePdfCache);
                             unawaited(_initPdfGeneration());
                           },
                     child: Padding(
@@ -1945,8 +1958,9 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         if (!active && !_isLoading) {
           setState(() {
             _imageMode = mode;
-            _pdfBytes = null;
+            _invalidatePdfCache();
           });
+          unawaited(_initPdfGeneration());
         }
       },
       child: Container(
@@ -1984,7 +1998,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         if (!active && !_isLoading) {
           setState(() {
             _pricingTier = tier;
-            _pdfBytes = null;
+            _invalidatePdfCache();
           });
           unawaited(_initPdfGeneration());
         }

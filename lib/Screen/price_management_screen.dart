@@ -33,6 +33,29 @@ class _PendingShutterPrice {
   const _PendingShutterPrice({required this.price, required this.save});
 }
 
+String formatAccessoryCardPrice(
+  double basePrice,
+  Iterable<double> colorPrices,
+) {
+  final prices = colorPrices.where((price) => price.isFinite).toList()..sort();
+  if (prices.isEmpty) prices.add(basePrice);
+
+  String format(double value) {
+    if (value == value.roundToDouble()) return value.toStringAsFixed(0);
+    return value
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  final lowest = prices.first;
+  final highest = prices.last;
+  if ((highest - lowest).abs() < 0.000001) {
+    return '${format(lowest)} DZD';
+  }
+  return '${format(lowest)} – ${format(highest)} DZD';
+}
+
 class PriceManagementScreen extends StatefulWidget {
   final int initialIndex;
 
@@ -3041,17 +3064,68 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     bool isDark,
   ) {
     final id = accessory['id'] as int;
-    final colorCount = (accessoryColorPrices[id] ?? {}).length;
+    final colors = accessoryColorPrices[id] ?? {};
+    final colorCount = colors.length;
+    final priceSummary = formatAccessoryCardPrice(
+      _readStoredPrice(accessory['price']),
+      colors.values,
+    );
+    final priceTypeLabel = colorCount == 0
+        ? switch (lang) {
+            AppLanguage.arabic => 'سعر خام',
+            AppLanguage.french => 'Prix brut',
+            AppLanguage.english => 'Base price',
+          }
+        : switch (lang) {
+            AppLanguage.arabic => '$colorCount أسعار حسب اللون',
+            AppLanguage.french => '$colorCount prix selon la couleur',
+            AppLanguage.english => '$colorCount color prices',
+          };
     return Card(
       color: isDark ? const Color(0xFF1E1E1E) : null,
       child: ListTile(
+        isThreeLine: true,
         leading: const Icon(Icons.category_outlined),
         title: Text(
           (accessory['name'] ?? '').toString(),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
-        subtitle: Text(
-          colorCount == 0 ? 'سعر خام' : '$colorCount أسعار حسب اللون',
+        subtitle: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              priceTypeLabel,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 2),
+            Row(
+              children: [
+                Icon(
+                  Icons.sell_outlined,
+                  size: 16,
+                  color: Colors.green.shade700,
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    '${Localization.translate('السعر', lang)}: $priceSummary',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: isDark
+                          ? Colors.green.shade300
+                          : Colors.green.shade800,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
         trailing: const Icon(Icons.chevron_right),
         onTap: () => _showAccessoryPriceEditor(accessory, lang),

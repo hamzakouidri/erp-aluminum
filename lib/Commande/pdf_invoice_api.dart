@@ -1,6 +1,6 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/services.dart' show rootBundle;
@@ -18,6 +18,12 @@ import '../services/pdf_branding.dart';
 
 class PdfInvoiceApi {
   static AppLanguage _currentLang = AppLanguage.arabic;
+
+  // PDF rendering uses a shared language context and can be memory intensive
+  // when a quotation contains several drawings. Keep builds in one queue so
+  // two preview screens (or a quick language/price change) cannot overwrite
+  // that shared context while another document is still being laid out.
+  static Future<void> _buildQueue = Future<void>.value();
 
   static String t(String key) => Localization.translate(key, _currentLang);
 
@@ -131,13 +137,46 @@ class PdfInvoiceApi {
     DevisData data, {
     AppLanguage? overrideLang,
     int imageMode = 0, // 0=Latérale, 1=Sous-prix, 2=Sous-ligne complète
+  }) {
+    final result = Completer<Uint8List>();
+    final previousBuild = _buildQueue;
+
+    _buildQueue = () async {
+      try {
+        await previousBuild;
+      } catch (_) {
+        // A failed document must not poison the queue for future attempts.
+      }
+
+      try {
+        result.complete(
+          await _buildPdfBytesUnlocked(
+            data,
+            overrideLang: overrideLang,
+            imageMode: imageMode,
+          ),
+        );
+      } catch (error, stackTrace) {
+        result.completeError(error, stackTrace);
+      }
+    }();
+
+    return result.future;
+  }
+
+  static Future<Uint8List> _buildPdfBytesUnlocked(
+    DevisData data, {
+    AppLanguage? overrideLang,
+    required int imageMode,
   }) async {
     if (overrideLang != null) {
       _currentLang = overrideLang;
     } else {
       final prefs = await SharedPreferences.getInstance();
       final langIndex = prefs.getInt('app_language') ?? 0;
-      _currentLang = AppLanguage.values[langIndex];
+      _currentLang = langIndex >= 0 && langIndex < AppLanguage.values.length
+          ? AppLanguage.values[langIndex]
+          : AppLanguage.arabic;
     }
 
     await preloadFonts();

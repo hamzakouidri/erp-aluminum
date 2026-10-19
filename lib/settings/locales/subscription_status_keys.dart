@@ -157,6 +157,14 @@ const subscriptionStatusKeys = <String, Map<AppLanguage, String>>{
     AppLanguage.french: 'À vie',
     AppLanguage.english: 'Lifetime',
   },
+  'تتمتع ورشتكم باشتراك دائم وصلاحيات غير محدودة مدى الحياة دون الحاجة إلى تجديد.': {
+    AppLanguage.arabic:
+        'تتمتع ورشتكم باشتراك دائم وصلاحيات غير محدودة مدى الحياة دون الحاجة إلى تجديد.',
+    AppLanguage.french:
+        'Votre atelier bénéficie d\'un abonnement illimité à vie sans nécessité de renouvellement.',
+    AppLanguage.english:
+        'Your workshop has a permanent, unlimited lifetime subscription that does not require renewal.',
+  },
   'الأكثر طلباً': {
     AppLanguage.arabic: 'الأكثر طلباً',
     AppLanguage.french: 'Le plus demandé',

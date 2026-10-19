@@ -66,7 +66,7 @@ void main() {
       print("Calling buildPdfBytes first time...");
       final bytes1 = await PdfInvoiceApi.buildPdfBytes(data);
       expect(bytes1.length, greaterThan(0));
-      
+
       print("Calling buildPdfBytes second time...");
       final bytes2 = await PdfInvoiceApi.buildPdfBytes(data);
       expect(bytes2.length, greaterThan(0));
@@ -82,4 +82,45 @@ void main() {
       fail(e.toString());
     }
   });
+
+  test(
+    'PDF generation recovers from an invalid saved language index',
+    () async {
+      SharedPreferences.setMockInitialValues({'app_language': 999});
+      final data = DevisData(
+        orderId: 124,
+        orderDate: '2026-10-18',
+        validUntil: '2026-11-01',
+        workshop: const DevisWorkshopInfo(
+          name: 'ورشة الاختبار',
+          phone: '0550000000',
+          address: 'الجزائر',
+        ),
+        clientName: 'عميل الاختبار',
+        clientPhone: '0550000000',
+        items: const [
+          DevisLineItem(
+            imagePath: null,
+            title: 'نافذة اختبار',
+            details: ['العرض: 1000 مم', 'الارتفاع: 1200 مم'],
+            unitPrice: 25000,
+            quantity: 1,
+          ),
+        ],
+        totalBrut: 25000,
+        remise: 0,
+        totalHT: 25000,
+        tvaPercent: 0,
+        tvaAmount: 0,
+        totalTTC: 25000,
+        amountPaid: 0,
+        totalBeforeTax: 25000,
+        amountInWords: 'خمسة وعشرون ألف دينار جزائري',
+      );
+
+      final bytes = await PdfInvoiceApi.buildPdfBytes(data);
+
+      expect(bytes, isNotEmpty);
+    },
+  );
 }

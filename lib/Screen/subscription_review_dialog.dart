@@ -460,7 +460,10 @@ class SubscriptionReviewDialog extends StatelessWidget {
                             'تاريخ نهاية الاشتراك:',
                             lang,
                           ),
-                          value: details.formattedEndDate,
+                          value: Localization.translate(
+                            details.formattedEndDate,
+                            lang,
+                          ),
                           isDark: isDark,
                           valueColor: details.isLifetime
                               ? Colors.purple.shade600
@@ -540,9 +543,10 @@ class SubscriptionReviewDialog extends StatelessWidget {
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
-                              lang == AppLanguage.french
-                                  ? 'Votre atelier bénéficie d\'un abonnement illimité à vie sans nécessité de renouvellement.'
-                                  : 'تتمتع ورشتكم باشتراك دائم وصلاحيات غير محدودة مدى الحياة دون الحاجة إلى تجديد.',
+                              Localization.translate(
+                                'تتمتع ورشتكم باشتراك دائم وصلاحيات غير محدودة مدى الحياة دون الحاجة إلى تجديد.',
+                                lang,
+                              ),
                               style: TextStyle(
                                 fontSize: 13,
                                 height: 1.4,
