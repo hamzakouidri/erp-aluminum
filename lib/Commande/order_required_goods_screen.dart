@@ -1567,7 +1567,6 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   List<ProductBreakdown> _productBreakdowns = [];
   List<String> _processingWarnings = [];
   final Set<String> _expandedKits = {};
-  final Set<String> _expandedCuttingPlans = {};
   bool _isCreatingPurchase = false;
   bool _manufacturingIssueRequested = false;
   late AppLanguage _currentLang;  String _selectedCategory = 'all';
@@ -3790,12 +3789,6 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             rows.add(_buildDesktopKitChildRow(child, isDark));
           }
         }
-
-        final plan = item.cuttingPlan;
-        if (plan != null &&
-            _expandedCuttingPlans.contains(_cuttingKeyForItem(item))) {
-          rows.addAll(_buildDesktopCuttingRows(item, plan, isDark));
-        }
       }
     }
 
@@ -4212,47 +4205,6 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     );
   }
 
-  List<ResizableTableRow> _buildDesktopCuttingRows(
-    AggregatedGoodItem item,
-    OrderCuttingPlan plan,
-    bool isDark,
-  ) {
-    final color = _categoryColor(item.category);
-    return plan.bars.indexed.map((entry) {
-      final barNumber = entry.$1 + 1;
-      final cuts = entry.$2;
-      final cutText = cuts.map((cut) => '${(cut * 1000).round()}').join(' + ');
-      final remainder = _barRemainder(plan, cuts);
-      return ResizableTableRow(
-        reorderId:
-            'cut:${_aggregatedGoodReorderKey(item, item.category)}:$barNumber',
-        color: isDark
-            ? color.withValues(alpha: 0.04)
-            : color.withValues(alpha: 0.025),
-        cells: [
-          Icon(Icons.content_cut, size: 18, color: color),
-          _desktopTextCell(_t('خطة القص'), isDark: isDark),
-          _desktopNameCell(
-            title: '${_t('قطاع')} $barNumber',
-            subtitle: _t(item.name),
-            isDark: isDark,
-          ),
-          _desktopTextCell(
-            '$cutText mm • ${_t('الباقي')}: ${(remainder * 1000).round()} mm',
-            isDark: isDark,
-            maxLines: 2,
-          ),
-          _desktopTextCell('-', isDark: isDark),
-          _desktopTextCell('-', isDark: isDark),
-          _desktopTextCell('-', isDark: isDark),
-          _desktopTextCell('-', isDark: isDark),
-          _desktopTextCell('-', isDark: isDark),
-          const SizedBox.shrink(),
-        ],
-      );
-    }).toList();
-  }
-
   Widget _desktopCategoryCell(String category, Color color, bool isDark) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -4363,7 +4315,6 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     }
     if (category == 'profile' || plan != null) {
       final key = plan == null ? null : _cuttingKeyForItem(item);
-      final isExpanded = key != null && _expandedCuttingPlans.contains(key);
       return Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -4373,20 +4324,231 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               onPressed: () => _showSectionSelectionDialog(item, category),
               icon: Icon(Icons.compare_arrows, color: color),
             ),
-          if (key != null)
+          if (key != null && plan != null)
             IconButton(
-              tooltip: _t(isExpanded ? 'إخفاء خطة القص' : 'عرض خطة القص'),
-              onPressed: () => _toggleCuttingPlanExpansion(key),
-              icon: Icon(
-                isExpanded ? Icons.expand_less : Icons.content_cut,
-                color: color,
-              ),
+              tooltip: _t('عرض خطة القص'),
+              onPressed: () => _showCuttingPlanDialog(item, plan),
+              icon: Icon(Icons.content_cut, color: color),
             ),
         ],
       );
     }
     return const SizedBox.shrink();
   }
+
+  /// The cut plan of one profile in its own dialog: one drawn bar per stock
+  /// length, pieces to scale, the remainder shaded.
+  void _showCuttingPlanDialog(AggregatedGoodItem item, OrderCuttingPlan plan) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = _categoryColor(item.category);
+    String mm(double meters) => '${(meters * 1000).round()}';
+    final stockMm = mm(plan.stockLength);
+    final wastePercent = plan.barCount == 0
+        ? 0.0
+        : plan.wasteLength / (plan.barCount * plan.stockLength) * 100;
+    final title = [
+      if ((item.profileCode ?? '').trim().isNotEmpty) item.profileCode!.trim(),
+      _t(item.name),
+    ].join(' - ');
+    final colorLabel = (item.colorName ?? '').trim().isEmpty
+        ? ''
+        : Localization.colorName(item.colorName, _cutPlanLanguage);
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        insetPadding: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 860, maxHeight: 720),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 10, 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.content_cut, color: color),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${_t('خطة القص')}: $title',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          if (colorLabel.isNotEmpty)
+                            Text(
+                              colorLabel,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDark
+                                    ? Colors.white60
+                                    : Colors.grey.shade700,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(dialogContext),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    _cutPlanChip(
+                      '${_t('عدد القطاعات')}: ${plan.barCount}',
+                      color,
+                    ),
+                    _cutPlanChip('${_t('طول القطاع')}: $stockMm mm', color),
+                    _cutPlanChip(
+                      '${_t('الهدر')}: ${mm(plan.wasteLength)} mm '
+                      '(${wastePercent.toStringAsFixed(1)}%)',
+                      color,
+                    ),
+                  ],
+                ),
+                const Divider(height: 22),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: plan.bars.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final cuts = plan.bars[index];
+                      final remainder = _barRemainder(plan, cuts);
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${_t('قطاع')} ${index + 1}  •  '
+                            '${cuts.map(mm).join(' + ')} mm  •  '
+                            '${_t('الباقي')}: ${mm(remainder)} mm',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? Colors.white70 : Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          _cutPlanBar(plan, cuts, remainder, color, isDark),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+                if (plan.oversizedPieces.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    '${_t('قطع أطول من القطاع')}: '
+                    '${plan.oversizedPieces.map(mm).join(' + ')} mm',
+                    style: const TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _cutPlanChip(String text, Color color) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.1),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: color.withValues(alpha: 0.35)),
+    ),
+    child: Text(
+      text,
+      style: TextStyle(
+        color: color,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+  );
+
+  Widget _cutPlanBar(
+    OrderCuttingPlan plan,
+    List<double> cuts,
+    double remainder,
+    Color color,
+    bool isDark,
+  ) {
+    final total = plan.stockLength <= 0 ? 1.0 : plan.stockLength;
+    int flexOf(double meters) => math.max(1, (meters / total * 1000).round());
+    return SizedBox(
+      height: 30,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(5),
+        child: Row(
+          children: [
+            for (final (index, cut) in cuts.indexed)
+              Expanded(
+                flex: flexOf(cut),
+                child: Container(
+                  margin: EdgeInsetsDirectional.only(
+                    end: index == cuts.length - 1 && remainder <= 0 ? 0 : 2,
+                  ),
+                  color: color.withValues(alpha: index.isEven ? 0.85 : 0.65),
+                  alignment: Alignment.center,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      child: Text(
+                        '${(cut * 1000).round()}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            if (remainder > 0)
+              Expanded(
+                flex: flexOf(remainder),
+                child: Container(
+                  color: isDark ? Colors.white12 : Colors.grey.shade300,
+                  alignment: Alignment.center,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      '${(remainder * 1000).round()}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: isDark ? Colors.white60 : Colors.grey.shade700,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  AppLanguage get _cutPlanLanguage =>
+      Provider.of<AppSettingsProvider>(context, listen: false).language;
 
   void _toggleKitExpansion(String key) {
     setState(() {
@@ -4413,16 +4575,6 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
   String _cuttingKeyForItem(AggregatedGoodItem item) =>
       '${item.category}:${item.name}:${item.profileCode ?? ''}:${item.colorName ?? item.colorId ?? ''}:${item.stockLength}';
-
-  void _toggleCuttingPlanExpansion(String key) {
-    setState(() {
-      if (_expandedCuttingPlans.contains(key)) {
-        _expandedCuttingPlans.remove(key);
-      } else {
-        _expandedCuttingPlans.add(key);
-      }
-    });
-  }
 
   Future<int?> _seriesIdFor(AggregatedGoodItem item) async {
     if (item.inventoryItemType != 'Section' || item.catalogItemId == null) {
@@ -5547,8 +5699,6 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     }
 
     final plan = item.cuttingPlan;
-    final cuttingKey = _cuttingKeyForItem(item);
-    final isCuttingExpanded = _expandedCuttingPlans.contains(cuttingKey);
 
     final itemRow = Container(
       margin: const EdgeInsets.only(bottom: 6),
@@ -5739,13 +5889,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         Padding(
           padding: const EdgeInsets.only(bottom: 6),
           child: InkWell(
-            onTap: () => setState(() {
-              if (isCuttingExpanded) {
-                _expandedCuttingPlans.remove(cuttingKey);
-              } else {
-                _expandedCuttingPlans.add(cuttingKey);
-              }
-            }),
+            onTap: () => _showCuttingPlanDialog(item, plan),
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -5771,44 +5915,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                           ),
                         ),
                       ),
-                      Icon(
-                        isCuttingExpanded
-                            ? Icons.expand_less
-                            : Icons.expand_more,
-                        color: color,
-                        size: 18,
-                      ),
+                      Icon(Icons.open_in_new, color: color, size: 16),
                     ],
                   ),
-                  if (isCuttingExpanded) ...[
-                    const SizedBox(height: 8),
-                    ...plan.bars.indexed.map((entry) {
-                      final barNumber = entry.$1 + 1;
-                      final cuts = entry.$2;
-                      final used = cuts.fold<double>(
-                        0,
-                        (sum, cut) => sum + cut,
-                      );
-                      final remainder =
-                          plan.stockLength -
-                          used -
-                          (cuts.length * plan.bladeWaste);
-                      final cutText = cuts
-                          .map((cut) => '${(cut * 1000).round()}')
-                          .join(' + ');
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Text(
-                          'قطاع $barNumber: $cutText مم — الباقي '
-                          '${(remainder > 0 ? remainder * 1000 : 0).round()} مم',
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            color: isDark ? Colors.white70 : Colors.black87,
-                          ),
-                        ),
-                      );
-                    }),
-                  ],
                 ],
               ),
             ),

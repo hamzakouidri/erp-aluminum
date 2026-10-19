@@ -3,6 +3,31 @@ import '../app_settings.dart';
 /// Messages shown when a typed drawing dimension is outside what the
 /// aluminium/PVC layout can physically take.
 final Map<String, Map<AppLanguage, String>> drawingValidationKeys = {
+  'عدد القطاعات': {
+    AppLanguage.arabic: 'عدد القطاعات',
+    AppLanguage.french: "Nombre de barres",
+    AppLanguage.english: "Number of bars",
+  },
+  'طول القطاع': {
+    AppLanguage.arabic: 'طول القطاع',
+    AppLanguage.french: "Longueur de barre",
+    AppLanguage.english: "Bar length",
+  },
+  'الهدر': {
+    AppLanguage.arabic: 'الهدر',
+    AppLanguage.french: "Chute",
+    AppLanguage.english: "Waste",
+  },
+  'قطع أطول من القطاع': {
+    AppLanguage.arabic: 'قطع أطول من القطاع',
+    AppLanguage.french: "Pièces plus longues que la barre",
+    AppLanguage.english: "Pieces longer than the bar",
+  },
+  'عرض خطة القص': {
+    AppLanguage.arabic: 'عرض خطة القص',
+    AppLanguage.french: "Voir le plan de coupe",
+    AppLanguage.english: "Show the cutting plan",
+  },
   'لا يوجد بديل يقبله الرسم لهذا القطاع': {
     AppLanguage.arabic: 'لا يوجد بديل يقبله الرسم لهذا القطاع',
     AppLanguage.french:
