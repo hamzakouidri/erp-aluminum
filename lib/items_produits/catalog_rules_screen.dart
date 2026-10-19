@@ -11,7 +11,6 @@ import '../widgets/section_image.dart';
 import '../widgets/auto_scroll_expansion_tile.dart';
 import '../widgets/desktop_scroll_behavior.dart';
 import '../Commande/Systeme/accessory_assembly.dart';
-import 'frame_pairing_view.dart';
 
 class CatalogRulesScreen extends StatefulWidget {
   const CatalogRulesScreen({super.key, required this.db});
@@ -112,7 +111,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     // The groups tab saves as it goes: it hides the rules save button.
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) setState(() {});
@@ -1396,8 +1395,8 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       appBar: AppBar(
         title: Text(
           _t(
-            'قواعد الكتالوج: الأكسسوارات والجوانات وربط الإطارات',
-            'Règles du catalogue : accessoires, joints et dormants',
+            'قواعد الأكسسوارات والجوانات',
+            'Règles des accessoires et des joints',
           ),
         ),
         bottom: TabBar(
@@ -1410,10 +1409,6 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
             Tab(
               icon: const Icon(Icons.linear_scale_outlined),
               text: _t('الجوانات', 'Joints'),
-            ),
-            Tab(
-              icon: const Icon(Icons.link_rounded),
-              text: _t('ربط الإطارات', 'Association des dormants'),
             ),
           ],
         ),
@@ -1466,23 +1461,10 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                   ),
                 ),
                 _tableView('Joints'),
-                FramePairingView(
-                  db: widget.db,
-                  seriesId: _selectedSeriesId,
-                  canEdit: () {
-                    final s = context.watch<AppSettingsProvider>();
-                    return s.isAdmin || s.isManager;
-                  }(),
-                  header: [
-                    _profileSelector(),
-                    if (_selectedProfile != null) _seriesSelector(),
-                  ],
-                ),
               ],
             ),
       floatingActionButton:
           (_selectedSeriesId == null ||
-              _tabController.index == 2 ||
               !(() {
                 final s = context.watch<AppSettingsProvider>();
                 return s.isAdmin || s.isManager;

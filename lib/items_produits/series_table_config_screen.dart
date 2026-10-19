@@ -9,6 +9,7 @@ import '../services/cloud_sync_service.dart';
 import '../sql_database.dart';
 import '../widgets/section_image.dart';
 import '../widgets/auto_scroll_expansion_tile.dart';
+import 'frame_pairing_view.dart';
 
 /// Administrator-only definition of the main profile roles for each series.
 /// This temporary page is intentionally independent from the quantity table.
@@ -1156,7 +1157,48 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
               children: [
                 _profileSelector(),
                 if (_selectedProfile != null) _seriesSelector(),
-                Expanded(child: _body()),
+                Expanded(
+                  child: _selectedSeries == null
+                      ? _body()
+                      // The series' profiles, and how its frames pair with
+                      // each other (no-cover sides, corner profile, joining).
+                      : DefaultTabController(
+                          length: 2,
+                          child: Column(
+                            children: [
+                              TabBar(
+                                tabs: [
+                                  Tab(
+                                    icon: const Icon(
+                                      Icons.view_list_rounded,
+                                    ),
+                                    text: _t('المكوّنات', 'Composants'),
+                                  ),
+                                  Tab(
+                                    icon: const Icon(Icons.link_rounded),
+                                    text: _t(
+                                      'ربط الإطارات',
+                                      'Association des dormants',
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Expanded(
+                                child: TabBarView(
+                                  children: [
+                                    _body(),
+                                    FramePairingView(
+                                      db: widget.db,
+                                      seriesId: _seriesId,
+                                      canEdit: settings.isAdmin,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                ),
               ],
             ),
       floatingActionButton: _selectedSeries == null
