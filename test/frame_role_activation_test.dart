@@ -297,43 +297,27 @@ void main() {
     },
   );
 
-  test('profile angle mode sets and calculates pieces correctly', () async {
+  test('a single frame never takes a corner profile on its outer edge', () {
     final model = RoleWindow();
     expect(model.profileAngleMode, 0);
     expect(model.usesProfileAngle, false);
 
-    model.setProfileAngleMode(1); // right
-    expect(model.profileAngleMode, 1);
-    expect(model.usesProfileAngle, true);
-    expect(model.profileAngleModeName, 'يمين (90°)');
-
-    var items = ComponentCalculator.generateBom(model, {});
-    var angleItem = items.firstWhere(
-      (item) =>
-          (item.roleKey == 'profile_angle' ||
-          item.selectorType == 'profile_angle'),
-    );
-    expect(angleItem.pieces, hasLength(1));
-    expect(
-      angleItem.pieces!.first,
-      closeTo(1.2, 0.001),
-    ); // window height = 1200mm = 1.2m
-    expect(angleItem.cuttingList, 'يمين (90°)');
-
-    model.setProfileAngleMode(3); // both
-    expect(model.profileAngleMode, 3);
-    expect(model.profileAngleModeName, 'الجهتين (90°)');
-
-    items = ComponentCalculator.generateBom(model, {});
-    angleItem = items.firstWhere(
-      (item) =>
-          (item.roleKey == 'profile_angle' ||
-          item.selectorType == 'profile_angle'),
-    );
-    expect(angleItem.pieces, hasLength(2));
-    expect(angleItem.pieces![0], closeTo(1.2, 0.001));
-    expect(angleItem.pieces![1], closeTo(1.2, 0.001));
-    expect(angleItem.cuttingList, 'الجهتين (90°)');
+    // The old outer-edge choices (right / left / both) are ignored: the
+    // corner profile goes only between two touching frames.
+    for (final mode in [1, 2, 3]) {
+      model.setProfileAngleMode(mode);
+      expect(model.profileAngleMode, 0);
+      expect(model.usesProfileAngle, false);
+      final items = ComponentCalculator.generateBom(model, {});
+      expect(
+        items.where(
+          (item) =>
+              item.roleKey == 'profile_angle' ||
+              item.selectorType == 'profile_angle',
+        ),
+        isEmpty,
+      );
+    }
 
     model.dispose();
   });

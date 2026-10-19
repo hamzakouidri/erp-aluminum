@@ -3122,8 +3122,9 @@ extension WindowModelFrame on WindowModel {
     return const <int>{};
   }
 
-  bool get usesProfileAngle =>
-      activeProfileAngleJunctions.isNotEmpty || profileAngleMode > 0;
+  /// The corner profile goes only between two touching frames: the old
+  /// outer-edge mode (profileAngleMode) is no longer used.
+  bool get usesProfileAngle => activeProfileAngleJunctions.isNotEmpty;
 
   String get profileAngleModeName {
     final junctions = getAdjacentFrameJunctions();
@@ -3252,11 +3253,11 @@ extension WindowModelFrame on WindowModel {
     _notifyModelListeners();
   }
 
+  /// Only "off" remains: the corner profile is never put on a frame's
+  /// outer edge, only between two touching frames.
   void setProfileAngleMode(int mode) {
-    final next = mode.clamp(0, 3).toInt();
     _saveSnapshot();
-    profileAngleMode = next;
-    if (next > 0) viewAs90DegreeCorner = true;
+    profileAngleMode = 0;
     adaptFramesForProfileAngle();
     _notifyModelListeners();
   }
@@ -3269,8 +3270,6 @@ extension WindowModelFrame on WindowModel {
       } else {
         clearProfileAngle();
       }
-    } else {
-      setProfileAngleMode((profileAngleMode + 1) % 4);
     }
   }
 

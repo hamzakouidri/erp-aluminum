@@ -4453,127 +4453,17 @@ extension _WindowViewToolbars on _WindowViewState {
                         ),
                         const Divider(height: 24),
                       ],
-                      Text(
-                        Localization.translate(
-                          hasJunctions
-                              ? 'أطراف الإطار الخارجية (يمين / يسار):'
-                              : 'اختر جهة تركيب بروفيل الزاوية 90°:',
-                          lang,
-                        ),
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      ListTile(
-                        leading: const Icon(
-                          Icons.block_rounded,
-                          color: Colors.grey,
-                        ),
-                        title: Text(
+                      if (!hasJunctions)
+                        Text(
                           Localization.translate(
-                            hasJunctions
-                                ? 'بدون زاوية على الأطراف الخارجية'
-                                : 'إيقاف / بدون بروفيل زاوية',
+                            'بروفيل الزاوية يركب بين إطارين متلاصقين فقط، وليس على أطراف الإطار. ألصق إطاراً بإطار ثم فعّله بينهما.',
                             lang,
                           ),
-                        ),
-                        trailing: widget.model.profileAngleMode == 0
-                            ? const Icon(Icons.check, color: Colors.blue)
-                            : null,
-                        onTap: () {
-                          widget.model.setProfileAngleMode(0);
-                          _warnProfileAngleFrames();
-                          setModalState(() {});
-                          _setViewState(() {});
-                          if (!hasJunctions) Navigator.pop(ctx);
-                        },
-                      ),
-                      ListTile(
-                        leading: const Icon(
-                          Icons.border_right_rounded,
-                          color: Colors.blue,
-                        ),
-                        title: Text(
-                          Localization.translate(
-                            'جهة اليمين (90° Droite)',
-                            lang,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: Colors.orange.shade900,
                           ),
                         ),
-                        subtitle: Text(
-                          Localization.translate(
-                            'أنبوب زاوية 90° على القائم الأيمن الخارجي',
-                            lang,
-                          ),
-                        ),
-                        trailing: widget.model.profileAngleMode == 1
-                            ? const Icon(Icons.check, color: Colors.blue)
-                            : null,
-                        onTap: () {
-                          widget.model.setProfileAngleMode(1);
-                          _warnProfileAngleFrames();
-                          setModalState(() {});
-                          _setViewState(() {});
-                          if (!hasJunctions) Navigator.pop(ctx);
-                        },
-                      ),
-                      ListTile(
-                        leading: const Icon(
-                          Icons.border_left_rounded,
-                          color: Colors.blue,
-                        ),
-                        title: Text(
-                          Localization.translate(
-                            'جهة اليسار (90° Gauche)',
-                            lang,
-                          ),
-                        ),
-                        subtitle: Text(
-                          Localization.translate(
-                            'أنبوب زاوية 90° على القائم الأيسر الخارجي',
-                            lang,
-                          ),
-                        ),
-                        trailing: widget.model.profileAngleMode == 2
-                            ? const Icon(Icons.check, color: Colors.blue)
-                            : null,
-                        onTap: () {
-                          widget.model.setProfileAngleMode(2);
-                          _warnProfileAngleFrames();
-                          setModalState(() {});
-                          _setViewState(() {});
-                          if (!hasJunctions) Navigator.pop(ctx);
-                        },
-                      ),
-                      ListTile(
-                        leading: const Icon(
-                          Icons.border_vertical_rounded,
-                          color: Colors.blue,
-                        ),
-                        title: Text(
-                          Localization.translate(
-                            'الجهتين معاً (90° Les deux côtés)',
-                            lang,
-                          ),
-                        ),
-                        subtitle: Text(
-                          Localization.translate(
-                            'أنبوب زاوية 90° على القائمين الخارجيين',
-                            lang,
-                          ),
-                        ),
-                        trailing: widget.model.profileAngleMode == 3
-                            ? const Icon(Icons.check, color: Colors.blue)
-                            : null,
-                        onTap: () {
-                          widget.model.setProfileAngleMode(3);
-                          _warnProfileAngleFrames();
-                          setModalState(() {});
-                          _setViewState(() {});
-                          if (!hasJunctions) Navigator.pop(ctx);
-                        },
-                      ),
                     ],
                   ),
                 ),

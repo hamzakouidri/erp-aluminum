@@ -62,19 +62,21 @@ void main() {
       model.width = 2000;
       model.height = 1200;
 
-      // Create two coupled zones (two adjacent frames)
+      // Two coupled frames: the corner profile goes between them.
+      final pt = model.profileThickness;
       model.zones = [
         WindowZone(
           id: 'zone_left',
-          boundary: const Rect.fromLTWH(0, 0, 1000, 1200),
+          boundary: Rect.fromLTRB(pt, pt, 1000 - pt, 1200 - pt),
           content: ZoneContent.singleSash,
         ),
         WindowZone(
           id: 'zone_right',
-          boundary: const Rect.fromLTWH(1000, 0, 1000, 1200),
+          boundary: Rect.fromLTRB(1000 + pt, pt, 2000 - pt, 1200 - pt),
           content: ZoneContent.singleSash,
         ),
       ];
+      model.coupleFrames = true;
 
       final openingSeries = AluminumSeries(
         id: 1,
@@ -113,7 +115,6 @@ void main() {
       // needs no switch and would yield no compatible frame.
       model.frameOverride = openingSeries.sections.first.toMap();
       model.hasSideCovers = true;
-      model.profileAngleMode = 1;
       model.profileAngleJunctionsDisabled = false;
       model.profileAngleJunctions = {0};
 
@@ -259,7 +260,6 @@ void main() {
       model.frameOverride = openingSeries.sections.first.toMap();
       model.slidingFrameOverride = slidingSeries.sections.first.toMap();
       model.hasSideCovers = true;
-      model.profileAngleMode = 1;
       model.profileAngleJunctionsDisabled = false;
       model.profileAngleJunctions = {0};
 

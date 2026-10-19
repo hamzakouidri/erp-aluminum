@@ -4577,48 +4577,17 @@ extension _WindowViewDrawers on _WindowViewState {
                             ],
                           );
                         }
-                        return ToggleButtons(
-                          isSelected: [0, 1, 2, 3]
-                              .map(
-                                (mode) => widget.model.profileAngleMode == mode,
-                              )
-                              .toList(),
-                          onPressed: (index) {
-                            _setViewState(() {
-                              widget.model.setProfileAngleMode(index);
-                              _warnProfileAngleFrames();
-                            });
-                          },
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                              ),
-                              child: Text(
-                                Localization.translate('إيقاف', lang),
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                              ),
-                              child: Text(Localization.translate('يمين', lang)),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                              ),
-                              child: Text(Localization.translate('يسار', lang)),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                              ),
-                              child: Text(
-                                Localization.translate('الجهتين', lang),
-                              ),
-                            ),
-                          ],
+                        // The corner profile goes only between two
+                        // touching frames, never on a frame's outer edge.
+                        return Text(
+                          Localization.translate(
+                            'بروفيل الزاوية يركب بين إطارين متلاصقين فقط، وليس على أطراف الإطار. ألصق إطاراً بإطار ثم فعّله بينهما.',
+                            lang,
+                          ),
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: Colors.orange.shade900,
+                          ),
                         );
                       },
                     ),

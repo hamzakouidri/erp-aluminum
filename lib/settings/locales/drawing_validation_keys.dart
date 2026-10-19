@@ -3,6 +3,14 @@ import '../app_settings.dart';
 /// Messages shown when a typed drawing dimension is outside what the
 /// aluminium/PVC layout can physically take.
 final Map<String, Map<AppLanguage, String>> drawingValidationKeys = {
+  'بروفيل الزاوية يركب بين إطارين متلاصقين فقط، وليس على أطراف الإطار. ألصق إطاراً بإطار ثم فعّله بينهما.': {
+    AppLanguage.arabic:
+        'بروفيل الزاوية يركب بين إطارين متلاصقين فقط، وليس على أطراف الإطار. ألصق إطاراً بإطار ثم فعّله بينهما.',
+    AppLanguage.french:
+        "Le profil d'angle se pose uniquement entre deux dormants accolés, jamais sur les bords du dormant. Accolez deux dormants puis activez-le entre eux.",
+    AppLanguage.english:
+        'The corner profile goes only between two joined frames, never on the edges of a frame. Join two frames, then switch it on between them.',
+  },
   'بجانب بروفيل الزاوية يجب إطار لا يحمل غطاءً جانبيًا ولا غطاءً مدمجًا، ولا يوجد في السلسلة إطار مناسب لـ: {frames}': {
     AppLanguage.arabic:
         'بجانب بروفيل الزاوية يجب إطار لا يحمل غطاءً جانبيًا ولا غطاءً مدمجًا، ولا يوجد في السلسلة إطار مناسب لـ: {frames}',

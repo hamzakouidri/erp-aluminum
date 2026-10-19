@@ -797,7 +797,9 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> savedMap) {
   model.optionalBavetteMode =
       (map['optionalBavetteMode'] as num?)?.toInt() ??
       (map['useOptionalBavette'] == true ? 1 : 0);
-  model.profileAngleMode = (map['profileAngleMode'] as num?)?.toInt() ?? 0;
+  // Old drawings may hold a corner profile on the frame's outer edge; it is
+  // dropped: the corner profile goes only between two touching frames.
+  model.profileAngleMode = 0;
   model.profileAngleJunctions =
       (map['profileAngleJunctions'] as List<dynamic>?)
           ?.map((e) => (e as num).toInt())
