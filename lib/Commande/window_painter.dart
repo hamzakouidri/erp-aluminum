@@ -7693,7 +7693,13 @@ class WindowPainter extends CustomPainter {
         (zone?.useClassicHandle == true || !canUseEntrematique);
 
     // A sliding handle place chosen on its own (see slidingHandleTypeFor).
-    var isEncastreeHandle = false;
+    // An opening PVC sash can take the recessed handle too.
+    var isEncastreeHandle =
+        !isSlidingSash &&
+        model.isPVC &&
+        zone?.useEncastreeHandle == true &&
+        zone?.lockType == LockType.none &&
+        zone?.useOctoHandle != true;
     if (isSlidingSash && slidingHandleType != null) {
       isSlidingHandle = slidingHandleType == SlidingHandleType.entrematique;
       isClassicSlidingHandle = slidingHandleType == SlidingHandleType.classic;
@@ -8142,29 +8148,34 @@ class WindowPainter extends CustomPainter {
           ..strokeWidth = 1.5,
       );
     } else if (isEncastreeHandle) {
-      // PVC recessed handle: a flush shell set in the sash, with its grip.
-      final RRect shell = RRect.fromRectAndRadius(
-        Rect.fromCenter(center: Offset.zero, width: 26, height: 120),
+      // PVC recessed handle: a long rounded plate with a screw at the top
+      // and a slot holding the round grip at its bottom.
+      final RRect plate = RRect.fromRectAndRadius(
+        Rect.fromCenter(center: Offset.zero, width: 26, height: 150),
         const Radius.circular(13),
       );
-      canvas.drawRRect(shell, basePaint);
-      canvas.drawRRect(shell, borderPaint);
-      final RRect recess = RRect.fromRectAndRadius(
-        Rect.fromCenter(center: Offset.zero, width: 14, height: 92),
-        const Radius.circular(7),
+      canvas.drawRRect(plate, basePaint);
+      canvas.drawRRect(plate, borderPaint);
+      canvas.drawCircle(
+        const Offset(0, -62),
+        2.6,
+        Paint()..color = Colors.black45,
+      );
+      final RRect slot = RRect.fromRectAndRadius(
+        Rect.fromLTRB(-6, -48, 6, 60),
+        const Radius.circular(6),
       );
       canvas.drawRRect(
-        recess,
-        Paint()..color = Colors.black.withValues(alpha: 0.22),
+        slot,
+        Paint()..color = Color.lerp(accessoryColor, Colors.black, 0.12)!,
       );
-      canvas.drawRRect(recess, borderPaint);
-      canvas.drawLine(
-        const Offset(0, -30),
-        const Offset(0, 30),
-        Paint()
-          ..color = Colors.white.withValues(alpha: 0.55)
-          ..strokeWidth = 2.0,
+      canvas.drawRRect(slot, borderPaint);
+      canvas.drawCircle(
+        const Offset(0, 51),
+        5.4,
+        Paint()..color = Colors.blueGrey.shade400,
       );
+      canvas.drawCircle(const Offset(0, 51), 5.4, borderPaint);
     } else {
       // Normal PVC / standard window handle — base plate + lever always pointing downward
       final RRect basePlate = RRect.fromRectAndRadius(

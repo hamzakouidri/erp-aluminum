@@ -191,6 +191,11 @@ final Map<String, Map<AppLanguage, String>> drawingValidationKeys = {
     AppLanguage.french: 'Longueur de coupe',
     AppLanguage.english: 'Cut length',
   },
+  'مقبض مدمج (أونكاستري)': {
+    AppLanguage.arabic: 'مقبض مدمج (أونكاستري)',
+    AppLanguage.french: 'Poignée encastrée',
+    AppLanguage.english: 'Recessed handle',
+  },
   'كل المقابض': {
     AppLanguage.arabic: 'كل المقابض',
     AppLanguage.french: 'Toutes les poignées',

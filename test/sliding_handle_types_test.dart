@@ -99,4 +99,41 @@ void main() {
     expect(model.slidingHandleTypeFor(zone, 'left'), 'encastree');
     expect(model.slidingHandleTypeFor(zone, 'right'), 'pvc_window');
   });
+
+  test('an opening PVC sash can take the recessed handle', () {
+    final model = WindowModel(
+      db: FakeSqlDatabase(),
+      width: 800,
+      height: 1200,
+      systemMode: 'opening',
+    );
+    model.activeSeries = AluminumSeries(
+      id: 3,
+      profileId: 3,
+      name: 'PVC 60',
+      type: 'opening',
+    );
+    model.zones = [
+      WindowZone(
+        id: 'sash',
+        content: ZoneContent.singleSash,
+        boundary: const Rect.fromLTWH(60, 60, 680, 1080),
+        openDirection: OpenDirection.left,
+      ),
+    ];
+    model.selection = const SelectionInfo(
+      type: SelectionType.zone,
+      zoneId: 'sash',
+    );
+    model.setSelectedZoneHandle(useEncastreeHandle: true);
+    expect(model.zones.single.useEncastreeHandle, isTrue);
+
+    final bom = ComponentCalculator.generateBom(model, const {});
+    expect(_qty(bom, 'مقبض مدمج (Poignée Encastrée)'), 1);
+    expect(_qty(bom, 'مقبض نافذة (Poignée Fenêtre)'), 0);
+
+    // Back to the ordinary window handle.
+    model.setSelectedZoneHandle();
+    expect(model.zones.single.useEncastreeHandle, isFalse);
+  });
 }

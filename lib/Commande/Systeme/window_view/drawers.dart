@@ -2,6 +2,19 @@ part of '../show_system_francais.dart';
 
 /// Side drawers and bottom panels of the drawing page.
 extension _WindowViewDrawers on _WindowViewState {
+  /// The PVC recessed handle (poignée encastrée) of an opening sash.
+  Widget _encastreeHandleButton(WindowZone zone, AppLanguage lang) =>
+      _ContentButton(
+        label: Localization.translate('مقبض مدمج (أونكاستري)', lang),
+        icon: Icons.crop_portrait_rounded,
+        selected: zone.lockType == LockType.none && zone.useEncastreeHandle,
+        onPressed: () {
+          _setViewState(() {
+            widget.model.setSelectedZoneHandle(useEncastreeHandle: true);
+          });
+        },
+      );
+
   void _switchToBottomTab(int id) {
     if (!mounted) return;
     _setViewState(() {
@@ -7705,7 +7718,8 @@ extension _WindowViewDrawers on _WindowViewState {
                     icon: Icons.door_back_door_rounded,
                     selected:
                         zone.lockType == LockType.none &&
-                        zone.useOctoHandle != true,
+                        zone.useOctoHandle != true &&
+                        !zone.useEncastreeHandle,
                     onPressed: () {
                       _setViewState(() {
                         widget.model.setSelectedZoneHandle();
@@ -7713,6 +7727,8 @@ extension _WindowViewDrawers on _WindowViewState {
                     },
                   ),
                 );
+                children.add(const SizedBox(width: 8));
+                children.add(_encastreeHandleButton(zone, lang));
               } else {
                 // Single sash PVC window: window handle, and Octo handle
                 children.add(
@@ -7721,7 +7737,8 @@ extension _WindowViewDrawers on _WindowViewState {
                     icon: Icons.door_back_door_rounded,
                     selected:
                         zone.lockType == LockType.none &&
-                        zone.useOctoHandle != true,
+                        zone.useOctoHandle != true &&
+                        !zone.useEncastreeHandle,
                     onPressed: () {
                       _setViewState(() {
                         widget.model.setSelectedZoneHandle();
@@ -7729,6 +7746,8 @@ extension _WindowViewDrawers on _WindowViewState {
                     },
                   ),
                 );
+                children.add(const SizedBox(width: 8));
+                children.add(_encastreeHandleButton(zone, lang));
                 children.add(const SizedBox(width: 8));
 
                 children.add(

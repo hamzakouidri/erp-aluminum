@@ -1389,6 +1389,9 @@ class WindowZone {
   bool useClassicHandle;
   bool useOctoHandle;
   bool usePvcHandleOnAlu;
+
+  /// PVC recessed handle (poignée encastrée) on an opening sash.
+  bool useEncastreeHandle;
   Rect boundary;
   ZoneContent content;
   bool isSelected;
@@ -1487,6 +1490,7 @@ class WindowZone {
     this.useClassicHandle = false,
     this.useOctoHandle = false,
     this.usePvcHandleOnAlu = false,
+    this.useEncastreeHandle = false,
     required this.boundary,
     this.content = ZoneContent.fixedGlass,
     this.isSelected = false,
@@ -1584,6 +1588,7 @@ class WindowZone {
     useClassicHandle: useClassicHandle,
     useOctoHandle: useOctoHandle,
     usePvcHandleOnAlu: usePvcHandleOnAlu,
+    useEncastreeHandle: useEncastreeHandle,
     boundary: Rect.fromLTWH(
       boundary.left,
       boundary.top,
@@ -1656,6 +1661,7 @@ class WindowZone {
     slidingHandleTypes: Map.from(slidingHandleTypes),
     useOctoHandle: useOctoHandle,
     usePvcHandleOnAlu: usePvcHandleOnAlu,
+    useEncastreeHandle: useEncastreeHandle,
     boundary: newBoundary,
     content: content,
     isSelected: false,
@@ -1717,6 +1723,7 @@ class WindowZone {
     bool? useClassicHandle,
     bool? useOctoHandle,
     bool? usePvcHandleOnAlu,
+    bool? useEncastreeHandle,
     Rect? boundary,
     ZoneContent? content,
     bool? isSelected,
@@ -1769,6 +1776,7 @@ class WindowZone {
     useClassicHandle: useClassicHandle ?? this.useClassicHandle,
     useOctoHandle: useOctoHandle ?? this.useOctoHandle,
     usePvcHandleOnAlu: usePvcHandleOnAlu ?? this.usePvcHandleOnAlu,
+    useEncastreeHandle: useEncastreeHandle ?? this.useEncastreeHandle,
     boundary: boundary ?? this.boundary,
     content: content ?? this.content,
     isSelected: isSelected ?? this.isSelected,

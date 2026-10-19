@@ -367,6 +367,7 @@ extension WindowZoneSerialization on WindowZone {
       'useClassicHandle': useClassicHandle,
       'useOctoHandle': useOctoHandle,
       'usePvcHandleOnAlu': usePvcHandleOnAlu,
+      if (useEncastreeHandle) 'useEncastreeHandle': true,
       'lockType': lockType.name,
       'slidingMontantReinforced': slidingMontantReinforced,
       'slidingMontantSlim': slidingMontantSlim,
@@ -431,6 +432,7 @@ WindowZone windowZoneFromMap(Map<String, dynamic> map) {
     useClassicHandle: map['useClassicHandle'] ?? false,
     useOctoHandle: map['useOctoHandle'] ?? false,
     usePvcHandleOnAlu: map['usePvcHandleOnAlu'] ?? false,
+    useEncastreeHandle: map['useEncastreeHandle'] == true,
     doubleSashRatio: (map['doubleSashRatio'] as num?)?.toDouble() ?? 0.5,
     doubleSashHasTwoHandles:
         map['doubleSashHasTwoHandles'] == true ||

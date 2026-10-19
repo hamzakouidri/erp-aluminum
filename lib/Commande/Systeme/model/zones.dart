@@ -3615,6 +3615,7 @@ extension WindowModelZones on WindowModel {
     bool useOctoHandle = false,
     bool usePvcHandleOnAlu = false,
     bool useClassicHandle = false,
+    bool useEncastreeHandle = false,
   }) {
     if (selectedZone == null) return;
     _saveSnapshot();
@@ -3634,6 +3635,8 @@ extension WindowModelZones on WindowModel {
       zone.useOctoHandle = useOctoHandle;
       zone.usePvcHandleOnAlu = usePvcHandleOnAlu;
       zone.useClassicHandle = useClassicHandle;
+      // The recessed handle exists in PVC only.
+      zone.useEncastreeHandle = useEncastreeHandle && isPVC;
     }
     _notifyModelListeners();
   }

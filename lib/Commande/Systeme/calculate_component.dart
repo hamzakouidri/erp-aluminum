@@ -3214,6 +3214,8 @@ class ComponentCalculator {
     int marechal2mHandles = 0;
     int rollerLocks = 0;
     int pvcHandlesOnAlu = 0;
+    // PVC recessed handles of opening sashes.
+    int encastreeHandles = 0;
     int keyLocks = 0;
     int condamnationLocks = 0;
     int doorCanons = 0;
@@ -3365,6 +3367,8 @@ class ComponentCalculator {
           if (zone.content == ZoneContent.doubleSash) {
             if (zone.usePvcHandleOnAlu && !usesWindowHandleOnDoor) {
               pvcHandlesOnAlu += handleCount;
+            } else if (window.isPVC && zone.useEncastreeHandle) {
+              encastreeHandles += handleCount;
             } else if (zone.useOctoHandle) {
               octoHandles += handleCount;
             } else {
@@ -3376,6 +3380,8 @@ class ComponentCalculator {
               pointLocks += 1;
             } else if (zone.usePvcHandleOnAlu && !usesWindowHandleOnDoor) {
               pvcHandlesOnAlu += 1;
+            } else if (window.isPVC && zone.useEncastreeHandle) {
+              encastreeHandles += 1;
             } else if (zone.useOctoHandle) {
               octoHandles += 1;
             } else {
@@ -6616,6 +6622,15 @@ class ComponentCalculator {
             'مقبض أوكتو (Octo)',
             color: accessoryColorName,
             qty: octoHandles,
+          ),
+        );
+      }
+      if (encastreeHandles > 0 && window.systemMode != 'sliding') {
+        items.add(
+          createAccessory(
+            SlidingHandleType.accessoryKey(SlidingHandleType.encastree),
+            color: accessoryColorName,
+            qty: encastreeHandles,
           ),
         );
       }
