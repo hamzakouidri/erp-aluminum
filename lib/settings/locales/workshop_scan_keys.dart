@@ -34,8 +34,8 @@ const Map<String, Map<AppLanguage, String>> workshopScanKeys = {
     AppLanguage.french: 'Adresse IP de l\'imprimante',
     AppLanguage.english: 'Printer IP address',
   },
-  'المنفذ': {
-    AppLanguage.arabic: 'المنفذ',
+  'منفذ الطابعة': {
+    AppLanguage.arabic: 'منفذ الطابعة',
     AppLanguage.french: 'Port',
     AppLanguage.english: 'Port',
   },

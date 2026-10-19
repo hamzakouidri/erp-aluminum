@@ -79,7 +79,7 @@ Future<void> showLabelPrinterSettingsDialog(BuildContext context) async {
                             controller: portController,
                             keyboardType: TextInputType.number,
                             decoration: InputDecoration(
-                              labelText: t('المنفذ'),
+                              labelText: t('منفذ الطابعة'),
                               border: const OutlineInputBorder(),
                             ),
                           ),
