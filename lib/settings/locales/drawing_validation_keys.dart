@@ -191,6 +191,31 @@ final Map<String, Map<AppLanguage, String>> drawingValidationKeys = {
     AppLanguage.french: 'Longueur de coupe',
     AppLanguage.english: 'Cut length',
   },
+  'كل المقابض': {
+    AppLanguage.arabic: 'كل المقابض',
+    AppLanguage.french: 'Toutes les poignées',
+    AppLanguage.english: 'All handles',
+  },
+  'المقبض الأيسر': {
+    AppLanguage.arabic: 'المقبض الأيسر',
+    AppLanguage.french: 'Poignée gauche',
+    AppLanguage.english: 'Left handle',
+  },
+  'المقبض الأيمن': {
+    AppLanguage.arabic: 'المقبض الأيمن',
+    AppLanguage.french: 'Poignée droite',
+    AppLanguage.english: 'Right handle',
+  },
+  'مقابض الوسط': {
+    AppLanguage.arabic: 'مقابض الوسط',
+    AppLanguage.french: 'Poignées centrales',
+    AppLanguage.english: 'Central handles',
+  },
+  'كل مقابض النافذة': {
+    AppLanguage.arabic: 'كل مقابض النافذة',
+    AppLanguage.french: 'Toutes les poignées de la fenêtre',
+    AppLanguage.english: 'All handles of the window',
+  },
   'تم تحديد كل الضلفات: الظلفة والمقبض يتغيران فيها كلها. ضغطة واحدة تحدد ضلفة واحدة.':
       {
         AppLanguage.arabic:

@@ -577,6 +577,9 @@ class BomItem {
       if (original == 'مقبض منزلق (Poignée Coulissante)') {
         return 'Poignée Coulissante';
       }
+      if (original == 'مقبض مدمج (Poignée Encastrée)') {
+        return 'Poignée Encastrée';
+      }
       if (original == 'مقبض الباب (Poignée Porte à Clé)') {
         return 'Poignée Porte à Clé';
       }
@@ -688,6 +691,9 @@ class BomItem {
       if (original == 'المقبض (Handle)') return 'Window Handle';
       if (original == 'مقبض منزلق (Poignée Coulissante)') {
         return 'Sliding Window Handle';
+      }
+      if (original == 'مقبض مدمج (Poignée Encastrée)') {
+        return 'Recessed Handle';
       }
       if (original == 'مقبض الباب (Poignée Porte à Clé)') return 'Door Handle';
       if (original == 'قفل الباب (Serrure)') return 'Serrure (Lock)';
@@ -1420,6 +1426,10 @@ class ComponentCalculator {
     if (_textHasAny(originalName, const ['كريمون', 'cremone', 'crémone'])) {
       return 'cremone';
     }
+    // PVC recessed handle, before the generic handle words.
+    if (_textHasAny(originalName, const ['encastr', 'مدمج'])) {
+      return 'poignee_encastree';
+    }
     if (_textHasAny(originalName, const [
       'المقبض (handle)',
       'مقبض نافذة',
@@ -1697,6 +1707,8 @@ class ComponentCalculator {
         return 'roulette';
       case 'entrematique':
         return 'entrematique';
+      case 'poignee_encastree':
+        return 'poignee_encastree';
     }
     return null;
   }
@@ -3244,6 +3256,10 @@ class ComponentCalculator {
     int slidingTotalRoulettes = 0;
     int slidingTotalEspagnolettes = 0;
     int slidingTotalHandles = 0;
+    // Handles and espagnolettes by handle type, for windows whose handle
+    // places were chosen one by one (WindowZone.slidingHandleTypes).
+    final slidingHandlesByType = <String, int>{};
+    final slidingEspagnolettesByType = <String, int>{};
     int slidingTotalKits = 0;
     int slidingTotalReinforcedLateralKits = 0;
     int slidingTotalReinforcedCentralKits = 0;
@@ -5280,6 +5296,23 @@ class ComponentCalculator {
           // central handles are added based on main functional handle and secondary decorative handle.
           slidingTotalHandles +=
               2 + (hasCentralMain ? 1 : 0) + (hasCentralSecond ? 1 : 0);
+          void countHandle(String slot, {required bool functional}) {
+            final type = window.slidingHandleTypeFor(zone, slot);
+            slidingHandlesByType[type] = (slidingHandlesByType[type] ?? 0) + 1;
+            if (functional && SlidingHandleType.needsEspagnolette(type)) {
+              slidingEspagnolettesByType[type] =
+                  (slidingEspagnolettesByType[type] ?? 0) + 1;
+            }
+          }
+
+          countHandle(SlidingHandleType.left, functional: true);
+          countHandle(SlidingHandleType.right, functional: true);
+          if (hasCentralMain) {
+            countHandle(SlidingHandleType.center, functional: true);
+          }
+          if (hasCentralSecond) {
+            countHandle(SlidingHandleType.center, functional: false);
+          }
           // One sliding-series kit serves one independent pair of leaves.
           // Count every sliding zone/frame separately and keep an additional
           // kit for an unpaired leaf in odd 3/5-leaf configurations.
@@ -6840,7 +6873,41 @@ class ComponentCalculator {
                 ) ||
                 window.componentOverrides.containsKey('entrematique'));
 
-        if (useEntrematique) {
+        final perPlaceHandles = window.zones.any(
+          (z) =>
+              z.content == ZoneContent.slidingSash &&
+              z.slidingHandleTypes.isNotEmpty,
+        );
+        if (perPlaceHandles) {
+          // Each handle place has its own type: one line per type, and an
+          // espagnolette for every functional handle but an entrematique.
+          final espagnolettes = slidingEspagnolettesByType.values.fold(
+            0,
+            (a, b) => a + b,
+          );
+          if (espagnolettes > 0) {
+            items.add(
+              createAccessory(
+                'اسبانيولات المنزلق (Espagnolette)',
+                color: accessoryColorName,
+                qty: espagnolettes,
+                sliding: true,
+              ),
+            );
+          }
+          for (final type in SlidingHandleType.values) {
+            final qty = slidingHandlesByType[type] ?? 0;
+            if (qty <= 0) continue;
+            items.add(
+              createAccessory(
+                SlidingHandleType.accessoryKey(type),
+                color: accessoryColorName,
+                qty: qty,
+                sliding: true,
+              ),
+            );
+          }
+        } else if (useEntrematique) {
           items.add(
             createAccessory(
               'أونتروماتيك (Entrematique)',

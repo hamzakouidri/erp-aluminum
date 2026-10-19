@@ -496,6 +496,50 @@ class SideCoverSegment {
 /// One exposed edge of a physical frame in a multi-frame drawing. [start]
 /// and [end] are measured on the edge axis; [coordinate] is the fixed x/y
 /// position of that edge in the drawing.
+/// Handle types of a sliding window, and the places a sliding window has a
+/// handle: the left and right outer leaves and the central meeting (whose
+/// two handles always share their type).
+class SlidingHandleType {
+  /// Flush aluminium handle with its lock (andromatic).
+  static const entrematique = 'entrematique';
+
+  /// Aluminium lever handle ("code" handle).
+  static const classic = 'classic';
+
+  /// Standard PVC window handle.
+  static const pvcWindow = 'pvc_window';
+
+  /// PVC recessed handle (poignée encastrée).
+  static const encastree = 'encastree';
+
+  static const values = [entrematique, classic, pvcWindow, encastree];
+
+  static const left = 'left';
+  static const right = 'right';
+  static const center = 'center';
+  static const slots = [left, right, center];
+
+  /// Whether the type needs an espagnolette (every type but the
+  /// entrematique, which carries its own lock).
+  static bool needsEspagnolette(String type) => type != entrematique;
+
+  /// The accessory line of the type in the quantity and cost table.
+  static String accessoryKey(String type) => switch (type) {
+    entrematique => 'أونتروماتيك (Entrematique)',
+    pvcWindow => 'مقبض نافذة (Poignée Fenêtre)',
+    encastree => 'مقبض مدمج (Poignée Encastrée)',
+    _ => 'مقبض منزلق (Poignée Coulissante)',
+  };
+
+  /// The type of a catalogue handle from its rule role.
+  static String fromRole(String? roleKey, {required bool pvc}) =>
+      switch (roleKey) {
+        'entrematique' => entrematique,
+        'poignee_encastree' => encastree,
+        _ => pvc ? pvcWindow : classic,
+      };
+}
+
 class FrameEdgeSegment {
   final String side;
   final double start;
@@ -1378,6 +1422,10 @@ class WindowZone {
   LockType lockType;
   Map<String, bool> slidingMontantReinforced;
   Map<String, bool> slidingMontantSlim;
+
+  /// The handle type of each handle place of a sliding window
+  /// ([SlidingHandleType.slots]). An empty map keeps [useClassicHandle].
+  Map<String, String> slidingHandleTypes;
   double middleHingeDragOffset;
 
   /// Hinges the user placed by hand, by leaf: 0 for a single sash and for the
@@ -1469,6 +1517,7 @@ class WindowZone {
     this.lockType = LockType.none,
     Map<String, bool>? slidingMontantReinforced,
     Map<String, bool>? slidingMontantSlim,
+    Map<String, String>? slidingHandleTypes,
     this.middleHingeDragOffset = 0.0,
     this.doubleSashRatio = 0.5,
     this.doubleSashHasTwoHandles = false,
@@ -1524,6 +1573,9 @@ class WindowZone {
        ),
        slidingMontantSlim = Map<String, bool>.from(
          slidingMontantSlim ?? const {},
+       ),
+       slidingHandleTypes = Map<String, String>.from(
+         slidingHandleTypes ?? const {},
        );
 
   WindowZone clone() => WindowZone(
@@ -1575,6 +1627,7 @@ class WindowZone {
     lockType: lockType,
     slidingMontantReinforced: Map.from(slidingMontantReinforced),
     slidingMontantSlim: Map.from(slidingMontantSlim),
+    slidingHandleTypes: Map.from(slidingHandleTypes),
     middleHingeDragOffset: middleHingeDragOffset,
     doubleSashRatio: doubleSashRatio,
     doubleSashHasTwoHandles: doubleSashHasTwoHandles,
@@ -1600,6 +1653,7 @@ class WindowZone {
     id: UniqueKey().toString(),
     handlePositionRatio: handlePositionRatio,
     useClassicHandle: useClassicHandle,
+    slidingHandleTypes: Map.from(slidingHandleTypes),
     useOctoHandle: useOctoHandle,
     usePvcHandleOnAlu: usePvcHandleOnAlu,
     boundary: newBoundary,
@@ -1693,6 +1747,7 @@ class WindowZone {
     LockType? lockType,
     Map<String, bool>? slidingMontantReinforced,
     Map<String, bool>? slidingMontantSlim,
+    Map<String, String>? slidingHandleTypes,
     double? middleHingeDragOffset,
     double? doubleSashRatio,
     bool? doubleSashHasTwoHandles,
@@ -1759,6 +1814,7 @@ class WindowZone {
     slidingMontantReinforced:
         slidingMontantReinforced ?? Map.from(this.slidingMontantReinforced),
     slidingMontantSlim: slidingMontantSlim ?? Map.from(this.slidingMontantSlim),
+    slidingHandleTypes: slidingHandleTypes ?? Map.from(this.slidingHandleTypes),
     middleHingeDragOffset: middleHingeDragOffset ?? this.middleHingeDragOffset,
     doubleSashRatio: doubleSashRatio ?? this.doubleSashRatio,
     doubleSashHasTwoHandles:

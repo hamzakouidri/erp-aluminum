@@ -5946,6 +5946,10 @@ class WindowPainter extends CustomPainter {
           topOffset: topOffset,
           isTopBound: isTopBound,
           zone: zone,
+          slidingHandleType: model.slidingHandleTypeFor(
+            zone,
+            i == 0 ? SlidingHandleType.left : SlidingHandleType.right,
+          ),
         );
       }
     }
@@ -6035,6 +6039,10 @@ class WindowPainter extends CustomPainter {
           topOffset: topOffset,
           isTopBound: isTopBound,
           zone: zone,
+          slidingHandleType: model.slidingHandleTypeFor(
+            zone,
+            SlidingHandleType.center,
+          ),
         );
       }
 
@@ -6050,6 +6058,10 @@ class WindowPainter extends CustomPainter {
           topOffset: topOffset,
           isTopBound: isTopBound,
           zone: zone,
+          slidingHandleType: model.slidingHandleTypeFor(
+            zone,
+            SlidingHandleType.center,
+          ),
         );
       }
     }
@@ -7439,6 +7451,7 @@ class WindowPainter extends CustomPainter {
     required double topOffset,
     required bool isTopBound,
     WindowZone? zone,
+    String? slidingHandleType,
   }) {
     if (!_shouldDrawWindowHardware) return;
 
@@ -7678,6 +7691,14 @@ class WindowPainter extends CustomPainter {
     bool isClassicSlidingHandle =
         isSlidingSash && !model.isPVC && !model.isSlidingPVC &&
         (zone?.useClassicHandle == true || !canUseEntrematique);
+
+    // A sliding handle place chosen on its own (see slidingHandleTypeFor).
+    var isEncastreeHandle = false;
+    if (isSlidingSash && slidingHandleType != null) {
+      isSlidingHandle = slidingHandleType == SlidingHandleType.entrematique;
+      isClassicSlidingHandle = slidingHandleType == SlidingHandleType.classic;
+      isEncastreeHandle = slidingHandleType == SlidingHandleType.encastree;
+    }
 
     final bool isMarechal =
         zone?.lockType == LockType.rouleau ||
@@ -8119,6 +8140,30 @@ class WindowPainter extends CustomPainter {
         Paint()
           ..color = Colors.white.withValues(alpha: 0.5)
           ..strokeWidth = 1.5,
+      );
+    } else if (isEncastreeHandle) {
+      // PVC recessed handle: a flush shell set in the sash, with its grip.
+      final RRect shell = RRect.fromRectAndRadius(
+        Rect.fromCenter(center: Offset.zero, width: 26, height: 120),
+        const Radius.circular(13),
+      );
+      canvas.drawRRect(shell, basePaint);
+      canvas.drawRRect(shell, borderPaint);
+      final RRect recess = RRect.fromRectAndRadius(
+        Rect.fromCenter(center: Offset.zero, width: 14, height: 92),
+        const Radius.circular(7),
+      );
+      canvas.drawRRect(
+        recess,
+        Paint()..color = Colors.black.withValues(alpha: 0.22),
+      );
+      canvas.drawRRect(recess, borderPaint);
+      canvas.drawLine(
+        const Offset(0, -30),
+        const Offset(0, 30),
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.55)
+          ..strokeWidth = 2.0,
       );
     } else {
       // Normal PVC / standard window handle — base plate + lever always pointing downward

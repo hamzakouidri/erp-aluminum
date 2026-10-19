@@ -3479,6 +3479,9 @@ extension WindowModelCatalog on WindowModel {
         return 'door_handle_condamnation';
       }
       if (lower.contains('condamnation')) return 'lock_condamnation';
+      if (lower.contains('encastr') || key.contains('مدمج')) {
+        return 'poignee_encastree';
+      }
       if (lower.contains('poignée') ||
           lower.contains('poignee') ||
           lower.contains('handle') ||

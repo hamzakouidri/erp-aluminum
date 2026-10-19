@@ -12,7 +12,11 @@ extension _WindowViewSliding on _WindowViewState {
               CatalogCandidateQuery(
                 category: 'accessory',
                 selectorType: '',
-                roleKeys: const ['handle', 'entrematique'],
+                roleKeys: const [
+                  'handle',
+                  'entrematique',
+                  'poignee_encastree',
+                ],
                 seriesId: seriesId,
                 materialType: widget.model.isSlidingPVC ? 'pvc' : 'aluminium',
                 drawingMode: AccessoryDrawingMode.sliding,
@@ -31,39 +35,68 @@ extension _WindowViewSliding on _WindowViewState {
             height: 24,
             child: CircularProgressIndicator(),
           );
+        final pvc = widget.model.usesPvcSlidingHandles;
+        final available = widget.model.availableSlidingHandleTypes;
+        String typeOf(Map<String, dynamic> candidate) =>
+            SlidingHandleType.fromRole(
+              (candidate['catalog_rule'] as Map)['role_key']?.toString(),
+              pvc: pvc,
+            );
         final candidates = snapshot.data!.where((candidate) {
           final rule = candidate['catalog_rule'];
           return rule is Map &&
               rule['show_in_drawing'] != 0 &&
-              rule['show_in_drawing'] != false;
+              rule['show_in_drawing'] != false &&
+              // A PVC sliding window never takes an entrematique.
+              available.contains(typeOf(candidate));
         }).toList();
         if (candidates.isEmpty)
           return const Text('لا توجد مقابض مفعّلة لهذه السلسلة');
+        // The handle places the choice applies to: the tapped leaf's handle,
+        // the whole window, or every sliding window after a long press.
+        final targets = widget.model.selectedSlidingHandleSlots;
+        final targetSlots = targets[zone] ?? const <String>[];
+        final placeLabel = widget.model.allSashesSelected
+            ? _tr('كل المقابض')
+            : targetSlots.length == 1
+            ? switch (targetSlots.single) {
+                SlidingHandleType.left => _tr('المقبض الأيسر'),
+                SlidingHandleType.right => _tr('المقبض الأيمن'),
+                _ => _tr('مقابض الوسط'),
+              }
+            : _tr('كل مقابض النافذة');
         final handleButtons = Wrap(
           spacing: 8,
-          children: candidates.map((candidate) {
-            final rule = candidate['catalog_rule'] as Map;
-            final classic = rule['role_key'] != 'entrematique';
-            final key = classic
-                ? (widget.model.isSlidingPVC
-                      ? 'مقبض نافذة (Poignée Fenêtre)'
-                      : 'مقبض منزلق (Poignée Coulissante)')
-                : 'أونتروماتيك (Entrematique)';
-            return _ContentButton(
-              label: '${candidate['name'] ?? candidate['code'] ?? ''}',
-              icon: Icons.sync_alt_rounded,
-              selected:
-                  zone.useClassicHandle == classic &&
-                  widget.model.componentOverrides[key]?['id'] ==
-                      candidate['id'],
-              onPressed: () {
-                widget.model.componentOverrides[key] =
-                    Map<String, dynamic>.from(candidate);
-                widget.model.setSelectedZoneHandle(useClassicHandle: classic);
-                _setViewState(() {});
-              },
-            );
-          }).toList(),
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              '$placeLabel:',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            ...candidates.map((candidate) {
+              final type = typeOf(candidate);
+              final key = SlidingHandleType.accessoryKey(type);
+              return _ContentButton(
+                label: '${candidate['name'] ?? candidate['code'] ?? ''}',
+                icon: Icons.sync_alt_rounded,
+                selected:
+                    targetSlots.isNotEmpty &&
+                    targetSlots.every(
+                      (slot) =>
+                          widget.model.slidingHandleTypeFor(zone, slot) == type,
+                    ) &&
+                    widget.model.componentOverrides[key]?['id'] ==
+                        candidate['id'],
+                onPressed: () {
+                  widget.model.componentOverrides[key] =
+                      Map<String, dynamic>.from(candidate);
+                  widget.model.setSelectedSlidingHandleType(type);
+                  _setViewState(() {});
+                },
+              );
+            }),
+          ],
         );
         if (!isSlidingFaceToFaceLayout(
           trackCount: zone.slidingTrackCount,

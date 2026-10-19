@@ -223,6 +223,7 @@ List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
     'alignment_square',
     'roulette',
     'entrematique',
+    'poignee_encastree',
   };
   if (tLower == 'clam' || tLower == 'clamp' || tLower == 'sliding_clamp') {
     return const ['clam', 'clamp', 'sliding_clamp'];
@@ -299,6 +300,10 @@ List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
       tLower.contains('crémone') ||
       tLower.contains('كريمون')) {
     return const ['cremone'];
+  }
+  // PVC recessed handle, before the generic handle words.
+  if (tLower.contains('encastr') || tLower.contains('مدمج')) {
+    return const ['poignee_encastree'];
   }
   if (tLower == 'is_window_handle' ||
       tLower.contains('poignee') ||
@@ -377,6 +382,7 @@ bool catalogRuleAllowsGlobalFallback(String roleKey) {
     'alignment_square',
     'roulette',
     'entrematique',
+    'poignee_encastree',
     // Sliding hardware is no less reusable than opening hardware. Omitting
     // these roles made a rule activated from the catalogue-wide accessory
     // page disappear specifically on BS90 and other sliding series, even

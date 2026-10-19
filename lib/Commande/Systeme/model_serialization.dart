@@ -370,6 +370,8 @@ extension WindowZoneSerialization on WindowZone {
       'lockType': lockType.name,
       'slidingMontantReinforced': slidingMontantReinforced,
       'slidingMontantSlim': slidingMontantSlim,
+      if (slidingHandleTypes.isNotEmpty)
+        'slidingHandleTypes': slidingHandleTypes,
       'disabledVerticalDivisions': disabledVerticalDivisions,
       'disabledHorizontalDivisions': disabledHorizontalDivisions,
       if (slantedDividers.isNotEmpty)
@@ -509,6 +511,9 @@ WindowZone windowZoneFromMap(Map<String, dynamic> map) {
         ),
     slidingMontantSlim: (map['slidingMontantSlim'] as Map<String, dynamic>?)
         ?.map((k, v) => MapEntry(k, v as bool)),
+    slidingHandleTypes: (map['slidingHandleTypes'] as Map?)?.map(
+      (k, v) => MapEntry(k.toString(), v.toString()),
+    ),
     disabledVerticalDivisions:
         (map['disabledVerticalDivisions'] as Map<String, dynamic>?)?.map(
           (k, v) => MapEntry(k, v as bool),

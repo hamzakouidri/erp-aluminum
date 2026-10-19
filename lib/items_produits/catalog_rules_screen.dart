@@ -421,6 +421,11 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
             'Poignée porte condamnation',
           ),
           _RuleRole('handle', 'مقبض', 'Poignée'),
+          _RuleRole(
+            'poignee_encastree',
+            'مقبض مدمج (أونكاستري)',
+            'Poignée encastrée',
+          ),
           _RuleRole('hinge', 'مفاصل', 'Paumelles'),
           _RuleRole('tasso', 'طاسو', 'Tasso'),
           _RuleRole('ekar', 'إيكار', 'Ekar'),
@@ -783,7 +788,12 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         ar: 'المقابض',
         fr: 'Poignées',
         icon: Icons.pan_tool_outlined,
-        roleKeys: {'handle', 'door_handle_key', 'door_handle_condamnation'},
+        roleKeys: {
+          'handle',
+          'poignee_encastree',
+          'door_handle_key',
+          'door_handle_condamnation',
+        },
       ),
       _CatalogGroup(
         key: 'cremones',
@@ -1196,6 +1206,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           return 'door_handle_condamnation';
         }
         return 'door_handle_key';
+      }
+      if (text.contains('encastr') || text.contains('مدمج')) {
+        return 'poignee_encastree';
       }
       if (text.contains('poign') || text.contains('مقبض')) return 'handle';
       if (text.contains('paum') || text.contains('مفصل')) return 'hinge';

@@ -1980,4 +1980,111 @@ extension WindowModelSliding on WindowModel {
       activeSeries = activeSlidingSeries;
     }
   }
+
+  // ------------------------------------------------------- sliding handles
+
+  /// Whether the sliding handles of this drawing are PVC handles.
+  bool get usesPvcSlidingHandles => isPVC || isSlidingPVC;
+
+  /// The handle types a sliding window of this drawing can take: the
+  /// entrematique and the aluminium lever handle, or in PVC the window handle
+  /// and the recessed handle (never an entrematique).
+  List<String> get availableSlidingHandleTypes => usesPvcSlidingHandles
+      ? const [SlidingHandleType.pvcWindow, SlidingHandleType.encastree]
+      : const [SlidingHandleType.entrematique, SlidingHandleType.classic];
+
+  /// The handle place of leaf [leaf] of [zone], or null when the leaf
+  /// carries no handle.
+  String? slidingHandleSlotForLeaf(WindowZone zone, int leaf) {
+    final count = math.max(2, zone.slidingSashesCount);
+    if (leaf == 0) return SlidingHandleType.left;
+    if (leaf == count - 1) return SlidingHandleType.right;
+    final meeting =
+        zone.slidingFaceToFace &&
+        isSlidingFaceToFaceLayout(
+          trackCount: zone.slidingTrackCount,
+          sashCount: count,
+        );
+    if (!meeting) return null;
+    final meetingLeft = count == 4 ? 1 : (count == 6 ? 2 : -1);
+    final meetingRight = count == 4 ? 2 : (count == 6 ? 3 : -1);
+    return leaf == meetingLeft || leaf == meetingRight
+        ? SlidingHandleType.center
+        : null;
+  }
+
+  /// The handle places [zone] has.
+  List<String> slidingHandleSlots(WindowZone zone) {
+    final count = math.max(2, zone.slidingSashesCount);
+    final meeting =
+        zone.slidingFaceToFace &&
+        isSlidingFaceToFaceLayout(
+          trackCount: zone.slidingTrackCount,
+          sashCount: count,
+        ) &&
+        (count == 4 || count == 6);
+    return [
+      SlidingHandleType.left,
+      SlidingHandleType.right,
+      if (meeting) SlidingHandleType.center,
+    ];
+  }
+
+  /// The handle type at [slot] of [zone]: its own choice, else the zone's
+  /// former single choice.
+  String slidingHandleTypeFor(WindowZone zone, String slot) {
+    final available = availableSlidingHandleTypes;
+    final chosen = zone.slidingHandleTypes[slot];
+    if (chosen != null && available.contains(chosen)) return chosen;
+    if (usesPvcSlidingHandles) return SlidingHandleType.pvcWindow;
+    return supportsSlidingEntrematique && zone.useClassicHandle != true
+        ? SlidingHandleType.entrematique
+        : SlidingHandleType.classic;
+  }
+
+  /// The handle places a sliding handle choice applies to: every place of
+  /// every sliding window after a long press, the place of the tapped leaf,
+  /// or every place of the selected window.
+  Map<WindowZone, List<String>> get selectedSlidingHandleSlots {
+    final zone = selectedZone;
+    if (zone == null || zone.content != ZoneContent.slidingSash) {
+      return const {};
+    }
+    if (allSashesSelected) {
+      return {
+        for (final z in zones)
+          if (z.content == ZoneContent.slidingSash) z: slidingHandleSlots(z),
+      };
+    }
+    final leafMatch = RegExp(
+      r'^main_cell_0_(\d+)$',
+    ).firstMatch(activeSubZone ?? '');
+    if (leafMatch != null) {
+      final slot = slidingHandleSlotForLeaf(
+        zone,
+        int.parse(leafMatch.group(1)!),
+      );
+      if (slot != null) return {zone: [slot]};
+    }
+    return {zone: slidingHandleSlots(zone)};
+  }
+
+  /// Gives [type] to the selected sliding handle places.
+  void setSelectedSlidingHandleType(String type) {
+    final targets = selectedSlidingHandleSlots;
+    if (targets.isEmpty || !availableSlidingHandleTypes.contains(type)) return;
+    _saveSnapshot();
+    for (final entry in targets.entries) {
+      final zone = entry.key;
+      for (final slot in entry.value) {
+        zone.slidingHandleTypes[slot] = type;
+      }
+      // Older readers only know one choice per window.
+      zone.useClassicHandle = !slidingHandleSlots(zone).any(
+        (slot) =>
+            slidingHandleTypeFor(zone, slot) == SlidingHandleType.entrematique,
+      );
+    }
+    _notifyModelListeners();
+  }
 }

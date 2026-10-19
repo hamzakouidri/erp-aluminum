@@ -683,6 +683,8 @@ extension _MaterialBom on _MaterialConsumptionScreenState {
       } else if (_containsAny(original, const ['كيت', 'kit'])) {
         type = 'kit';
         drawingMode ??= AccessoryDrawingMode.sliding;
+      } else if (_containsAny(original, const ['encastr', 'Encastr', 'مدمج'])) {
+        type = 'poignee_encastree';
       } else if (_containsAny(original, const [
         'المقبض (Handle)',
         'مقبض نافذة',
@@ -1943,6 +1945,9 @@ extension _MaterialBom on _MaterialConsumptionScreenState {
             pType.toLowerCase().contains('poignee coulissante') ||
             pType.contains('مقبض منزلق')) {
           pType = 'poignee coulissante';
+        } else if (pType.toLowerCase().contains('encastr') ||
+            pType.contains('مدمج')) {
+          pType = 'poignee_encastree';
         } else if (pType.contains('المقبض (Handle)') ||
             pType.contains('مقبض نافذة') ||
             pType.toLowerCase().contains('poignée fenêtre') ||
