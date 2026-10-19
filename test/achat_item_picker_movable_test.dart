@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:database_data/settings/localization.dart';
 import 'package:provider/provider.dart';
 import 'package:database_data/Screen/achat_item_picker.dart';
 import 'package:database_data/settings/app_settings.dart';
@@ -48,9 +49,15 @@ void main() {
       ),
     );
 
-    // Initial category label "كل المواد"
-    expect(find.text('كل المواد'), findsOneWidget);
+    // Initial category label "كل المواد", in the chosen language.
+    expect(
+      find.text(Localization.translate('كل المواد', settings.language)),
+      findsOneWidget,
+    );
     // Profile filter initial label "كل البروفيلات"
-    expect(find.text('كل البروفيلات'), findsOneWidget);
+    expect(
+      find.text(Localization.translate('كل البروفيلات', settings.language)),
+      findsOneWidget,
+    );
   });
 }
