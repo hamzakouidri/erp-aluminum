@@ -191,4 +191,13 @@ final Map<String, Map<AppLanguage, String>> drawingValidationKeys = {
     AppLanguage.french: 'Longueur de coupe',
     AppLanguage.english: 'Cut length',
   },
+  'تم تحديد كل الضلفات: الظلفة والمقبض يتغيران فيها كلها. ضغطة واحدة تحدد ضلفة واحدة.':
+      {
+        AppLanguage.arabic:
+            'تم تحديد كل الضلفات: الظلفة والمقبض يتغيران فيها كلها. ضغطة واحدة تحدد ضلفة واحدة.',
+        AppLanguage.french:
+            'Tous les ouvrants sont sélectionnés : le profil et la poignée changent sur tous. Un clic sélectionne un seul ouvrant.',
+        AppLanguage.english:
+            'All sashes are selected: the profile and handle change on all of them. A single click selects one sash.',
+      },
 };

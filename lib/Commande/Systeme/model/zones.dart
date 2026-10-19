@@ -12,6 +12,37 @@ extension WindowModelZones on WindowModel {
         z.content == ZoneContent.doubleSash,
   );
 
+  bool _isSashZone(WindowZone zone) =>
+      zone.content == ZoneContent.singleSash ||
+      zone.content == ZoneContent.doubleSash ||
+      zone.content == ZoneContent.slidingSash;
+
+  /// Whether a long press selected every sash of the drawing.
+  bool get allSashesSelected {
+    final anchor = allSashesAnchorZoneId;
+    final zone = selectedZone;
+    return anchor != null &&
+        zone != null &&
+        zone.id == anchor &&
+        _isSashZone(zone);
+  }
+
+  /// The sashes a sash setting applies to: the selected sash, or every sash
+  /// of the same kind (opening or sliding) after a long press.
+  List<WindowZone> get selectedSashZones {
+    final zone = selectedZone;
+    if (zone == null) return const [];
+    if (!allSashesSelected) return [zone];
+    final sliding = zone.content == ZoneContent.slidingSash;
+    return zones
+        .where(
+          (z) =>
+              _isSashZone(z) &&
+              (z.content == ZoneContent.slidingSash) == sliding,
+        )
+        .toList();
+  }
+
   void applySashOverride(
     Map<String, dynamic> sash, {
     required bool sliding,
@@ -26,50 +57,45 @@ extension WindowModelZones on WindowModel {
 
     final is105 = _isSash105Profile(mutable);
     final widthVal = (mutable['visible_width'] as num?)?.toDouble() ?? 0.0;
-    final target = targetZone ?? selectedZone;
-    final isMultiFrame = getFrameRects().length > 1;
+    // Only the drawing passes a target: the consumption table changes the
+    // whole drawing whatever is selected.
+    final target = targetZone;
 
-    if (target != null && isMultiFrame) {
-      final frameZones = zonesInFrameOf(target);
-      for (final z in frameZones) {
-        if (sliding) {
-          if (z.content == ZoneContent.slidingSash) {
-            z.slidingSashOverride = mutable;
-            if (widthVal > 0) z.sashThickness = widthVal;
-          }
-        } else {
-          if (z.content == ZoneContent.singleSash ||
-              z.content == ZoneContent.doubleSash) {
-            z.sashOverride = mutable;
-            z.isSash105 = is105;
-            z.sashThickness = widthVal > 0
-                ? widthVal
-                : _calculateSashThickness(is105, override: mutable);
-          }
-        }
+    // A sash selected alone takes its own profile; after a long press every
+    // sash does, and without a sash selection the whole drawing.
+    bool ofKind(WindowZone z) => sliding
+        ? z.content == ZoneContent.slidingSash
+        : z.content == ZoneContent.singleSash ||
+              z.content == ZoneContent.doubleSash;
+    final targets = target == null || !_isSashZone(target)
+        ? zones.where(ofKind).toList()
+        : (allSashesSelected && target.id == selectedZone?.id
+                  ? selectedSashZones
+                  : [target])
+              .where(ofKind)
+              .toList();
+    for (final z in targets) {
+      if (sliding) {
+        z.slidingSashOverride = mutable;
+        if (widthVal > 0) z.sashThickness = widthVal;
+      } else {
+        z.sashOverride = mutable;
+        z.isSash105 = is105;
+        z.sashThickness = widthVal > 0
+            ? widthVal
+            : _calculateSashThickness(is105, override: mutable);
       }
-    } else {
+    }
+    // The drawing's own sash follows once every sash of this kind has it.
+    final allOfKind = zones.where(ofKind);
+    if (allOfKind.every(
+      (z) => identical(sliding ? z.slidingSashOverride : z.sashOverride, mutable),
+    )) {
       if (sliding) {
         slidingSashOverride = mutable;
-        for (final z in zones) {
-          if (z.content == ZoneContent.slidingSash) {
-            z.slidingSashOverride = mutable;
-            if (widthVal > 0) z.sashThickness = widthVal;
-          }
-        }
       } else {
         sashOverride = mutable;
         selectedSashCode = mutable['code']?.toString() ?? selectedSashCode;
-        for (final z in zones) {
-          if (z.content == ZoneContent.singleSash ||
-              z.content == ZoneContent.doubleSash) {
-            z.sashOverride = mutable;
-            z.isSash105 = is105;
-            z.sashThickness = widthVal > 0
-                ? widthVal
-                : _calculateSashThickness(is105, override: mutable);
-          }
-        }
       }
     }
 
@@ -1289,6 +1315,8 @@ extension WindowModelZones on WindowModel {
           return;
         }
         selection = SelectionInfo(type: SelectionType.zone, zoneId: z.id);
+        // A tap selects this sash alone; a long press selects every sash.
+        allSashesAnchorZoneId = isLongPress && _isSashZone(z) ? z.id : null;
         bool isSingle = z.content == ZoneContent.singleSash;
         bool isSliding = z.content == ZoneContent.slidingSash;
         if (isSliding) {
@@ -3533,7 +3561,9 @@ extension WindowModelZones on WindowModel {
   void setSelectedZoneClassicHandle(bool value) {
     if (selectedZone == null) return;
     _saveSnapshot();
-    selectedZone!.useClassicHandle = value;
+    for (final zone in selectedSashZones) {
+      zone.useClassicHandle = value;
+    }
     _notifyModelListeners();
   }
 
@@ -3586,23 +3616,25 @@ extension WindowModelZones on WindowModel {
     bool usePvcHandleOnAlu = false,
     bool useClassicHandle = false,
   }) {
-    final zone = selectedZone;
-    if (zone == null) return;
+    if (selectedZone == null) return;
     _saveSnapshot();
-    // Choosing a door-specific handle is an explicit confirmation that the
-    // selected sash is the thick/door variant.  Persist it on the zone too so
-    // reopening a saved drawing cannot make the selection disappear before
-    // its profile metadata is loaded.
-    if (lockType == LockType.clef ||
-        lockType == LockType.condamnation ||
-        lockType == LockType.rouleau ||
-        lockType == LockType.rouleau2000) {
-      zone.isSash105 = true;
+    // The selected sash, or every sash after a long press.
+    for (final zone in selectedSashZones) {
+      // Choosing a door-specific handle is an explicit confirmation that the
+      // selected sash is the thick/door variant.  Persist it on the zone too
+      // so reopening a saved drawing cannot make the selection disappear
+      // before its profile metadata is loaded.
+      if (lockType == LockType.clef ||
+          lockType == LockType.condamnation ||
+          lockType == LockType.rouleau ||
+          lockType == LockType.rouleau2000) {
+        zone.isSash105 = true;
+      }
+      zone.lockType = lockType;
+      zone.useOctoHandle = useOctoHandle;
+      zone.usePvcHandleOnAlu = usePvcHandleOnAlu;
+      zone.useClassicHandle = useClassicHandle;
     }
-    zone.lockType = lockType;
-    zone.useOctoHandle = useOctoHandle;
-    zone.usePvcHandleOnAlu = usePvcHandleOnAlu;
-    zone.useClassicHandle = useClassicHandle;
     _notifyModelListeners();
   }
 
@@ -3672,8 +3704,10 @@ extension WindowModelZones on WindowModel {
       }
     }
 
-    final isMultiFrame = getFrameRects().length > 1;
-    final zonesToUpdate = isMultiFrame ? zonesInFrameOf(target) : zones;
+    // The selected sash, or every sash after a long press.
+    final zonesToUpdate = target.id == selectedZone?.id
+        ? selectedSashZones
+        : [target];
 
     for (final z in zonesToUpdate) {
       if (z.content == ZoneContent.singleSash ||
@@ -3696,7 +3730,14 @@ extension WindowModelZones on WindowModel {
       }
     }
 
-    if (!isMultiFrame && matchingSection != null) {
+    final everySash = zones
+        .where(
+          (z) =>
+              z.content == ZoneContent.singleSash ||
+              z.content == ZoneContent.doubleSash,
+        )
+        .every(zonesToUpdate.contains);
+    if (everySash && matchingSection != null) {
       sashOverride = Map<String, dynamic>.from(matchingSection);
       selectedSashCode =
           matchingSection['code']?.toString() ?? selectedSashCode;

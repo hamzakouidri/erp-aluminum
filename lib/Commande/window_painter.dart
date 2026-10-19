@@ -587,11 +587,15 @@ class WindowPainter extends CustomPainter {
 
     if (showSelection || showDrawingDimensions) {
       for (final zone in model.zones) {
+        // After a long press every sash is selected.
+        final inAllSashes =
+            model.allSashesSelected && model.selectedSashZones.contains(zone);
         if (showSelection &&
             model.selectedZone != null &&
-            model.selectedZone!.id == zone.id) {
+            (model.selectedZone!.id == zone.id || inAllSashes)) {
           final r = zone.boundary;
           bool highlightEntireZone =
+              inAllSashes ||
               model.activeSubZone == 'all' ||
               zone.content != ZoneContent.doubleSash;
           if (highlightEntireZone) {

@@ -3875,6 +3875,10 @@ class WindowModel extends ChangeNotifier {
   String? primaryMullionAxis;
   SelectionInfo selection = SelectionInfo.none;
   String? activeSubZone;
+
+  /// The sash zone a long press selected every sash from. It holds only
+  /// while that zone stays selected (see [allSashesSelected]).
+  String? allSashesAnchorZoneId;
   bool showZoneMenu = false;
   final List<WindowSnapshot> _history = [];
   final List<WindowSnapshot> _redoHistory = [];

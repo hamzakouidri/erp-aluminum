@@ -1605,13 +1605,39 @@ class _WindowViewState extends State<WindowView> {
 
                                     final zone = widget.model.selectedZone;
                                     final cellKey = widget.model.activeSubZone;
+                                    final isCellSash =
+                                        zone != null &&
+                                        cellKey != null &&
+                                        cellKey.contains('_cell_') &&
+                                        (zone.cellIsSash[cellKey] == true ||
+                                            zone.cellIsDoubleSash[cellKey] ==
+                                                true);
+                                    if (!isCellSash &&
+                                        widget.model.allSashesSelected) {
+                                      widget.model.refreshUI();
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).hideCurrentSnackBar();
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            _tr(
+                                              'تم تحديد كل الضلفات: الظلفة والمقبض يتغيران فيها كلها. ضغطة واحدة تحدد ضلفة واحدة.',
+                                            ),
+                                          ),
+                                          duration: const Duration(
+                                            milliseconds: 2500,
+                                          ),
+                                          behavior: SnackBarBehavior.floating,
+                                        ),
+                                      );
+                                    }
                                     if (zone != null &&
                                         cellKey != null &&
                                         cellKey.contains('_cell_')) {
-                                      final hasSash =
-                                          zone.cellIsSash[cellKey] == true ||
-                                          zone.cellIsDoubleSash[cellKey] ==
-                                              true;
+                                      final hasSash = isCellSash;
                                       if (hasSash) {
                                         final selected =
                                             await showDialog<
