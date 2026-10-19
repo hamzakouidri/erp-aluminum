@@ -318,7 +318,13 @@ class WindowPainter extends CustomPainter {
       }
     }
 
-    final innerPath = _buildInnerShapePath(w, h, t, topOffset);
+    final innerPath = _buildInnerShapePath(
+      w,
+      h,
+      t,
+      topOffset,
+      withFrameFloors: true,
+    );
 
     canvas.save();
     canvas.clipPath(innerPath);
@@ -1517,10 +1523,22 @@ class WindowPainter extends CustomPainter {
   Rect _getEffectiveZoneRect(Rect original, double h, double t) {
     Rect result = original;
     final frames = model.getFrameRects();
+    // In a multi-frame drawing a zone rests on its own frame, which can end
+    // above the window's bottom and have its own profile width.
+    var floorY = h;
+    var floorT = t;
+    var hasFloorFrame = _hasEffectiveBottomFrame;
+    Rect? ownFrame;
     for (final frame in frames) {
       if (frame.contains(original.center)) {
         final fW = model.frameVisibleWidthForRect(frame, fallback: t);
         final hasBottom = model.hasBottomFrameForRect(frame);
+        if (frames.length > 1) {
+          ownFrame = frame;
+          floorY = frame.bottom;
+          floorT = fW;
+          hasFloorFrame = hasBottom;
+        }
         final innerLeft = frame.left + fW;
         final innerRight = frame.right - fW;
         final innerTop = frame.top + fW;
@@ -1595,7 +1613,7 @@ class WindowPainter extends CustomPainter {
         }
       }
     }
-    if (!_hasEffectiveBottomFrame && (result.bottom - (h - t)).abs() < 5.0) {
+    if (!hasFloorFrame && (result.bottom - (floorY - floorT)).abs() < 5.0) {
       final matchingZone = model.zones.firstWhere(
         (z) =>
             (z.boundary.left - original.left).abs() < 2.0 &&
@@ -1615,7 +1633,8 @@ class WindowPainter extends CustomPainter {
           !matchingZone.hasSashPlintheBottom) {
         return result; // الثابت يستقر على الإطار السفلي عند (h - t)
       }
-      final frameRect = Rect.fromLTRB(0, _topOffset, model.width, h);
+      final frameRect =
+          ownFrame ?? Rect.fromLTRB(0, _topOffset, model.width, h);
       final sliding = model.frameUsesSlidingSeries(frameRect);
       if (model.usesFrameRole('seuil', sliding: sliding)) {
         final seuilSection = model.getConfiguredSectionForRole(
@@ -1625,9 +1644,14 @@ class WindowPainter extends CustomPainter {
         final seuilT = (seuilSection != null && seuilSection.visibleWidth > 0)
             ? seuilSection.visibleWidth
             : 0.0;
-        return Rect.fromLTRB(result.left, result.top, result.right, h - seuilT);
+        return Rect.fromLTRB(
+          result.left,
+          result.top,
+          result.right,
+          floorY - seuilT,
+        );
       }
-      return Rect.fromLTRB(result.left, result.top, result.right, h);
+      return Rect.fromLTRB(result.left, result.top, result.right, floorY);
     }
     return result;
   }
@@ -1703,7 +1727,15 @@ class WindowPainter extends CustomPainter {
     return p;
   }
 
-  Path _buildInnerShapePath(double w, double h, double t, double topY) {
+  /// [withFrameFloors] adds, in window coordinates, the opening of every
+  /// frame drawn without its bottom frame.
+  Path _buildInnerShapePath(
+    double w,
+    double h,
+    double t,
+    double topY, {
+    bool withFrameFloors = false,
+  }) {
     double bottomOffset = _hasEffectiveBottomFrame ? t : 0.0;
 
     if (model.archHeight == 0 &&
@@ -1711,8 +1743,27 @@ class WindowPainter extends CustomPainter {
         model.topSlantRightY == 0 &&
         model.bottomSlantLeftY == 0 &&
         model.bottomSlantRightY == 0) {
-      return Path()
+      final path = Path()
         ..addRect(Rect.fromLTRB(t, topY + t, w - t, h - bottomOffset));
+      // A frame of a multi-frame drawing can lose its own bottom frame: its
+      // sash then runs down to the frame's bottom edge, below the window's
+      // general inner line.
+      final frames = withFrameFloors ? model.getFrameRects() : const <Rect>[];
+      if (frames.length > 1) {
+        for (final frame in frames) {
+          if (model.hasBottomFrameForRect(frame)) continue;
+          final fW = model.frameVisibleWidthForRect(frame, fallback: t);
+          path.addRect(
+            Rect.fromLTRB(
+              frame.left + fW,
+              frame.top + fW,
+              frame.right - fW,
+              frame.bottom,
+            ),
+          );
+        }
+      }
+      return path;
     }
 
     Path p = Path();
