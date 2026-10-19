@@ -1813,6 +1813,44 @@ extension SqlDatabaseOrders on SqlDatabase {
     return res;
   }
 
+  /// Saves the drawing of one order line (after a profile was changed from
+  /// the required-goods screen, for example).
+  Future<int> updateCommandeDetailPartitions(
+    int idDetail,
+    String partitionsJson,
+  ) async {
+    final myDb = await db;
+    if (myDb == null) return 0;
+    final detailRows = await myDb.query(
+      'Commandes_details',
+      columns: ['id_commandes'],
+      where: 'id = ?',
+      whereArgs: [idDetail],
+      limit: 1,
+    );
+    final commandeId = detailRows.isEmpty
+        ? null
+        : (detailRows.first['id_commandes'] as num?)?.toInt();
+    if (commandeId != null) {
+      await snapshotCommande(
+        commandeId,
+        actionType: 'UPDATE',
+        afterHeader: {'detail_id': idDetail, 'partitions_json': 'updated'},
+      );
+    }
+    final res = await myDb.update(
+      'Commandes_details',
+      {
+        'partitions_json': partitionsJson,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [idDetail],
+    );
+    CloudSyncService().notifyChange();
+    return res;
+  }
+
   Future<int> updateCommandeDetailImagePath(int idDetail, String path) async {
     Database? myDb = await db;
     final detailRows = await myDb!.query(

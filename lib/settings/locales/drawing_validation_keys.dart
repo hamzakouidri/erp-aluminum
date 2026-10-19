@@ -3,6 +3,12 @@ import '../app_settings.dart';
 /// Messages shown when a typed drawing dimension is outside what the
 /// aluminium/PVC layout can physically take.
 final Map<String, Map<AppLanguage, String>> drawingValidationKeys = {
+  'لا يوجد بديل يقبله الرسم لهذا القطاع': {
+    AppLanguage.arabic: 'لا يوجد بديل يقبله الرسم لهذا القطاع',
+    AppLanguage.french:
+        "Aucun profil de remplacement n'est accepté par le dessin pour ce profilé",
+    AppLanguage.english: 'No replacement profile fits the drawing for this profile',
+  },
   'بروفيل الزاوية يركب بين إطارين متلاصقين فقط، وليس على أطراف الإطار. ألصق إطاراً بإطار ثم فعّله بينهما.': {
     AppLanguage.arabic:
         'بروفيل الزاوية يركب بين إطارين متلاصقين فقط، وليس على أطراف الإطار. ألصق إطاراً بإطار ثم فعّله بينهما.',

@@ -741,6 +741,11 @@ class ProductBreakdown {
   final WindowModel model;
   final List<BomItem> bomItems;
 
+  /// The order line and its saved drawing, so a change made here (a frame
+  /// or sash replaced) is written back to the order.
+  final int? detailId;
+  final Map<String, dynamic>? modelMap;
+
   ProductBreakdown({
     required this.index,
     required this.name,
@@ -749,6 +754,8 @@ class ProductBreakdown {
     required this.height,
     required this.model,
     required this.bomItems,
+    this.detailId,
+    this.modelMap,
   });
 }
 
@@ -2164,6 +2171,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   height: h,
                   model: instanceModel,
                   bomItems: instBom.where((b) => b.isActive).toList(),
+                  detailId: _safeInt(item['id']),
+                  modelMap: modelMap,
                 ),
               );
               instIdx++;
@@ -2195,6 +2204,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 height: model.height,
                 model: model,
                 bomItems: instBom.where((b) => b.isActive).toList(),
+                detailId: _safeInt(item['id']),
+                modelMap: modelMap,
               ),
             );
           }
@@ -4915,6 +4926,72 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     }
   }
 
+  bool _bomRowIsGood(BomItem bom, AggregatedGoodItem item) {
+    if (bom.originalName != item.originalName) return false;
+    return item.catalogItemId == null ||
+        bom.catalogItemId == item.catalogItemId;
+  }
+
+  /// Writes a frame or sash replacement into each order line that uses it,
+  /// through the drawing model (so the accessories follow the new profile),
+  /// then recalculates the goods.
+  Future<void> _replaceProfileInOrder(
+    List<(ProductBreakdown, BomItem)> affected,
+    Map<String, dynamic> section,
+    int? replacedId, {
+    required bool isFrame,
+    required bool sliding,
+    required bool sidesOnly,
+  }) async {
+    final saved = <int>{};
+    final catalogCache = <String, WindowModel>{};
+    for (final (pb, _) in affected) {
+      final detailId = pb.detailId;
+      final savedMap = pb.modelMap;
+      if (detailId == null || savedMap == null || !saved.add(detailId)) {
+        continue;
+      }
+      final model = WindowModel(db: widget.db);
+      await _applyWindowModelWithCatalogCache(
+        model,
+        Map<String, dynamic>.from(savedMap),
+        catalogCache,
+      );
+      if (isFrame && sidesOnly) {
+        // A row of some frame sides changes those sides only.
+        for (final frame in model.getFrameRects()) {
+          final sides = <String>[
+            for (final side in const ['top', 'right', 'bottom', 'left'])
+              if (_safeInt(model.frameSideOverrideForRect(frame, side)?['id']) ==
+                  replacedId)
+                side,
+          ];
+          if (sides.isNotEmpty) {
+            model.setFrameSideOverrides(frame, sides, section);
+          }
+        }
+      } else if (isFrame) {
+        model.applyFrameOverride(
+          section,
+          sliding: sliding,
+          manualSelection: true,
+        );
+        await model.syncFrameReinforcement();
+      } else {
+        model.applySashOverride(
+          section,
+          sliding: sliding,
+          manualSelection: true,
+        );
+      }
+      await widget.db.updateCommandeDetailPartitions(
+        detailId,
+        jsonEncode({...savedMap, ...model.toMap()}),
+      );
+    }
+    if (mounted) await _loadAndAggregate();
+  }
+
   Future<void> _showSectionSelectionDialog(
     AggregatedGoodItem item,
     String category,
@@ -4931,6 +5008,31 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     final origLower = item.originalName.toLowerCase();
 
     final isAccessory = category.toLowerCase() == 'accessory';
+    // The order lines whose BOM holds this row. A frame row offers frames
+    // only, a sash row sashes only, and only those the drawing accepts.
+    final affected = <(ProductBreakdown, BomItem)>[
+      for (final pb in _productBreakdowns)
+        for (final bom in pb.bomItems
+            .where((bom) => _bomRowIsGood(bom, item))
+            .take(1))
+          (pb, bom),
+    ];
+    final rowKind = affected.isEmpty
+        ? ''
+        : (affected.first.$2.selectorType ?? '').trim().toLowerCase();
+    final isFrameRow = !isAccessory && rowKind == 'frame';
+    final isSashRow = !isAccessory && rowKind == 'sash';
+    final rowSliding =
+        origLower.contains('منزلق') ||
+        origLower.contains('coulissant') ||
+        origLower.contains('sliding');
+    final isAngleSideRow =
+        origLower.contains('لجهة بروفيل الزاوية') ||
+        origLower.contains('côté angle');
+    final isSideRow = isAngleSideRow || origLower.contains('إطار جهة');
+    final rowSeriesId = affected.isEmpty
+        ? null
+        : affected.first.$2.sourceSeriesId;
     // Accessories are catalogue products, not aluminium Sections.  Looking
     // them up in Sections made the change sheet offer an unrelated profile;
     // the next BOM refresh then correctly discarded that invalid selection.
@@ -4947,7 +5049,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         : await dbInstance.query(
             'Sections',
             where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
-            whereArgs: [activeSeries.id],
+            whereArgs: [rowSeriesId ?? activeSeries.id],
           );
 
     if (rawSections.isEmpty) {
@@ -4964,6 +5066,33 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       // The rule engine validates the saved choice. This list deliberately
       // contains only active products compatible with the selected series.
       filteredSections = List<Map<String, dynamic>>.from(rawSections);
+    } else if (isFrameRow || isSashRow) {
+      filteredSections = rawSections.where((s) {
+        final type = (s['type'] ?? '').toString().trim().toLowerCase();
+        if (type != rowKind) return false;
+        if (isSashRow) return true;
+        // The frames that every drawing using this row would accept.
+        if (!affected.every(
+          (entry) =>
+              entry.$1.model.frameFitsCurrentDrawing(s, sliding: rowSliding),
+        )) {
+          return false;
+        }
+        if (!isAngleSideRow) return true;
+        try {
+          final section = AluminumSection.fromMap(s);
+          return section.couvreJointWidth <= 0 && !section.allowsSideCover;
+        } catch (_) {
+          return false;
+        }
+      }).toList();
+      if (filteredSections.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_t('لا يوجد بديل يقبله الرسم لهذا القطاع'))),
+        );
+        return;
+      }
     } else if (origLower.contains('rail') || origLower.contains('سكة')) {
       // 1. السكة Rail: جلب نوع rail فقط واستبعاد الإطارات Cadre 2 Rail / Cadre 3 Rail
       filteredSections = rawSections.where((s) {
@@ -5154,6 +5283,17 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
                         final mutableSec = Map<String, dynamic>.from(sec);
                         mutableSec['calculated_price'] = price;
+                        if (isFrameRow || isSashRow) {
+                          await _replaceProfileInOrder(
+                            affected,
+                            mutableSec,
+                            item.catalogItemId,
+                            isFrame: isFrameRow,
+                            sliding: rowSliding,
+                            sidesOnly: isSideRow,
+                          );
+                          return;
+                        }
                         if (isAccessory) {
                           // A replacement selected from this sheet is an
                           // explicit user decision. BomEngineV2 keeps it if
