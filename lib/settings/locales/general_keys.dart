@@ -121,6 +121,14 @@ const Map<String, Map<AppLanguage, String>> generalKeys = {
     AppLanguage.french: 'Confirmer et réceptionner en stock',
     AppLanguage.english: 'Confirm & Receive into Stock',
   },
+  'هل تريد تأكيد هذه الفاتورة وإدخال جميع عناصرها إلى المخزون؟ بعد التأكيد ستصبح الفاتورة مؤكدة ويتم تحديث كميات المخزون فوراً.': {
+    AppLanguage.arabic:
+        'هل تريد تأكيد هذه الفاتورة وإدخال جميع عناصرها إلى المخزون؟ بعد التأكيد ستصبح الفاتورة مؤكدة ويتم تحديث كميات المخزون فوراً.',
+    AppLanguage.french:
+        'Voulez-vous confirmer cette facture et réceptionner tous ses articles en stock ? Après confirmation, la facture sera confirmée et les quantités en stock mises à jour immédiatement.',
+    AppLanguage.english:
+        'Confirm this invoice and receive all its items into stock? Once confirmed, the invoice is marked as confirmed and stock quantities are updated immediately.',
+  },
   'تأكيد واستلام': {
     AppLanguage.arabic: 'تأكيد واستلام',
     AppLanguage.french: 'Confirmer et réceptionner',

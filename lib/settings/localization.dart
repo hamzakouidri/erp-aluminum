@@ -195,10 +195,23 @@ class Localization {
       }
     }
 
+    // A key stored with its surrounding spaces ('الحالة: ') is found as
+    // it is; otherwise the trimmed key keeps the caller's spacing around
+    // its translation. Looking up only the trimmed key left every key that
+    // ends with a space untranslated.
+    final exact = _dictionary[key]?[lang];
+    if (exact != null && exact.trim().isNotEmpty) return exact;
     if (_dictionary.containsKey(trimmedKey) &&
         _dictionary[trimmedKey]!.containsKey(lang)) {
       final translated = _dictionary[trimmedKey]![lang]!;
-      if (translated.trim().isNotEmpty) return translated;
+      if (translated.trim().isNotEmpty) {
+        if (key == trimmedKey) return translated;
+        final leading = key.substring(0, key.indexOf(trimmedKey));
+        final trailing = key.substring(
+          key.indexOf(trimmedKey) + trimmedKey.length,
+        );
+        return '$leading${translated.trim()}$trailing';
+      }
       final arabicFallback = _dictionary[trimmedKey]![AppLanguage.arabic];
       if (arabicFallback != null && arabicFallback.trim().isNotEmpty) {
         return arabicFallback;

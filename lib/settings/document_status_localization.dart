@@ -17,6 +17,9 @@ String localizeDocumentStatus(dynamic value, AppLanguage language) {
   }
 
   switch (raw.toLowerCase()) {
+    case 'active':
+    case 'نشطة':
+      return tr('نشطة', 'Active', 'Active');
     case 'draft':
     case 'مسودة':
       return tr('مسودة', 'Brouillon', 'Draft');
