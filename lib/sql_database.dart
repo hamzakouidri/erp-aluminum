@@ -441,6 +441,7 @@ class SqlDatabase {
     'SectionSharingRules',
     'FrameJoinRules',
     'ProfileCompatibilityGroups',
+    'FramePairingRules',
     'ShutterCalcRules',
     'CatalogItemRules',
     'ProfileCalculationRules',

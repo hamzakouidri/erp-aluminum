@@ -451,6 +451,21 @@ void main() {
 
       expect(model.usesProfileAngle, isFalse);
 
+      // Without a corner frame set by hand, the corner profile is refused.
+      model.toggleProfileAngleJunction(0, true);
+      expect(model.usesProfileAngle, isFalse);
+      expect(model.lastCornerPairingRefusal, isNotEmpty);
+      // Each frame stands against the corner itself.
+      final frameIds = model
+          .getFrameRects()
+          .map(model.frameSectionForRect)
+          .whereType<AluminumSection>()
+          .map((section) => section.id)
+          .toSet();
+      model.setFramePairingsForTest({
+        for (final id in frameIds) id: {'corner_frame_id': id},
+      });
+
       // 1. Select only between Frame 1 & 2 (junction 0)
       model.toggleProfileAngleJunction(0, true);
       expect(model.usesProfileAngle, isTrue);

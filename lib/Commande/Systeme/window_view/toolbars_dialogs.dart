@@ -4288,6 +4288,7 @@ extension _WindowViewToolbars on _WindowViewState {
                               ),
                               onPressed: () {
                                 widget.model.setAllProfileAngleJunctions(true);
+                                _warnProfileAngleFrames();
                                 setModalState(() {});
                                 _setViewState(() {});
                               },
@@ -4566,8 +4567,7 @@ extension _WindowViewToolbars on _WindowViewState {
       // Check sliding vs opening compatibility
       if (isRowSliding(item) != sliding) continue;
 
-      // Same depth and the same visible width as the frame, or a frame of
-      // another series linked to it by the frame join rules.
+      // Only the frames set for this frame in the frame pairing page.
       if (widget.model.frameFitsSideOf(
         baseSection,
         AluminumSection.fromMap(item),

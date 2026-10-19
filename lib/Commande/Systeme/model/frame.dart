@@ -991,6 +991,20 @@ extension WindowModelFrame on WindowModel {
     final prefix = _frameSideStoragePrefix(frame);
     if (prefix != null) {
       final raw = componentOverrides['$prefix:${side.toLowerCase()}'];
+      if (raw is Map && raw['pairing_role'] == 'no_cover') {
+        // Follows the frame of this side's pairing, even after the frame
+        // itself was changed.
+        final base = frameSectionForRect(frame);
+        final partnerId = base == null ? null : noCoverFrameIdFor(base.id);
+        final partner = partnerId == null
+            ? null
+            : catalogSectionById(partnerId);
+        if (partner == null) return null;
+        return partner.toMap()
+          ..['manual_selection'] = true
+          ..['frame_side'] = side.toLowerCase()
+          ..['pairing_role'] = 'no_cover';
+      }
       if (raw is Map) return Map<String, dynamic>.from(raw);
     }
     // If no manual override on this side, check if it touches a profile angle
@@ -1038,26 +1052,80 @@ extension WindowModelFrame on WindowModel {
   /// A frame in a compatibility group (frame join rules) takes only the
   /// frames of its group. Without a group, only a frame of the same series
   /// (one depth) showing exactly the same visible width.
+  /// Only the frames set for [base] in the frame pairing page (its frame
+  /// without cover, its corner frame, the frames it joins) may be cut on
+  /// one of its sides. Nothing is guessed from widths.
   bool frameFitsSideOf(AluminumSection base, AluminumSection candidate) {
     if (candidate.id == base.id) return true;
     final group = _frameJoinPartners[base.id];
-    if (group != null && group.isNotEmpty) return group.contains(candidate.id);
-    if (!framesCanJoin(base, candidate)) return false;
-    if (base.seriesId != 0 &&
-        candidate.seriesId != 0 &&
-        base.seriesId != candidate.seriesId) {
-      return false;
-    }
-    final baseWidth = frameSectionFaceWidth(base);
-    final candidateWidth = frameSectionFaceWidth(candidate);
-    return baseWidth > 0 &&
-        candidateWidth > 0 &&
-        (baseWidth - candidateWidth).abs() < 0.01;
+    return group != null && group.contains(candidate.id);
   }
 
   @visibleForTesting
   void setFrameJoinGroupsForTest(Map<int, Set<int>> partners) =>
       _frameJoinPartners = partners;
+
+  @visibleForTesting
+  void setFramePairingsForTest(Map<int, Map<String, dynamic>> pairings) {
+    _framePairings = pairings;
+    _frameJoinPartners = _partnersFromPairings(pairings);
+  }
+
+  int? _pairingId(int sectionId, String column) {
+    final raw = _framePairings[sectionId]?[column];
+    return raw is num ? raw.toInt() : int.tryParse(raw?.toString() ?? '');
+  }
+
+  /// The frame set to be cut on the sides of [sectionId] without a cover.
+  int? noCoverFrameIdFor(int sectionId) =>
+      _pairingId(sectionId, 'no_cover_frame_id');
+
+  /// The frame set to be cut against a corner profile for [sectionId].
+  int? cornerFrameIdFor(int sectionId) =>
+      _pairingId(sectionId, 'corner_frame_id');
+
+  /// A catalogue section by id, from every loaded series.
+  AluminumSection? catalogSectionById(int id) {
+    for (final system in availableSystems) {
+      for (final series in system.series) {
+        for (final section in series.sections) {
+          if (section.id == id) return section;
+        }
+      }
+    }
+    for (final series in [activeSeries, activeSlidingSeries]) {
+      for (final section in series?.sections ?? const <AluminumSection>[]) {
+        if (section.id == id) return section;
+      }
+    }
+    return null;
+  }
+
+  static Map<int, Set<int>> _partnersFromPairings(
+    Map<int, Map<String, dynamic>> pairings,
+  ) {
+    int? read(Object? raw) =>
+        raw is num ? raw.toInt() : int.tryParse(raw?.toString() ?? '');
+    final partners = <int, Set<int>>{};
+    pairings.forEach((sectionId, row) {
+      final own = partners.putIfAbsent(sectionId, () => <int>{});
+      for (final id in [
+        read(row['no_cover_frame_id']),
+        read(row['corner_frame_id']),
+      ].whereType<int>()) {
+        if (id != sectionId) own.add(id);
+      }
+      for (final part in (row['join_ids']?.toString() ?? '').split(',')) {
+        final id = int.tryParse(part.trim());
+        if (id == null || id == sectionId) continue;
+        own.add(id);
+        // Joining goes both ways.
+        partners.putIfAbsent(id, () => <int>{}).add(sectionId);
+      }
+    });
+    partners.removeWhere((_, value) => value.isEmpty);
+    return partners;
+  }
 
   double frameSideVisibleWidth(
     Rect frame,
@@ -1084,6 +1152,76 @@ extension WindowModelFrame on WindowModel {
     final effective = override ?? frameSectionForRect(frame)?.toMap();
     if (effective == null) return true;
     return _overrideAllowsStandaloneSideCover(effective);
+  }
+
+  /// The frames whose [side] lies on the outside of the drawing.
+  List<Rect> framesOnOuterSide(String side) {
+    final frames = getFrameRects();
+    if (frames.isEmpty) return const [];
+    const tolerance = 2.0;
+    final edge = switch (side) {
+      'left' => frames.map((r) => r.left).reduce(math.min),
+      'right' => frames.map((r) => r.right).reduce(math.max),
+      'top' => frames.map((r) => r.top).reduce(math.min),
+      _ => frames.map((r) => r.bottom).reduce(math.max),
+    };
+    return frames.where((rect) {
+      final value = switch (side) {
+        'left' => rect.left,
+        'right' => rect.right,
+        'top' => rect.top,
+        _ => rect.bottom,
+      };
+      return (value - edge).abs() <= tolerance;
+    }).toList();
+  }
+
+  /// The frames on [side] whose own section has an integrated cover and a
+  /// frame "without cover" set in the frame pairing page.
+  List<Rect> framesWithNoCoverPartnerOnSide(String side) => [
+    for (final frame in framesOnOuterSide(side))
+      if (frameSectionForRect(frame) case final base?)
+        if (_sectionHasIntegratedSideCover(base) &&
+            noCoverFrameIdFor(base.id) != null &&
+            catalogSectionById(noCoverFrameIdFor(base.id)!) != null)
+          frame,
+  ];
+
+  /// Whether [side] uses the frame "without cover" of its pairing.
+  bool sideUsesNoCoverFrame(String side) {
+    for (final frame in framesOnOuterSide(side)) {
+      final prefix = _frameSideStoragePrefix(frame);
+      if (prefix == null) continue;
+      final raw = componentOverrides['$prefix:$side'];
+      if (raw is Map && raw['pairing_role'] == 'no_cover') return true;
+    }
+    return false;
+  }
+
+  /// Cuts [side] from the frame "without cover" set for its frame (instead
+  /// of cutting the integrated cover off): the side then has no cover.
+  void useNoCoverFrameOnSide(String side) {
+    for (final frame in framesWithNoCoverPartnerOnSide(side)) {
+      final base = frameSectionForRect(frame)!;
+      final partner = catalogSectionById(noCoverFrameIdFor(base.id)!)!;
+      setFrameSideOverrides(frame, [side], {
+        ...partner.toMap(),
+        'pairing_role': 'no_cover',
+      });
+    }
+  }
+
+  /// Gives [side] back the frame with its integrated cover.
+  void restoreCoveredFrameOnSide(String side) {
+    for (final frame in framesOnOuterSide(side)) {
+      final prefix = _frameSideStoragePrefix(frame);
+      if (prefix == null) continue;
+      final raw = componentOverrides['$prefix:$side'];
+      if (raw is Map && raw['pairing_role'] == 'no_cover') {
+        setFrameSideOverrides(frame, [side], null);
+      }
+    }
+    if (!isSideCoverSegmentEnabled(side)) toggleSideCoverSegment(side);
   }
 
   /// Whether [item] (a frame section) can be used in the current drawing:
@@ -1138,6 +1276,17 @@ extension WindowModelFrame on WindowModel {
         return false;
       }
     }
+
+    // A side already cut from the frame "without cover" needs the new frame
+    // to have one set too.
+    final itemId = item['id'] is num
+        ? (item['id'] as num).toInt()
+        : int.tryParse(item['id']?.toString() ?? '');
+    if (integratedCover &&
+        const ['top', 'right', 'bottom', 'left'].any(sideUsesNoCoverFrame) &&
+        (itemId == null || noCoverFrameIdFor(itemId) == null)) {
+      return false;
+    }
     return true;
   }
 
@@ -1184,17 +1333,11 @@ extension WindowModelFrame on WindowModel {
     _notifyModelListeners();
   }
 
+  /// Loads the frame pairings set by hand (FramePairingRules).
   Future<void> reloadFrameJoinRules() async {
-    final partners = <int, Set<int>>{};
-    final frameSections = [
-      ...?activeSeries?.sections,
-      ...?effectiveSlidingSeries?.sections,
-    ].where((s) => s.isFrame || s.type.toLowerCase() == 'frame').toList();
-    for (final sec in frameSections) {
-      final ps = await db.readFrameJoinPartnerIds(sec.id);
-      if (ps.isNotEmpty) partners[sec.id] = ps;
-    }
-    _frameJoinPartners = partners;
+    final pairings = await db.readFramePairings();
+    _framePairings = pairings;
+    _frameJoinPartners = _partnersFromPairings(pairings);
   }
 
   AluminumSection? _frameForMullion(MullionProfileType profileType) {
@@ -3261,7 +3404,42 @@ extension WindowModelFrame on WindowModel {
     }
   }
 
+  /// The frames of [junctionIndexes] (every junction when null) that have
+  /// no frame set against a corner profile in the frame pairing page.
+  List<String> cornerPairingProblems([Iterable<int>? junctionIndexes]) {
+    final wanted = junctionIndexes?.toSet();
+    final names = <String>{};
+    for (final junction in getAdjacentFrameJunctions()) {
+      if (wanted != null && !wanted.contains(junction.index)) continue;
+      for (final frame in [junction.firstFrame, junction.secondFrame]) {
+        final section = frameSectionForRect(frame);
+        if (section == null) continue;
+        if (!frameUsableWithProfileAngle(
+          section,
+          sliding: frameUsesSlidingSeries(frame),
+        )) {
+          names.add(
+            section.code.trim().isEmpty
+                ? section.name
+                : '${section.code} - ${section.name}',
+          );
+        }
+      }
+    }
+    return names.toList();
+  }
+
   void toggleProfileAngleJunction(int junctionIndex, [bool? enabled]) {
+    final turningOn =
+        enabled ?? !activeProfileAngleJunctions.contains(junctionIndex);
+    if (turningOn) {
+      final problems = cornerPairingProblems([junctionIndex]);
+      lastCornerPairingRefusal = problems;
+      if (problems.isNotEmpty) {
+        _notifyModelListeners();
+        return;
+      }
+    }
     _saveSnapshot();
     profileAngleJunctionsDisabled = false;
     final junctions = getAdjacentFrameJunctions();
@@ -3285,6 +3463,14 @@ extension WindowModelFrame on WindowModel {
   }
 
   void setAllProfileAngleJunctions(bool enabled) {
+    if (enabled) {
+      final problems = cornerPairingProblems();
+      lastCornerPairingRefusal = problems;
+      if (problems.isNotEmpty) {
+        _notifyModelListeners();
+        return;
+      }
+    }
     _saveSnapshot();
     if (enabled) {
       profileAngleJunctionsDisabled = false;
@@ -3355,94 +3541,22 @@ extension WindowModelFrame on WindowModel {
   bool frameUsableWithProfileAngle(
     AluminumSection section, {
     bool sliding = false,
-  }) =>
-      frameFitsProfileAngle(section, sliding: sliding) ||
-      findCompatibleNoCoverFrame(currentFrame: section, sliding: sliding) !=
-          null;
+  }) {
+    final cornerId = cornerFrameIdFor(section.id);
+    if (cornerId == null) return false;
+    return cornerId == section.id || catalogSectionById(cornerId) != null;
+  }
 
-  /// Searches for a compatible frame section without integrated side cover (couvre-joint)
-  /// that matches the current frame's visible width (العرض الظاهر), preferring any
-  /// frame sections configured as compatible with the profile_angle role.
+  /// The frame set in the frame pairing page to stand against a corner
+  /// profile for [currentFrame]; null when the frame itself stands there or
+  /// nothing is set (then the corner profile cannot be switched on).
   AluminumSection? findCompatibleNoCoverFrame({
     required AluminumSection currentFrame,
     bool sliding = false,
   }) {
-    final series = sliding ? activeSlidingSeries : activeFrameSeries;
-    if (series == null) return null;
-
-    // Check if the series has configured compatible_frame_ids for profile_angle
-    final roleOptions = _seriesDesignRoleOptions[series.id]?['profile_angle'];
-    final compatibleIdSet = <int>{};
-    if (roleOptions != null) {
-      for (final opt in roleOptions.values) {
-        final raw = opt['compatible_frame_ids']?.toString() ?? '';
-        for (final part in raw.split(',')) {
-          final id = int.tryParse(part.trim());
-          if (id != null) compatibleIdSet.add(id);
-        }
-      }
-    }
-
-    // If currentFrame is already in compatible_frame_ids, or already fits
-    // the corner, no switch needed!
-    if (compatibleIdSet.isNotEmpty &&
-        compatibleIdSet.contains(currentFrame.id)) {
-      return null;
-    }
-    if (frameFitsProfileAngle(currentFrame, sliding: sliding)) return null;
-
-    final targetVisibleWidth = currentFrame.visibleWidth > 0
-        ? currentFrame.visibleWidth
-        : (currentFrame.thickness > 0
-              ? currentFrame.thickness
-              : profileThickness);
-
-    final candidateSections = series.sections.where((section) {
-      if (section.id == currentFrame.id) return false;
-      final type = section.type.toLowerCase();
-      final isCadre =
-          section.isFrame || type == 'frame' || type.contains('cadre');
-      if (!isCadre) return false;
-
-      // Must NOT have integrated side cover
-      if (_sectionHasIntegratedSideCover(section)) return false;
-      if (section.couvreJointWidth > 0) return false;
-
-      // A frame the series design lists for the corner profile is trusted;
-      // any other must fit the corner rule (in aluminium: never accept a
-      // separate cover) and belong to the frame's compatibility group, or,
-      // without a group, show exactly the same visible width.
-      if (compatibleIdSet.contains(section.id)) return true;
-      if (!frameFitsProfileAngle(section, sliding: sliding)) return false;
-      return frameFitsSideOf(currentFrame, section);
-    }).toList();
-
-    if (candidateSections.isEmpty) return null;
-
-    // Sort candidates:
-    // 1. Prefer sections that are explicitly listed in compatible_frame_ids
-    // 2. Sort by closeness to targetVisibleWidth
-    candidateSections.sort((a, b) {
-      final aInCompatible = compatibleIdSet.contains(a.id);
-      final bInCompatible = compatibleIdSet.contains(b.id);
-      if (aInCompatible && !bInCompatible) return -1;
-      if (!aInCompatible && bInCompatible) return 1;
-
-      final aW = a.visibleWidth > 0
-          ? a.visibleWidth
-          : (a.thickness > 0 ? a.thickness : 0.0);
-      final bW = b.visibleWidth > 0
-          ? b.visibleWidth
-          : (b.thickness > 0 ? b.thickness : 0.0);
-      final diffA = (aW - targetVisibleWidth).abs();
-      final diffB = (bW - targetVisibleWidth).abs();
-      if ((diffA - diffB).abs() > 0.01) {
-        return diffA.compareTo(diffB);
-      }
-      return a.name.compareTo(b.name);
-    });
-
-    return candidateSections.first;
+    final cornerId = cornerFrameIdFor(currentFrame.id);
+    if (cornerId == null || cornerId == currentFrame.id) return null;
+    return catalogSectionById(cornerId);
   }
 
   /// Returns the compatible frames chosen for 90° corner junctions/edges

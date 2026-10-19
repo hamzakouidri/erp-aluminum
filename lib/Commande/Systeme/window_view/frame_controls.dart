@@ -21,6 +21,42 @@ extension _WindowViewFrame on _WindowViewState {
     );
   }
 
+  /// Asks how to take the integrated cover off [sideLabel]: 'cut' keeps the
+  /// frame and cuts its cover, 'frame' uses the frame "without cover" set in
+  /// the frame pairing page; null cancels.
+  Future<String?> _askCoverRemoval(BuildContext context, String sideLabel) {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    String t(String key) => Localization.translate(key, lang);
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('${t('إلغاء الغطاء')}: $sideLabel'),
+        content: Text(
+          t(
+            'هل نقطع الغطاء المدمج من هذا الإطار، أم نغيّر إطار هذه الجهة بالإطار بدون غطاء المحدد في صفحة ربط الإطارات؟',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(t('إلغاء')),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(dialogContext, 'cut'),
+            child: Text(t('قطع الغطاء')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, 'frame'),
+            child: Text(t('تغيير إطار هذه الجهة')),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _loadInitialCatalog() async {
     try {
       await widget.model.loadCatalogData(widget.systemMode);
@@ -750,7 +786,13 @@ extension _WindowViewFrame on _WindowViewState {
             Positioned.fill(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () {
+                onTap: () async {
+                  // The side was cut from the frame "without cover": a tap
+                  // gives it back the frame with its integrated cover.
+                  if (model.sideUsesNoCoverFrame(side)) {
+                    model.restoreCoveredFrameOnSide(side);
+                    return;
+                  }
                   if (!allowed) {
                     ScaffoldMessenger.of(context).hideCurrentSnackBar();
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -763,6 +805,23 @@ extension _WindowViewFrame on _WindowViewState {
                       ),
                     );
                     return;
+                  }
+                  // Turning off the integrated cover of a frame that has a
+                  // frame "without cover" set: cut the cover off, or cut this
+                  // side from that frame?
+                  if (enabled &&
+                      model
+                          .framesWithNoCoverPartnerOnSide(side)
+                          .isNotEmpty) {
+                    final choice = await _askCoverRemoval(
+                      context,
+                      labelFor(side),
+                    );
+                    if (choice == null) return;
+                    if (choice == 'frame') {
+                      model.useNoCoverFrameOnSide(side);
+                      return;
+                    }
                   }
                   model.toggleSideCoverSegment(side);
                 },

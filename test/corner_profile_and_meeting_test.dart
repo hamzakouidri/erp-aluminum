@@ -117,6 +117,10 @@ void main() {
       model.hasSideCovers = true;
       model.profileAngleJunctionsDisabled = false;
       model.profileAngleJunctions = {0};
+      // The frame against the corner is set by hand (frame pairing page).
+      model.setFramePairingsForTest({
+        101: {'corner_frame_id': 102},
+      });
 
       final junctionFrames = model.getProfileAngleJunctionFrames();
       expect(junctionFrames.isNotEmpty, isTrue);
@@ -154,9 +158,17 @@ void main() {
       expect(aluminium.frameFitsProfileAngle(integrated), isFalse);
       expect(aluminium.frameFitsProfileAngle(acceptsCover), isFalse);
       expect(aluminium.frameFitsProfileAngle(plain), isTrue);
-      // A frame accepting a cover is usable: its jamb against the corner is
-      // cut from the plain frame of the series.
+      // Nothing is guessed: without a corner frame set in the frame pairing
+      // page the frame cannot stand by a corner profile; with one it can.
+      expect(aluminium.frameUsableWithProfileAngle(acceptsCover), isFalse);
+      aluminium.setFramePairingsForTest({
+        2: {'corner_frame_id': 3},
+      });
       expect(aluminium.frameUsableWithProfileAngle(acceptsCover), isTrue);
+      expect(
+        aluminium.findCompatibleNoCoverFrame(currentFrame: acceptsCover)?.id,
+        3,
+      );
 
       final pvc = WindowModel(db: SqlDatabase())
         ..activeSeries = AluminumSeries(
@@ -262,6 +274,10 @@ void main() {
       model.hasSideCovers = true;
       model.profileAngleJunctionsDisabled = false;
       model.profileAngleJunctions = {0};
+      model.setFramePairingsForTest({
+        101: {'corner_frame_id': 102},
+        201: {'corner_frame_id': 202},
+      });
 
       final junctionFrames = model.getProfileAngleJunctionFrames();
       expect(junctionFrames.length, 2);

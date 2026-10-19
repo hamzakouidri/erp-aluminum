@@ -1486,6 +1486,85 @@ extension SqlDatabaseSchema on SqlDatabase {
     return task;
   }
 
+  /// Moves the earlier ways of declaring compatible frames into
+  /// FramePairingRules, once, when that table is created: the corner
+  /// profile's list of compatible frames (per series) gives each frame of
+  /// the series its corner frame, frame join links and compatibility groups
+  /// give the frames it may be joined to. The user reviews them afterwards.
+  Future<void> _migrateOldFrameCompatibility(DatabaseExecutor db) async {
+    Future<bool> hasTable(String name) async => (await db.rawQuery(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+      [name],
+    )).isNotEmpty;
+    Set<int> ids(Object? raw) => (raw?.toString() ?? '')
+        .split(',')
+        .map((part) => int.tryParse(part.trim()))
+        .whereType<int>()
+        .toSet();
+
+    final corner = <int, int>{};
+    final joins = <int, Set<int>>{};
+    try {
+      final roles = await db.rawQuery(
+        "SELECT series_id, compatible_frame_ids FROM SeriesDesignRoles "
+        "WHERE role_key = 'profile_angle' "
+        "AND TRIM(COALESCE(compatible_frame_ids, '')) != ''",
+      );
+      for (final role in roles) {
+        final listed = ids(role['compatible_frame_ids']).toList();
+        if (listed.isEmpty) continue;
+        final frames = await db.query(
+          'Sections',
+          columns: ['id'],
+          where: "series_id = ? AND LOWER(type) = 'frame'",
+          whereArgs: [role['series_id']],
+        );
+        for (final frame in frames) {
+          final id = (frame['id'] as num?)?.toInt();
+          if (id == null) continue;
+          corner[id] = listed.contains(id) ? id : listed.first;
+        }
+      }
+    } catch (_) {}
+    try {
+      if (await hasTable('FrameJoinRules')) {
+        for (final row in await db.query(
+          'FrameJoinRules',
+          where: 'is_active = 1',
+        )) {
+          final a = (row['section_a_id'] as num?)?.toInt();
+          final b = (row['section_b_id'] as num?)?.toInt();
+          if (a == null || b == null) continue;
+          joins.putIfAbsent(a, () => <int>{}).add(b);
+          joins.putIfAbsent(b, () => <int>{}).add(a);
+        }
+      }
+      if (await hasTable('ProfileCompatibilityGroups')) {
+        for (final row in await db.query(
+          'ProfileCompatibilityGroups',
+          where: 'is_active = 1',
+        )) {
+          final members = ids(row['member_ids']);
+          for (final member in members) {
+            joins
+                .putIfAbsent(member, () => <int>{})
+                .addAll(members.where((other) => other != member));
+          }
+        }
+      }
+    } catch (_) {}
+    final now = DateTime.now().toUtc().toIso8601String();
+    for (final id in {...corner.keys, ...joins.keys}) {
+      await db.insert('FramePairingRules', {
+        'section_id': id,
+        'corner_frame_id': corner[id],
+        'join_ids': (joins[id] ?? const <int>{}).join(','),
+        'is_active': 1,
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
+  }
+
   Future<void> _ensureSeriesDesignTablesImpl(DatabaseExecutor db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS SeriesDesignConfig (
@@ -1632,6 +1711,24 @@ extension SqlDatabaseSchema on SqlDatabase {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_profile_compat_series ON ProfileCompatibilityGroups(series_id, is_active);',
     );
+    // How each frame pairs with the others, set by hand (the app never
+    // guesses): the frame cut on its sides without a cover, the frame cut
+    // against a corner profile, and the frames it may be joined to.
+    final hadFramePairings = (await db.rawQuery(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'FramePairingRules'",
+    )).isNotEmpty;
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS FramePairingRules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        section_id INTEGER NOT NULL UNIQUE,
+        no_cover_frame_id INTEGER,
+        corner_frame_id INTEGER,
+        join_ids TEXT NOT NULL DEFAULT '',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL DEFAULT ''
+      )
+    ''');
+    if (!hadFramePairings) await _migrateOldFrameCompatibility(db);
     // The workshop's shutter calculation values (axe and blade deductions,
     // rail length of a tunnel box...), see ShutterCalcRules.
     await db.execute('''

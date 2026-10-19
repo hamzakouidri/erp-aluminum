@@ -809,6 +809,57 @@ extension SqlDatabaseCatalog on SqlDatabase {
     await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
   }
 
+  /// Every frame pairing (FramePairingRules), by frame section id.
+  Future<Map<int, Map<String, dynamic>>> readFramePairings() async {
+    final myDb = await db;
+    if (myDb == null) return {};
+    await _ensureSeriesDesignTables(myDb);
+    final rows = await myDb.query(
+      'FramePairingRules',
+      where: 'is_active = 1',
+    );
+    return {
+      for (final row in rows)
+        if ((row['section_id'] as num?) != null)
+          (row['section_id'] as num).toInt(): Map<String, dynamic>.from(row),
+    };
+  }
+
+  /// Saves how [sectionId] pairs with other frames. A null id clears that
+  /// choice.
+  Future<void> saveFramePairing({
+    required int sectionId,
+    int? noCoverFrameId,
+    int? cornerFrameId,
+    Iterable<int> joinIds = const [],
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await _ensureSeriesDesignTables(myDb);
+    final now = DateTime.now().toUtc().toIso8601String();
+    await myDb.rawInsert(
+      '''
+      INSERT INTO FramePairingRules
+        (section_id, no_cover_frame_id, corner_frame_id, join_ids, is_active, updated_at)
+      VALUES (?, ?, ?, ?, 1, ?)
+      ON CONFLICT(section_id) DO UPDATE SET
+        no_cover_frame_id = excluded.no_cover_frame_id,
+        corner_frame_id = excluded.corner_frame_id,
+        join_ids = excluded.join_ids,
+        is_active = 1,
+        updated_at = excluded.updated_at
+    ''',
+      [
+        sectionId,
+        noCoverFrameId,
+        cornerFrameId,
+        joinIds.where((id) => id != sectionId).toSet().join(','),
+        now,
+      ],
+    );
+    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+  }
+
   /// Takes [sectionId] out of its compatibility group: drops its links to
   /// every frame of [group].
   Future<void> removeFrameFromJoinGroup(int sectionId, Set<int> group) async {

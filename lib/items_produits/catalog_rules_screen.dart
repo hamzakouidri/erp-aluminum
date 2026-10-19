@@ -11,7 +11,7 @@ import '../widgets/section_image.dart';
 import '../widgets/auto_scroll_expansion_tile.dart';
 import '../widgets/desktop_scroll_behavior.dart';
 import '../Commande/Systeme/accessory_assembly.dart';
-import 'profile_compatibility_groups_view.dart';
+import 'frame_pairing_view.dart';
 
 class CatalogRulesScreen extends StatefulWidget {
   const CatalogRulesScreen({super.key, required this.db});
@@ -1413,7 +1413,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
             ),
             Tab(
               icon: const Icon(Icons.link_rounded),
-              text: _t('مجموعات التوافق', 'Groupes de compatibilité'),
+              text: _t('ربط الإطارات', 'Association des dormants'),
             ),
           ],
         ),
@@ -1466,10 +1466,9 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
                   ),
                 ),
                 _tableView('Joints'),
-                ProfileCompatibilityGroupsView(
+                FramePairingView(
                   db: widget.db,
                   seriesId: _selectedSeriesId,
-                  seriesName: _selectedSeries?['name']?.toString() ?? '',
                   canEdit: () {
                     final s = context.watch<AppSettingsProvider>();
                     return s.isAdmin || s.isManager;

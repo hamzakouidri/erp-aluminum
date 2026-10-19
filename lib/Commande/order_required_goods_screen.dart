@@ -5242,25 +5242,26 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       // The rule engine validates the saved choice. This list deliberately
       // contains only active products compatible with the selected series.
       filteredSections = List<Map<String, dynamic>>.from(rawSections);
+    } else if (isFrameRow && isSideRow) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _t('إطار هذه الجهة يتبع ربط الإطارات: غيّره من صفحة الرسم.'),
+          ),
+        ),
+      );
+      return;
     } else if (isFrameRow || isSashRow) {
       filteredSections = rawSections.where((s) {
         final type = (s['type'] ?? '').toString().trim().toLowerCase();
         if (type != rowKind) return false;
         if (isSashRow) return true;
         // The frames that every drawing using this row would accept.
-        if (!affected.every(
+        return affected.every(
           (entry) =>
               entry.$1.model.frameFitsCurrentDrawing(s, sliding: rowSliding),
-        )) {
-          return false;
-        }
-        if (!isAngleSideRow) return true;
-        try {
-          final section = AluminumSection.fromMap(s);
-          return section.couvreJointWidth <= 0 && !section.allowsSideCover;
-        } catch (_) {
-          return false;
-        }
+        );
       }).toList();
       if (filteredSections.isEmpty) {
         if (!mounted) return;

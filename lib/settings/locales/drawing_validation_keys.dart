@@ -3,6 +3,31 @@ import '../app_settings.dart';
 /// Messages shown when a typed drawing dimension is outside what the
 /// aluminium/PVC layout can physically take.
 final Map<String, Map<AppLanguage, String>> drawingValidationKeys = {
+  'إلغاء الغطاء': {
+    AppLanguage.arabic: 'إلغاء الغطاء',
+    AppLanguage.french: "Retirer le couvre-joint",
+    AppLanguage.english: "Remove the cover",
+  },
+  'هل نقطع الغطاء المدمج من هذا الإطار، أم نغيّر إطار هذه الجهة بالإطار بدون غطاء المحدد في صفحة ربط الإطارات؟': {
+    AppLanguage.arabic: 'هل نقطع الغطاء المدمج من هذا الإطار، أم نغيّر إطار هذه الجهة بالإطار بدون غطاء المحدد في صفحة ربط الإطارات؟',
+    AppLanguage.french: "Couper le couvre-joint intégré de ce dormant, ou couper ce côté dans le dormant sans couvre-joint défini dans la page « Association des dormants » ?",
+    AppLanguage.english: "Cut the integrated cover off this frame, or cut this side from the frame without cover set in the \"Frame pairing\" page?",
+  },
+  'قطع الغطاء': {
+    AppLanguage.arabic: 'قطع الغطاء',
+    AppLanguage.french: "Couper le couvre-joint",
+    AppLanguage.english: "Cut the cover",
+  },
+  'تغيير إطار هذه الجهة': {
+    AppLanguage.arabic: 'تغيير إطار هذه الجهة',
+    AppLanguage.french: "Changer le dormant de ce côté",
+    AppLanguage.english: "Change this side's frame",
+  },
+  'إطار هذه الجهة يتبع ربط الإطارات: غيّره من صفحة الرسم.': {
+    AppLanguage.arabic: 'إطار هذه الجهة يتبع ربط الإطارات: غيّره من صفحة الرسم.',
+    AppLanguage.french: "Le dormant de ce côté suit l'association des dormants : changez-le depuis la page du dessin.",
+    AppLanguage.english: "This side's frame follows the frame pairing: change it from the drawing page.",
+  },
   'عدد القطاعات': {
     AppLanguage.arabic: 'عدد القطاعات',
     AppLanguage.french: "Nombre de barres",
@@ -42,13 +67,13 @@ final Map<String, Map<AppLanguage, String>> drawingValidationKeys = {
     AppLanguage.english:
         'The corner profile goes only between two joined frames, never on the edges of a frame. Join two frames, then switch it on between them.',
   },
-  'بجانب بروفيل الزاوية يجب إطار لا يحمل غطاءً جانبيًا ولا غطاءً مدمجًا، ولا يوجد في السلسلة إطار مناسب لـ: {frames}': {
+  'لا يمكن تفعيل بروفيل الزاوية: حدّد «إطار جهة بروفيل الزاوية» لـ {frames} في صفحة «ربط الإطارات».': {
     AppLanguage.arabic:
-        'بجانب بروفيل الزاوية يجب إطار لا يحمل غطاءً جانبيًا ولا غطاءً مدمجًا، ولا يوجد في السلسلة إطار مناسب لـ: {frames}',
+        'لا يمكن تفعيل بروفيل الزاوية: حدّد «إطار جهة بروفيل الزاوية» لـ {frames} في صفحة «ربط الإطارات».',
     AppLanguage.french:
-        'Contre le profilé d\'angle il faut un cadre sans couvre-joint ni couvre-joint intégré ; la série n\'en a aucun pour : {frames}',
+        "Impossible d'activer le profil d'angle : définissez le « dormant côté profil d'angle » de {frames} dans la page « Association des dormants ».",
     AppLanguage.english:
-        'A corner profile needs a frame that carries no side cover and has no integrated cover; the series has none for: {frames}',
+        'The corner profile cannot be switched on: set the "frame against the corner profile" of {frames} in the "Frame pairing" page.',
   },
   'القياس المسموح به بين {min} و {max} مم': {
     AppLanguage.arabic: 'القياس المسموح به بين {min} و {max} مم',

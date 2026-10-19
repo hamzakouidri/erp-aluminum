@@ -3895,7 +3895,13 @@ class _WindowViewState extends State<WindowView> {
   /// next to it (an integrated cover, or in aluminium a frame accepting a
   /// cover) and the series has no frame that can.
   void _warnProfileAngleFrames() {
-    final problems = widget.model.profileAngleFrameProblems;
+    // A refused switch names the frames without a corner frame set; an
+    // older drawing may also hold a corner profile with such a frame.
+    final refused = widget.model.lastCornerPairingRefusal;
+    widget.model.lastCornerPairingRefusal = const [];
+    final problems = refused.isNotEmpty
+        ? refused
+        : widget.model.profileAngleFrameProblems;
     if (problems.isEmpty || !mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -3905,7 +3911,7 @@ class _WindowViewState extends State<WindowView> {
           duration: const Duration(seconds: 6),
           content: Text(
             _tr(
-              'بجانب بروفيل الزاوية يجب إطار لا يحمل غطاءً جانبيًا ولا غطاءً مدمجًا، ولا يوجد في السلسلة إطار مناسب لـ: {frames}',
+              'لا يمكن تفعيل بروفيل الزاوية: حدّد «إطار جهة بروفيل الزاوية» لـ {frames} في صفحة «ربط الإطارات».',
             ).replaceAll('{frames}', problems.join('، ')),
           ),
         ),

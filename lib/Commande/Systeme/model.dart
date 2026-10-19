@@ -3638,6 +3638,13 @@ class WindowModel extends ChangeNotifier {
   /// Populated by [reloadFrameJoinRules] whenever series change.
   Map<int, Set<int>> _frameJoinPartners = {};
 
+  /// FramePairingRules by frame section id: the frame of its sides without
+  /// a cover, its frame against a corner profile, the frames it joins.
+  Map<int, Map<String, dynamic>> _framePairings = {};
+
+  /// Frames named by the last refused corner profile switch.
+  List<String> lastCornerPairingRefusal = const [];
+
 
 
 
