@@ -1,7 +1,7 @@
 import 'dart:io';
+import 'package:database_data/widgets/svg_file/svg_file_picture.dart';
 import 'package:database_data/widgets/app_material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import '../sql_database.dart'; // تأكد من مسار ملف قاعدة البيانات
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/settings/app_settings.dart';
@@ -1227,8 +1227,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                     Padding(
                       padding: const EdgeInsets.all(8.0),
                       child: selectedImagePath!.toLowerCase().endsWith('.svg')
-                          ? SvgPicture.file(
-                              File(selectedImagePath!),
+                          ? svgFilePicture(
+                              selectedImagePath!,
                               height: 100,
                               width: 100,
                               fit: BoxFit.contain,
@@ -1989,8 +1989,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                     Padding(
                       padding: const EdgeInsets.all(8.0),
                       child: selectedImagePath!.toLowerCase().endsWith('.svg')
-                          ? SvgPicture.file(
-                              File(selectedImagePath!),
+                          ? svgFilePicture(
+                              selectedImagePath!,
                               height: 100,
                               width: 100,
                               fit: BoxFit.contain,

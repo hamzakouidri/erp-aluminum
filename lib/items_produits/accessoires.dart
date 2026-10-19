@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:database_data/widgets/svg_file/svg_file_picture.dart';
 import 'dart:io';
 
 import 'package:database_data/widgets/app_material.dart';
@@ -1023,8 +1024,8 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                             ),
                             clipBehavior: Clip.antiAlias,
                             child: selectedImagePath!.toLowerCase().endsWith('.svg')
-                                ? SvgPicture.file(
-                                    File(selectedImagePath!),
+                                ? svgFilePicture(
+                                    selectedImagePath!,
                                     fit: BoxFit.contain,
                                   )
                                 : Image.file(
@@ -2017,7 +2018,7 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
                               if (path.startsWith('assets/')) {
                                 return SvgPicture.asset(path, fit: BoxFit.contain);
                               }
-                              return SvgPicture.file(File(path), fit: BoxFit.contain);
+                              return svgFilePicture(path, fit: BoxFit.contain);
                             }
                             if (path.startsWith('assets/')) {
                               return Image.asset(path, fit: BoxFit.cover);

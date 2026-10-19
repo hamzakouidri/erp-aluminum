@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:database_data/widgets/svg_file/svg_file_picture.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -224,8 +225,8 @@ class SectionImageWidget extends StatelessWidget {
           if (file.existsSync()) {
             final isSvg = file.path.toLowerCase().endsWith('.svg');
             loadedWidget = isSvg
-                ? SvgPicture.file(
-                    file,
+                ? svgFilePicture(
+                    file.path,
                     width: size,
                     height: size,
                     fit: BoxFit.contain,
@@ -568,8 +569,8 @@ class SectionImageWidget extends StatelessWidget {
             try {
               if (f.existsSync()) {
                 return isSvg
-                    ? SvgPicture.file(
-                        f,
+                    ? svgFilePicture(
+                        f.path,
                         width: size,
                         height: size,
                         fit: BoxFit.contain,

@@ -69,14 +69,27 @@ class _AuthSessionViewState extends State<AuthSessionView> {
     final user = _currentUser;
     if (user != null) {
       const authenticatedContent = SubscriptionChecker();
-      Widget content;
-      if (!kIsWeb && Platform.isWindows) {
+      Widget desktop() {
         final workspace = context.read<WorkspaceController>();
-        content = DesktopWindowFrame(
+        return DesktopWindowFrame(
           topBar: const WorkspaceTabStrip(),
           onOpen: (title, icon, screen) =>
               workspace.open(title: title, icon: icon, content: screen),
           child: authenticatedContent,
+        );
+      }
+
+      final Widget content;
+      if (!kIsWeb && Platform.isWindows) {
+        content = desktop();
+      } else if (kIsWeb) {
+        // The website follows the screen: the computer menus on a wide
+        // screen, the phone layout on a narrow one.
+        content = LayoutBuilder(
+          builder: (context, constraints) =>
+              constraints.maxWidth >= webDesktopMinWidth
+              ? desktop()
+              : authenticatedContent,
         );
       } else {
         content = authenticatedContent;
@@ -98,3 +111,6 @@ class _AuthSessionViewState extends State<AuthSessionView> {
   }
 }
 
+/// Width from which the website shows the computer layout (menus and
+/// document tabs) instead of the phone layout.
+const double webDesktopMinWidth = 1024;

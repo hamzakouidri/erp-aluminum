@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 import 'package:database_data/Cliente/client.dart';
 import 'package:database_data/Commande/commande.dart';
 import 'package:database_data/Screen/achat_screen.dart';
@@ -66,13 +68,15 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
   @override
   void initState() {
     super.initState();
+    // In a browser (wide screen) the frame only provides the menus.
+    if (kIsWeb) return;
     windowManager.addListener(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _readWindowState());
   }
 
   @override
   void dispose() {
-    windowManager.removeListener(this);
+    if (!kIsWeb) windowManager.removeListener(this);
     super.dispose();
   }
 
@@ -109,6 +113,7 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
   }
 
   Future<void> _toggleMaximize() async {
+    if (kIsWeb) return;
     try {
       final bounds = await windowManager.getBounds();
       final isMax = await windowManager.isMaximized();
@@ -135,6 +140,7 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
   }
 
   Future<void> _closeApp() async {
+    if (kIsWeb) return;
     try {
       await windowManager.destroy();
     } catch (_) {}
@@ -142,6 +148,7 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
   }
 
   Future<void> _toggleFullScreen() async {
+    if (kIsWeb) return;
     final next = !_isFullScreen;
     await windowManager.setFullScreen(next);
     if (mounted) setState(() => _isFullScreen = next);
@@ -781,8 +788,8 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
                 // ── Logo + app name (draggable) ────────────────────────────
                 SizedBox(
                   width: 142,
-                  child: DragToMoveArea(
-                    child: GestureDetector(
+                  child: _dragArea(
+                    GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onDoubleTap: _toggleMaximize,
                       child: Padding(
@@ -860,11 +867,13 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onDoubleTap: _toggleMaximize,
-                      child: DragToMoveArea(child: const SizedBox.expand()),
+                      child: _dragArea(const SizedBox.expand()),
                     ),
                   ),
 
                 // ── Window control buttons ──────────────────────────────────
+                // The browser has its own window controls.
+                if (!kIsWeb) ...[
                 _CaptionButton(
                   tooltip: Localization.translate('تصغير', lang),
                   iconBuilder: (_) =>
@@ -891,6 +900,7 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
                   ),
                   onPressed: _closeApp,
                 ),
+                ],
               ],
             ),
           ),
@@ -1012,7 +1022,7 @@ class _DesktopResponsiveMenuBar extends StatelessWidget {
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onDoubleTap: onDoubleTap,
-                child: DragToMoveArea(child: const SizedBox.expand()),
+                child: _dragArea(const SizedBox.expand()),
               ),
             ),
           ],
@@ -1214,3 +1224,7 @@ class _CaptionButtonState extends State<_CaptionButton> {
     );
   }
 }
+
+/// Dragging this area moves the native window; a browser has none.
+Widget _dragArea(Widget child) =>
+    kIsWeb ? child : DragToMoveArea(child: child);
