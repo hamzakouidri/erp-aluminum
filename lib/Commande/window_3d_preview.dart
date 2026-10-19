@@ -573,8 +573,12 @@ class Window3DPainter extends CustomPainter {
     return math.max(110, box + 12);
   }
 
-  /// One masonry slab per wall, with an opening around its frames.
-  List<_WallSlab> _wallSlabs(List<(Rect, _Wall)> frames) {
+  /// One masonry slab per wall, with an opening around its frames and their
+  /// side covers ([covers]).
+  List<_WallSlab> _wallSlabs(
+    List<(Rect, _Wall)> frames, [
+    List<(Rect, _Wall)> covers = const [],
+  ]) {
     final slabs = <_WallSlab>[];
     final walls = <_Wall>[];
     for (final (_, wall) in frames) {
@@ -590,7 +594,11 @@ class Window3DPainter extends CustomPainter {
           if (identical(w, wall)) rect,
       ];
       var opening = rects.first;
-      for (final rect in rects.skip(1)) {
+      for (final rect in [
+        ...rects.skip(1),
+        for (final (cover, w) in covers)
+          if (identical(w, wall)) cover,
+      ]) {
         opening = opening.expandToInclude(rect);
       }
       // A tunnel box sits above the frames; an ordinary box inside the
@@ -644,6 +652,153 @@ class Window3DPainter extends CustomPainter {
       );
     }
     return slabs;
+  }
+
+  // ---------------------------------------------------------- side cover
+
+  /// Visible width of the side cover (couvre-joint), 0 when the drawing
+  /// shows none. Same rule as the 2D drawing.
+  double get _sideCoverWidth {
+    if (!model.hasSideCovers) return 0;
+    if (model.isIntegratedFrame) {
+      return model.isSideCoverAllowed
+          ? model.integratedFrameSideCoverWidth
+          : 0;
+    }
+    if (model.selectedOuterFrameHasIntegratedSideCover ||
+        !model.canUseStandaloneSideCover) {
+      return 0;
+    }
+    final width = model.standaloneSideCoverWidth;
+    if (width > 0) return width;
+    return model.selectedSideCover != null || model.sideCoverOverride != null
+        ? 35.0
+        : 0;
+  }
+
+  /// The side cover strips around [frame] (drawing mm, outside the frame),
+  /// on its outer edges only, with the corner squares where two strips meet.
+  List<Rect> _sideCoverStrips(Rect frame, List<Rect> frames) {
+    final cover = _sideCoverWidth;
+    if (cover <= 0) return const [];
+    final edges = frames.length > 1
+        ? model
+              .getExposedFrameEdgeSegments()
+              .where(
+                (edge) =>
+                    edge.frameRect == null ||
+                    (edge.frameRect!.center - frame.center).distance < 1,
+              )
+              .where(
+                (edge) => switch (edge.side) {
+                  'top' => (edge.coordinate - frame.top).abs() <= 2,
+                  'bottom' => (edge.coordinate - frame.bottom).abs() <= 2,
+                  'left' => (edge.coordinate - frame.left).abs() <= 2,
+                  _ => (edge.coordinate - frame.right).abs() <= 2,
+                },
+              )
+              .where(
+                (edge) => edge.side == 'top' || edge.side == 'bottom'
+                    ? edge.start < frame.right && edge.end > frame.left
+                    : edge.start < frame.bottom && edge.end > frame.top,
+              )
+              .toList()
+        : [
+            FrameEdgeSegment(
+              side: 'top',
+              start: frame.left,
+              end: frame.right,
+              coordinate: frame.top,
+            ),
+            FrameEdgeSegment(
+              side: 'bottom',
+              start: frame.left,
+              end: frame.right,
+              coordinate: frame.bottom,
+            ),
+            FrameEdgeSegment(
+              side: 'left',
+              start: frame.top,
+              end: frame.bottom,
+              coordinate: frame.left,
+            ),
+            FrameEdgeSegment(
+              side: 'right',
+              start: frame.top,
+              end: frame.bottom,
+              coordinate: frame.right,
+            ),
+          ];
+    final horizontal = <FrameEdgeSegment>[];
+    final vertical = <FrameEdgeSegment>[];
+    for (final edge in edges) {
+      if (model.hiddenSideCoverSegments.contains(edge.side) ||
+          model.removedShutterSides.contains(edge.side) ||
+          !model.isSideCoverSegmentEnabled(edge.side)) {
+        continue;
+      }
+      // A regular shutter box stands on the frame top.
+      if (edge.side == 'top' &&
+          model.hasShutter &&
+          !model.isCaissonTunnel &&
+          (edge.coordinate - frame.top).abs() <= 2 &&
+          frame.top <= model.shutterBoxHeight + 2) {
+        continue;
+      }
+      if (edge.side == 'bottom' && !model.hasBottomFrameForRect(frame)) {
+        continue;
+      }
+      final hasCover = model.isIntegratedFrame
+          ? model.frameSideHasIntegratedCover(frame, edge.side)
+          : model.frameSideAllowsSideCover(frame, edge.side);
+      if (!hasCover) continue;
+      (edge.side == 'top' || edge.side == 'bottom' ? horizontal : vertical)
+          .add(edge);
+    }
+    final strips = <Rect>[];
+    Rect strip(FrameEdgeSegment edge) => switch (edge.side) {
+      'top' => Rect.fromLTRB(
+        edge.start,
+        edge.coordinate - cover,
+        edge.end,
+        edge.coordinate,
+      ),
+      'bottom' => Rect.fromLTRB(
+        edge.start,
+        edge.coordinate,
+        edge.end,
+        edge.coordinate + cover,
+      ),
+      'left' => Rect.fromLTRB(
+        edge.coordinate - cover,
+        edge.start,
+        edge.coordinate,
+        edge.end,
+      ),
+      _ => Rect.fromLTRB(
+        edge.coordinate,
+        edge.start,
+        edge.coordinate + cover,
+        edge.end,
+      ),
+    };
+    for (final edge in [...horizontal, ...vertical]) {
+      strips.add(strip(edge));
+    }
+    for (final h in horizontal) {
+      for (final v in vertical) {
+        final atEnd =
+            (v.coordinate - h.start).abs() <= 2 ||
+            (v.coordinate - h.end).abs() <= 2;
+        final touches =
+            h.coordinate >= v.start - 2 && h.coordinate <= v.end + 2;
+        if (!atEnd || !touches) continue;
+        final hs = strip(h);
+        final vs = strip(v);
+        strips.add(Rect.fromLTRB(vs.left, hs.top, vs.right, hs.bottom));
+      }
+    }
+    return strips;
   }
 
   // ------------------------------------------------------------- builders
@@ -1408,7 +1563,10 @@ class Window3DPainter extends CustomPainter {
     final posts = <_Solid>[];
     final frames = _framesOnWalls(posts);
     final groups = <_Group>[];
+    final covers = <(Rect, _Wall)>[];
     if (!model.isShutterOnly) {
+      final frameRects = [for (final (rect, _) in frames) rect];
+      final coverColor = Color.lerp(_frameColor, Colors.black, 0.05)!;
       for (final (rect, wall) in frames) {
         final group = _Group(wall);
         final zones = model.zones
@@ -1430,6 +1588,14 @@ class Window3DPainter extends CustomPainter {
         }
         _addDrainSlots(group, rect);
         _addMosquitoNet(group, rect);
+        // The side cover closes the joint between the frame and the wall,
+        // around the frame over its whole depth, as the 2D drawing shows it.
+        for (final strip in _sideCoverStrips(rect, frameRects)) {
+          covers.add((strip, wall));
+          group.exterior.add(
+            _block(wall, strip, 0, -frameDepth, coverColor, priority: 0),
+          );
+        }
         groups.add(group);
       }
     }
@@ -1443,7 +1609,7 @@ class Window3DPainter extends CustomPainter {
         frames.isNotEmpty &&
         frames.every((f) => identical(f.$2, frames.first.$2));
     final slabs = showWall && straight
-        ? _wallSlabs(frames)
+        ? _wallSlabs(frames, covers)
         : const <_WallSlab>[];
     return (groups, slabs);
   }
