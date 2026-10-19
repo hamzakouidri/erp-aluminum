@@ -417,6 +417,10 @@ extension _WindowViewCanvas on _WindowViewState {
         );
       },
     );
+    // The dialog stays mounted while it animates out: disposing its text
+    // controller or moving the hinge (which rebuilds the page) during that
+    // interval crashed the page. Wait for it to close first.
+    await Future<void>.delayed(const Duration(milliseconds: 300));
     controller.dispose();
     if (!mounted || requestedDistance == null) return;
 
