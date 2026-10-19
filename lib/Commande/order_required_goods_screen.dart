@@ -1868,6 +1868,12 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     Map<String, WindowModel> catalogCache,
   ) async {
     applyWindowModelFromMap(model, modelMap);
+    // The goods are bought in the colour the line was sold in. Loading the
+    // series catalogue replaces a colour that the series does not list (for
+    // example Gris 9007 became Gris 7024), which split the goods by colour.
+    final savedDbColor = model.selectedDbColor == null
+        ? null
+        : Map<String, dynamic>.from(model.selectedDbColor!);
     final savedOverrides = Map<String, dynamic>.from(model.componentOverrides);
     final savedFrameOverride = model.frameOverride != null
         ? Map<String, dynamic>.from(model.frameOverride!)
@@ -1907,6 +1913,14 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     }
     if (savedSlidingSashOverride != null) {
       model.slidingSashOverride = savedSlidingSashOverride;
+    }
+    final savedColorName = savedDbColor?['name']?.toString().trim() ?? '';
+    final loadedColorName =
+        model.selectedDbColor?['name']?.toString().trim() ?? '';
+    if (savedDbColor != null &&
+        savedColorName.isNotEmpty &&
+        savedColorName != loadedColorName) {
+      model.selectedDbColor = savedDbColor;
     }
   }
 
@@ -2569,7 +2583,17 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
       // ترتيب العرض: البروفيلات ثم الإكسسوارات ثم الزجاج. داخل كل فئة
       // ذات ألوان، تسبق الأبيضُ الخشبيَّ ثم الداكن فبقية الألوان.
-      final sorted = aggregationMap.values.toList();
+      // A profile row with nothing to cut and nothing to buy is not a need:
+      // it only repeated a profile (often in another colour) with zero.
+      final sorted = aggregationMap.values
+          .where(
+            (item) =>
+                item.category != 'profile' ||
+                item.kitGroupName != null ||
+                item.cuttingPieces.isNotEmpty ||
+                item.totalQuantity > 0,
+          )
+          .toList();
       sorted.sort((a, b) {
         const order = <String>[
           'profile',

@@ -497,7 +497,17 @@ extension WindowModelCatalog on WindowModel {
     if (previousColorName != null && previousColorName.isNotEmpty) {
       selectedColor = _findAvailableColorByName(previousColorName);
     }
-    if (selectedColor == null && previousColorHex.isNotEmpty) {
+    // Many catalogue colours keep the placeholder #FFFFFF. A named colour
+    // ("Gris") must not be swapped for another one ("Gris 7024") only
+    // because both carry that placeholder.
+    final hexIsPlaceholder =
+        (previousColorHex == 'ffffff' || previousColorHex == 'fff') &&
+        previousColorName != null &&
+        previousColorName.isNotEmpty &&
+        !_isWhiteProfileColor(preferredColor);
+    if (selectedColor == null &&
+        previousColorHex.isNotEmpty &&
+        !hexIsPlaceholder) {
       selectedColor = _findAvailableColorByHex(previousColorHex);
     }
     if (selectedColor == null &&

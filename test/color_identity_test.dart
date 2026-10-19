@@ -29,8 +29,11 @@ void main() {
     expect(gold, isNot(contains(const Color(0xFFFFD700))));
   });
 
-  test('faux bois marron uses the faux-bois grain, not the antique', () {
+  test('faux bois marron uses the light brown wood, not the antique', () {
     final image = realColorTextureImage({'name': 'Faux Bois Marron'});
-    expect((image!.image as AssetImage).assetName, 'assets/images/wood_texture.png');
+    expect(
+      (image!.image as AssetImage).assetName,
+      'assets/images/wood_texture_light_brown.png',
+    );
   });
 }
