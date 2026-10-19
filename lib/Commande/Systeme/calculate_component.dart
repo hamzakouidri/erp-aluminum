@@ -1,4 +1,5 @@
 // Force compile sync trigger 4
+import 'shutter_calc_rules.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/cutting_settings.dart';
 import 'dart:math' as math;
@@ -7034,9 +7035,13 @@ class ComponentCalculator {
     // --- 3. الستائر (Shutters) ---
     if (hasShutter) {
       int caissonSize = window.shutterBoxHeight.toInt();
+      // A tunnel rail is the shutter height plus the workshop's addition.
+      final tunnelRailAdd = ShutterCalcRules.value(
+        ShutterCalcRules.tunnelRailAdd,
+      );
       double coulisseLengthM =
           (window.isCaissonTunnel
-              ? (window.height + 20.0)
+              ? (window.height + tunnelRailAdd)
               : (window.height - caissonSize)) /
           1000.0;
       if (coulisseLengthM < 0) coulisseLengthM = 0;
@@ -7197,10 +7202,6 @@ class ComponentCalculator {
       // Attaches a tunnel kit supplies (their type chosen by weight in the
       // kit, their number by width); not listed again on their own.
       int tunnelKitAttaches = 0;
-      // The axe deduction of the console of each tunnel section, from its
-      // CT kit, in section order.
-      final tunnelAxeDeductions = <double>[];
-      String? lastExpandedKitName;
       void addAndExpandKit(
         String uiKey,
         String descriptionCode, {
@@ -7217,7 +7218,6 @@ class ComponentCalculator {
         int? forcedCompatibilityGroup,
       }) {
         String? matchedKitName;
-        lastExpandedKitName = null;
         // Only a KitBundles selection may override the bundle chosen below;
         // legacy values saved from ShutterComponents are ignored.
         final savedKitSelection = window.componentOverrides[uiKey];
@@ -7325,7 +7325,6 @@ class ComponentCalculator {
         // bundle exists on the Kits page.
         if (matchedKitName == null) return;
         final String groupName = matchedKitName;
-        lastExpandedKitName = groupName;
         if (isTunnel && descriptionCode == 'M') {
           hasTunnelManoeuvreKit = true;
         }
@@ -7521,18 +7520,7 @@ class ComponentCalculator {
             requiredKitTokens: tunnelMechanismTokens,
             forcedCompatibilityGroup: window.tunnelConsoleGroup,
           );
-          // The axe length depends on the console.
-          final ctKit = lastExpandedKitName == null
-              ? null
-              : kitBundleMetadata[lastExpandedKitName];
-          tunnelAxeDeductions.add(
-            (ctKit?[window.tunnelConsoleGroup == 2
-                        ? 'compatibility_group_2_axe_deduction'
-                        : 'compatibility_group_1_axe_deduction']
-                    as num?)
-                ?.toDouble() ??
-                75.0,
-          );
+
           if (isCrankMechanism(mechanism)) {
             // A manoeuvre tunnel is made of two distinct kits: the tunnel
             // assembly itself and the separate manoeuvre kit.
@@ -7582,10 +7570,9 @@ class ComponentCalculator {
       // directly or supplied by a kit. Keep it as an explicit BOM row so its
       // quantity and official catalogue price never disappear.
       {
-        // A tunnel takes its console's deduction from the CT kit.
-        double axeDeduction(int section) =>
-            isTunnel && section < tunnelAxeDeductions.length
-            ? tunnelAxeDeductions[section]
+        // A tunnel takes the workshop's deduction for its console.
+        double axeDeduction(int section) => isTunnel
+            ? ShutterCalcRules.tunnelAxeDeduction(window.tunnelConsoleGroup)
             : 75.0;
         List<double> axePieces = [(window.width - axeDeduction(0)) / 1000.0];
         if (window.isShutterSplit && window.effectiveShutterSplits.isNotEmpty) {
@@ -7668,6 +7655,27 @@ class ComponentCalculator {
           : (double.tryParse(bladeHeightMatch.group(0)!.replaceAll(',', '.')) ??
                 43.0);
       final safeBladeHeightMm = bladeHeightMm > 0 ? bladeHeightMm : 43.0;
+      // A tunnel uses the workshop's blade values; any other box keeps the
+      // former fixed ones.
+      final bladeDeduction = isTunnel
+          ? ShutterCalcRules.value(ShutterCalcRules.tunnelBladeDeduction)
+          : 65.0;
+      final bladeHeightAdd = isTunnel
+          ? ShutterCalcRules.value(ShutterCalcRules.tunnelBladeHeightAdd)
+          : 0.0;
+      final extraBlades = isTunnel
+          ? ShutterCalcRules.value(ShutterCalcRules.tunnelExtraBlades)
+          : 2.0;
+      // A tunnel height is measured under the box: the blades cover it
+      // plus the workshop's addition. Any other box sits inside the height.
+      int bladeCountFor(double heightMm) =>
+          ((heightMm - (isTunnel ? 0.0 : window.shutterBoxHeight) +
+                          bladeHeightAdd) /
+                      safeBladeHeightMm +
+                  extraBlades)
+              .ceil()
+              .clamp(0, 100000)
+              .toInt();
       final frameRects = window.getFrameRects();
       final hasMultiFrames = frameRects.length > 1;
 
@@ -7687,14 +7695,10 @@ class ComponentCalculator {
         for (final split in window.effectiveShutterSplits) {
           final sWidth = split.width;
           final sHeight = split.customHeight ?? window.height;
-          final sNumBlades =
-              ((sHeight - window.shutterBoxHeight) / safeBladeHeightMm + 2)
-                  .ceil()
-                  .clamp(0, 100000)
-                  .toInt();
+          final sNumBlades = bladeCountFor(sHeight.toDouble());
           totalBladesCount += sNumBlades;
 
-          double sBladeLengthM = math.max(0.0, (sWidth - 65.0)) / 1000.0;
+          double sBladeLengthM = math.max(0.0, (sWidth - bladeDeduction)) / 1000.0;
           if (capThick > 0) {
             sBladeLengthM = math.max(
               0.0,
@@ -7703,7 +7707,7 @@ class ComponentCalculator {
           }
           bladePieces.addAll(List<double>.filled(sNumBlades, sBladeLengthM));
 
-          double sLameFinaleM = math.max(0.0, (sWidth - 65.0)) / 1000.0;
+          double sLameFinaleM = math.max(0.0, (sWidth - bladeDeduction)) / 1000.0;
           if (capThick > 0) {
             sLameFinaleM = math.max(
               0.0,
@@ -7716,14 +7720,10 @@ class ComponentCalculator {
         for (final rect in frameRects) {
           final fWidth = rect.width;
           final fHeight = rect.height;
-          final fNumBlades =
-              ((fHeight - window.shutterBoxHeight) / safeBladeHeightMm + 2)
-                  .ceil()
-                  .clamp(0, 100000)
-                  .toInt();
+          final fNumBlades = bladeCountFor(fHeight);
           totalBladesCount += fNumBlades;
 
-          double fBladeLengthM = math.max(0.0, (fWidth - 65.0)) / 1000.0;
+          double fBladeLengthM = math.max(0.0, (fWidth - bladeDeduction)) / 1000.0;
           if (capThick > 0) {
             fBladeLengthM = math.max(
               0.0,
@@ -7732,7 +7732,7 @@ class ComponentCalculator {
           }
           bladePieces.addAll(List<double>.filled(fNumBlades, fBladeLengthM));
 
-          double fLameFinaleM = math.max(0.0, (fWidth - 65.0)) / 1000.0;
+          double fLameFinaleM = math.max(0.0, (fWidth - bladeDeduction)) / 1000.0;
           if (capThick > 0) {
             fLameFinaleM = math.max(
               0.0,
@@ -7742,20 +7742,16 @@ class ComponentCalculator {
           lameFinalePieces.add(fLameFinaleM);
         }
       } else {
-        final numBladesShutter =
-            ((window.height - window.shutterBoxHeight) / safeBladeHeightMm + 2)
-                .ceil()
-                .clamp(0, 100000)
-                .toInt();
+        final numBladesShutter = bladeCountFor(window.height.toDouble());
         totalBladesCount = numBladesShutter;
-        double bladeLengthM = math.max(0.0, (window.width - 65.0)) / 1000.0;
+        double bladeLengthM = math.max(0.0, (window.width - bladeDeduction)) / 1000.0;
         if (capThick > 0) {
           bladeLengthM = math.max(0.0, bladeLengthM - (2 * capThick) / 1000.0);
         }
         bladePieces.addAll(List<double>.filled(numBladesShutter, bladeLengthM));
 
         double lameFinaleLengthM =
-            math.max(0.0, (window.width - 65.0)) / 1000.0;
+            math.max(0.0, (window.width - bladeDeduction)) / 1000.0;
         if (capThick > 0) {
           lameFinaleLengthM = math.max(
             0.0,
@@ -7805,7 +7801,9 @@ class ComponentCalculator {
         for (final split in window.effectiveShutterSplits) {
           final sH = split.customHeight ?? window.height;
           final sLengthM =
-              (window.isCaissonTunnel ? (sH + 20.0) : (sH - caissonSize)) /
+              (window.isCaissonTunnel
+                  ? (sH + tunnelRailAdd)
+                  : (sH - caissonSize)) /
               1000.0;
           final validLen = math.max(0.0, sLengthM);
           coulissePieces.add(validLen);

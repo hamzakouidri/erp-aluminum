@@ -32,6 +32,7 @@ import 'package:database_data/services/worker_push_notification_service.dart';
 import 'package:database_data/Commande/commande.dart';
 import 'package:database_data/Screen/treasury_screen.dart';
 import 'package:database_data/sql_database.dart';
+import 'package:database_data/Commande/Systeme/shutter_calc_rules.dart';
 
 import 'package:window_manager/window_manager.dart';
 
@@ -142,6 +143,8 @@ class _AppBootstrapState extends State<AppBootstrap> {
       } catch (error) {
         debugPrint('Cutting settings cache warning: $error');
       }
+      // The workshop's shutter calculation values (tunnel box...).
+      unawaited(ShutterCalcRules.load(SqlDatabase()));
 
       if (!mounted) return;
       setState(() {
