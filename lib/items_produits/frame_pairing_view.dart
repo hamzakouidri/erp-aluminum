@@ -261,11 +261,10 @@ class _FramePairingViewState extends State<FramePairingView> {
     final noCoverId = _int(pairing?['no_cover_frame_id']);
     final cornerId = _int(pairing?['corner_frame_id']);
     final joins = _joins(frameId);
-    final hasCover = _hasIntegratedCover(frame);
     final noCoverOptions = _frames
-        .where((f) => _int(f['id']) != frameId && !_hasIntegratedCover(f))
+        .where((f) => _int(f['id']) != frameId)
         .toList();
-    final cornerOptions = _frames.where((f) => !_hasIntegratedCover(f)).toList();
+    final cornerOptions = _frames.toList();
     final missingCorner = cornerId == null;
 
     return Card(
@@ -322,42 +321,58 @@ class _FramePairingViewState extends State<FramePairingView> {
             const SizedBox(height: 12),
             LayoutBuilder(
               builder: (context, constraints) {
-                final noCoverPicker = hasCover
-                    ? _framePicker(
-                        label: _tr(
-                          'إطار الجهات بدون غطاء',
-                          'Dormant des côtés sans couvre-joint',
-                          'Frame for sides without cover',
-                        ),
-                        value: noCoverId,
-                        options: noCoverOptions,
-                        onChanged: (id) => _save(
-                          frameId,
-                          noCover: id,
-                          clearNoCover: id == null,
-                        ),
-                      )
-                    : Text(
-                        _tr(
-                          'إطار بدون غطاء مدمج: لا يحتاج إطاراً للجهات بدون غطاء',
-                          'Dormant sans couvre-joint : pas de dormant pour les côtés sans couvre-joint',
-                          'Frame without integrated cover: no frame needed for sides without cover',
-                        ),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
-                      );
-                final cornerPicker = _framePicker(
-                  label: _tr(
-                    'إطار جهة بروفيل الزاوية',
-                    "Dormant côté profil d'angle",
-                    'Frame against the corner profile',
-                  ),
-                  value: cornerId,
-                  options: cornerOptions,
-                  onChanged: (id) =>
-                      _save(frameId, corner: id, clearCorner: id == null),
+                final noCoverPicker = Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _framePicker(
+                      label: _tr(
+                        'إطار الجهات بدون غطاء',
+                        'Dormant des côtés sans couvre-joint',
+                        'Frame for sides without cover',
+                      ),
+                      value: noCoverId,
+                      options: noCoverOptions,
+                      onChanged: (id) => _save(
+                        frameId,
+                        noCover: id,
+                        clearNoCover: id == null,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _tr(
+                        'عندما تُلغي الغطاء في جهة من هذا الإطار، تُقطع تلك الجهة من هذا الإطار بدل قطع الغطاء.',
+                        'Quand le couvre-joint d\'un côté de ce dormant est retiré, ce côté est coupé dans ce dormant au lieu de couper le couvre-joint.',
+                        'When the cover of one side of this frame is removed, that side is cut from this frame instead of cutting the cover.',
+                      ),
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                    ),
+                  ],
+                );
+                final cornerPicker = Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _framePicker(
+                      label: _tr(
+                        'إطار جهة بروفيل الزاوية',
+                        "Dormant côté profil d'angle",
+                        'Frame against the corner profile',
+                      ),
+                      value: cornerId,
+                      options: cornerOptions,
+                      onChanged: (id) =>
+                          _save(frameId, corner: id, clearCorner: id == null),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _tr(
+                        'عند تفعيل بروفيل الزاوية (Tube carré) بين نافذتين، تُقطع الجهة الملاصقة له من هذا الإطار. اختر الإطار نفسه إن كان يركب مباشرة.',
+                        "Quand le profil d'angle (tube carré) est activé entre deux fenêtres, le côté qui le touche est coupé dans ce dormant. Choisissez le dormant lui-même s'il se pose directement.",
+                        'When the corner profile (tube carré) is switched on between two windows, the side touching it is cut from this frame. Choose the frame itself if it fits directly.',
+                      ),
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                    ),
+                  ],
                 );
                 if (constraints.maxWidth < 560) {
                   return Column(

@@ -1396,8 +1396,8 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       appBar: AppBar(
         title: Text(
           _t(
-            'قواعد الأكسسوارات والجوانات',
-            'Règles des accessoires et des joints',
+            'قواعد الكتالوج: الأكسسوارات والجوانات وربط الإطارات',
+            'Règles du catalogue : accessoires, joints et dormants',
           ),
         ),
         bottom: TabBar(

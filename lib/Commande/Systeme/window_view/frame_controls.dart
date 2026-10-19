@@ -614,11 +614,13 @@ extension _WindowViewFrame on _WindowViewState {
   }
 
   _FrameResizeHandle? _frameResizeHandleAt(Offset screenPosition) {
-    final frameKey =
-        (widget.model.selection.type == SelectionType.frame ||
-            widget.model.selection.type == SelectionType.zone)
-        ? widget.model.selection.zoneId
-        : null;
+    // The frame resizes only once it is selected (one tap), never from its
+    // edge alone, and not while its slant/arch circles are shown.
+    if (widget.model.selection.type != SelectionType.frame ||
+        widget.model.frameShapeMode) {
+      return null;
+    }
+    final frameKey = widget.model.selection.zoneId;
     final outer = widget.model.frameRectForSelection(frameKey);
     if (outer == null) return null;
     final handles = <_FrameResizeHandle, Offset>{

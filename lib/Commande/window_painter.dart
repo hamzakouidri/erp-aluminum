@@ -14,6 +14,9 @@ import 'package:database_data/utils/real_color_resolver.dart';
 part 'window_painter_helpers.dart';
 
 class WindowPainter extends CustomPainter {
+  /// The leaves of each sliding zone as drawn, by zone id.
+  final Map<String, List<Rect>> _slidingLeafRects = {};
+
   final WindowModel model;
   final bool? overrideIsInternalView;
   final int repaintToken;
@@ -580,11 +583,44 @@ class WindowPainter extends CustomPainter {
             model.selectedZone != null &&
             (model.selectedZone!.id == zone.id || inAllSashes)) {
           final r = zone.boundary;
+          // A sliding leaf selected by a tap is highlighted alone.
+          final leafRects = _slidingLeafRects[zone.id];
+          final leafIndex = model.selectedSlidingLeaf;
+          final singleLeaf =
+              !inAllSashes &&
+              zone.content == ZoneContent.slidingSash &&
+              leafRects != null &&
+              leafIndex != null &&
+              leafIndex >= 0 &&
+              leafIndex < leafRects.length;
           bool highlightEntireZone =
-              inAllSashes ||
-              model.activeSubZone == 'all' ||
-              zone.content != ZoneContent.doubleSash;
-          if (highlightEntireZone) {
+              !singleLeaf &&
+              (inAllSashes ||
+                  model.activeSubZone == 'all' ||
+                  zone.content != ZoneContent.doubleSash);
+          if (singleLeaf) {
+            final leafR = leafRects[leafIndex];
+            final sashT =
+                zone.sashThickness ??
+                model.getSectionThickness('sash', fallback: 45.0);
+            final leafPath = Path()
+              ..fillType = PathFillType.evenOdd
+              ..addRect(leafR)
+              ..addRect(leafR.deflate(sashT));
+            canvas.drawPath(
+              leafPath,
+              Paint()
+                ..color = Colors.green.shade800.withValues(alpha: 0.35)
+                ..style = PaintingStyle.fill,
+            );
+            canvas.drawRect(
+              leafR,
+              Paint()
+                ..color = Colors.green.shade900
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 2.5,
+            );
+          } else if (highlightEntireZone) {
             final zonePath = _buildGlassLayerPath(
               r,
               t,
@@ -5733,6 +5769,9 @@ class WindowPainter extends CustomPainter {
       }
     }
 
+    // Kept for the selection highlight, drawn after the zones.
+    _slidingLeafRects[zone.id] = [for (var i = 0; i < count; i++) getSashRect(i)];
+
     List<int> tracks;
     List<int> sashDrawOrder;
 
@@ -5932,7 +5971,7 @@ class WindowPainter extends CustomPainter {
           canvas,
           sashRect,
           (i == 0) ? OpenDirection.left : OpenDirection.right,
-          zone.handlePositionRatio ?? 0.5,
+          zone.handleRatioFor(i == 0 ? 'left' : 'right'),
           t: t,
           topOffset: topOffset,
           isTopBound: isTopBound,
@@ -6025,7 +6064,7 @@ class WindowPainter extends CustomPainter {
           canvas,
           mainHandleOnRight ? centralRightSash : centralLeftSash,
           mainHandleOnRight ? OpenDirection.left : OpenDirection.right,
-          zone.handlePositionRatio ?? 0.5,
+          zone.handleRatioFor('center'),
           t: t,
           topOffset: topOffset,
           isTopBound: isTopBound,
@@ -6044,7 +6083,7 @@ class WindowPainter extends CustomPainter {
           canvas,
           mainHandleOnRight ? centralLeftSash : centralRightSash,
           mainHandleOnRight ? OpenDirection.right : OpenDirection.left,
-          zone.handlePositionRatio ?? 0.5,
+          zone.handleRatioFor('center2'),
           t: t,
           topOffset: topOffset,
           isTopBound: isTopBound,

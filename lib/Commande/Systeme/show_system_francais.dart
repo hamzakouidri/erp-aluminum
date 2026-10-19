@@ -10,7 +10,8 @@ import 'package:flutter/gestures.dart'
         GestureBinding,
         PointerScrollEvent,
         PointerSignalEvent,
-        kMiddleMouseButton;
+        kMiddleMouseButton,
+        kSecondaryMouseButton;
 import 'package:database_data/widgets/app_material.dart';
 import 'package:flutter/services.dart'
     show
@@ -146,6 +147,15 @@ class _WindowViewState extends State<WindowView> {
 
 
   bool _isDraggingHandle = false;
+
+  /// The mouse buttons of the pointer that started the current drag.
+  int _pointerButtons = 0;
+
+  /// Which sliding handle is dragged (left, right, center, center2).
+  String? _draggedHandleKey;
+
+  /// A drag with the wheel button only moves the view.
+  bool _isMiddlePanning = false;
   bool _isDraggingHinge = false;
   SashHingeEdge? _draggedHingeEdge;
   int _draggedHingeIndex = 0;
@@ -1313,7 +1323,7 @@ class _WindowViewState extends State<WindowView> {
                                     bool isDoubleTap = false;
                                     if (_lastTapTime != null &&
                                         now.difference(_lastTapTime!) <
-                                            const Duration(milliseconds: 300)) {
+                                            const Duration(milliseconds: 450)) {
                                       if (_lastTapPosition != null &&
                                           (details.localPosition -
                                                       _lastTapPosition!)
@@ -1324,6 +1334,26 @@ class _WindowViewState extends State<WindowView> {
                                     }
                                     _lastTapTime = now;
                                     _lastTapPosition = details.localPosition;
+                                    final frameKeyBeforeTap =
+                                        widget.model.selection.type ==
+                                            SelectionType.frame
+                                        ? (widget.model.selection.zoneId ??
+                                              'frame:0')
+                                        : null;
+                                    void updateFrameShapeMode() {
+                                      final selection = widget.model.selection;
+                                      if (selection.type !=
+                                          SelectionType.frame) {
+                                        widget.model.frameShapeMode = false;
+                                        return;
+                                      }
+                                      final key =
+                                          selection.zoneId ?? 'frame:0';
+                                      widget.model.frameShapeMode =
+                                          isDoubleTap &&
+                                          frameKeyBeforeTap == key;
+                                      widget.model.refreshUI();
+                                    }
 
                                     final frameAtBorderHit = _frameAtBorder(
                                       modelPos,
@@ -1440,6 +1470,7 @@ class _WindowViewState extends State<WindowView> {
                                       widget.model.selectFrameByIndex(
                                         frameAtBorder,
                                       );
+                                      updateFrameShapeMode();
                                       return;
                                     }
 
@@ -1451,6 +1482,7 @@ class _WindowViewState extends State<WindowView> {
                                       modelPos,
                                       isLongPress: false,
                                     );
+                                    updateFrameShapeMode();
 
                                     if (!widget.model.isShutterOnly &&
                                         isDoubleTap &&
@@ -1461,7 +1493,7 @@ class _WindowViewState extends State<WindowView> {
                                       });
                                     }
                                   },
-                                  onSecondaryTapDown: (details) async {
+                                  onSecondaryTapUp: (details) async {
                                     if (await _showHingeContextMenu(
                                       details.globalPosition,
                                       details.localPosition,
@@ -1726,6 +1758,12 @@ class _WindowViewState extends State<WindowView> {
                                     _baseUserScale = _userScale;
                                     _baseUserPan = _userPan;
                                     _focalPointStart = details.localFocalPoint;
+                                    _draggedHandleKey = null;
+                                    if ((_pointerButtons & kMiddleMouseButton) !=
+                                        0) {
+                                      _isMiddlePanning = true;
+                                      return;
+                                    }
 
                                     if (_isWindowsDesktop &&
                                         HardwareKeyboard
@@ -1804,6 +1842,7 @@ class _WindowViewState extends State<WindowView> {
                                           _frameResizeHandleAt(touchScreen);
                                       final canSlantOrArch =
                                           isFrameSelected &&
+                                          widget.model.frameShapeMode &&
                                           widget.model.canBeArchedOrSlanted &&
                                           (widget.model.selection.zoneId ==
                                                   null ||
@@ -1902,7 +1941,10 @@ class _WindowViewState extends State<WindowView> {
                                               : zone.openDirection!;
 
                                           // Precise hit testing for handle - disabled when both sashes are selected!
-                                          if (!isDoubleBothSelected) {
+                                          if (!isDoubleBothSelected ||
+                                              (_pointerButtons &
+                                                      kSecondaryMouseButton) !=
+                                                  0) {
                                             double hRatio =
                                                 zone.handlePositionRatio ?? 0.5;
                                             double hX = sashRect.center.dx;
@@ -2006,6 +2048,10 @@ class _WindowViewState extends State<WindowView> {
 
                                           double hRatio =
                                               zone.handlePositionRatio ?? 0.5;
+                                          final hRatioLeft = zone
+                                              .handleRatioFor('left');
+                                          final hRatioRight = zone
+                                              .handleRatioFor('right');
 
                                           // Left handle (OpenDirection.left on sashRectLeft)
                                           double hXLeft =
@@ -2021,7 +2067,7 @@ class _WindowViewState extends State<WindowView> {
                                               topYLeft +
                                               ((sashRectLeft.bottom -
                                                       topYLeft) *
-                                                  (1.0 - hRatio));
+                                                  (1.0 - hRatioLeft));
 
                                           // Right handle (OpenDirection.right on sashRectRight)
                                           double hXRight =
@@ -2037,7 +2083,7 @@ class _WindowViewState extends State<WindowView> {
                                               topYRight +
                                               ((sashRectRight.bottom -
                                                       topYRight) *
-                                                  (1.0 - hRatio));
+                                                  (1.0 - hRatioRight));
 
                                           final handleScreenPosLeft =
                                               modelToScreen(
@@ -2048,15 +2094,23 @@ class _WindowViewState extends State<WindowView> {
                                                 Offset(hXRight, hYRight),
                                               );
 
-                                          var touchesSlidingHandle =
+                                          final onLeftHandle =
                                               (touchScreen -
                                                           handleScreenPosLeft)
                                                       .distance <
-                                                  45.0 ||
+                                                  45.0;
+                                          final onRightHandle =
                                               (touchScreen -
                                                           handleScreenPosRight)
                                                       .distance <
                                                   45.0;
+                                          var touchesSlidingHandle =
+                                              onLeftHandle || onRightHandle;
+                                          if (onLeftHandle) {
+                                            _draggedHandleKey = 'left';
+                                          } else if (onRightHandle) {
+                                            _draggedHandleKey = 'right';
+                                          }
 
                                           final hasCentralMeeting =
                                               zone.slidingFaceToFace &&
@@ -2071,7 +2125,10 @@ class _WindowViewState extends State<WindowView> {
 
                                             Offset centralHandlePosition(
                                               bool onRight,
+                                              String key,
                                             ) {
+                                              final hRatio = zone
+                                                  .handleRatioFor(key);
                                               final x = onRight
                                                   ? centerX + 20.0
                                                   : centerX - 20.0;
@@ -2097,9 +2154,13 @@ class _WindowViewState extends State<WindowView> {
                                                   (touchScreen -
                                                           centralHandlePosition(
                                                             mainHandleOnRight,
+                                                            'center',
                                                           ))
                                                       .distance <
                                                   45.0;
+                                              if (touchesSlidingHandle) {
+                                                _draggedHandleKey = 'center';
+                                              }
                                             }
                                             if (!touchesSlidingHandle &&
                                                 zone.slidingSecondCentralHandle) {
@@ -2107,9 +2168,13 @@ class _WindowViewState extends State<WindowView> {
                                                   (touchScreen -
                                                           centralHandlePosition(
                                                             !mainHandleOnRight,
+                                                            'center2',
                                                           ))
                                                       .distance <
                                                   45.0;
+                                              if (touchesSlidingHandle) {
+                                                _draggedHandleKey = 'center2';
+                                              }
                                             }
                                           }
 
@@ -2318,6 +2383,8 @@ class _WindowViewState extends State<WindowView> {
                                     }
                                   },
                                   onScaleUpdate: (details) {
+                                    // The pointer listener pans the view.
+                                    if (_isMiddlePanning) return;
                                     final slantEnd = _draggedSlantEnd;
                                     if (slantEnd != null) {
                                       widget.model.previewSlantedDividerEnd(
@@ -2473,6 +2540,18 @@ class _WindowViewState extends State<WindowView> {
                                               !_frameResizeHistorySaved,
                                         );
                                         _frameResizeHistorySaved = true;
+                                        final anchorShift =
+                                            widget.model.lastResizeAnchorShift;
+                                        if (anchorShift != Offset.zero) {
+                                          widget.model.lastResizeAnchorShift =
+                                              Offset.zero;
+                                          setState(() {
+                                            _userPan -=
+                                                anchorShift *
+                                                (_userScale *
+                                                    widget.model.canvasScale);
+                                          });
+                                        }
                                       } else if (_isDraggingSlantLeft ||
                                           _isDraggingSlantRight ||
                                           _isDraggingArch) {
@@ -2658,13 +2737,16 @@ class _WindowViewState extends State<WindowView> {
                                       } else if (!_suppressHandleDragForLongPress &&
                                           _isDraggingHandle &&
                                           widget.model.selectedZone != null &&
-                                          !(widget
-                                                      .model
-                                                      .selectedZone!
-                                                      .content ==
-                                                  ZoneContent.doubleSash &&
-                                              widget.model.activeSubZone ==
-                                                  'all') &&
+                                          (!(widget
+                                                          .model
+                                                          .selectedZone!
+                                                          .content ==
+                                                      ZoneContent.doubleSash &&
+                                                  widget.model.activeSubZone ==
+                                                      'all') ||
+                                              (_pointerButtons &
+                                                      kSecondaryMouseButton) !=
+                                                  0) &&
                                           widget.model.isDrawingMode) {
                                         _handleHandleDrag(
                                           details.focalPointDelta,
@@ -2704,6 +2786,8 @@ class _WindowViewState extends State<WindowView> {
                                     // do not let it hijack the next drag.
                                     widget.model.pendingDrawStart = null;
                                     _isPanningCanvas = false;
+                                    _isMiddlePanning = false;
+                                    _draggedHandleKey = null;
                                     _draggedDimension = null;
                                     _commitShapeDragPreview();
                                     _isDraggingHandle = false;
@@ -2729,6 +2813,9 @@ class _WindowViewState extends State<WindowView> {
                                   child: Listener(
                                     onPointerSignal:
                                         _handleDrawingPointerSignal,
+                                    onPointerDown: (event) {
+                                      _pointerButtons = event.buttons;
+                                    },
                                     onPointerMove: (event) {
                                       if (event.kind ==
                                               PointerDeviceKind.mouse &&
@@ -4548,6 +4635,8 @@ class WorkspaceSelectionPainter extends CustomPainter {
           : model.frameRectForSelection(key);
       if (rect != null) {
         canvas.drawRect(rect, outline);
+      }
+      if (rect != null && !model.frameShapeMode) {
         final side = 18.0 / scale;
         final handleFill = Paint()
           ..color = Colors.green.shade600
@@ -4576,7 +4665,8 @@ class WorkspaceSelectionPainter extends CustomPainter {
         }
       }
 
-      if (model.canBeArchedOrSlanted &&
+      if (model.frameShapeMode &&
+          model.canBeArchedOrSlanted &&
           (key == null ||
               key == 'frame:0' ||
               model.getFrameRects().length <= 1)) {

@@ -1317,6 +1317,7 @@ extension WindowModelZones on WindowModel {
         selection = SelectionInfo(type: SelectionType.zone, zoneId: z.id);
         // A tap selects this sash alone; a long press selects every sash.
         allSashesAnchorZoneId = isLongPress && _isSashZone(z) ? z.id : null;
+        selectedSlidingLeaf = null;
         bool isSingle = z.content == ZoneContent.singleSash;
         bool isSliding = z.content == ZoneContent.slidingSash;
         if (isSliding) {
@@ -1414,6 +1415,9 @@ extension WindowModelZones on WindowModel {
           } else {
             activeSubZone = null;
           }
+          // A tap selects this leaf alone, wherever it lands on the leaf; a
+          // long press selects every sash.
+          selectedSlidingLeaf = isLongPress ? null : selectedSashIndex;
           selection = SelectionInfo(type: SelectionType.zone, zoneId: z.id);
           _notifySelectionChanged();
           return;
@@ -2239,6 +2243,27 @@ extension WindowModelZones on WindowModel {
         mutable[index] = nextRatio;
         zone.innerVPositions = mutable;
       }
+    }
+    _notifyModelListeners();
+  }
+
+  /// Moves one handle of a sliding zone alone ([key]: left, right, center,
+  /// center2).
+  void updateSlidingHandlePosition(String zoneId, String key, double ratio) {
+    final idx = zones.indexWhere((z) => z.id == zoneId);
+    if (idx == -1) return;
+    zones[idx].handleRatios[key] = ratio;
+    _notifyModelListeners();
+  }
+
+  /// Moves every handle of the window holding [zoneId] together.
+  void updateWindowHandlePositions(String zoneId, double ratio) {
+    final idx = zones.indexWhere((z) => z.id == zoneId);
+    if (idx == -1) return;
+    for (final zone in zonesInFrameOf(zones[idx])) {
+      if (!_isSashZone(zone)) continue;
+      zone.handlePositionRatio = ratio;
+      zone.handleRatios.clear();
     }
     _notifyModelListeners();
   }

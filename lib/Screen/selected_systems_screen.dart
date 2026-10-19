@@ -10,6 +10,7 @@ import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../services/cloud_sync_service.dart';
 import '../services/system_publication_service.dart';
+import '../widgets/system_development_badge.dart';
 
 class SystemModeItem {
   final String id;
@@ -1004,25 +1005,11 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
     if (published) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(top: 6),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.lock_clock_rounded,
-            size: 14,
-            color: Colors.orange.shade800,
-          ),
-          const SizedBox(width: 4),
-          Text(
-            Localization.translate('قيد التطوير — غير متاح حالياً', lang),
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: Colors.orange.shade800,
-            ),
-          ),
-        ],
+      child: SystemDevelopmentBadge(
+        label: Localization.translate(
+          'قيد التطوير — غير متاح حالياً',
+          lang,
+        ),
       ),
     );
   }

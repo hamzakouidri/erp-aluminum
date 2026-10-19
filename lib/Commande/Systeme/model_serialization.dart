@@ -325,6 +325,7 @@ extension WindowZoneSerialization on WindowZone {
     return {
       'id': id,
       'handlePositionRatio': handlePositionRatio,
+      if (handleRatios.isNotEmpty) 'handleRatios': handleRatios,
       'boundary': {
         'left': boundary.left,
         'top': boundary.top,
@@ -401,6 +402,12 @@ WindowZone windowZoneFromMap(Map<String, dynamic> map) {
     id: map['id'],
     handlePositionRatio:
         (map['handlePositionRatio'] as num?)?.toDouble() ?? 0.5,
+    handleRatios: {
+      if (map['handleRatios'] is Map)
+        for (final entry in (map['handleRatios'] as Map).entries)
+          if (entry.value is num)
+            entry.key.toString(): (entry.value as num).toDouble(),
+    },
     boundary: rect,
     content: ZoneContent.values.firstWhere(
       (e) => e.name == map['content'],

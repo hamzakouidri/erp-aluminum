@@ -10,6 +10,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../sql_database.dart';
 import '../services/cloud_sync_service.dart';
 import '../utils/real_color_resolver.dart';
+import '../utils/price_format.dart';
 import '../widgets/section_image.dart';
 import '../widgets/price_sync_banner.dart';
 import 'standard_sheets_screen.dart';
@@ -31,29 +32,6 @@ class _PendingShutterPrice {
   final Future<void> Function(double price) save;
 
   const _PendingShutterPrice({required this.price, required this.save});
-}
-
-String formatAccessoryCardPrice(
-  double basePrice,
-  Iterable<double> colorPrices,
-) {
-  final prices = colorPrices.where((price) => price.isFinite).toList()..sort();
-  if (prices.isEmpty) prices.add(basePrice);
-
-  String format(double value) {
-    if (value == value.roundToDouble()) return value.toStringAsFixed(0);
-    return value
-        .toStringAsFixed(2)
-        .replaceFirst(RegExp(r'0+$'), '')
-        .replaceFirst(RegExp(r'\.$'), '');
-  }
-
-  final lowest = prices.first;
-  final highest = prices.last;
-  if ((highest - lowest).abs() < 0.000001) {
-    return '${format(lowest)} DZD';
-  }
-  return '${format(lowest)} – ${format(highest)} DZD';
 }
 
 class PriceManagementScreen extends StatefulWidget {
@@ -1608,7 +1586,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
                               Text(
-                                '${price.toStringAsFixed(0)} DZD',
+                                '${price.toStringAsFixed(0)} DA',
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 14,
@@ -1666,8 +1644,8 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
               ),
               decoration: InputDecoration(
                 labelText: switch (lang) {
-                  AppLanguage.french => 'Prix de vente (DZD)',
-                  AppLanguage.english => 'Selling Price (DZD)',
+                  AppLanguage.french => 'Prix de vente (DA)',
+                  AppLanguage.english => 'Selling Price (DA)',
                   _ => 'سعر البيع (د.ج)',
                 },
                 border: const OutlineInputBorder(),
@@ -1681,8 +1659,8 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
               ),
               decoration: InputDecoration(
                 labelText: switch (lang) {
-                  AppLanguage.french => 'Prix de revient / coût (DZD)',
-                  AppLanguage.english => 'Cost Price (DZD)',
+                  AppLanguage.french => 'Prix de revient / coût (DA)',
+                  AppLanguage.english => 'Cost Price (DA)',
                   _ => 'سعر التكلفة (د.ج)',
                 },
                 border: const OutlineInputBorder(),
@@ -5883,7 +5861,7 @@ class _PriceEditRowState extends State<PriceEditRow> {
                   horizontal: 10,
                   vertical: 8,
                 ),
-                suffixText: 'DZD',
+                suffixText: 'DA',
                 suffixStyle: TextStyle(
                   color: isDark ? Colors.grey.shade400 : Colors.grey.shade700,
                 ),

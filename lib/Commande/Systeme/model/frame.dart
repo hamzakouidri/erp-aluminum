@@ -1181,8 +1181,9 @@ extension WindowModelFrame on WindowModel {
   List<Rect> framesWithNoCoverPartnerOnSide(String side) => [
     for (final frame in framesOnOuterSide(side))
       if (frameSectionForRect(frame) case final base?)
-        if (_sectionHasIntegratedSideCover(base) &&
-            noCoverFrameIdFor(base.id) != null &&
+        // Any frame given a "without cover" frame by hand (a traverse has a
+        // cover on one side although no cover width is recorded).
+        if (noCoverFrameIdFor(base.id) != null &&
             catalogSectionById(noCoverFrameIdFor(base.id)!) != null)
           frame,
   ];
@@ -1282,8 +1283,7 @@ extension WindowModelFrame on WindowModel {
     final itemId = item['id'] is num
         ? (item['id'] as num).toInt()
         : int.tryParse(item['id']?.toString() ?? '');
-    if (integratedCover &&
-        const ['top', 'right', 'bottom', 'left'].any(sideUsesNoCoverFrame) &&
+    if (const ['top', 'right', 'bottom', 'left'].any(sideUsesNoCoverFrame) &&
         (itemId == null || noCoverFrameIdFor(itemId) == null)) {
       return false;
     }
@@ -3094,6 +3094,7 @@ extension WindowModelFrame on WindowModel {
       final shiftY = (moveTop || moveBottom) && minTop.abs() > 0.001
           ? -minTop
           : 0.0;
+      lastResizeAnchorShift = Offset(shiftX, shiftY);
       if (shiftX != 0.0 || shiftY != 0.0) {
         for (final zone in zones) {
           zone.boundary = zone.boundary.shift(Offset(shiftX, shiftY));

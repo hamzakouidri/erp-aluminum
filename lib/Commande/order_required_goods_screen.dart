@@ -26,6 +26,7 @@ import 'package:database_data/Screen/achat_details_screen.dart';
 import 'package:database_data/Screen/sheet_optimization_screen.dart';
 import 'package:database_data/Screen/app_workspace_shell.dart'
     show openAdaptiveScreen;
+import 'required_goods_labels.dart';
 
 bool isExplicitlyReplacedProduct(bool modelIsReplaced, dynamic savedValue) {
   if (modelIsReplaced || savedValue == true) return true;
@@ -190,42 +191,6 @@ bool bomUsesOrderLevelCutting(BomItem item) {
   final isStockBar = const {'قطاع', 'بارة', 'bar', 'section'}.contains(unit);
   return isStockBar &&
       (item.pieces?.any((piece) => piece > 0) ?? false);
-}
-
-String _extractRoleLabel(String orig) {
-  final trimmed = orig.trim();
-  if (trimmed.startsWith('Cadre doublé') ||
-      trimmed.startsWith('Cadre double') ||
-      trimmed.startsWith('كادر دوبلي') ||
-      trimmed.startsWith('كادر دبل')) {
-    return 'كادر دوبلي';
-  }
-  if (trimmed.contains('الإطار (Frame)') ||
-      trimmed == 'الإطار' ||
-      trimmed == 'Frame' ||
-      trimmed == 'Cadre') {
-    return 'الإطار';
-  }
-  if (trimmed.contains('إطار منزلق') ||
-      trimmed.contains('Cadre Coulissant')) {
-    return 'إطار منزلق';
-  }
-  if (trimmed.contains('تقسيم الزجاج') ||
-      trimmed.contains('Mullion') ||
-      trimmed.contains('Traverse') ||
-      trimmed.contains('تقسيم')) {
-    return 'التقسيم';
-  }
-  if (trimmed.contains('ضلفة') ||
-      trimmed.contains('دلفة') ||
-      trimmed.contains('Sash') ||
-      trimmed.contains('Ouvrant')) {
-    return 'الضلفة';
-  }
-  if (trimmed.contains('باركلوز') || trimmed.contains('Parclose')) {
-    return 'الباركلوز';
-  }
-  return trimmed;
 }
 
 String _cleanProfileName(BomItem item) {
@@ -882,7 +847,7 @@ class AggregatedGoodItem {
         name = requiredGoodsDisplayName(bom);
       }
     }
-    final role = _extractRoleLabel(bom.originalName);
+    final role = requiredGoodsRoleLabel(bom.getLocalizedName('ar'));
     if (role.isNotEmpty && !originalName.contains(role)) {
       originalName = originalName.isEmpty ? role : '$originalName • $role';
     }
@@ -2455,7 +2420,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                   }
 
                   // 5. Match by Original Role Name if same display name
-                  final origBom = _extractRoleLabel(bom.originalName).toLowerCase().trim();
+                  final origBom = requiredGoodsRoleLabel(
+                    bom.getLocalizedName('ar'),
+                  ).toLowerCase().trim();
                   final origEx = existing.originalName.toLowerCase().trim();
                   if (origBom.isNotEmpty && origBom == origEx && cleanBom == cleanEx) {
                     matchingKey = entry.key;
@@ -2481,7 +2448,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
                 aggregationMap[aggregationKey] = AggregatedGoodItem(
                   name: displayName,
-                  originalName: _extractRoleLabel(bom.originalName),
+                  originalName: requiredGoodsRoleLabel(
+                    bom.getLocalizedName('ar'),
+                  ),
                   category: category,
                   unit: bom.unit,
                   imagePath: bom.imagePath,

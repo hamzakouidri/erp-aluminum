@@ -1390,6 +1390,13 @@ class GlassSpecification {
 class WindowZone {
   final String id;
   double? handlePositionRatio;
+
+  /// Positions of single sliding handles moved alone ('left', 'right',
+  /// 'center', 'center2'); the others follow [handlePositionRatio].
+  Map<String, double> handleRatios;
+
+  double handleRatioFor(String key) =>
+      handleRatios[key] ?? handlePositionRatio ?? 0.5;
   bool useClassicHandle;
   bool useOctoHandle;
   bool usePvcHandleOnAlu;
@@ -1491,6 +1498,7 @@ class WindowZone {
   WindowZone({
     required this.id,
     this.handlePositionRatio = 0.5,
+    Map<String, double>? handleRatios,
     this.useClassicHandle = false,
     this.useOctoHandle = false,
     this.usePvcHandleOnAlu = false,
@@ -1541,7 +1549,7 @@ class WindowZone {
     Map<String, GlassSpecification>? cellGlassSpec,
     List<SlantedDivider>? slantedDividers,
     Map<int, SashHingeLayout>? customHinges,
-  }) : slantedDividers = List<SlantedDivider>.of(slantedDividers ?? const []),
+  }) : handleRatios = handleRatios ?? {}, slantedDividers = List<SlantedDivider>.of(slantedDividers ?? const []),
        customHinges = Map<int, SashHingeLayout>.of(customHinges ?? const {}),
        slidingFaceToFace =
            slidingFaceToFace ??
@@ -1589,6 +1597,7 @@ class WindowZone {
   WindowZone clone() => WindowZone(
     id: id,
     handlePositionRatio: handlePositionRatio,
+    handleRatios: Map<String, double>.from(handleRatios),
     useClassicHandle: useClassicHandle,
     useOctoHandle: useOctoHandle,
     usePvcHandleOnAlu: usePvcHandleOnAlu,
@@ -1661,6 +1670,7 @@ class WindowZone {
   WindowZone cloneForSplit(Rect newBoundary) => WindowZone(
     id: UniqueKey().toString(),
     handlePositionRatio: handlePositionRatio,
+    handleRatios: Map<String, double>.from(handleRatios),
     useClassicHandle: useClassicHandle,
     slidingHandleTypes: Map.from(slidingHandleTypes),
     useOctoHandle: useOctoHandle,
@@ -1777,6 +1787,7 @@ class WindowZone {
   }) => WindowZone(
     id: id,
     handlePositionRatio: handlePositionRatio ?? this.handlePositionRatio,
+    handleRatios: Map<String, double>.from(this.handleRatios),
     useClassicHandle: useClassicHandle ?? this.useClassicHandle,
     useOctoHandle: useOctoHandle ?? this.useOctoHandle,
     usePvcHandleOnAlu: usePvcHandleOnAlu ?? this.usePvcHandleOnAlu,
@@ -3958,6 +3969,19 @@ class WindowModel extends ChangeNotifier {
   /// The sash zone a long press selected every sash from. It holds only
   /// while that zone stays selected (see [allSashesSelected]).
   String? allSashesAnchorZoneId;
+
+  /// The sliding leaf picked by a tap (its index in the selected sliding
+  /// zone); null when the whole zone, or every sash, is selected.
+  int? selectedSlidingLeaf;
+
+  /// A selected frame shows its resize squares (one tap) or, after a double
+  /// tap, its slant/arch circles: never both at once.
+  bool frameShapeMode = false;
+
+  /// How far the last frame resize moved the whole drawing to keep it at
+  /// the origin (growing from the left or the top). The view moves the
+  /// camera back by as much, so the side dragged is the side that grows.
+  Offset lastResizeAnchorShift = Offset.zero;
   bool showZoneMenu = false;
   final List<WindowSnapshot> _history = [];
   final List<WindowSnapshot> _redoHistory = [];
@@ -4348,6 +4372,28 @@ class WindowModel extends ChangeNotifier {
         canvasScale > 0 &&
         (canvasDx != 0 || canvasDy != 0) &&
         !stateChanged) {
+      return;
+    }
+
+    // Once the drawing is on screen the camera stays where it is: panels,
+    // banners and dimension changes no longer zoom or move it. Only the
+    // user moves it (wheel, drag) or asks to centre it.
+    if (isMovementLocked &&
+        lastLayoutSize != null &&
+        canvasScale > 0 &&
+        !zones.isEmpty &&
+        _lastIsEmpty == false) {
+      lastLayoutSize = widgetSize;
+      _lastWidth = width;
+      _lastHeight = height;
+      _lastDrawnLeft = drawnLeft;
+      _lastDrawnTop = drawnTop;
+      _lastShowWall = showWall;
+      _lastShowBottomWall = showBottomWall;
+      _lastHasShutter = hasShutter;
+      _lastIsCaissonTunnel = isCaissonTunnel;
+      _lastShutterBoxHeight = shutterBoxHeight;
+      _lastHeadRise = headRiseMm;
       return;
     }
 

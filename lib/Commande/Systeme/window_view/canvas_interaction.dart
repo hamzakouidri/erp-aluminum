@@ -77,9 +77,21 @@ extension _WindowViewCanvas on _WindowViewState {
       return;
     }
     double dy = delta.dy / (_userScale * widget.model.canvasScale);
-    double newRatio = zone.handlePositionRatio ?? 0.5;
-    newRatio -= (dy / zone.boundary.height);
-    widget.model.updateHandlePosition(zone.id, newRatio.clamp(0.1, 0.9));
+    final key = _draggedHandleKey;
+    final rightButton = (_pointerButtons & kSecondaryMouseButton) != 0;
+    final current = key == null
+        ? (zone.handlePositionRatio ?? 0.5)
+        : zone.handleRatioFor(key);
+    final newRatio = (current - dy / zone.boundary.height).clamp(0.1, 0.9);
+    if (!rightButton) {
+      // Left button: every handle of the window moves together.
+      widget.model.updateWindowHandlePositions(zone.id, newRatio);
+    } else if (zone.content == ZoneContent.slidingSash && key != null) {
+      // Right button: this handle alone.
+      widget.model.updateSlidingHandlePosition(zone.id, key, newRatio);
+    } else {
+      widget.model.updateHandlePosition(zone.id, newRatio);
+    }
   }
 
   // --- Hinge editing -------------------------------------------------------
