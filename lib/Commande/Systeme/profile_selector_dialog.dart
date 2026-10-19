@@ -1279,6 +1279,10 @@ class ProfileSelectorDialog extends StatefulWidget {
   final Map<String, double> mainWarehouseStock;
   final int? stockColorId;
 
+  /// Extra rule from the caller: only candidates it accepts are listed (for
+  /// example the frames that the current drawing can take).
+  final bool Function(Map<String, dynamic> candidate)? candidateFilter;
+
   const ProfileSelectorDialog({
     super.key,
     required this.profileType,
@@ -1304,6 +1308,7 @@ class ProfileSelectorDialog extends StatefulWidget {
     this.targetThicknessMm,
     this.mainWarehouseStock = const {},
     this.stockColorId,
+    this.candidateFilter,
   });
 
   @override
@@ -1314,6 +1319,14 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
   List<Map<String, dynamic>> profiles = [];
   bool isLoading = true;
   String? _loadError;
+
+  List<Map<String, dynamic>> _acceptedByCaller(
+    List<Map<String, dynamic>> candidates,
+  ) {
+    final filter = widget.candidateFilter;
+    if (filter == null) return candidates;
+    return candidates.where(filter).toList();
+  }
 
   double? _mainStockForCandidate(Map<String, dynamic> candidate) {
     final id = _catalogInt(candidate['id']);
@@ -1406,7 +1419,7 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
             .timeout(const Duration(seconds: 15));
         if (!mounted) return;
         setState(() {
-          profiles = data;
+          profiles = _acceptedByCaller(data);
           isLoading = false;
           _loadError = null;
         });
@@ -2339,7 +2352,7 @@ class _ProfileSelectorDialogState extends State<ProfileSelectorDialog> {
 
       if (!mounted) return;
       setState(() {
-        profiles = data;
+        profiles = _acceptedByCaller(data);
         isLoading = false;
         _loadError = null;
       });

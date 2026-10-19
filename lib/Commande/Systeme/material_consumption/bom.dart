@@ -1551,6 +1551,25 @@ extension _MaterialBom on _MaterialConsumptionScreenState {
     );
   }
 
+  /// The frame sides (per physical frame) whose profile is [sectionId]:
+  /// a side replaced in the drawing, or the frame put against a corner tube.
+  List<(Rect, List<String>)> _frameSidesShowingSection(int? sectionId) {
+    if (sectionId == null) return const [];
+    final result = <(Rect, List<String>)>[];
+    for (final frame in widget.model.getFrameRects()) {
+      final sides = <String>[
+        for (final side in const ['top', 'right', 'bottom', 'left'])
+          if (_catalogInt(
+                widget.model.frameSideOverrideForRect(frame, side)?['id'],
+              ) ==
+              sectionId)
+            side,
+      ];
+      if (sides.isNotEmpty) result.add((frame, sides));
+    }
+    return result;
+  }
+
   void _showSwapDialog(BomItem item) async {
     final swapTarget = _resolveBomSwapTarget(item);
     String pType = swapTarget.profileType;
@@ -1681,6 +1700,36 @@ extension _MaterialBom on _MaterialConsumptionScreenState {
           swapTarget.drawingMode == AccessoryDrawingMode.sliding ||
           (swapTarget.drawingMode == null &&
               widget.model.usesSlidingPrimaryProfiles);
+      // A row of some frame sides only ("إطار جهة يمين", the frame on the
+      // corner-profile side) changes those sides, never the whole frame.
+      final isAngleSideRow = _containsAny(item.originalName, const [
+        'لجهة بروفيل الزاوية',
+        'côté angle',
+      ]);
+      final isSideRow =
+          isAngleSideRow ||
+          _containsAny(item.originalName, const ['إطار جهة', 'frame side']);
+      final sideTargets = isSideRow
+          ? _frameSidesShowingSection(item.catalogItemId)
+          : const <(Rect, List<String>)>[];
+      bool frameAccepted(Map<String, dynamic> candidate) {
+        // Only the frames that the drawing itself would accept.
+        if (!widget.model.frameFitsCurrentDrawing(
+          candidate,
+          sliding: isSlidingFrameSelection,
+        )) {
+          return false;
+        }
+        if (!isAngleSideRow) return true;
+        // Against the corner tube: a frame that never carries a cover.
+        try {
+          final section = AluminumSection.fromMap(candidate);
+          return section.couvreJointWidth <= 0 && !section.allowsSideCover;
+        } catch (_) {
+          return false;
+        }
+      }
+
       // فتح نافذة اختيار بروفيل من نوع "frame" ضمن السلسلة النشطة والمادة الصحيحة (PVC/ألمنيوم)
       final selected = await showDialog<Map<String, dynamic>>(
         context: context,
@@ -1700,6 +1749,7 @@ extension _MaterialBom on _MaterialConsumptionScreenState {
           targetThicknessMm: item.targetThicknessMm,
           mainWarehouseStock: _mainWarehouseStock,
           stockColorId: _itemColorId(item),
+          candidateFilter: frameAccepted,
         ),
       );
       if (selected != null && mounted) {
@@ -1710,12 +1760,18 @@ extension _MaterialBom on _MaterialConsumptionScreenState {
         final mutableSelected = Map<String, dynamic>.from(selected);
         mutableSelected['calculated_price'] = price;
         _setScreenState(() {
-          // تحديث الإطار حسب وضع النظام (منزلق/عادي)
-          widget.model.applyFrameOverride(
-            mutableSelected,
-            sliding: isSlidingFrameSelection,
-            manualSelection: true,
-          );
+          if (isSideRow && sideTargets.isNotEmpty) {
+            for (final (frame, sides) in sideTargets) {
+              widget.model.setFrameSideOverrides(frame, sides, mutableSelected);
+            }
+          } else {
+            // تحديث الإطار حسب وضع النظام (منزلق/عادي)
+            widget.model.applyFrameOverride(
+              mutableSelected,
+              sliding: isSlidingFrameSelection,
+              manualSelection: true,
+            );
+          }
           widget.model.refreshUI();
         });
         await widget.model.syncFrameReinforcement();

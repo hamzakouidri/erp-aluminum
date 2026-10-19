@@ -3,7 +3,11 @@ import 'dart:math' as math;
 import 'dart:async';
 import 'glass_joint_fit.dart';
 import 'profile_selector_dialog.dart'
-    show CatalogCandidateResolver, CatalogCandidateQuery, AccessoryDrawingMode;
+    show
+        CatalogCandidateResolver,
+        CatalogCandidateQuery,
+        AccessoryDrawingMode,
+        profileHasIntegratedSideCover;
 import 'package:flutter/material.dart';
 import 'package:database_data/settings/app_settings.dart' show AppLanguage;
 import '../../sql_database.dart';

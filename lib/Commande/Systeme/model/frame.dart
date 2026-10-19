@@ -1086,6 +1086,61 @@ extension WindowModelFrame on WindowModel {
     return _overrideAllowsStandaloneSideCover(effective);
   }
 
+  /// Whether [item] (a frame section) can be used in the current drawing:
+  /// shutter, side cover and corner profile all accept it. The drawing's
+  /// frame picker and the quantity table's "change" both use this rule.
+  bool frameFitsCurrentDrawing(
+    Map<String, dynamic> item, {
+    required bool sliding,
+  }) {
+    bool readBool(Object? value, {required bool fallback}) {
+      if (value is bool) return value;
+      if (value is num) return value != 0;
+      final normalized = value?.toString().trim().toLowerCase();
+      if (normalized == '1' || normalized == 'true' || normalized == 'yes') {
+        return true;
+      }
+      if (normalized == '0' || normalized == 'false' || normalized == 'no') {
+        return false;
+      }
+      return fallback;
+    }
+
+    final integratedCover = readBool(
+      item['design_integrated_side_cover'] ?? item['integrated_side_cover'],
+      fallback: profileHasIntegratedSideCover(item),
+    );
+    final allowedWithShutter = readBool(
+      item['design_allowed_with_shutter'] ?? item['allowed_with_shutter'],
+      fallback: true,
+    );
+    if (hasShutter && !allowedWithShutter) return false;
+
+    if (hasSideCovers && integratedFrameSideCoverWidth <= 0) {
+      // A separate cover: the frame must take one.
+      if (integratedCover) return false;
+      final allowsStandaloneCover = readBool(
+        item['design_allows_side_cover'] ?? item['allows_side_cover'],
+        fallback: true,
+      );
+      if (!allowsStandaloneCover) return false;
+    }
+
+    if (usesProfileAngle) {
+      try {
+        if (!frameUsableWithProfileAngle(
+          AluminumSection.fromMap(item),
+          sliding: sliding,
+        )) {
+          return false;
+        }
+      } catch (_) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   void setFrameSideOverrides(
     Rect frame,
     Iterable<String> sides,

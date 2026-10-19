@@ -5883,74 +5883,7 @@ extension _WindowViewDrawers on _WindowViewState {
         bool isFrameCompatibleWithCurrentDrawing(
           Map<String, dynamic> item, {
           required bool sliding,
-        }) {
-          bool readBool(Object? value, {required bool fallback}) {
-            if (value is bool) return value;
-            if (value is num) return value != 0;
-            final normalized = value?.toString().trim().toLowerCase();
-            if (normalized == '1' ||
-                normalized == 'true' ||
-                normalized == 'yes') {
-              return true;
-            }
-            if (normalized == '0' ||
-                normalized == 'false' ||
-                normalized == 'no') {
-              return false;
-            }
-            return fallback;
-          }
-
-          final integratedCover = readBool(
-            item['design_integrated_side_cover'] ??
-                item['integrated_side_cover'],
-            fallback: profileHasIntegratedSideCover(item),
-          );
-          final allowedWithShutter = readBool(
-            item['design_allowed_with_shutter'] ?? item['allowed_with_shutter'],
-            fallback: true,
-          );
-
-          // 1. Shutter compatibility:
-          if (widget.model.hasShutter) {
-            if (!allowedWithShutter) return false;
-          }
-
-          // 2. Side covers compatibility:
-          if (widget.model.hasSideCovers) {
-            final hasIntegratedCover =
-                widget.model.integratedFrameSideCoverWidth > 0;
-            final hasSeparateCover = !hasIntegratedCover;
-            if (hasSeparateCover) {
-              if (integratedCover) return false;
-              // A frame that can never carry a cover does not fit a drawing
-              // whose cover is switched on.
-              final allowsStandaloneCover = readBool(
-                item['design_allows_side_cover'] ?? item['allows_side_cover'],
-                fallback: true,
-              );
-              if (!allowsStandaloneCover) return false;
-            }
-          }
-
-          // 3. 90° Profile angle compatibility: the frame itself fits the
-          // corner, or the series has a frame that does for the touching
-          // jamb.
-          if (widget.model.usesProfileAngle) {
-            try {
-              if (!widget.model.frameUsableWithProfileAngle(
-                AluminumSection.fromMap(item),
-                sliding: sliding,
-              )) {
-                return false;
-              }
-            } catch (_) {
-              return false;
-            }
-          }
-
-          return true;
-        }
+        }) => widget.model.frameFitsCurrentDrawing(item, sliding: sliding);
 
         final angleJunctionFrames = widget.model
             .getProfileAngleJunctionFrames();

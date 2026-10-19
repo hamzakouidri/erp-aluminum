@@ -1064,6 +1064,15 @@ class ComponentCalculator {
   }
 
   static String _selectorTypeForProfile(String originalName) {
+    // "إطار فتح لجهة بروفيل الزاوية (Dormant côté angle)" names a frame: it
+    // must not be read as the corner profile because it mentions زاوية.
+    if (_textHasAny(originalName, const [
+      'لجهة بروفيل الزاوية',
+      'côté angle',
+      'cote angle',
+    ])) {
+      return 'frame';
+    }
     if (_textHasAny(originalName, const [
       "profil d'angle",
       "profile d'angle",
