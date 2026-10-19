@@ -2934,7 +2934,13 @@ class WindowPainter extends CustomPainter {
       );
     }
 
-    final edges = model.getExposedFrameEdgeSegments();
+    // A frame without a cover on a side (for example a plain frame under a
+    // frame with an integrated cover) breaks the cover there.
+    final edges = model.getExposedFrameEdgeSegments(
+      includeSide: (frame, side) => model.isIntegratedFrame
+          ? model.frameSideHasIntegratedCover(frame, side)
+          : model.frameSideAllowsSideCover(frame, side),
+    );
     if (edges.isEmpty) return;
 
     final paint = Paint();
@@ -3100,6 +3106,14 @@ class WindowPainter extends CustomPainter {
       // closed by that frame even when the optional bottom cover was hidden.
       final point = endpointOf(piece, atStart);
       if (atStart) return false;
+      // Another frame continues below this end (a plain frame under a frame
+      // with an integrated cover): the cover stops square there, its 45°
+      // teeth must not hang down over that frame.
+      final inward = piece.edge.side == 'left' ? 1.5 : -1.5;
+      final below = Offset(point.dx + inward, point.dy + 1.5);
+      if (model.getFrameRects().any((rect) => rect.contains(below))) {
+        return false;
+      }
       return model.getFrameRects().any(
         (rect) =>
             model.hasBottomFrameForRect(rect) &&

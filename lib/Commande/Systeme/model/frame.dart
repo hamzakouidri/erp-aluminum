@@ -4871,7 +4871,12 @@ extension WindowModelFrame on WindowModel {
   /// A single global rectangle is incorrect when one frame is above only
   /// part of another row: it creates a cover across the empty area. Shared
   /// edges are therefore removed and touching collinear edges are joined.
-  List<FrameEdgeSegment> getExposedFrameEdgeSegments() {
+  /// The outer edges of a multi-frame drawing. [includeSide] drops the
+  /// sides of some frames (those without a cover, for example) before
+  /// neighbouring edges are joined, so a cover never runs on past its frame.
+  List<FrameEdgeSegment> getExposedFrameEdgeSegments({
+    bool Function(Rect frame, String side)? includeSide,
+  }) {
     final rects = getFrameRects();
     if (rects.length <= 1) return const <FrameEdgeSegment>[];
 
@@ -4890,6 +4895,11 @@ extension WindowModelFrame on WindowModel {
       required List<List<double>> blockers,
       Rect? frameRect,
     }) {
+      if (includeSide != null &&
+          frameRect != null &&
+          !includeSide(frameRect, side)) {
+        return;
+      }
       var pieces = <List<double>>[
         [start, end],
       ];

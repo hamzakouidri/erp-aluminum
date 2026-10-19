@@ -4536,7 +4536,11 @@ class ComponentCalculator {
           // every physical frame. The old branch used the four global side
           // lengths, so a partial upper frame or a recessed corner was
           // missing from the cover quantity even when it was drawn.
-          final exposedEdges = window.getExposedFrameEdgeSegments();
+          // Sides of a frame that takes no cover break the cover before
+          // neighbouring edges are joined.
+          final exposedEdges = window.getExposedFrameEdgeSegments(
+            includeSide: window.frameSideAllowsSideCover,
+          );
           bool isHorizontal(String side) => side == 'top' || side == 'bottom';
 
           bool isEndpointAt(FrameEdgeSegment edge, double x, double y) {
@@ -4650,7 +4654,11 @@ class ComponentCalculator {
         if (frameRects.length > 1) {
           // The cover is one continuous perimeter around the union of all
           // touching physical frames, not one rectangle per frame.
-          final exposedEdges = window.getExposedFrameEdgeSegments();
+          // Sides of a frame that takes no cover break the cover before
+          // neighbouring edges are joined.
+          final exposedEdges = window.getExposedFrameEdgeSegments(
+            includeSide: window.frameSideAllowsSideCover,
+          );
           bool isHorizontal(String side) => side == 'top' || side == 'bottom';
 
           bool isEdgeAllowed(FrameEdgeSegment edge) {
