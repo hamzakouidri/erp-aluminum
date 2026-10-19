@@ -445,7 +445,9 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
 
   Future<void> _showColumnVisibilityMenu(Offset globalPosition) async {
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-    final selectedId = await showMenu<String>(
+    // The list stays open while columns are shown or hidden; a click outside
+    // it (or Esc) closes it.
+    await showMenu<String>(
       context: context,
       position: RelativeRect.fromRect(
         Rect.fromPoints(globalPosition, globalPosition),
@@ -453,28 +455,19 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
       ),
       items: [
         for (final column in _orderedColumns(includeHidden: true))
-          PopupMenuItem<String>(
-            value: column.id,
-            enabled:
+          _ColumnToggleMenuEntry(
+            label: column.label,
+            isVisible: () => !_hiddenColumnIds.contains(column.id),
+            // The last visible column cannot be hidden.
+            canToggle: () =>
                 _hiddenColumnIds.contains(column.id) ||
                 _orderedColumns().length > 1,
-            child: Row(
-              children: [
-                IgnorePointer(
-                  child: Checkbox(
-                    value: !_hiddenColumnIds.contains(column.id),
-                    onChanged: (_) {},
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Expanded(child: column.label),
-              ],
-            ),
+            onToggle: () {
+              if (mounted) _toggleColumnVisibility(column.id);
+            },
           ),
       ],
     );
-    if (selectedId != null && mounted) _toggleColumnVisibility(selectedId);
   }
 
   void _resize(ResizableTableColumn column, double delta) {
@@ -1424,6 +1417,66 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
           fontWeight: FontWeight.w600,
         ),
         child: ClipRect(child: child),
+      ),
+    );
+  }
+}
+
+/// A column of the visibility menu: its checkbox toggles the column without
+/// closing the menu.
+class _ColumnToggleMenuEntry extends PopupMenuEntry<String> {
+  const _ColumnToggleMenuEntry({
+    required this.label,
+    required this.isVisible,
+    required this.canToggle,
+    required this.onToggle,
+  });
+
+  final Widget label;
+  final bool Function() isVisible;
+  final bool Function() canToggle;
+  final VoidCallback onToggle;
+
+  @override
+  double get height => kMinInteractiveDimension;
+
+  @override
+  bool represents(String? value) => false;
+
+  @override
+  State<_ColumnToggleMenuEntry> createState() => _ColumnToggleMenuEntryState();
+}
+
+class _ColumnToggleMenuEntryState extends State<_ColumnToggleMenuEntry> {
+  void _toggle() {
+    if (!widget.canToggle()) return;
+    widget.onToggle();
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.canToggle();
+    return InkWell(
+      onTap: enabled ? _toggle : null,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: widget.height),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              Checkbox(
+                value: widget.isVisible(),
+                onChanged: enabled ? (_) => _toggle() : null,
+                visualDensity: VisualDensity.compact,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Opacity(opacity: enabled ? 1 : 0.45, child: widget.label),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

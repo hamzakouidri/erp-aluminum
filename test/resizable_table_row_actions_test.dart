@@ -34,8 +34,32 @@ void main() {
 
     await tester.tap(find.text('Column B').last);
     await tester.pumpAndSettle();
-    expect(find.text('Column B'), findsNothing);
+    // The column is hidden and the list stays open: only its menu entry,
+    // now unchecked, remains.
+    expect(find.text('Column B'), findsOneWidget);
     expect(find.text('Cell B'), findsNothing);
+    expect(
+      tester.widget<Checkbox>(
+        find.descendant(
+          of: find.ancestor(
+            of: find.text('Column B'),
+            matching: find.byType(Row),
+          ),
+          matching: find.byType(Checkbox),
+        ),
+      ).value,
+      isFalse,
+    );
+
+    // The last visible column cannot be hidden.
+    await tester.tap(find.text('Column A').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Cell A'), findsOneWidget);
+
+    // A click outside closes the list.
+    await tester.tapAt(const Offset(5, 590));
+    await tester.pumpAndSettle();
+    expect(find.text('Column B'), findsNothing);
 
     final prefs = await SharedPreferences.getInstance();
     expect(
