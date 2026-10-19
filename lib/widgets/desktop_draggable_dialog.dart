@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' as material;
+import 'package:flutter/services.dart'
+    show HardwareKeyboard, KeyDownEvent, KeyEvent, LogicalKeyboardKey;
 
 /// App-wide dialog entry point.
 ///
@@ -21,14 +23,13 @@ Future<T?> showDialog<T>({
   material.AnimationStyle? animationStyle,
 }) {
   // Dialog behaviour is intentionally consistent across the application:
-  // clicking the empty area outside a dialog always closes it.  A number of
-  // older call sites passed `false`, which made visually identical dialogs
-  // behave differently depending on the page that opened them.  Keep the
-  // argument in the public signature for source compatibility, but enforce
-  // the app-wide interaction rule here.
+  // clicking the empty area outside a dialog never closes it, so a stray
+  // click cannot lose what was typed or answer a confirmation as "cancel".
+  // A dialog closes through its own buttons, or with Escape on a keyboard.
+  // The argument stays in the signature for source compatibility only.
   return material.showDialog<T>(
     context: context,
-    barrierDismissible: true,
+    barrierDismissible: false,
     barrierColor: barrierColor,
     barrierLabel: barrierLabel,
     useSafeArea: useSafeArea,
@@ -56,6 +57,30 @@ class DesktopDraggableDialog extends material.StatefulWidget {
 class _DesktopDraggableDialogState
     extends material.State<DesktopDraggableDialog> {
   material.Offset _offset = material.Offset.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    HardwareKeyboard.instance.addHandler(_closeOnEscape);
+  }
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_closeOnEscape);
+    super.dispose();
+  }
+
+  /// Escape closes the topmost dialog: a click outside no longer does.
+  bool _closeOnEscape(KeyEvent event) {
+    if (event is! KeyDownEvent ||
+        event.logicalKey != LogicalKeyboardKey.escape) {
+      return false;
+    }
+    final route = material.ModalRoute.of(context);
+    if (route == null || !route.isCurrent) return false;
+    material.Navigator.of(context).maybePop();
+    return true;
+  }
 
   bool get _isDesktop =>
       defaultTargetPlatform == TargetPlatform.windows ||

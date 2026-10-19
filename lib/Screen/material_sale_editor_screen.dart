@@ -1146,7 +1146,7 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
   void _openItemPicker() {
     showDialog(
       context: context,
-      barrierDismissible: true,
+      barrierDismissible: false,
       builder: (_) => Dialog(
         insetPadding: const EdgeInsets.all(18),
         clipBehavior: Clip.antiAlias,
@@ -1301,7 +1301,7 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
     final phoneCtrl = TextEditingController();
     final result = await showDialog<Map<String, String>>(
       context: parentContext,
-      barrierDismissible: true,
+      barrierDismissible: false,
       useRootNavigator: false,
       builder: (dialogContext) => AlertDialog(
         title: Text(
@@ -1392,7 +1392,7 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
     final search = TextEditingController();
     await showDialog<void>(
       context: context,
-      barrierDismissible: true,
+      barrierDismissible: false,
       useRootNavigator: false,
       builder: (pickerContext) {
         List<Map<String, dynamic>> filtered = List.from(_clients);

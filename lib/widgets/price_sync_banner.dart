@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import 'package:provider/provider.dart';
 
 import '../settings/app_settings.dart';

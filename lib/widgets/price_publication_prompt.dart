@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:database_data/widgets/app_material.dart';
 import 'package:provider/provider.dart';
 
 import '../services/price_sync_service.dart';

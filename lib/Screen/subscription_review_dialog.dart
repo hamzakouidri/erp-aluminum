@@ -16,7 +16,7 @@ void showSubscriptionReviewDialog(BuildContext context) {
   }
   showDialog(
     context: context,
-    barrierDismissible: true,
+    barrierDismissible: false,
     builder: (ctx) => const SubscriptionReviewDialog(),
   );
 }

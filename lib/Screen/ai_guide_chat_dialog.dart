@@ -40,7 +40,7 @@ class AiGuideChatDialog extends StatefulWidget {
   static Future<void> show(BuildContext context, {Function(String)? onNavigate}) {
     return showDialog(
       context: context,
-      barrierDismissible: true,
+      barrierDismissible: false,
       builder: (_) => AiGuideChatDialog(onNavigateRequested: onNavigate),
     );
   }
