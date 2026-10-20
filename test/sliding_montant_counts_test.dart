@@ -50,4 +50,27 @@ void main() {
     expect(counts.lateral, 2);
     expect(counts.central, 2);
   });
+
+  group('chicane pieces (one on each sash of every overlap)', () {
+    int pieces(int sashes, {bool faceToFace = false}) =>
+        slidingChicaneJunctions(sashes: sashes, meetsInCenter: faceToFace)
+            .length *
+        2;
+
+    test('two sashes need two chicanes', () => expect(pieces(2), 2));
+    test('three sashes: the middle one takes two', () => expect(pieces(3), 4));
+    test('four sashes: the two middle ones take two', () {
+      expect(pieces(4), 6);
+    });
+    test('four face-to-face sashes need one chicane each', () {
+      expect(pieces(4, faceToFace: true), 4);
+      expect(slidingChicaneJunctions(sashes: 4, meetsInCenter: true), [0, 2]);
+    });
+    test('six face-to-face sashes skip only the central meeting', () {
+      expect(
+        slidingChicaneJunctions(sashes: 6, meetsInCenter: true),
+        [0, 1, 3, 4],
+      );
+    });
+  });
 }

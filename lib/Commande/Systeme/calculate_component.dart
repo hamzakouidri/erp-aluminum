@@ -2,6 +2,7 @@
 import 'shutter_calc_rules.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/cutting_settings.dart';
+import 'package:database_data/Commande/Systeme/sliding_montant_counts.dart';
 import 'dart:math' as math;
 import 'dart:ui' show Offset, Rect;
 import 'package:collection/collection.dart';
@@ -5303,7 +5304,12 @@ class ComponentCalculator {
                 ? pvcChicanePiecesPerJunction
                 : 2;
             final double chicaneLength = sashH;
-            for (int j = 0; j < sashes - 1; j++) {
+            // Every overlap between two sashes, but not the central
+            // face-to-face meeting (it has its own profile, no chicane).
+            for (final j in slidingChicaneJunctions(
+              sashes: sashes,
+              meetsInCenter: hasMeetingInCenter,
+            )) {
               final isSlim =
                   (zone.slidingMontantSlim['central_${j * 2}'] ?? false) ||
                   (zone.slidingMontantSlim['central_${j * 2 + 1}'] ?? false);

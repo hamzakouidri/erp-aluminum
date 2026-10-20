@@ -18,3 +18,18 @@ SlidingMontantCounts slidingMontantCounts({
     meetsInCenter: false,
   );
 }
+
+/// The junctions between neighbouring sashes (0 = between the first and the
+/// second sash) that carry chicane pieces: every overlap, one piece on each
+/// of its two sashes. The central face-to-face meeting is not an overlap and
+/// takes no chicane, so four face-to-face sashes need one chicane each.
+List<int> slidingChicaneJunctions({
+  required int sashes,
+  required bool meetsInCenter,
+}) {
+  final centralMeeting = meetsInCenter ? sashes ~/ 2 - 1 : -1;
+  return [
+    for (var junction = 0; junction < sashes - 1; junction++)
+      if (junction != centralMeeting) junction,
+  ];
+}
