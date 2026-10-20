@@ -652,6 +652,7 @@ extension WindowModelSerialization on WindowModel {
       'useDemiOB': effectiveUseDemiOB,
       'useVerrouCentral': useVerrouCentral,
       'parcloseCutMode': parcloseCutMode,
+      'parcloseCornerCaps': parcloseCornerCaps,
       'hasSideCovers': hasSideCovers,
       'multiFrameSideCoverManuallyEnabled': multiFrameSideCoverManuallyEnabled,
       'sideCoverUseSecondWidth': sideCoverUseSecondWidth,
@@ -903,6 +904,11 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> savedMap) {
   model.useVerrouCentral =
       map['useVerrouCentral'] == true ||
       map['useVerrouCentral']?.toString().toLowerCase() == 'true';
+  final savedCornerCaps = map['parcloseCornerCaps'];
+  model.parcloseCornerCaps =
+      savedCornerCaps == true ||
+      savedCornerCaps == 1 ||
+      savedCornerCaps?.toString().toLowerCase() == 'true';
   final savedParcloseCutMode = map['parcloseCutMode']?.toString();
   model.parcloseCutMode =
       const {'45', '90_length', '90_width'}.contains(savedParcloseCutMode)

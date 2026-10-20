@@ -1303,6 +1303,16 @@ class ComponentCalculator {
     return originalName;
   }
 
+  /// Corners of rectangular parclose frames cut at 90°, from the flags that
+  /// mark each piece as a width (true), a height (false) or a shaped piece
+  /// (null, mitred and never capped). Every corner joins one width piece and
+  /// one height piece.
+  static int parcloseCornerCount(List<bool?> isWidth) {
+    final widths = isWidth.where((flag) => flag == true).length;
+    final heights = isWidth.where((flag) => flag == false).length;
+    return 2 * math.min(widths, heights);
+  }
+
   static String _selectorTypeForAccessory(String originalName) {
     final lower = originalName.toLowerCase();
     final isScrew =
@@ -10341,6 +10351,24 @@ class ComponentCalculator {
           ignoreSavedOverride: true,
         ),
       );
+    }
+
+    // Plastic corner caps of a 90° parclose: one on each corner where a
+    // width piece meets a height piece.
+    if (window.showsParcloseCornerCaps) {
+      final corners =
+          parcloseCornerCount(parcloseSimpleIsWidth) +
+          parcloseCornerCount(parcloseDoubleIsWidth);
+      if (corners > 0) {
+        items.add(
+          createAccessory(
+            'بوشون زاوية الباركلوز (Bouchon parclose)',
+            qty: corners,
+            roleKeyOverride: 'parclose_corner_cap',
+            selectorTypeOverride: 'parclose_corner_cap',
+          ),
+        );
+      }
     }
 
     if (slidingParcloseSimplePieces.isNotEmpty) {

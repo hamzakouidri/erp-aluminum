@@ -3833,6 +3833,20 @@ class WindowModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// With a 90° parclose cut, a plastic corner cap (bouchon) may cover each
+  /// corner where two parclose pieces meet. It is drawn and counted only
+  /// while the cut is at 90° (see [showsParcloseCornerCaps]).
+  bool parcloseCornerCaps = false;
+
+  bool get showsParcloseCornerCaps =>
+      !isPVC && parcloseCutAt90 && parcloseCornerCaps;
+
+  void setParcloseCornerCaps(bool enabled) {
+    if (parcloseCornerCaps == enabled) return;
+    parcloseCornerCaps = enabled;
+    notifyListeners();
+  }
+
   List<Map<String, dynamic>> systemObComponents = [];
   List<Map<String, dynamic>> verrouCentralComponents = [];
 

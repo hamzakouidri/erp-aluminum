@@ -436,6 +436,11 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
           _RuleRole('roulette', 'عجلات', 'Roulettes'),
           _RuleRole('entrematique', 'أونتروماتيك', 'Entrematique'),
           _RuleRole(
+            'parclose_corner_cap',
+            'بوشون زاوية الباركلوز',
+            'Bouchon d’angle parclose',
+          ),
+          _RuleRole(
             'sliding_kit_40000',
             'كيت سلسلة 40000 TPR',
             'Kit série 40000 TPR',
@@ -835,7 +840,7 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         ar: 'الطاسو والإيكار',
         fr: 'Tasso et Ekar',
         icon: Icons.crop_square_rounded,
-        roleKeys: {'tasso', 'ekar', 'alignment_square'},
+        roleKeys: {'tasso', 'ekar', 'alignment_square', 'parclose_corner_cap'},
       ),
       _CatalogGroup(
         key: 'moving',
@@ -1211,6 +1216,13 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
       }
       if (text.contains('poign') || text.contains('مقبض')) return 'handle';
       if (text.contains('paum') || text.contains('مفصل')) return 'hinge';
+      if ((text.contains('bouchon') || text.contains('بوشون')) &&
+          (text.contains('parclose') ||
+              text.contains('باركلوز') ||
+              text.contains('بركلوز') ||
+              text.contains('باكيت'))) {
+        return 'parclose_corner_cap';
+      }
       if (text.contains('tasso') || text.contains('طاسو')) return 'tasso';
       if (text.contains('alignement') ||
           text.contains('alignment') ||

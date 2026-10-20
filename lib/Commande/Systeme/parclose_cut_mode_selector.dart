@@ -1,6 +1,7 @@
 import 'package:database_data/widgets/app_material.dart';
 import 'package:provider/provider.dart';
 import 'package:database_data/settings/app_settings.dart';
+import 'package:database_data/settings/localization.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 
 /// Aluminium opening parclose cutting choice, shared by the drawing panel and
@@ -75,6 +76,21 @@ class ParcloseCutModeSelector extends StatelessWidget {
           hint,
           style: TextStyle(fontSize: dense ? 10 : 11, color: Colors.grey),
         ),
+        if (model.parcloseCutAt90)
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: dense,
+            value: model.parcloseCornerCaps,
+            onChanged: model.setParcloseCornerCaps,
+            title: Text(
+              Localization.translate('parclose_corner_caps_title', lang),
+              style: TextStyle(fontSize: dense ? 12 : 13),
+            ),
+            subtitle: Text(
+              Localization.translate('parclose_corner_caps_hint', lang),
+              style: TextStyle(fontSize: dense ? 10 : 11),
+            ),
+          ),
       ],
     );
   }

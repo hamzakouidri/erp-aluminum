@@ -224,6 +224,7 @@ List<String> catalogRuleKeysForAccessorySelectorType(String selectorType) {
     'roulette',
     'entrematique',
     'poignee_encastree',
+    'parclose_corner_cap',
   };
   if (tLower == 'clam' || tLower == 'clamp' || tLower == 'sliding_clamp') {
     return const ['clam', 'clamp', 'sliding_clamp'];
@@ -383,6 +384,7 @@ bool catalogRuleAllowsGlobalFallback(String roleKey) {
     'roulette',
     'entrematique',
     'poignee_encastree',
+    'parclose_corner_cap',
     // Sliding hardware is no less reusable than opening hardware. Omitting
     // these roles made a rule activated from the catalogue-wide accessory
     // page disappear specifically on BS90 and other sliding series, even

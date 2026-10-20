@@ -5368,7 +5368,7 @@ class WindowPainter extends CustomPainter {
   /// Parclose around a convex glass cell, keeping its width perpendicular
   /// to every side.
   void _drawPolygonParclose(Canvas canvas, List<Offset> outer) {
-    const double pT = 12.0;
+    const double pT = 18.0;
     final inner = _insetConvexPolygon(outer, pT);
     if (inner.length != outer.length) return;
     final bounds = (Path()..addPolygon(outer, true)).getBounds();
@@ -9087,8 +9087,9 @@ class WindowPainter extends CustomPainter {
     required double topOffset,
     required bool isTopBound,
   }) {
-    // Visible parclose band; 12 mm (was 8) so the bead reads at normal zoom.
-    final double pT = customThickness ?? 12.0;
+    // Visible parclose band; 18 mm (was 12) so the bead and the shape of its
+    // 45°/90° corner joints read at normal zoom.
+    final double pT = customThickness ?? 18.0;
     if (rect.width <= pT * 2 || rect.height <= pT * 2) return;
 
     final bool isBottomOpen =
@@ -9233,6 +9234,52 @@ class WindowPainter extends CustomPainter {
       drawCornerJoint(rect.bottomLeft, innerRect.bottomLeft);
       drawCornerJoint(rect.bottomRight, innerRect.bottomRight);
     }
+
+    // A 90° cut may meet in a plastic corner cap (bouchon) instead of the
+    // two parclose pieces touching each other.
+    if (model.showsParcloseCornerCaps) {
+      final corners = <Offset>[
+        if (isTopBound) ...[
+          Offset(rect.left, getInnerTopY(rect.left, outerInset, topOffset)),
+          Offset(
+            rect.right - pT,
+            getInnerTopY(rect.right, outerInset, topOffset),
+          ),
+        ] else ...[
+          rect.topLeft,
+          Offset(rect.right - pT, rect.top),
+        ],
+        if (!isBottomOpen) ...[
+          Offset(rect.left, rect.bottom - pT),
+          Offset(rect.right - pT, rect.bottom - pT),
+        ],
+      ];
+      for (final corner in corners) {
+        _drawParcloseCornerCap(canvas, corner & Size(pT, pT));
+      }
+    }
+  }
+
+  /// A dark plastic cap over one parclose corner, slightly rounded, with a
+  /// small highlight so it reads as a separate part.
+  void _drawParcloseCornerCap(Canvas canvas, Rect cap) {
+    final body = RRect.fromRectAndRadius(
+      cap.deflate(0.5),
+      Radius.circular(cap.shortestSide * 0.25),
+    );
+    canvas.drawRRect(body, Paint()..color = const Color(0xFF37474F));
+    canvas.drawRRect(
+      body,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.6)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.8,
+    );
+    canvas.drawCircle(
+      cap.center,
+      cap.shortestSide * 0.15,
+      Paint()..color = Colors.white.withValues(alpha: 0.25),
+    );
   }
 
   Rect _getSafeGlassRect(
