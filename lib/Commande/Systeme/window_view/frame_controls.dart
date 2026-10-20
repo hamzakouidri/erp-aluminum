@@ -1094,20 +1094,9 @@ extension _WindowViewFrame on _WindowViewState {
       final pricingRules = await dbInstance.getProfileCalculationRules();
       final database = await dbInstance.db;
 
-      Future<double> installationFee(String type) async {
-        final rows =
-            await database?.query(
-              'ShutterSqmPrices',
-              columns: ['price_per_sqm'],
-              where: 'blade_type = ? AND color_id = ?',
-              whereArgs: [type, 0],
-              limit: 1,
-            ) ??
-            [];
-        return rows.isEmpty
-            ? 0.0
-            : (rows.first['price_per_sqm'] as num?)?.toDouble() ?? 0.0;
-      }
+      final installationFees = database == null
+          ? InstallationFees.none
+          : await InstallationFees.load(database, preferences: prefs);
 
       // Linear meter price from series/color or DB
       double linearMeterPrice = 0.0;
@@ -1190,15 +1179,14 @@ extension _WindowViewFrame on _WindowViewState {
             if (rule['section_id'] is num)
               (rule['section_id'] as num).toInt(): rule,
         },
-        obInstallFee: await installationFee('OB_Install'),
-        demiObInstallFee: await installationFee('DemiOB_Install'),
-        verrouInstallFee: await installationFee('Verrou_Install'),
-        moteurInstallFee: await installationFee('Moteur_Install'),
+        installationFees: installationFees,
       );
 
       final qty = widget.model.quantity <= 0 ? 1 : widget.model.quantity;
       final unitPrice = (totals['total']?['selling'] ?? 0.0) / qty;
       if (unitPrice.isFinite && unitPrice > 0) {
+        widget.model.installationFeePerUnit =
+            (totals['installation']?['selling'] ?? 0.0) / qty;
         widget.model.totalCost = unitPrice;
         widget.model.manualPriceOverride = unitPrice;
       }

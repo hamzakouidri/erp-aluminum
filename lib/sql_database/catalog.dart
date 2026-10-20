@@ -2147,6 +2147,39 @@ extension SqlDatabaseCatalog on SqlDatabase {
     return getShutterSqmPrice(bladeType, 0);
   }
 
+  /// Saves one installation (labour) price, keyed as in [InstallationFees],
+  /// as a price the workshop set itself. An existing row keeps its id, so the
+  /// workshop sync updates it on every phone instead of adding a second row.
+  Future<void> setInstallationPrice(String key, double price) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await myDb.transaction((txn) async {
+      final updated = await txn.update(
+        'ShutterSqmPrices',
+        {'price_per_sqm': price},
+        where: 'blade_type = ? AND color_id = 0',
+        whereArgs: [key],
+      );
+      if (updated == 0) {
+        await txn.insert('ShutterSqmPrices', {
+          'id': createDistributedId(),
+          'blade_type': key,
+          'color_id': 0,
+          'price_per_sqm': price,
+        });
+      }
+      await recordWorkshopPrice(
+        txn,
+        table: 'ShutterSqmPrices',
+        rowKey: SqlDatabase.priceRowKey([key, 0]),
+        column: 'price_per_sqm',
+        price: price,
+        source: 'manual',
+      );
+    });
+    CloudSyncService().notifyCatalogChange();
+  }
+
   Future<int> insertOrUpdateShutterSqmPrice(
     String bladeType,
     int colorId,

@@ -252,7 +252,7 @@ extension _MaterialPricing on _MaterialConsumptionScreenState {
   // دالة: _loadPricesFromDb
   // تحميل الأسعار الديناميكية من قاعدة البيانات: سعر المتر الخطي للسلسلة
   // النشطة، سعر متر مربع الستار (بمطابقة ذكية للاسم/النوع)، وأجور التركيب
-  // الخاصة (محرك/OB/Demi OB/Verrou).
+  // (صفحة «أجور التركيب»).
   // ==========================================================================
   Future<void> _loadPricesFromDb() async {
     final generation = ++_priceLoadGeneration;
@@ -274,10 +274,6 @@ extension _MaterialPricing on _MaterialConsumptionScreenState {
     final previousShutterSqmPrice = _shutterSqmPriceFromDb;
     double linearMeterPrice = 0.0;
     double shutterSqmPrice = 0.0;
-    double moteurInstall = 0.0;
-    double obInstall = 0.0;
-    double demiObInstall = 0.0;
-    double verrouInstall = 0.0;
     final rawColorId = widget.model.selectedDbColor?['id'];
     final colorId = rawColorId is num
         ? rawColorId.toInt()
@@ -372,50 +368,8 @@ extension _MaterialPricing on _MaterialConsumptionScreenState {
         }
       }
     }
-    // 3. تحميل أجور التركيب الخاصة (تُخزَّن كصفوف خاصة داخل ShutterSqmPrices بـ blade_type مميز و color_id=0)
-    final moteurRes = await dbInstance.query(
-      'ShutterSqmPrices',
-      columns: ['price_per_sqm'],
-      where: 'blade_type = ? AND color_id = ?',
-      whereArgs: ['Moteur_Install', 0],
-      limit: 1,
-    );
-    if (moteurRes.isNotEmpty) {
-      moteurInstall =
-          (moteurRes.first['price_per_sqm'] as num?)?.toDouble() ?? 0.0;
-    }
-    final obRes = await dbInstance.query(
-      'ShutterSqmPrices',
-      columns: ['price_per_sqm'],
-      where: 'blade_type = ? AND color_id = ?',
-      whereArgs: ['OB_Install', 0],
-      limit: 1,
-    );
-    if (obRes.isNotEmpty) {
-      obInstall = (obRes.first['price_per_sqm'] as num?)?.toDouble() ?? 0.0;
-    }
-    final demiObRes = await dbInstance.query(
-      'ShutterSqmPrices',
-      columns: ['price_per_sqm'],
-      where: 'blade_type = ? AND color_id = ?',
-      whereArgs: ['DemiOB_Install', 0],
-      limit: 1,
-    );
-    if (demiObRes.isNotEmpty) {
-      demiObInstall =
-          (demiObRes.first['price_per_sqm'] as num?)?.toDouble() ?? 0.0;
-    }
-    final verrouRes = await dbInstance.query(
-      'ShutterSqmPrices',
-      columns: ['price_per_sqm'],
-      where: 'blade_type = ? AND color_id = ?',
-      whereArgs: ['Verrou_Install', 0],
-      limit: 1,
-    );
-    if (verrouRes.isNotEmpty) {
-      verrouInstall =
-          (verrouRes.first['price_per_sqm'] as num?)?.toDouble() ?? 0.0;
-    }
+    // 3. أجور التركيب (صفحة «أجور التركيب»)، منفصلة عن سعر القطع
+    final installationFees = await InstallationFees.load(dbInstance);
     // The window colour's own mosquito-net price, else the price of every
     // colour (colour 0).
     final moustiquaireSqmPrice = await SqlDatabase().getShutterSqmPriceForColor(
@@ -470,10 +424,7 @@ extension _MaterialPricing on _MaterialConsumptionScreenState {
           }
         }
       }
-      _moteurInstallFee = moteurInstall;
-      _obInstallFee = obInstall;
-      _demiObInstallFee = demiObInstall;
-      _verrouInstallFee = verrouInstall;
+      _installationFees = installationFees;
       if (_pricePerLinearMeterOverride == null) {
         _pricePerLinearMeterController.text = effectiveLinearMeterPrice
             .toStringAsFixed(0);
@@ -877,6 +828,7 @@ extension _MaterialPricing on _MaterialConsumptionScreenState {
     double shutterSelling,
     double accessorySelling,
     double moustiquaireSelling,
+    double installationSelling,
     double finalSellingPrice,
   ) {
     final lang = Provider.of<AppSettingsProvider>(
@@ -911,7 +863,22 @@ extension _MaterialPricing on _MaterialConsumptionScreenState {
                 Localization.translate('سعر الإكسسوارات:', lang),
                 accessorySelling,
               ),
-              _detailRow('سعر الموستيكير:', moustiquaireSelling),
+              _detailRow(
+                Localization.translate('سعر الموستيكير:', lang),
+                moustiquaireSelling,
+              ),
+              _detailRow(
+                Localization.translate('أجور التركيب:', lang),
+                installationSelling,
+              ),
+              for (final line in _installationFees.linesFor(
+                widget.model,
+                _visibleBomItems,
+              ))
+                _detailRow(
+                  '   • ${Localization.translate(line.label, lang)} × ${_formatInstallQuantity(line.quantity)}',
+                  line.total,
+                ),
               const Divider(thickness: 2),
               _detailRow(
                 Localization.translate('المجموع الإجمالي:', lang),

@@ -14,6 +14,7 @@ import '../utils/price_format.dart';
 import '../widgets/section_image.dart';
 import '../widgets/price_sync_banner.dart';
 import 'standard_sheets_screen.dart';
+import 'installation_prices_tab.dart';
 
 class GlassDisplayItem {
   final Map<String, dynamic> glass;
@@ -110,7 +111,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     super.initState();
     _tabController = TabController(
       // One per tab of the TabBar below (and child of its TabBarView).
-      length: 12,
+      length: 13,
       vsync: this,
       initialIndex: _sessionSelectedTab ?? widget.initialIndex,
     );
@@ -1714,8 +1715,6 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     // ── colour constants ──────────────────────────────────────────────────
     const Color lamePurple = Color(0xFF7C3AED);
     const Color coulisseBlue = Color(0xFF1D4ED8);
-    const Color moteurOrange = Color(0xFFD97706);
-    const Color manivelleGreen = Color(0xFF059669);
 
     // ── helper: section card ──────────────────────────────────────────────
     Widget sectionCard({
@@ -2001,20 +2000,6 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
       );
     }
 
-    // ── Moteur installation fee ───────────────────────────────────────────
-    final double moteurInstallPrice =
-        (shutterSqmPrices['Moteur_Install']?[0]) ?? 0.0;
-
-    // ── Manivelle price ───────────────────────────────────────────────────
-    final double manivellePrice = (shutterSqmPrices['Manivelle']?[0]) ?? 0.0;
-
-    // ── Special Accessories Prices ────────────────────────────────────────
-    final double obInstallPrice = (shutterSqmPrices['OB_Install']?[0]) ?? 0.0;
-    final double demiOBInstallPrice =
-        (shutterSqmPrices['DemiOB_Install']?[0]) ?? 0.0;
-    final double verrouInstallPrice =
-        (shutterSqmPrices['Verrou_Install']?[0]) ?? 0.0;
-
     return ListView(
       key: const PageStorageKey<String>('price-shutter-sqm-list'),
       padding: const EdgeInsets.only(bottom: 16),
@@ -2120,137 +2105,21 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                 ),
         ),
 
-        // ── 3. Moteur ─────────────────────────────────────────────────────
+        // ── 3. Installation fees moved to their own page ─────────────────
         sectionCard(
-          title: Localization.translate('المحرك (Moteur) — سعر التركيب', lang),
-          icon: Icons.settings_input_component_outlined,
-          color: moteurOrange,
-          body: Column(
-            children: [
-              // Info chip
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: moteurOrange.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: moteurOrange.withValues(alpha: 0.3),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline, size: 14, color: moteurOrange),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          Localization.translate(
-                            'سعر المحرك يُحسب تلقائياً من المنتج المختار في قاعدة البيانات. أضف هنا فقط سعر التركيب الإضافي.',
-                            lang,
-                          ),
-                          style: TextStyle(fontSize: 11, color: moteurOrange),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+          title: Localization.translate('أجور التركيب', lang),
+          icon: Icons.handyman_outlined,
+          color: Colors.teal,
+          body: ListTile(
+            leading: const Icon(Icons.info_outline, color: Colors.teal),
+            title: Text(
+              Localization.translate(
+                'أجور تركيب المحرك والمانيفال والكيتات أصبحت في تبويب «أجور التركيب» المستقل.',
+                lang,
               ),
-              PriceEditRow(
-                title: Localization.translate('سعر التركيب', lang),
-                titleIcon: Icon(
-                  Icons.build_outlined,
-                  size: 18,
-                  color: moteurOrange,
-                ),
-                subtitle: Localization.translate('يُضاف إلى سعر المحرك', lang),
-                currentPrice: moteurInstallPrice,
-                canChangePrices: canChangePrices,
-                onSave: (parsed) {
-                  _updateShutterSqmPrice('Moteur_Install', 0, parsed);
-                },
-              ),
-              const SizedBox(height: 4),
-            ],
-          ),
-        ),
-
-        // ── 4. Manivelle ──────────────────────────────────────────────────
-        sectionCard(
-          title: Localization.translate('المانيفال (Manivelle)', lang),
-          icon: Icons.rotate_right,
-          color: manivelleGreen,
-          body: Column(
-            children: [
-              PriceEditRow(
-                title: Localization.translate('سعر تركيب المانيفال', lang),
-                titleIcon: Icon(
-                  Icons.rotate_right,
-                  size: 18,
-                  color: manivelleGreen,
-                ),
-                subtitle: Localization.translate('يُضاف إلى سعر القطعة', lang),
-                currentPrice: manivellePrice,
-                canChangePrices: canChangePrices,
-                onSave: (parsed) {
-                  _updateShutterSqmPrice('Manivelle', 0, parsed);
-                },
-              ),
-              const SizedBox(height: 4),
-            ],
-          ),
-        ),
-
-        // ── 5. Special Accessories ───────────────────────────────────────
-        sectionCard(
-          title: Localization.translate('إكسسوارات خاصة', lang),
-          icon: Icons.extension,
-          color: Colors.blueGrey,
-          body: Column(
-            children: [
-              PriceEditRow(
-                title: Localization.translate('سعر الكيت OB', lang),
-                titleIcon: const Icon(
-                  Icons.build_circle_outlined,
-                  size: 18,
-                  color: Colors.blueGrey,
-                ),
-                currentPrice: obInstallPrice,
-                canChangePrices: canChangePrices,
-                onSave: (parsed) =>
-                    _updateShutterSqmPrice('OB_Install', 0, parsed),
-              ),
-              const SizedBox(height: 4),
-              PriceEditRow(
-                title: Localization.translate('سعر ديمي OB', lang),
-                titleIcon: const Icon(
-                  Icons.build_circle_outlined,
-                  size: 18,
-                  color: Colors.blueGrey,
-                ),
-                currentPrice: demiOBInstallPrice,
-                canChangePrices: canChangePrices,
-                onSave: (parsed) =>
-                    _updateShutterSqmPrice('DemiOB_Install', 0, parsed),
-              ),
-              const SizedBox(height: 4),
-              PriceEditRow(
-                title: Localization.translate('سعر الفيرو سنترال', lang),
-                titleIcon: const Icon(
-                  Icons.build_circle_outlined,
-                  size: 18,
-                  color: Colors.blueGrey,
-                ),
-                currentPrice: verrouInstallPrice,
-                canChangePrices: canChangePrices,
-                onSave: (parsed) =>
-                    _updateShutterSqmPrice('Verrou_Install', 0, parsed),
-              ),
-              const SizedBox(height: 4),
-            ],
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _tabController.animateTo(_tabController.length - 1),
           ),
         ),
       ],
@@ -5252,6 +5121,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
               },
             ),
             Tab(text: Localization.translate('الموستيكير (Moustiquaire)', lang)),
+            Tab(text: Localization.translate('أجور التركيب', lang)),
           ],
         ),
       ),
@@ -5366,6 +5236,24 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                         onPriceUpdated: _loadAllData,
                       ),
                       Expanded(child: _buildMoustiquairePricingTab(context)),
+                    ],
+                  ),
+                  Column(
+                    children: [
+                      PriceSyncBanner(
+                        categoryKey: 'installation',
+                        onPriceUpdated: _loadAllData,
+                      ),
+                      Expanded(
+                        child: InstallationPricesTab(
+                          accessories: accessoryList,
+                          shutterComponents: shutterList,
+                          kits: kitBundlesList,
+                          prices: shutterSqmPrices,
+                          canChangePrices: canChangePrices,
+                          onPriceSaved: _loadAllData,
+                        ),
+                      ),
                     ],
                   ),
                 ],

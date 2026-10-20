@@ -1,6 +1,7 @@
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/calculate_component.dart';
 import 'package:database_data/settings/app_settings.dart';
+import 'package:database_data/Commande/Systeme/installation_fees.dart';
 
 /// Shared selling-price calculation for the material table and order edits.
 Map<String, Map<String, double>> calculateSellingTotals({
@@ -13,10 +14,7 @@ Map<String, Map<String, double>> calculateSellingTotals({
   required double shutterSqmPrice,
   double moustiquaireSqmPrice = 0,
   Map<int, Map<String, dynamic>> profileRules = const {},
-  double obInstallFee = 0,
-  double demiObInstallFee = 0,
-  double verrouInstallFee = 0,
-  double moteurInstallFee = 0,
+  InstallationFees installationFees = InstallationFees.none,
 }) {
   Map<String, dynamic>? _componentOverrideForBom(BomItem item) {
     final primaryKey = item.overrideKey ?? item.originalName;
@@ -177,37 +175,11 @@ Map<String, Map<String, double>> calculateSellingTotals({
       }
     }
   }
-  // أجور تركيب خاصة (System OB, Demi OB, Verrou) تُضاف مرة واحدة لكل قطعة (× الكمية الكلية)
-  double specialAccessoryInstallFees = 0.0;
-  bool hasActiveKit(String exactName, List<String> prefixes) => activeItems.any(
-    (item) =>
-        item.isActive &&
-        item.category == 'accessory' &&
-        (item.originalName == exactName ||
-            prefixes.any((prefix) => item.originalName.startsWith(prefix))),
-  );
-  if (hasActiveKit('System OB', const ['System OB_'])) {
-    specialAccessoryInstallFees += obInstallFee * model.quantity;
-  }
-  if (hasActiveKit('Demi System OB', const ['Demi System OB_'])) {
-    specialAccessoryInstallFees += demiObInstallFee * model.quantity;
-  }
-  if (hasActiveKit('Verrou Central', const ['Verrou Central_'])) {
-    specialAccessoryInstallFees += verrouInstallFee * model.quantity;
-  }
-  // أجرة تركيب المحرك تُضاف مرة واحدة لكل نافذة إذا الآلية محرك ووُجد عنصر يخص المحرك مفعّل
-  double motorCrankInstallFees = 0.0;
-  final mech = model.shutterMechanism;
-  final isMotor = mech == 'محرك';
-  if (isMotor &&
-      activeItems.any(
-        (item) =>
-            isShutterAccessory(item) &&
-            (item.originalName.toLowerCase().contains('moteur') ||
-                item.originalName.toLowerCase().contains('محرك')),
-      )) {
-    motorCrankInstallFees = moteurInstallFee * model.quantity;
-  }
+  // أجور التركيب (اليد العاملة) منفصلة عن سعر القطع: تُحسب من صفحة
+  // «أجور التركيب» ولا يدخل عليها هامش الربح.
+  final double installationSelling = installationFees
+      .linesFor(model, items)
+      .fold<double>(0.0, (sum, line) => sum + line.total);
   // متغيرات أسعار البيع لكل قسم (تُحسب حسب طريقة costMethod أدناه)
   double profileSelling = 0.0;
   double glassSelling = 0.0;
@@ -249,10 +221,7 @@ Map<String, Map<String, double>> calculateSellingTotals({
     glassSelling =
         glassCost; // سعر بيع الزجاج يساوي دائمًا تكلفته (بدون هامش ربح إضافي)
     shutterSelling = shutterCost * factor;
-    accessorySelling =
-        (accessorySellingCost * factor) +
-        specialAccessoryInstallFees +
-        motorCrankInstallFees;
+    accessorySelling = accessorySellingCost * factor;
     jointSelling = jointCost * factor;
     sideCoverSelling = sideCoverCost * factor;
     // ---- طريقة 2: سعر المتر المربع الكلي للنافذة (يُطرح منه الزجاج ليبقى نصيب البروفيل) ----
@@ -269,10 +238,7 @@ Map<String, Map<String, double>> calculateSellingTotals({
       if (profileSelling < 0.0) profileSelling = 0.0; // حماية من قيمة سالبة
     }
     shutterSelling = shutterAreaPrice;
-    accessorySelling =
-        accessorySellingCost +
-        specialAccessoryInstallFees +
-        motorCrankInstallFees;
+    accessorySelling = accessorySellingCost;
     jointSelling = jointCost;
     sideCoverSelling = sideCoverCost;
     // ---- طريقة 3: سعر المتر الخطي للبروفيلات الرئيسية + تكلفة البروفيلات الأخرى كما هي ----
@@ -281,10 +247,7 @@ Map<String, Map<String, double>> calculateSellingTotals({
         (mainProfileMeters * (linearMeterPrice)) + otherProfileCost;
     glassSelling = glassCost;
     shutterSelling = shutterAreaPrice;
-    accessorySelling =
-        accessorySellingCost +
-        specialAccessoryInstallFees +
-        motorCrankInstallFees;
+    accessorySelling = accessorySellingCost;
     jointSelling = jointCost;
     sideCoverSelling = sideCoverCost;
   }
@@ -307,7 +270,8 @@ Map<String, Map<String, double>> calculateSellingTotals({
       accessorySelling +
       jointSelling +
       sideCoverSelling +
-      moustiquaireSelling;
+      moustiquaireSelling +
+      installationSelling;
   // إرجاع كل القيم كخريطة مقسّمة حسب القسم (لكل قسم: cost و selling)
   return {
     'profile': {'cost': profileCost, 'selling': profileSelling},
@@ -317,6 +281,7 @@ Map<String, Map<String, double>> calculateSellingTotals({
     'accessory': {'cost': accessoryCost, 'selling': accessorySelling},
     'joint': {'cost': jointCost, 'selling': jointSelling},
     'moustiquaire': {'cost': moustiquaireCost, 'selling': moustiquaireSelling},
+    'installation': {'cost': 0.0, 'selling': installationSelling},
     'total': {'cost': totalCost, 'selling': totalSelling},
   };
 }

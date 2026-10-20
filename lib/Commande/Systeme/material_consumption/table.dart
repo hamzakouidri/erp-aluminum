@@ -503,6 +503,17 @@ extension _MaterialTable on _MaterialConsumptionScreenState {
                     ),
                     ...groups['glass']!.map(_buildDraggableMaterialRow),
                   ],
+                  // أجور التركيب: سطر مستقل عن سعر القطع (صفحة «أجور التركيب»)
+                  if ((totals['installation']?['selling'] ?? 0.0) > 0) ...[
+                    _sectionTitle(
+                      'أجور التركيب',
+                      Colors.lightGreen.shade100,
+                      selling: totals['installation']?['selling'],
+                    ),
+                    ..._installationFees
+                        .linesFor(widget.model, items)
+                        .map(_buildInstallationFeeRow),
+                  ],
                 ],
               ),
             ),
@@ -840,6 +851,47 @@ extension _MaterialTable on _MaterialConsumptionScreenState {
   }
 
   // صف تفصيلي واحد في نافذة "تفاصيل الحساب" — يُخفى تلقائيًا إذا كانت القيمة صفر (وليس صفًا رئيسيًا)
+  Widget _buildInstallationFeeRow(InstallationFeeLine line) {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    final currency = Localization.translate('دج', lang);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.handyman_outlined, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '${Localization.translate(line.label, lang)} × '
+              '${_formatInstallQuantity(line.quantity)}',
+            ),
+          ),
+          Text(
+            '${line.unitPrice.toStringAsFixed(0)} $currency',
+            style: const TextStyle(color: Colors.grey),
+          ),
+          const SizedBox(width: 24),
+          Text(
+            '${line.total.toStringAsFixed(0)} $currency',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatInstallQuantity(double quantity) =>
+      quantity == quantity.roundToDouble()
+      ? quantity.toStringAsFixed(0)
+      : quantity.toStringAsFixed(2);
+
   Widget _detailRow(String label, double price, {bool isBold = false}) {
     if (price == 0 && !isBold) return const SizedBox.shrink();
     return Padding(

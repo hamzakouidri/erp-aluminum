@@ -11,6 +11,7 @@ import 'order_date_utils.dart';
 import 'order_status_order.dart';
 import 'Systeme/sliding_montant_counts.dart';
 import 'Systeme/model_serialization.dart';
+import 'package:database_data/Commande/Systeme/installation_fees.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/services/supabase_workshop_sync_service.dart';
 import 'package:flutter/foundation.dart';
@@ -199,6 +200,10 @@ class DevisData {
 class DevisBuilder {
   static AppLanguage _currentLang = AppLanguage.arabic;
 
+  /// Read from the price settings on each [build]; a line built on its own
+  /// uses the last value read.
+  static bool _showInstallation = true;
+
   static String t(String key) => Localization.translate(key, _currentLang);
 
   static double _toDouble(dynamic value) => (value as num?)?.toDouble() ?? 0.0;
@@ -259,6 +264,8 @@ class DevisBuilder {
     // when a document is opened immediately after changing language).
     final langIndex = prefs.getInt('app_language') ?? AppLanguage.french.index;
     _currentLang = overrideLang ?? AppLanguage.values[langIndex];
+    _showInstallation =
+        prefs.getBool(InstallationFees.showOnDevisPreference) ?? true;
     final candidate = workshop ?? await loadWorkshopInfo();
     final workshopCode = (prefs.getString('workshop_code') ?? '').trim();
     final supplier = _isUsableWorkshopName(candidate.name, workshopCode)
@@ -813,6 +820,46 @@ class DevisBuilder {
   }
 
   static DevisLineItem _buildLineItem(
+    Map<String, dynamic> item, {
+    bool isOfficialInvoice = false,
+  }) {
+    final line = _buildWindowLineItem(
+      item,
+      isOfficialInvoice: isOfficialInvoice,
+    );
+    final fee = installationFeeOf(item);
+    if (!_showInstallation || fee <= 0) return line;
+    final shownFee = isOfficialInvoice ? fee / 1.19 : fee;
+    if (shownFee > line.unitPrice) return line;
+    return DevisLineItem(
+      imagePath: line.imagePath,
+      imageBase64: line.imageBase64,
+      title: line.title,
+      details: [
+        ...line.details,
+        '${t('منها أجور التركيب')}: ${formatMoney(shownFee)} ${t('دج')}',
+      ],
+      unitPrice: line.unitPrice,
+      quantity: line.quantity,
+      isReplaced: line.isReplaced,
+      replacementReason: line.replacementReason,
+      width: line.width,
+      height: line.height,
+      color: line.color,
+      detailId: line.detailId,
+    );
+  }
+
+  /// Installation part of one unit of a saved order line (0 when none).
+  static double installationFeeOf(Map<String, dynamic> item) {
+    final value = savedWindowModelMap(
+      item['partitions_json'],
+    )['installationFeePerUnit'];
+    final fee = value is num ? value.toDouble() : double.tryParse('$value');
+    return fee != null && fee.isFinite && fee > 0 ? fee : 0.0;
+  }
+
+  static DevisLineItem _buildWindowLineItem(
     Map<String, dynamic> item, {
     bool isOfficialInvoice = false,
   }) {

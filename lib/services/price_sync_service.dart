@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_sqlcipher/sqflite.dart' show DatabaseExecutor;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:database_data/Commande/Systeme/installation_fees.dart';
 import '../settings/app_settings.dart';
 import 'app_admin_status_service.dart';
 import 'supabase_workshop_sync_service.dart';
@@ -35,41 +36,59 @@ class PriceTableSpec {
   final bool updateOnly;
 
   /// Rows of [table] shared with another category: only the rows whose
-  /// [prefixColumn] starts with [prefix] belong here, or, with
-  /// [excludePrefix], only those that do not.
-  final String? prefixColumn;
-  final String? prefix;
-  final bool excludePrefix;
+  /// [keyColumn] starts with one of [prefixes] or equals one of [values]
+  /// belong here, or, with [exclude], only those that match none of them.
+  final String? keyColumn;
+  final List<String> prefixes;
+  final List<String> values;
+  final bool exclude;
 
   const PriceTableSpec(
     this.table,
     this.keyColumns,
     this.priceColumns, {
     this.updateOnly = false,
-    this.prefixColumn,
-    this.prefix,
-    this.excludePrefix = false,
+    this.keyColumn,
+    this.prefixes = const [],
+    this.values = const [],
+    this.exclude = false,
   });
+
+  bool get _isFiltered =>
+      keyColumn != null && (prefixes.isNotEmpty || values.isNotEmpty);
 
   /// Whether [row] belongs to this category.
   bool accepts(Map<dynamic, dynamic> row) {
-    final column = prefixColumn;
-    final start = prefix;
-    if (column == null || start == null) return true;
-    final value = (row[column] ?? '').toString();
-    return value.startsWith(start) != excludePrefix;
+    if (!_isFiltered) return true;
+    final value = (row[keyColumn] ?? '').toString();
+    final matches =
+        prefixes.any(value.startsWith) || values.contains(value);
+    return matches != exclude;
   }
 
   /// SQL filter equivalent to [accepts], or null.
   String? get whereClause {
-    final column = prefixColumn;
-    if (column == null || prefix == null) return null;
-    return excludePrefix
-        ? "($column IS NULL OR $column NOT LIKE ?)"
-        : '$column LIKE ?';
+    if (!_isFiltered) return null;
+    final column = keyColumn!;
+    final match = [
+      for (final _ in prefixes) "$column LIKE ? ESCAPE '!'",
+      if (values.isNotEmpty)
+        '$column IN (${List.filled(values.length, '?').join(', ')})',
+    ].join(' OR ');
+    return exclude
+        ? '($column IS NULL OR NOT ($match))'
+        : '($match)';
   }
 
-  List<Object?> get whereArgs => prefix == null ? const [] : ['$prefix%'];
+  List<Object?> get whereArgs => [
+    for (final prefix in prefixes) '${escapeLike(prefix)}%',
+    ...values,
+  ];
+
+  /// [text] as a literal inside a `LIKE ... ESCAPE '!'` pattern: `_` is a
+  /// wildcard otherwise, so "Install_" would also match "Installx".
+  static String escapeLike(String text) =>
+      text.replaceAllMapped(RegExp(r'[!%_]'), (match) => '!${match[0]}');
 }
 
 /// Outcome of applying an administrator publication.
@@ -157,6 +176,13 @@ class PriceSyncService {
       icon: Icons.grid_on_rounded,
     ),
     PriceSyncCategory(
+      key: 'installation',
+      titleAr: 'أجور التركيب (اليد العاملة)',
+      titleFr: 'Prix de pose (main-d’œuvre)',
+      tableName: 'ShutterSqmPrices',
+      icon: Icons.handyman_rounded,
+    ),
+    PriceSyncCategory(
       key: 'caisson_tunnel',
       titleAr: 'أسعار صناديق Caisson Tunnel',
       titleFr: 'Prix des caissons tunnel',
@@ -218,16 +244,18 @@ class PriceSyncService {
         'color_id',
       ], ['price']),
     ],
-    // Mosquito-net m² prices share ShutterSqmPrices (keys "Moustiquaire_*")
-    // but are their own category: a workshop accepts one without the other.
+    // Mosquito-net m² prices (keys "Moustiquaire_*") and installation
+    // prices share ShutterSqmPrices but are their own categories: a workshop
+    // accepts one without the others.
     'shutter_sqm': [
       PriceTableSpec(
         'ShutterSqmPrices',
         ['blade_type', 'color_id'],
         ['price_per_sqm'],
-        prefixColumn: 'blade_type',
-        prefix: 'Moustiquaire_',
-        excludePrefix: true,
+        keyColumn: 'blade_type',
+        prefixes: ['Moustiquaire_', InstallationFees.keyPrefix],
+        values: InstallationFees.legacyKeys,
+        exclude: true,
       ),
     ],
     'moustiquaire': [
@@ -235,8 +263,18 @@ class PriceSyncService {
         'ShutterSqmPrices',
         ['blade_type', 'color_id'],
         ['price_per_sqm'],
-        prefixColumn: 'blade_type',
-        prefix: 'Moustiquaire_',
+        keyColumn: 'blade_type',
+        prefixes: ['Moustiquaire_'],
+      ),
+    ],
+    'installation': [
+      PriceTableSpec(
+        'ShutterSqmPrices',
+        ['blade_type', 'color_id'],
+        ['price_per_sqm'],
+        keyColumn: 'blade_type',
+        prefixes: [InstallationFees.keyPrefix],
+        values: InstallationFees.legacyKeys,
       ),
     ],
     'caisson_tunnel': [

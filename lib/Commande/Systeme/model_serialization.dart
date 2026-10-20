@@ -589,6 +589,7 @@ extension WindowModelSerialization on WindowModel {
       'quantity': quantity,
       'manualNameOverride': manualNameOverride,
       'manualPriceOverride': manualPriceOverride,
+      'installationFeePerUnit': installationFeePerUnit,
       'description': description,
       'invoiceTableEdited': invoiceTableEdited,
       'position': position,
@@ -783,6 +784,8 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> savedMap) {
   model.quantity = (map['quantity'] as num?)?.toInt() ?? 1;
   model.manualNameOverride = map['manualNameOverride']?.toString();
   model.manualPriceOverride = (map['manualPriceOverride'] as num?)?.toDouble();
+  model.installationFeePerUnit =
+      (map['installationFeePerUnit'] as num?)?.toDouble() ?? 0.0;
   model.description = map['description']?.toString();
   model.invoiceTableEdited =
       map['invoiceTableEdited'] == true ||
