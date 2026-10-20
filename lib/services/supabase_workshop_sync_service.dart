@@ -4,13 +4,13 @@ import 'dart:math';
 
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/settings/app_settings.dart';
-import 'package:database_data/settings/localization.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:database_data/settings/shortcut_bindings.dart';
 import 'package:database_data/services/order_notification_service.dart';
 import 'package:database_data/services/worker_push_notification_service.dart';
+import 'package:database_data/services/notification_texts.dart';
 import 'package:database_data/services/app_admin_status_service.dart';
 import 'package:database_data/services/system_publication_service.dart';
 import 'package:database_data/services/supabase_account_service.dart';
@@ -1074,25 +1074,10 @@ class SupabaseWorkshopSyncService {
     });
   }
 
-  Future<AppLanguage> _currentLanguage() async {
-    final prefs = await SharedPreferences.getInstance();
-    final index = prefs.getInt('app_language') ?? 0;
-    return index >= 0 && index < AppLanguage.values.length
-        ? AppLanguage.values[index]
-        : AppLanguage.arabic;
-  }
-
   Future<void> _sendPricePush(int count) async {
     try {
-      final lang = await _currentLanguage();
-      final body = Localization.translate(
-        'تم تحديث {count} سعر في إدارة الأسعار',
-        lang,
-      ).replaceAll('{count}', count.toString());
       await WorkerPushNotificationService.instance.sendManagerEvent(
         eventType: 'prices',
-        title: Localization.translate('تحديث الأسعار', lang),
-        body: body,
         data: {'count': count.toString()},
       );
     } catch (error) {
@@ -1113,13 +1098,13 @@ class SupabaseWorkshopSyncService {
       final enabled = await WorkerPushNotificationService.instance
           .loadPreferences(const ['prices']);
       if (enabled['prices'] == false) return;
-      final lang = await _currentLanguage();
+      final text = NotificationTexts.prices(
+        count,
+        await AppSettingsProvider.loadSavedLanguage(),
+      );
       await OrderNotificationService().showAssignmentNotification(
-        title: Localization.translate('تحديث الأسعار', lang),
-        body: Localization.translate(
-          'تم تحديث {count} سعر في إدارة الأسعار',
-          lang,
-        ).replaceAll('{count}', count.toString()),
+        title: text.title,
+        body: text.body,
         data: const {'type': 'prices'},
       );
     } catch (error) {

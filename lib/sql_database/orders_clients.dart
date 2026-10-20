@@ -2028,9 +2028,10 @@ extension SqlDatabaseOrders on SqlDatabase {
       WorkerPushNotificationService.instance
           .sendManagerEvent(
             eventType: 'deliveries',
-            title: 'خطة توزيع جديدة',
-            body: 'تم إنشاء خطة توزيع للطلبية #$idCommande',
-            data: {'order_id': idCommande.toString()},
+            data: {
+              'kind': 'plan_created',
+              'order_id': idCommande.toString(),
+            },
           )
           .catchError((_) {}),
     );
@@ -2132,9 +2133,10 @@ extension SqlDatabaseOrders on SqlDatabase {
         WorkerPushNotificationService.instance
             .sendManagerEvent(
               eventType: 'deliveries',
-              title: 'تم تسليم الطلبية',
-              body: 'تم تأكيد خطة التوزيع بنجاح',
-              data: {'delivery_id': deliveryId.toString()},
+              data: {
+                'kind': 'delivered',
+                'delivery_id': deliveryId.toString(),
+              },
             )
             .catchError((_) {}),
       );

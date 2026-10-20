@@ -757,6 +757,34 @@ class AppSettingsProvider extends ChangeNotifier {
             defaultValue: true,
           ));
 
+  /// Called after the user picks another language, e.g. so the push token
+  /// row on the server is updated and closed-app pushes use that language.
+  static void Function(AppLanguage language)? onLanguageChanged;
+
+  /// The saved application language, readable without a [BuildContext]
+  /// (background isolates, services, notification texts).
+  static AppLanguage languageFromPreferences(SharedPreferences prefs) {
+    final langIndex = prefs.getInt('app_language');
+    final hasExplicitLanguage = prefs.getBool('app_language_explicit') ?? false;
+    final effectiveLanguageIndex =
+        langIndex == null ||
+            (!hasExplicitLanguage && langIndex == AppLanguage.arabic.index)
+        ? AppLanguage.french.index
+        : langIndex;
+    return effectiveLanguageIndex >= 0 &&
+            effectiveLanguageIndex < AppLanguage.values.length
+        ? AppLanguage.values[effectiveLanguageIndex]
+        : AppLanguage.french;
+  }
+
+  static Future<AppLanguage> loadSavedLanguage() async {
+    try {
+      return languageFromPreferences(await SharedPreferences.getInstance());
+    } catch (_) {
+      return AppLanguage.french;
+    }
+  }
+
   // Load settings from SharedPreferences
   Future<void> loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
@@ -764,16 +792,7 @@ class AppSettingsProvider extends ChangeNotifier {
     // Load Language. Older installations used Arabic as the implicit default
     // (without an explicit user choice), so upgrade only that old default to
     // French while preserving a language selected by the user.
-    final langIndex = prefs.getInt('app_language');
-    final hasExplicitLanguage = prefs.getBool('app_language_explicit') ?? false;
-    final effectiveLanguageIndex =
-        langIndex == null ||
-            (!hasExplicitLanguage && langIndex == AppLanguage.arabic.index)
-        ? AppLanguage.french.index
-        : (langIndex ?? AppLanguage.french.index);
-    _language = effectiveLanguageIndex < AppLanguage.values.length
-        ? AppLanguage.values[effectiveLanguageIndex]
-        : AppLanguage.french;
+    _language = languageFromPreferences(prefs);
 
     // Load Theme
     final isDark = prefs.getBool('app_is_dark') ?? false;
@@ -867,6 +886,7 @@ class AppSettingsProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('app_language', lang.index);
     await prefs.setBool('app_language_explicit', true);
+    onLanguageChanged?.call(lang);
   }
 
   Future<void> setTheme(ThemeMode mode) async {

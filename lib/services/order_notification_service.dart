@@ -9,6 +9,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:database_data/services/supabase_workshop_sync_service.dart';
 
+import '../settings/app_settings.dart';
+import 'notification_texts.dart';
+
 /// Manages real-time order-event notifications within the workshop.
 ///
 /// **How it works:**
@@ -28,9 +31,6 @@ class OrderNotificationService {
   factory OrderNotificationService() => _instance;
 
   static const String _channelId = 'erp_orders_alert_channel_v2';
-  static const String _channelName = 'إشعارات الطلبيات';
-  static const String _channelDesc =
-      'تنبيهات صوتية فورية عند إضافة أو تعديل الطلبيات في الورشة';
 
   // ── state ────────────────────────────────────────────────────────────────
   final FlutterLocalNotificationsPlugin _plugin =
@@ -320,10 +320,13 @@ class OrderNotificationService {
               AndroidFlutterLocalNotificationsPlugin
             >();
         await android?.requestNotificationsPermission();
-        const channel = AndroidNotificationChannel(
+        // Re-creating a channel with the same id only renames it, so the
+        // name in the phone's settings follows the application language.
+        final lang = await AppSettingsProvider.loadSavedLanguage();
+        final channel = AndroidNotificationChannel(
           _channelId,
-          _channelName,
-          description: _channelDesc,
+          NotificationTexts.channelName(lang),
+          description: NotificationTexts.channelDescription(lang),
           importance: Importance.max,
           playSound: true,
           enableVibration: true,
@@ -410,10 +413,16 @@ class OrderNotificationService {
       const Duration(seconds: 25),
       () => _recentNotifications.remove(dedupeKey),
     );
-    var body = clientName.isEmpty ? 'عميل' : clientName;
-    if (orderCode.isNotEmpty) body += '  |  #$orderCode';
-    if (author.isNotEmpty) body += '\nبواسطة: $author';
-    unawaited(_showLocalNotification(title: 'تم حذف طلبية', body: body));
+    unawaited(() async {
+      final text = NotificationTexts.order(
+        action: 'deleted',
+        clientName: clientName,
+        orderCode: orderCode,
+        author: author,
+        lang: await AppSettingsProvider.loadSavedLanguage(),
+      );
+      await _showLocalNotification(title: text.title, body: text.body);
+    }());
   }
 
   void _dispatchNotification({
@@ -435,19 +444,21 @@ class OrderNotificationService {
       SystemSound.play(SystemSoundType.alert);
     } catch (_) {}
 
-    // 2. Format title and body
-    final title = isNew
-        ? '📋 طلبية جديدة في الورشة'
-        : '✏️ تعديل طلبية في الورشة';
-    String body = clientName.isNotEmpty ? clientName : 'عميل';
-    if (orderCode.isNotEmpty) body += '  |  #$orderCode';
-    if (author.isNotEmpty) body += '\nبواسطة: $author';
-
-    _showLocalNotification(
-      title: title,
-      body: body,
-      payload: orderId == null ? null : jsonEncode({'order_id': orderId}),
-    );
+    // 2. Format title and body in the language chosen in the settings
+    unawaited(() async {
+      final text = NotificationTexts.order(
+        action: isNew ? 'created' : 'updated',
+        clientName: clientName,
+        orderCode: orderCode,
+        author: author,
+        lang: await AppSettingsProvider.loadSavedLanguage(),
+      );
+      await _showLocalNotification(
+        title: text.title,
+        body: text.body,
+        payload: orderId == null ? null : jsonEncode({'order_id': orderId}),
+      );
+    }());
   }
 
   Future<void> _showLocalNotification({
@@ -457,10 +468,11 @@ class OrderNotificationService {
   }) async {
     if (kIsWeb) return;
     try {
-      const androidDetails = AndroidNotificationDetails(
+      final lang = await AppSettingsProvider.loadSavedLanguage();
+      final androidDetails = AndroidNotificationDetails(
         _channelId,
-        _channelName,
-        channelDescription: _channelDesc,
+        NotificationTexts.channelName(lang),
+        channelDescription: NotificationTexts.channelDescription(lang),
         importance: Importance.max,
         priority: Priority.high,
         playSound: true,
@@ -472,7 +484,7 @@ class OrderNotificationService {
         presentBadge: true,
         presentSound: true,
       );
-      const details = NotificationDetails(
+      final details = NotificationDetails(
         android: androidDetails,
         iOS: iosDetails,
         macOS: iosDetails,
