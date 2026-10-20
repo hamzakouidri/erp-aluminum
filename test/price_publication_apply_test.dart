@@ -142,4 +142,48 @@ void main() {
       2500.0,
     );
   });
+
+  test('mosquito-net m² prices are their own category', () async {
+    final directory = await Directory.systemTemp.createTemp('erp_price_mq_');
+    final originalPaths = PathProviderPlatform.instance;
+    PathProviderPlatform.instance = _TemporaryPaths(directory.path);
+    SharedPreferences.setMockInitialValues({});
+    SqlDatabase.resetDb();
+    final connection = await SqlDatabase().initDb();
+    addTearDown(() async {
+      await connection.close();
+      SqlDatabase.resetDb();
+      PathProviderPlatform.instance = originalPaths;
+      await directory.delete(recursive: true);
+    });
+
+    // One payload carrying both kinds, as an older shutter m² publication.
+    final payload = {
+      'ShutterSqmPrices': [
+        {'blade_type': 'Lame 39', 'color_id': 1, 'price_per_sqm': 4000},
+        {'blade_type': 'Moustiquaire_Sqm', 'color_id': 1, 'price_per_sqm': 2500},
+        {
+          'blade_type': 'Moustiquaire_plissee',
+          'color_id': 1,
+          'price_per_sqm': 3200,
+        },
+      ],
+    };
+    Future<Map<String, double>> prices() async => {
+      for (final row in await connection.query('ShutterSqmPrices'))
+        row['blade_type'] as String: (row['price_per_sqm'] as num).toDouble(),
+    };
+
+    final service = PriceSyncService.instance;
+    final mosquito = await service.applyPricePayload('moustiquaire', payload);
+    expect(mosquito.updated, 2);
+    expect(await prices(), {
+      'Moustiquaire_Sqm': 2500.0,
+      'Moustiquaire_plissee': 3200.0,
+    });
+
+    final shutter = await service.applyPricePayload('shutter_sqm', payload);
+    expect(shutter.updated, 1);
+    expect((await prices())['Lame 39'], 4000.0);
+  });
 }

@@ -5359,7 +5359,15 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                       Expanded(child: _buildTemperedGlassPricingTab(context)),
                     ],
                   ),
-                  _buildMoustiquairePricingTab(context),
+                  Column(
+                    children: [
+                      PriceSyncBanner(
+                        categoryKey: 'moustiquaire',
+                        onPriceUpdated: _loadAllData,
+                      ),
+                      Expanded(child: _buildMoustiquairePricingTab(context)),
+                    ],
+                  ),
                 ],
               ),
       ),

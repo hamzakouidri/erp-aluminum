@@ -34,12 +34,42 @@ class PriceTableSpec {
   /// Catalogue tables: only update existing rows, never create products.
   final bool updateOnly;
 
+  /// Rows of [table] shared with another category: only the rows whose
+  /// [prefixColumn] starts with [prefix] belong here, or, with
+  /// [excludePrefix], only those that do not.
+  final String? prefixColumn;
+  final String? prefix;
+  final bool excludePrefix;
+
   const PriceTableSpec(
     this.table,
     this.keyColumns,
     this.priceColumns, {
     this.updateOnly = false,
+    this.prefixColumn,
+    this.prefix,
+    this.excludePrefix = false,
   });
+
+  /// Whether [row] belongs to this category.
+  bool accepts(Map<dynamic, dynamic> row) {
+    final column = prefixColumn;
+    final start = prefix;
+    if (column == null || start == null) return true;
+    final value = (row[column] ?? '').toString();
+    return value.startsWith(start) != excludePrefix;
+  }
+
+  /// SQL filter equivalent to [accepts], or null.
+  String? get whereClause {
+    final column = prefixColumn;
+    if (column == null || prefix == null) return null;
+    return excludePrefix
+        ? "($column IS NULL OR $column NOT LIKE ?)"
+        : '$column LIKE ?';
+  }
+
+  List<Object?> get whereArgs => prefix == null ? const [] : ['$prefix%'];
 }
 
 /// Outcome of applying an administrator publication.
@@ -120,6 +150,13 @@ class PriceSyncService {
       icon: Icons.square_foot_rounded,
     ),
     PriceSyncCategory(
+      key: 'moustiquaire',
+      titleAr: 'أسعار الناموسية (Moustiquaire) للمتر المربع',
+      titleFr: 'Prix des moustiquaires au m²',
+      tableName: 'ShutterSqmPrices',
+      icon: Icons.grid_on_rounded,
+    ),
+    PriceSyncCategory(
       key: 'caisson_tunnel',
       titleAr: 'أسعار صناديق Caisson Tunnel',
       titleFr: 'Prix des caissons tunnel',
@@ -181,11 +218,26 @@ class PriceSyncService {
         'color_id',
       ], ['price']),
     ],
+    // Mosquito-net m² prices share ShutterSqmPrices (keys "Moustiquaire_*")
+    // but are their own category: a workshop accepts one without the other.
     'shutter_sqm': [
-      PriceTableSpec('ShutterSqmPrices', [
-        'blade_type',
-        'color_id',
-      ], ['price_per_sqm']),
+      PriceTableSpec(
+        'ShutterSqmPrices',
+        ['blade_type', 'color_id'],
+        ['price_per_sqm'],
+        prefixColumn: 'blade_type',
+        prefix: 'Moustiquaire_',
+        excludePrefix: true,
+      ),
+    ],
+    'moustiquaire': [
+      PriceTableSpec(
+        'ShutterSqmPrices',
+        ['blade_type', 'color_id'],
+        ['price_per_sqm'],
+        prefixColumn: 'blade_type',
+        prefix: 'Moustiquaire_',
+      ),
     ],
     'caisson_tunnel': [
       PriceTableSpec('CaissonTunnelPrices', ['color_id'], [
@@ -336,6 +388,8 @@ class PriceSyncService {
       final rows = await db.query(
         spec.table,
         columns: [...spec.keyColumns, ...priceColumns],
+        where: spec.whereClause,
+        whereArgs: spec.whereClause == null ? null : spec.whereArgs,
       );
       result[spec.table] = rows
           .map((r) => Map<String, dynamic>.from(r))
@@ -556,6 +610,7 @@ class PriceSyncService {
         final keyWhere = spec.keyColumns.map((k) => '$k = ?').join(' AND ');
         for (final raw in rows) {
           if (raw is! Map) continue;
+          if (!spec.accepts(raw)) continue;
           final keys = [for (final k in spec.keyColumns) raw[k]];
           if (keys.any((k) => k == null)) continue;
           final rowKey = SqlDatabase.priceRowKey(keys);
