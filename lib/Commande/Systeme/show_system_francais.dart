@@ -48,6 +48,7 @@ import 'package:database_data/settings/localization.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:database_data/Commande/Systeme/shutter_calc_rules.dart';
 import 'package:database_data/widgets/tunnel_calc_rules_card.dart';
+import 'package:database_data/widgets/context_menu_gate.dart';
 
 part 'window_view/shutter_panel.dart';
 part 'window_view/glass_panel.dart';
@@ -1555,7 +1556,7 @@ class _WindowViewState extends State<WindowView> {
                                       handleCanvasTap(details);
                                     }
                                   },
-                                  onSecondaryTapUp: (details) async {
+                                  onSecondaryTapUp: (details) => ContextMenuGate.run<void>(() async {
                                     if (await _showHingeContextMenu(
                                       details.globalPosition,
                                       details.localPosition,
@@ -1568,7 +1569,7 @@ class _WindowViewState extends State<WindowView> {
                                       details.globalPosition,
                                       details.localPosition,
                                     );
-                                  },
+                                  }),
                                   onLongPressStart: (details) async {
                                     final modelPos = _getModelPos(
                                       details.localPosition,

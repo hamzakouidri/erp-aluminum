@@ -994,9 +994,14 @@ class SqlDatabase {
     int total = 0;
     for (final r in rows) {
       final id = _positiveInt(r['id']);
-      if (id > 0) {
+      if (id <= 0) continue;
+      // One order that fails must not stop the others: the loop used to
+      // end at the first error, so the bin looked emptied of one order.
+      try {
         final deleted = await deleteCommandePermanently(id);
         if (deleted > 0) total++;
+      } catch (error) {
+        debugPrint('emptyTrash: order $id kept: $error');
       }
     }
     return total;

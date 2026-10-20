@@ -598,8 +598,16 @@ class _TrashScreenState extends State<TrashScreen>
     }
   }
 
+  /// Empties only the bin of the tab shown: orders, purchases or store
+  /// sales.
   Future<void> _emptyTrash(AppLanguage lang) async {
-    final isAchats = _tabController.index == 1;
+    final tab = _tabController.index;
+    if (tab == 2) {
+      await _emptyMaterialSalesTrash(lang);
+      return;
+    }
+    if (tab != 0 && tab != 1) return;
+    final isAchats = tab == 1;
     if (isAchats ? _trashAchats.isEmpty : _trashOrders.isEmpty) return;
 
     final confirmed = await showDialog<bool>(
@@ -638,10 +646,14 @@ class _TrashScreenState extends State<TrashScreen>
     );
 
     if (confirmed == true) {
-      if (isAchats) {
-        await _db.emptyAchatTrash();
-      } else {
-        await _db.emptyTrash();
+      try {
+        if (isAchats) {
+          await _db.emptyAchatTrash();
+        } else {
+          await _db.emptyTrash();
+        }
+      } catch (error) {
+        debugPrint('Empty trash failed: $error');
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -657,6 +669,59 @@ class _TrashScreenState extends State<TrashScreen>
         _loadTrashData();
       }
     }
+  }
+
+  Future<void> _emptyMaterialSalesTrash(AppLanguage lang) async {
+    if (_trashMaterialSales.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.delete_forever_rounded, color: Colors.red),
+            const SizedBox(width: 8),
+            Text(_t('empty_trash', lang)),
+          ],
+        ),
+        content: Text(
+          Localization.translate('trash_confirm_empty_material_sales', lang),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(Localization.translate('cancel', lang)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(_t('empty_trash', lang)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    var removed = 0;
+    try {
+      removed = await _db.emptyMaterialSalesTrash();
+    } catch (error) {
+      debugPrint('Empty store-sales trash failed: $error');
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          Localization.translate(
+            'trash_material_sales_emptied',
+            lang,
+          ).replaceAll('{count}', '$removed'),
+        ),
+        backgroundColor: Colors.red,
+      ),
+    );
+    _loadTrashData();
   }
 
   void _showOrderSummaryDialog(
@@ -791,7 +856,8 @@ class _TrashScreenState extends State<TrashScreen>
         ),
         actions: [
           if ((_tabController.index == 0 && _trashOrders.isNotEmpty) ||
-              (_tabController.index == 1 && _trashAchats.isNotEmpty))
+              (_tabController.index == 1 && _trashAchats.isNotEmpty) ||
+              (_tabController.index == 2 && _trashMaterialSales.isNotEmpty))
             TextButton.icon(
               style: TextButton.styleFrom(foregroundColor: Colors.white),
               icon: const Icon(Icons.delete_sweep_rounded, size: 20),
@@ -1631,6 +1697,20 @@ class _TrashScreenState extends State<TrashScreen>
         'audit_action_update',
       );
     }
+    if (type.contains('CREATE')) {
+      return (
+        Colors.blue.shade700,
+        Icons.add_circle_outline_rounded,
+        'audit_action_create',
+      );
+    }
+    if (type.contains('STATUS')) {
+      return (
+        Colors.cyan.shade700,
+        Icons.swap_horiz_rounded,
+        'audit_action_status',
+      );
+    }
     if (type.contains('CLOSE')) {
       return (
         Colors.indigo,
@@ -1649,6 +1729,10 @@ class _TrashScreenState extends State<TrashScreen>
         return 'audit_entity_purchase';
       case 'materialsale':
         return 'audit_entity_material_sale';
+      case 'client':
+        return 'audit_entity_client';
+      case 'payment':
+        return 'audit_entity_payment';
       case 'store':
         return 'audit_entity_store';
       case 'workshop':

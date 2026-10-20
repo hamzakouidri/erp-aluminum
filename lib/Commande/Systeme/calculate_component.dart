@@ -8487,17 +8487,20 @@ class ComponentCalculator {
       if (zone.slantedDividers.isEmpty) continue;
       final geometry = window.slantedGeometryFor(zone);
       for (final d in geometry.dividers) {
-        final length = geometry.cutLengthMm(d) / 1000.0;
-        if (length <= 0) continue;
-        final code = d.profileCode ?? '';
-        slantedPiecesByCode.putIfAbsent(code, () => []).add(length);
-        slantedAnglesByCode
-            .putIfAbsent(code, () => [])
-            .add(
-              '${geometry.cutAngleDeg(d, atStart: true).toStringAsFixed(1)}/'
-              '${geometry.cutAngleDeg(d, atStart: false).toStringAsFixed(1)}',
-            );
-        totalMullionLengthMeters += length;
+        // A division crossing an earlier one is two bars, cut there.
+        for (final piece in geometry.cutPieces(d)) {
+          final length = piece.lengthMm / 1000.0;
+          if (length <= 0) continue;
+          final code = d.profileCode ?? '';
+          slantedPiecesByCode.putIfAbsent(code, () => []).add(length);
+          slantedAnglesByCode
+              .putIfAbsent(code, () => [])
+              .add(
+                '${piece.startAngleDeg.toStringAsFixed(1)}/'
+                '${piece.endAngleDeg.toStringAsFixed(1)}',
+              );
+          totalMullionLengthMeters += length;
+        }
       }
     }
     for (final entry in slantedPiecesByCode.entries) {

@@ -17,6 +17,7 @@ import '../Commande/devis_builder.dart';
 import '../Commande/devis_preview_screen.dart';
 import '../widgets/desktop_context_menu.dart';
 import '../Commande/order_workspace_screen.dart';
+import 'package:database_data/widgets/context_menu_gate.dart';
 
 class ShowClient extends StatefulWidget {
   final int clientId;
@@ -992,13 +993,15 @@ class _ShowClientState extends State<ShowClient> {
 
                             return GestureDetector(
                               onSecondaryTapDown: (details) =>
-                                  _showOrderContextMenu(
-                                    context,
-                                    order,
-                                    details.globalPosition,
-                                    lang,
-                                    orderRemaining: orderRemaining,
-                                    isPaid: isPaid,
+                                  ContextMenuGate.run(
+                                    () => _showOrderContextMenu(
+                                      context,
+                                      order,
+                                      details.globalPosition,
+                                      lang,
+                                      orderRemaining: orderRemaining,
+                                      isPaid: isPaid,
+                                    ),
                                   ),
                               child: Container(
                                 padding: EdgeInsets.symmetric(
@@ -1484,7 +1487,7 @@ class _ShowClientState extends State<ShowClient> {
                 );
 
                 return GestureDetector(
-                  onSecondaryTapDown: (details) async {
+                  onSecondaryTapDown: (details) => ContextMenuGate.run<void>(() async {
                     final selected = await showDesktopContextMenu<String>(
                       context: context,
                       globalPosition: details.globalPosition,
@@ -1542,7 +1545,7 @@ class _ShowClientState extends State<ShowClient> {
                         isBonDeCharge: true,
                       );
                     }
-                  },
+                  }),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     child: Row(

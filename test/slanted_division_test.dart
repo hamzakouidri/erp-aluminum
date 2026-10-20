@@ -30,6 +30,39 @@ void main() {
       );
 
   group('SlantedDivisionGeometry', () {
+    test('crossing divisions: four cells, the later one cut in two', () {
+      final g = geometry([
+        divider('a', ZoneEdge.top, 0.2, ZoneEdge.bottom, 0.8),
+        divider('b', ZoneEdge.top, 0.8, ZoneEdge.bottom, 0.2),
+      ]);
+      expect(g.validate(), isNull);
+      expect(g.cells(), hasLength(4));
+      final first = g.cutPieces(g.dividers[0]);
+      final second = g.cutPieces(g.dividers[1]);
+      expect(first, hasLength(1));
+      expect(second, hasLength(2));
+      // The two bars of the crossing division are shorter than the whole.
+      final whole = g.cutLengthMm(g.dividers[1]);
+      for (final piece in second) {
+        expect(piece.lengthMm, lessThan(whole));
+        expect(piece.lengthMm, greaterThan(whole / 4));
+      }
+      expect(
+        second.first.endAngleDeg,
+        closeTo(g.crossingAngleDeg(g.dividers[0], g.dividers[1]) / 2, 1e-6),
+      );
+    });
+
+    test('divisions crossing at a sharp angle are refused', () {
+      expect(
+        geometry([
+          divider('a', ZoneEdge.top, 0.40, ZoneEdge.bottom, 0.50),
+          divider('b', ZoneEdge.top, 0.50, ZoneEdge.bottom, 0.40),
+        ]).validate(),
+        SlantedDivisionError.crossesDivider,
+      );
+    });
+
     test('one top-to-bottom division splits the glass into two cells', () {
       final g = geometry([
         divider('d', ZoneEdge.top, 0.2, ZoneEdge.bottom, 0.4),
@@ -97,12 +130,13 @@ void main() {
         ]).validate(),
         SlantedDivisionError.angleTooSharp,
       );
+      // Two divisions may cross at a clean angle.
       expect(
         geometry([
           divider('a', ZoneEdge.top, 0.2, ZoneEdge.bottom, 0.8),
           divider('b', ZoneEdge.top, 0.8, ZoneEdge.bottom, 0.2),
         ]).validate(),
-        SlantedDivisionError.crossesDivider,
+        isNull,
       );
       expect(
         geometry([

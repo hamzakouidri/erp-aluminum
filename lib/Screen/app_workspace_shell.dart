@@ -693,6 +693,18 @@ class _WorkspaceContentHost extends StatefulWidget {
 class _WorkspaceContentHostState extends State<_WorkspaceContentHost> {
   late final ScrollController _primaryScrollController = ScrollController();
 
+  /// A page that closes itself with Navigator.pop while it is the first page
+  /// of its tab used to leave the tab's navigator empty: a grey page, then
+  /// a crash ('_history.isNotEmpty') when the tab was opened again. The tab
+  /// is closed instead.
+  late final _WorkspaceRootPopObserver _rootPopObserver =
+      _WorkspaceRootPopObserver(
+        onRootRemoved: () {
+          if (!mounted) return;
+          context.read<WorkspaceController>().closeById(widget.entry.id);
+        },
+      );
+
   @override
   void dispose() {
     _primaryScrollController.dispose();
@@ -717,6 +729,7 @@ class _WorkspaceContentHostState extends State<_WorkspaceContentHost> {
               controller: _primaryScrollController,
               child: Navigator(
                 key: navigatorKey,
+                observers: [_rootPopObserver],
                 onGenerateInitialRoutes: (_, __) {
                   return [
                     MaterialPageRoute(
@@ -742,6 +755,18 @@ class _WorkspaceContentHostState extends State<_WorkspaceContentHost> {
         ),
       ),
     );
+  }
+}
+
+/// Reports when the first route of a workspace tab leaves its navigator.
+class _WorkspaceRootPopObserver extends NavigatorObserver {
+  _WorkspaceRootPopObserver({required this.onRootRemoved});
+
+  final VoidCallback onRootRemoved;
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (previousRoute == null) onRootRemoved();
   }
 }
 

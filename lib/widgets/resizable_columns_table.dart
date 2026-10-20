@@ -6,6 +6,7 @@ import 'package:flutter/services.dart'
     show KeyDownEvent, KeyEvent, KeyRepeatEvent, LogicalKeyboardKey;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'desktop_scroll_behavior.dart';
+import 'context_menu_gate.dart';
 
 class ResizableTableColumn {
   final String id;
@@ -965,8 +966,9 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
       children: [
         GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onSecondaryTapDown: (details) =>
-              _showColumnVisibilityMenu(details.globalPosition),
+          onSecondaryTapDown: (details) => ContextMenuGate.run(
+            () => _showColumnVisibilityMenu(details.globalPosition),
+          ),
           child: draggableLabel,
         ),
         if (!isLast)
@@ -1288,7 +1290,9 @@ class _ResizableColumnsTableState extends State<ResizableColumnsTable> {
           if (row.onSecondaryTapDown != null) {
             row.onSecondaryTapDown!(details.globalPosition);
           } else {
-            _showDefaultRowContextMenu(row, details.globalPosition);
+            ContextMenuGate.run(
+              () => _showDefaultRowContextMenu(row, details.globalPosition),
+            );
           }
         },
         child: row.onTap == null && row.onDoubleTap == null

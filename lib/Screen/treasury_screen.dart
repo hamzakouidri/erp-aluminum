@@ -16,6 +16,7 @@ import '../widgets/resizable_columns_table.dart';
 import '../widgets/numeric_filter_search_field.dart';
 import '../widgets/table_date_range_filter.dart';
 import '../widgets/desktop_scroll_behavior.dart';
+import 'package:database_data/widgets/context_menu_gate.dart';
 
 class TreasuryScreen extends StatefulWidget {
   static Future<void> showQuickTransactionDialog(
@@ -1455,17 +1456,19 @@ class TreasuryScreen extends StatefulWidget {
             onReceipt(item);
           }
         },
-        onSecondaryTapDown: (position) => _showTreasuryRowContextMenu(
-          context,
-          position,
-          item,
-          lang,
-          readOnly: readOnly,
-          canEditPayments: canEditPayments,
-          canDeletePayments: canDeletePayments,
-          onEdit: onEdit,
-          onDelete: onDelete,
-          onOpen: onReceipt,
+        onSecondaryTapDown: (position) => ContextMenuGate.run(
+          () => _showTreasuryRowContextMenu(
+            context,
+            position,
+            item,
+            lang,
+            readOnly: readOnly,
+            canEditPayments: canEditPayments,
+            canDeletePayments: canDeletePayments,
+            onEdit: onEdit,
+            onDelete: onDelete,
+            onOpen: onReceipt,
+          ),
         ),
         cells: [
           // Date

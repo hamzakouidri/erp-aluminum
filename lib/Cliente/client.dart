@@ -19,6 +19,7 @@ import 'package:database_data/widgets/desktop_scroll_behavior.dart';
 import 'package:database_data/Screen/map_picker_screen.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:database_data/widgets/context_menu_gate.dart';
 
 class Customers extends StatefulWidget {
   /// When this page is opened from the dashboard's "Add client" action,
@@ -1572,8 +1573,9 @@ class _CustomersState extends State<Customers> {
             ),
           );
         },
-        onSecondaryTapDown: (position) =>
-            _showClientContextMenu(context, client, position, lang),
+        onSecondaryTapDown: (position) => ContextMenuGate.run(
+          () => _showClientContextMenu(context, client, position, lang),
+        ),
         cells: [
           // ID
           Text(

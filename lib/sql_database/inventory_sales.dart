@@ -3193,6 +3193,45 @@ extension SqlDatabaseInventory on SqlDatabase {
     );
   }
 
+  /// Empties the store-sales bin: the sales already deleted (whose stock was
+  /// returned at deletion) and their lines are removed for good. Returns how
+  /// many sales were removed; one that fails never stops the others.
+  Future<int> emptyMaterialSalesTrash() async {
+    final database = await db;
+    if (database == null) return 0;
+    await _ensureRemnantInventorySchema(database);
+    await _ensureSyncTombstoneInfrastructure(database);
+    final trashed = await database.query(
+      'MaterialSales',
+      columns: ['id'],
+      where: 'is_deleted = 1',
+    );
+    var removed = 0;
+    for (final row in trashed) {
+      final id = (row['id'] as num?)?.toInt();
+      if (id == null) continue;
+      try {
+        await database.transaction((txn) async {
+          await txn.delete(
+            'MaterialSaleItems',
+            where: 'sale_id = ?',
+            whereArgs: [id],
+          );
+          await txn.delete(
+            'MaterialSales',
+            where: 'id = ? AND is_deleted = 1',
+            whereArgs: [id],
+          );
+        });
+        removed++;
+      } catch (error) {
+        debugPrint('emptyMaterialSalesTrash: sale $id kept: $error');
+      }
+    }
+    if (removed > 0) CloudSyncService().notifyChange();
+    return removed;
+  }
+
   Future<void> restoreMaterialSale(int saleId) async {
     final database = await db;
     if (database == null) return;

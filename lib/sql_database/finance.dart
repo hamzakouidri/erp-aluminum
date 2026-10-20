@@ -879,7 +879,27 @@ extension SqlDatabaseFinance on SqlDatabase {
           )
           .catchError((_) {}),
     );
+    if (res > 0) {
+      unawaited(
+        _logTreasuryAudit(
+          res,
+          'CREATE',
+          '$transactionType ${amount.toStringAsFixed(2)} DA — $description',
+        ),
+      );
+    }
     return res;
+  }
+
+  /// Journal entry for a cash movement (payment, receipt, expense).
+  Future<void> _logTreasuryAudit(int id, String actionType, String details) {
+    return logAuditAction(
+      actionType: actionType,
+      entityType: 'payment',
+      entityId: id.toString(),
+      entityTitle: 'حركة صندوق #$id',
+      details: details,
+    );
   }
 
   Future<int> deleteTreasury(int id) async {
@@ -903,6 +923,9 @@ extension SqlDatabaseFinance on SqlDatabase {
     final entityId = SqlDatabase._paymentRecordId(row['entity_id']);
     final isClientReceipt = SqlDatabase._isClientReceipt(row);
     final isSupplierPayment = SqlDatabase._isSupplierPayment(row);
+    final auditDetails =
+        '${row['transaction_type'] ?? ''} ${amount.toStringAsFixed(2)} DA — '
+        '${row['description'] ?? ''}';
 
     final res = await myDb.transaction((txn) async {
       await _ensurePaymentAllocationSchema(txn);
@@ -970,6 +993,9 @@ extension SqlDatabaseFinance on SqlDatabase {
       }
       CloudSyncService().notifyChangeImmediate();
     }
+    if (res > 0) {
+      unawaited(_logTreasuryAudit(id, 'DELETE', auditDetails));
+    }
     return res;
   }
 
@@ -1020,6 +1046,13 @@ extension SqlDatabaseFinance on SqlDatabase {
 
     if (res > 0) {
       CloudSyncService().notifyChangeImmediate();
+      unawaited(
+        _logTreasuryAudit(
+          id,
+          'UPDATE',
+          '${newAmount.toStringAsFixed(2)} DA — $newDescription',
+        ),
+      );
     }
     return res;
   }

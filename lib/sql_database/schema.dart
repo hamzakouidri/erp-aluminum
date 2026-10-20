@@ -3921,13 +3921,14 @@ extension SqlDatabaseSchema on SqlDatabase {
     }
   }
 
+  /// Orders saved without a status are new. ('Pending' is the waiting
+  /// stage, not an old name of 'Nouveau'.)
   Future<void> _migratePendingOrdersToNouveau(DatabaseExecutor db) async {
     try {
       await db.execute('''
         UPDATE Commandes 
         SET status = 'Nouveau' 
-        WHERE LOWER(TRIM(status)) IN ('pending', 'en attente', 'en_attente', 'في الانتظار', 'قيد الانتظار', 'في حالة انتظار')
-           OR status IS NULL 
+        WHERE status IS NULL 
            OR TRIM(status) = '';
       ''');
     } catch (e) {
@@ -3935,16 +3936,17 @@ extension SqlDatabaseSchema on SqlDatabase {
     }
   }
 
-  /// Migrates all existing orders in 'Pending' / 'En attente' to 'Nouveau'
-  /// and notifies listeners and cloud sync safely.
+  /// Gives 'Nouveau' to orders saved without a status, and notifies
+  /// listeners and cloud sync safely. 'Pending' / 'En attente' is a real
+  /// stage (after 'Confirmed'): converting it here, on every dashboard load,
+  /// sent orders moved to "En attente" back to "Nouveau" in a loop.
   Future<int> migrateAllPendingOrdersToNouveau() async {
     final myDb = await db;
     if (myDb == null) return 0;
     try {
       final rows = await myDb.rawQuery('''
         SELECT id FROM Commandes 
-        WHERE LOWER(TRIM(status)) IN ('pending', 'en attente', 'en_attente', 'في الانتظار', 'قيد الانتظار', 'في حالة انتظار')
-           OR status IS NULL 
+        WHERE status IS NULL 
            OR TRIM(status) = ''
       ''');
       if (rows.isEmpty) return 0;
@@ -3952,8 +3954,7 @@ extension SqlDatabaseSchema on SqlDatabase {
         UPDATE Commandes 
         SET status = 'Nouveau',
             updated_at = '${DateTime.now().toUtc().toIso8601String()}'
-        WHERE LOWER(TRIM(status)) IN ('pending', 'en attente', 'en_attente', 'في الانتظار', 'قيد الانتظار', 'في حالة انتظار')
-           OR status IS NULL 
+        WHERE status IS NULL 
            OR TRIM(status) = ''
       ''');
       for (final row in rows) {

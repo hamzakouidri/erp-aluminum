@@ -268,6 +268,9 @@ extension SqlDatabaseOrders on SqlDatabase {
       );
     } catch (_) {}
     CloudSyncService().notifyChangeImmediate();
+    unawaited(
+      _logClientAudit(clientId, 'CREATE', name: '$firstname $lastname'),
+    );
     return clientId;
   }
 
@@ -316,6 +319,9 @@ extension SqlDatabaseOrders on SqlDatabase {
       );
     });
     CloudSyncService().notifyChangeImmediate();
+    if (res > 0) {
+      unawaited(_logClientAudit(id, 'UPDATE', name: '$firstname $lastname'));
+    }
     return res;
   }
 
@@ -344,8 +350,31 @@ extension SqlDatabaseOrders on SqlDatabase {
     }
   }
 
-  Future<int> deleteClient(dynamic id) {
-    return _retryAfterDatabaseMove(() => _deleteClientOnce(id));
+  Future<int> deleteClient(dynamic id) async {
+    final clientId = id is num ? id.toInt() : int.tryParse('$id'.trim());
+    String? name;
+    if (clientId != null) {
+      try {
+        final database = await db;
+        final rows = database == null
+            ? const <Map<String, Object?>>[]
+            : await database.query(
+                'Client',
+                columns: ['firstname', 'lastname'],
+                where: 'id = ?',
+                whereArgs: [clientId],
+                limit: 1,
+              );
+        if (rows.isNotEmpty) {
+          name = '${rows.first['firstname'] ?? ''} ${rows.first['lastname'] ?? ''}';
+        }
+      } catch (_) {}
+    }
+    final res = await _retryAfterDatabaseMove(() => _deleteClientOnce(id));
+    if (res > 0 && clientId != null) {
+      unawaited(_logClientAudit(clientId, 'DELETE', name: name));
+    }
+    return res;
   }
 
   Future<int> _deleteClientOnce(dynamic id) async {
@@ -708,7 +737,17 @@ extension SqlDatabaseOrders on SqlDatabase {
   }) async {
     Database? myDb = await db;
     final updatedBy = await _currentOrderEditor();
-    var res = await myDb!.update(
+    final before = await myDb!.query(
+      'Commandes',
+      columns: ['status'],
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    final previousStatus = before.isEmpty
+        ? ''
+        : before.first['status']?.toString() ?? '';
+    var res = await myDb.update(
       'Commandes',
       {
         'status': newStatus,
@@ -731,6 +770,15 @@ extension SqlDatabaseOrders on SqlDatabase {
     // delivery continues in the background and must never freeze the UI.
     unawaited(_uploadOrderStatusToCloud(id, newStatus, updatedBy: updatedBy));
     CloudSyncService().notifyChange();
+    if (res > 0 && previousStatus != newStatus) {
+      unawaited(
+        _logOrderAudit(
+          id,
+          actionType: 'STATUS',
+          details: '$previousStatus → $newStatus',
+        ),
+      );
+    }
     return res;
   }
 
@@ -939,6 +987,13 @@ extension SqlDatabaseOrders on SqlDatabase {
     }
     if (!total.isFinite || !netPayable.isFinite) {
       throw StateError('مجموع الطلبية غير صالح.');
+    }
+    // The main save path of an order: keep its previous version in the
+    // audit journal like every other order update.
+    if (idCommande != null) {
+      try {
+        await snapshotCommande(idCommande, actionType: 'UPDATE');
+      } catch (_) {}
     }
 
     int? previousClientId;
@@ -1207,7 +1262,72 @@ extension SqlDatabaseOrders on SqlDatabase {
       );
     }
     }());
+    if (createdNewOrder) {
+      unawaited(
+        _logOrderAudit(savedId, actionType: 'CREATE', details: status),
+      );
+    }
     return savedId;
+  }
+
+  /// Journal entry for an order, titled like the order snapshots.
+  Future<void> _logOrderAudit(
+    int orderId, {
+    required String actionType,
+    String? details,
+  }) async {
+    try {
+      final database = await db;
+      if (database == null) return;
+      final rows = await database.query(
+        'Commandes',
+        columns: ['order_code'],
+        where: 'id = ?',
+        whereArgs: [orderId],
+        limit: 1,
+      );
+      final code = rows.isEmpty ? null : rows.first['order_code'];
+      await logAuditAction(
+        actionType: actionType,
+        entityType: 'order',
+        entityId: orderId.toString(),
+        entityTitle: 'طلبية #${code ?? orderId}',
+        details: details,
+      );
+    } catch (_) {}
+  }
+
+  /// Journal entry for a client.
+  Future<void> _logClientAudit(
+    int clientId,
+    String actionType, {
+    String? name,
+  }) async {
+    try {
+      var title = name?.trim() ?? '';
+      if (title.isEmpty) {
+        final database = await db;
+        final rows = database == null
+            ? const <Map<String, Object?>>[]
+            : await database.query(
+                'Client',
+                columns: ['firstname', 'lastname'],
+                where: 'id = ?',
+                whereArgs: [clientId],
+                limit: 1,
+              );
+        if (rows.isNotEmpty) {
+          title = '${rows.first['firstname'] ?? ''} ${rows.first['lastname'] ?? ''}'
+              .trim();
+        }
+      }
+      await logAuditAction(
+        actionType: actionType,
+        entityType: 'client',
+        entityId: clientId.toString(),
+        entityTitle: title.isEmpty ? 'زبون #$clientId' : 'زبون $title',
+      );
+    } catch (_) {}
   }
 
   Future<int> insertCommande(

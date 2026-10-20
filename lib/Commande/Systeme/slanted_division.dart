@@ -103,7 +103,8 @@ class SlantedDivisionError {
       'طرف التقسيم المائل قريب جداً من زاوية الإطار';
   static const angleTooSharp =
       'زاوية التقسيم المائل مع الإطار أصغر من الحد الأدنى {min}°';
-  static const crossesDivider = 'لا يمكن أن تتقاطع التقسيمات المائلة';
+  static const crossesDivider =
+      'التقسيمات المائلة متلاصقة أو تتقاطع بزاوية أصغر من الحد الأدنى';
   static const cellTooSmall =
       'جزء من الزجاج أضيق من {min} مم بعد التقسيم المائل';
   static const notFixedZone = 'التقسيم المائل متاح في الأجزاء الثابتة فقط';
@@ -183,6 +184,90 @@ class SlantedDivisionGeometry {
     return math.atan2(across, along) * 180 / math.pi;
   }
 
+  /// Acute angle (degrees, 0..90) between two divisions.
+  double crossingAngleDeg(SlantedDivider a, SlantedDivider b) {
+    final (a1, b1) = centreLine(a);
+    final (a2, b2) = centreLine(b);
+    final u = b1 - a1;
+    final v = b2 - a2;
+    final cos =
+        (u.dx * v.dx + u.dy * v.dy).abs() / (u.distance * v.distance + 1e-9);
+    return math.acos(cos.clamp(0.0, 1.0)) * 180 / math.pi;
+  }
+
+  /// The bars of [d] as cut in the workshop. The first divisions run
+  /// through; a later one that crosses an earlier one is cut into two bars
+  /// at the crossing. Each bar: its length at the long point and its two
+  /// cut angles (the angle shown on the drawing, halved, as at the frame).
+  List<({double lengthMm, double startAngleDeg, double endAngleDeg})> cutPieces(
+    SlantedDivider d,
+  ) {
+    final index = dividers.indexWhere((other) => other.id == d.id);
+    final (a, b) = centreLine(d);
+    final dir = b - a;
+    final len2 = dir.dx * dir.dx + dir.dy * dir.dy;
+    // Earlier divisions crossing this one, ordered along it.
+    final crossings = <({double t, SlantedDivider other})>[];
+    for (var j = 0; j < index && j < dividers.length; j++) {
+      final other = dividers[j];
+      final (c, e) = centreLine(other);
+      if (!_segmentsIntersect(a, b, c, e)) continue;
+      final hit = _lineIntersection(a, b, c, e);
+      if (hit == null || len2 < 1e-9) continue;
+      final t = ((hit - a).dx * dir.dx + (hit - a).dy * dir.dy) / len2;
+      crossings.add((t: t, other: other));
+    }
+    crossings.sort((x, y) => x.t.compareTo(y.t));
+    var pieces = <List<Offset>>[band(d)];
+    for (final crossing in crossings) {
+      final (c, e) = centreLine(crossing.other);
+      final n = _unitNormal(c, e) * (profileWidth / 2);
+      final next = <List<Offset>>[];
+      for (final p in pieces) {
+        final left = clipHalfPlane(p, c - n, e - n, keepLeft: false);
+        final right = clipHalfPlane(p, c + n, e + n, keepLeft: true);
+        if (polygonArea(left) > 1.0) next.add(left);
+        if (polygonArea(right) > 1.0) next.add(right);
+      }
+      pieces = next;
+    }
+    double along(List<Offset> poly) {
+      final m = centroid(poly) - a;
+      return m.dx * dir.dx + m.dy * dir.dy;
+    }
+
+    pieces.sort((p, q) => along(p).compareTo(along(q)));
+    double longest(List<Offset> poly) {
+      var best = 0.0;
+      for (var i = 0; i < poly.length; i++) {
+        best = math.max(best, (poly[(i + 1) % poly.length] - poly[i]).distance);
+      }
+      return best;
+    }
+
+    return [
+      for (var k = 0; k < pieces.length; k++)
+        (
+          lengthMm: longest(pieces[k]),
+          startAngleDeg: k == 0 || k - 1 >= crossings.length
+              ? cutAngleDeg(d, atStart: true)
+              : crossingAngleDeg(d, crossings[k - 1].other) / 2,
+          endAngleDeg: k == pieces.length - 1 || k >= crossings.length
+              ? cutAngleDeg(d, atStart: false)
+              : crossingAngleDeg(d, crossings[k].other) / 2,
+        ),
+    ];
+  }
+
+  static Offset? _lineIntersection(Offset p1, Offset p2, Offset q1, Offset q2) {
+    final r = p2 - p1;
+    final s = q2 - q1;
+    final denom = r.dx * s.dy - r.dy * s.dx;
+    if (denom.abs() < 1e-9) return null;
+    final t = ((q1 - p1).dx * s.dy - (q1 - p1).dy * s.dx) / denom;
+    return p1 + r * t;
+  }
+
   /// Workshop cut angle at one end: the angle shown on the drawing, halved.
   double cutAngleDeg(SlantedDivider d, {required bool atStart}) =>
       angleWithEdgeDeg(d, atStart: atStart) / 2;
@@ -223,7 +308,13 @@ class SlantedDivisionGeometry {
       for (var j = i + 1; j < dividers.length; j++) {
         final (a1, b1) = centreLine(dividers[i]);
         final (a2, b2) = centreLine(dividers[j]);
-        if (_segmentsCloserThan(a1, b1, a2, b2, profileWidth + 1.0)) {
+        // Divisions may cross (the later one is cut at the crossing), but
+        // not at a sharp angle, and never run side by side.
+        if (_segmentsIntersect(a1, b1, a2, b2)) {
+          if (crossingAngleDeg(dividers[i], dividers[j]) < minimumAngleDeg) {
+            return SlantedDivisionError.crossesDivider;
+          }
+        } else if (_segmentsCloserThan(a1, b1, a2, b2, profileWidth + 1.0)) {
           return SlantedDivisionError.crossesDivider;
         }
       }

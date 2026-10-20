@@ -42,6 +42,7 @@ import 'locales/notification_keys.dart';
 import 'locales/required_goods_table_keys.dart';
 import 'locales/parclose_corner_cap_keys.dart';
 import 'locales/drawing_page_keys.dart';
+import 'locales/trash_keys.dart';
 
 class Localization {
   static final Map<String, Map<AppLanguage, String>> _dictionary = {
@@ -87,6 +88,7 @@ class Localization {
     ...requiredGoodsTableKeys,
     ...parcloseCornerCapKeys,
     ...drawingPageKeys,
+    ...trashKeys,
   };
 
   static String translate(String key, AppLanguage lang) {

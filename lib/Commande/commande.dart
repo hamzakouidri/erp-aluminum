@@ -50,6 +50,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'order_export_service.dart';
 import 'order_import_dialog.dart';
 import 'order_pinning.dart';
+import 'package:database_data/widgets/context_menu_gate.dart';
 
 class Commande extends StatefulWidget {
   /// Opens the normal new-order form after the orders page has appeared.
@@ -4022,8 +4023,10 @@ class _CommandeState extends State<Commande> {
                           }
                         }
 
-                        if (nextStatus == 'Partial Manufacturing' ||
-                            nextStatus == 'Full Manufacturing') {
+                        // Partial manufacturing starts directly; only full
+                        // manufacturing goes through the required goods
+                        // page to issue the stock.
+                        if (nextStatus == 'Full Manufacturing') {
                           final inventoryIssued = await Navigator.push<bool>(
                             context,
                             MaterialPageRoute(
@@ -4401,13 +4404,25 @@ class _CommandeState extends State<Commande> {
     final settings = Provider.of<AppSettingsProvider>(context, listen: false);
     final orderId = (order['id'] as num?)?.toInt() ?? 0;
     Map<String, dynamic> orderData = Map<String, dynamic>.from(order);
+    // Read the fresh order and its manufacturing state together, and never
+    // keep the menu waiting on a busy database: past a short delay the row
+    // already shown in the table is used.
+    var isFullyManufactured = false;
     if (orderId > 0) {
-      final freshOrder = await db.readCommandeWithClientById(orderId);
-      if (freshOrder != null) {
-        orderData = {...orderData, ...freshOrder};
+      try {
+        final results = await Future.wait<Object?>([
+          db.readCommandeWithClientById(orderId),
+          db.isOrderFullyManufactured(orderId),
+        ]).timeout(const Duration(milliseconds: 300));
+        final freshOrder = results[0];
+        if (freshOrder is Map<String, dynamic>) {
+          orderData = {...orderData, ...freshOrder};
+        }
+        isFullyManufactured = results[1] == true;
+      } catch (_) {
+        // Slow or failed read: the menu opens from the table row.
       }
     }
-    final isFullyManufactured = await db.isOrderFullyManufactured(orderId);
     if (!mounted) return;
 
     final currentStatus = orderData['status']?.toString() ?? 'Pending';
@@ -5661,8 +5676,9 @@ class _CommandeState extends State<Commande> {
               return;
             }
           }
-          if (nextStatus == 'Partial Manufacturing' ||
-              nextStatus == 'Full Manufacturing') {
+          // Partial manufacturing starts directly; only full manufacturing
+          // goes through the required goods page to issue the stock.
+          if (nextStatus == 'Full Manufacturing') {
             final inventoryIssued = await Navigator.push<bool>(
               context,
               MaterialPageRoute(
@@ -6405,8 +6421,10 @@ class _CommandeState extends State<Commande> {
                           }
                         }
 
-                        if (stageKey == 'Partial Manufacturing' ||
-                            stageKey == 'Full Manufacturing') {
+                        // Partial manufacturing starts directly; only full
+                        // manufacturing goes through the required goods
+                        // page to issue the stock.
+                        if (stageKey == 'Full Manufacturing') {
                           Navigator.pop(dialogContext);
                           final inventoryIssued = await Navigator.push<bool>(
                             context,
@@ -7137,8 +7155,9 @@ class _CommandeState extends State<Commande> {
                 onSaved: _fetchCommandes,
               )
             : null,
-        onSecondaryTapDown: (position) =>
-            _showOrderContextMenu(context, order, position, lang),
+        onSecondaryTapDown: (position) => ContextMenuGate.run(
+          () => _showOrderContextMenu(context, order, position, lang),
+        ),
         cells: [
           // ID
           Row(

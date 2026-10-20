@@ -5377,7 +5377,8 @@ class WindowPainter extends CustomPainter {
       ..color = _fb
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.2;
-    for (final d in geometry.dividers) {
+    // The first divisions run through a crossing: drawn last, on top.
+    for (final d in geometry.dividers.reversed) {
       final band = _dedupePolygon(geometry.band(d));
       if (band.length < 3) continue;
       final path = Path()..addPolygon(band, true);
