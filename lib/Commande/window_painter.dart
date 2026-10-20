@@ -713,7 +713,10 @@ class WindowPainter extends CustomPainter {
       double dx = (p2.dx - p1.dx).abs();
       double dy = (p2.dy - p1.dy).abs();
 
-      if ((p2 - p1).distance > 30.0) {
+      if ((p2 - p1).distance > 30.0 && model.isSlantedStroke(p1, p2)) {
+        // A slanted division follows the stroke itself.
+        _drawSlantedStrokePreview(canvas, p1, p2);
+      } else if ((p2 - p1).distance > 30.0) {
         bool isHorizontal = dx > dy;
         Offset endPos = isHorizontal
             ? Offset(p2.dx, p1.dy)
@@ -1052,6 +1055,34 @@ class WindowPainter extends CustomPainter {
       return model.getBardageColorNameForSpec(spec);
     }
     return spec.panneauColor;
+  }
+
+  /// Dashed preview of a slanted division along the stroke [p1]→[p2], with
+  /// a red mark across each end, as the straight preview has.
+  void _drawSlantedStrokePreview(Canvas canvas, Offset p1, Offset p2) {
+    final drawPaint = Paint()
+      ..color = const Color(0xFF0D47A1)
+      ..strokeWidth = 6.0
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.square;
+    final slashPaint = Paint()
+      ..color = const Color(0xFFB71C1C)
+      ..strokeWidth = 6.0
+      ..strokeCap = StrokeCap.round;
+    final length = (p2 - p1).distance;
+    final dir = (p2 - p1) / length;
+    const dashWidth = 25.0, dashSpace = 15.0;
+    for (double s = 0; s < length; s += dashWidth + dashSpace) {
+      canvas.drawLine(
+        p1 + dir * s,
+        p1 + dir * math.min(s + dashWidth, length),
+        drawPaint,
+      );
+    }
+    final across = Offset(-dir.dy, dir.dx) * 20.0;
+    for (final p in [p1, p2]) {
+      canvas.drawLine(p - across, p + across, slashPaint);
+    }
   }
 
   void _drawGlassLayer(

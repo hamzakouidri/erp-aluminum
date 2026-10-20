@@ -3242,6 +3242,25 @@ class WindowModel extends ChangeNotifier {
     profileWidth: mullionThickness,
   );
 
+  /// A stroke from [start] to [end] draws a slanted division: it is clearly
+  /// diagonal (between the minimum angle and its complement) and starts in a
+  /// fixed zone. Near-horizontal or near-vertical strokes split as before.
+  bool isSlantedStroke(Offset start, Offset end) {
+    final dx = (end.dx - start.dx).abs();
+    final dy = (end.dy - start.dy).abs();
+    if (dx <= 40 && dy <= 40) return false;
+    final angle = math.atan2(dy, dx) * 180 / math.pi;
+    const minSlant = SlantedDivisionGeometry.minimumAngleDeg;
+    if (angle < minSlant || angle > 90 - minSlant) return false;
+    for (final z in zones) {
+      if (z.boundary.contains(start)) {
+        return z.content == ZoneContent.fixedGlass ||
+            z.content == ZoneContent.empty;
+      }
+    }
+    return false;
+  }
+
   /// Adds [divider] to the zone, or replaces the one with the same id. Returns
   /// a translation key (nothing changes) when the result cannot be built.
   String? setSlantedDivider(
@@ -6098,32 +6117,60 @@ class WindowModel extends ChangeNotifier {
     // complement) inside a fixed zone draws a slanted mullion along it,
     // extended to the zone's sides. Near-horizontal or near-vertical strokes
     // keep splitting the zone as before.
-    final strokeAngle = math.atan2(dy.abs(), dx.abs()) * 180 / math.pi;
-    const minSlant = SlantedDivisionGeometry.minimumAngleDeg;
-    if ((dx.abs() > 40 || dy.abs() > 40) &&
-        strokeAngle >= minSlant &&
-        strokeAngle <= 90 - minSlant) {
-      WindowZone? slantZone;
-      for (final z in zones) {
-        if (z.boundary.contains(drawingStart!)) {
-          slantZone = z;
-          break;
-        }
+    final slantedStroke = isSlantedStroke(drawingStart!, drawingCurrent!);
+    WindowZone? strokeZone;
+    for (final z in zones) {
+      if (z.boundary.contains(drawingStart!)) {
+        strokeZone = z;
+        break;
       }
-      if (slantZone != null &&
-          (slantZone.content == ZoneContent.fixedGlass ||
-              slantZone.content == ZoneContent.empty)) {
+    }
+    final strokeInFixedZone =
+        strokeZone != null &&
+        (strokeZone.content == ZoneContent.fixedGlass ||
+            strokeZone.content == ZoneContent.empty);
+    // Once a fixed zone has a slanted division, a straight stroke in it is
+    // a division of the cell it was drawn in too: it stops on the earlier
+    // divisions instead of splitting the whole zone through them.
+    final straightAfterSlant =
+        !slantedStroke &&
+        strokeInFixedZone &&
+        strokeZone.slantedDividers.isNotEmpty &&
+        (dx.abs() > 2 || dy.abs() > 2);
+    if (slantedStroke || straightAfterSlant) {
+      final slantZone = strokeZone;
+      if (slantZone != null && strokeInFixedZone) {
+        final start = drawingStart!;
         final ends = SlantedDivisionGeometry.anchorsThrough(
           slantZone.boundary,
-          drawingStart!,
-          drawingCurrent!,
+          start,
+          slantedStroke
+              ? drawingCurrent!
+              : start +
+                    (dx.abs() > dy.abs()
+                        ? const Offset(1, 0)
+                        : const Offset(0, 1)),
         );
         if (ends != null) {
-          final id = 'slant_${DateTime.now().microsecondsSinceEpoch}';
+          // The clock may give two quick strokes the same time: the id must
+          // stay new, or the second stroke replaces the first division.
+          var id = 'slant_${DateTime.now().microsecondsSinceEpoch}';
+          while (slantZone.slantedDividers.any((d) => d.id == id)) {
+            id = '${id}_';
+          }
+          final r = slantZone.boundary;
           // _endDrawingImpl already saved the undo step for this stroke.
           drawingNotice = setSlantedDivider(
             slantZone.id,
-            SlantedDivider(id: id, start: ends.$1, end: ends.$2),
+            SlantedDivider(
+              id: id,
+              start: ends.$1,
+              end: ends.$2,
+              seed: Offset(
+                ((start.dx - r.left) / r.width).clamp(0.0, 1.0),
+                ((start.dy - r.top) / r.height).clamp(0.0, 1.0),
+              ),
+            ),
             saveHistory: false,
           );
           if (drawingNotice == null) {

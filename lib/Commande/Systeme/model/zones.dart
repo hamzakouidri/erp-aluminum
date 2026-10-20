@@ -4762,12 +4762,21 @@ List<SlantedDivider> slantedDividersInPart(
     final start = _anchorOnRectEdge(clipped.$1, part);
     final end = _anchorOnRectEdge(clipped.$2, part);
     if (start == null || end == null || start.edge == end.edge) continue;
+    // A division confined to the cell it was drawn in follows that cell.
+    final seed = divider.seedPoint(source);
+    if (seed != null && !part.contains(seed)) continue;
     kept.add(
       SlantedDivider(
         id: divider.id,
         start: start,
         end: end,
         profileCode: divider.profileCode,
+        seed: seed == null
+            ? null
+            : Offset(
+                (seed.dx - part.left) / part.width,
+                (seed.dy - part.top) / part.height,
+              ),
       ),
     );
   }

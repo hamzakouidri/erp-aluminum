@@ -55,11 +55,18 @@ class SlantedDivider {
   final SlantedDividerAnchor end;
   final String? profileCode;
 
+  /// Where the division was drawn, as ratios of the zone's clear rectangle.
+  /// It then only crosses the part of the earlier divisions holding this
+  /// point and stops on them (the first division stays whole). Without it
+  /// the division runs across the whole zone, as older drawings did.
+  final Offset? seed;
+
   const SlantedDivider({
     required this.id,
     required this.start,
     required this.end,
     this.profileCode,
+    this.seed,
   });
 
   SlantedDivider copyWith({
@@ -71,13 +78,19 @@ class SlantedDivider {
     start: start ?? this.start,
     end: end ?? this.end,
     profileCode: profileCode ?? this.profileCode,
+    seed: seed,
   );
+
+  Offset? seedPoint(Rect r) => seed == null
+      ? null
+      : Offset(r.left + r.width * seed!.dx, r.top + r.height * seed!.dy);
 
   Map<String, dynamic> toMap() => {
     'id': id,
     'start': start.toMap(),
     'end': end.toMap(),
     if (profileCode != null) 'profileCode': profileCode,
+    if (seed != null) 'seed': {'x': seed!.dx, 'y': seed!.dy},
   };
 
   static SlantedDivider? fromMap(Object? raw) {
@@ -87,11 +100,18 @@ class SlantedDivider {
     final id = raw['id']?.toString();
     if (start == null || end == null || id == null || id.isEmpty) return null;
     final code = raw['profileCode']?.toString().trim();
+    final seed = raw['seed'];
     return SlantedDivider(
       id: id,
       start: start,
       end: end,
       profileCode: code == null || code.isEmpty ? null : code,
+      seed: seed is Map && seed['x'] is num && seed['y'] is num
+          ? Offset(
+              (seed['x'] as num).toDouble().clamp(0.0, 1.0),
+              (seed['y'] as num).toDouble().clamp(0.0, 1.0),
+            )
+          : null,
     );
   }
 }
@@ -133,36 +153,122 @@ class SlantedDivisionGeometry {
     required this.profileWidth,
   });
 
-  (Offset, Offset) centreLine(SlantedDivider d) =>
-      (d.start.pointOn(clear), d.end.pointOn(clear));
+  /// The clear cells after the divisions, in drawing order. A division with
+  /// a [SlantedDivider.seed] splits only the cell holding that point (its
+  /// region) and stops on the earlier divisions around it; one without
+  /// splits every cell it crosses.
+  ({List<List<Offset>> cells, Map<String, List<Offset>> regions}) _layout() {
+    var cells = <List<Offset>>[_rectPolygon(clear)];
+    final regions = <String, List<Offset>>{};
+    for (final d in dividers) {
+      final a = d.start.pointOn(clear);
+      final b = d.end.pointOn(clear);
+      final n = _unitNormal(a, b) * (profileWidth / 2);
+      List<List<Offset>> split(List<Offset> p) => [
+        for (final part in [
+          clipHalfPlane(p, a - n, b - n, keepLeft: false),
+          clipHalfPlane(p, a + n, b + n, keepLeft: true),
+        ])
+          if (polygonArea(part) > 1.0) part,
+      ];
+      final seed = d.seedPoint(clear);
+      if (seed == null) {
+        cells = [for (final p in cells) ...split(p)];
+        continue;
+      }
+      final index = _cellIndexAt(cells, seed);
+      regions[d.id] = cells[index];
+      cells = [
+        for (var i = 0; i < cells.length; i++)
+          if (i == index) ...split(cells[i]) else cells[i],
+      ];
+    }
+    return (cells: cells, regions: regions);
+  }
+
+  /// The cell holding [p], or the one whose centre is closest.
+  static int _cellIndexAt(List<List<Offset>> cells, Offset p) {
+    var best = 0;
+    var bestGap = double.infinity;
+    for (var i = 0; i < cells.length; i++) {
+      if (_convexContains(cells[i], p)) return i;
+      final gap = (centroid(cells[i]) - p).distance;
+      if (gap < bestGap) {
+        best = i;
+        bestGap = gap;
+      }
+    }
+    return best;
+  }
+
+  /// Centre line of [d]: from side to side of the zone, or, for a division
+  /// confined to its region, between what it stops on.
+  (Offset, Offset) centreLine(SlantedDivider d) {
+    final a = d.start.pointOn(clear);
+    final b = d.end.pointOn(clear);
+    final region = d.seed == null ? null : _layout().regions[d.id];
+    if (region == null) return (a, b);
+    return _clipLineToConvex(a, b, region) ?? (a, b);
+  }
 
   /// The division profile as a polygon: the band of [profileWidth] around
-  /// its centre line, cut by the zone edges (direct angle cut on the face).
+  /// its centre line, cut by the zone edges (direct angle cut on the face)
+  /// and, for a confined division, by the earlier divisions it meets.
   List<Offset> band(SlantedDivider d) {
-    final (a, b) = centreLine(d);
+    final a = d.start.pointOn(clear);
+    final b = d.end.pointOn(clear);
     final n = _unitNormal(a, b) * (profileWidth / 2);
     var poly = _rectPolygon(clear);
     poly = clipHalfPlane(poly, a + n, b + n, keepLeft: false);
     poly = clipHalfPlane(poly, a - n, b - n, keepLeft: true);
-    return poly;
+    final region = d.seed == null ? null : _layout().regions[d.id];
+    return region == null ? poly : _clipToConvex(poly, region);
+  }
+
+  /// What one end of [d] stops on: a side of the zone ([edge]) or, for a
+  /// confined division, the earlier division it meets ([divider]).
+  ({ZoneEdge? edge, SlantedDivider? divider}) endMeets(
+    SlantedDivider d, {
+    required bool atStart,
+  }) {
+    if (d.seed == null) {
+      return (edge: atStart ? d.start.edge : d.end.edge, divider: null);
+    }
+    final (a, b) = centreLine(d);
+    final p = atStart ? a : b;
+    final edgeGaps = <ZoneEdge, double>{
+      ZoneEdge.top: (p.dy - clear.top).abs(),
+      ZoneEdge.bottom: (p.dy - clear.bottom).abs(),
+      ZoneEdge.left: (p.dx - clear.left).abs(),
+      ZoneEdge.right: (p.dx - clear.right).abs(),
+    };
+    final nearestEdge = edgeGaps.entries.reduce(
+      (x, y) => x.value <= y.value ? x : y,
+    );
+    if (nearestEdge.value <= 1.0) return (edge: nearestEdge.key, divider: null);
+    SlantedDivider? best;
+    var bestGap = double.infinity;
+    for (final other in dividers) {
+      if (other.id == d.id) break;
+      final gap = _pointLineDistance(
+        p,
+        other.start.pointOn(clear),
+        other.end.pointOn(clear),
+      );
+      if (gap < bestGap) {
+        best = other;
+        bestGap = gap;
+      }
+    }
+    return best == null
+        ? (edge: nearestEdge.key, divider: null)
+        : (edge: null, divider: best);
   }
 
   /// Clear glass cells left between the divisions (profile bands removed),
   /// ordered top to bottom, then left to right, so their keys are stable.
   List<List<Offset>> cells() {
-    var polys = <List<Offset>>[_rectPolygon(clear)];
-    for (final d in dividers) {
-      final (a, b) = centreLine(d);
-      final n = _unitNormal(a, b) * (profileWidth / 2);
-      final next = <List<Offset>>[];
-      for (final p in polys) {
-        final left = clipHalfPlane(p, a - n, b - n, keepLeft: false);
-        final right = clipHalfPlane(p, a + n, b + n, keepLeft: true);
-        if (polygonArea(left) > 1.0) next.add(left);
-        if (polygonArea(right) > 1.0) next.add(right);
-      }
-      polys = next;
-    }
+    final polys = _layout().cells;
     polys.sort((p, q) {
       final cp = centroid(p);
       final cq = centroid(q);
@@ -174,10 +280,12 @@ class SlantedDivisionGeometry {
   }
 
   /// Angle (degrees, 0..90) between the division and the edge at [atStart].
+  /// A confined division gives the angle with the division it stops on.
   double angleWithEdgeDeg(SlantedDivider d, {required bool atStart}) {
-    final (a, b) = centreLine(d);
-    final edge = atStart ? d.start.edge : d.end.edge;
-    final dir = b - a;
+    final meets = endMeets(d, atStart: atStart);
+    if (meets.divider != null) return crossingAngleDeg(d, meets.divider!);
+    final edge = meets.edge!;
+    final dir = d.end.pointOn(clear) - d.start.pointOn(clear);
     final horizontal = edge == ZoneEdge.top || edge == ZoneEdge.bottom;
     final along = horizontal ? dir.dx.abs() : dir.dy.abs();
     final across = horizontal ? dir.dy.abs() : dir.dx.abs();
@@ -186,10 +294,8 @@ class SlantedDivisionGeometry {
 
   /// Acute angle (degrees, 0..90) between two divisions.
   double crossingAngleDeg(SlantedDivider a, SlantedDivider b) {
-    final (a1, b1) = centreLine(a);
-    final (a2, b2) = centreLine(b);
-    final u = b1 - a1;
-    final v = b2 - a2;
+    final u = a.end.pointOn(clear) - a.start.pointOn(clear);
+    final v = b.end.pointOn(clear) - b.start.pointOn(clear);
     final cos =
         (u.dx * v.dx + u.dy * v.dy).abs() / (u.distance * v.distance + 1e-9);
     return math.acos(cos.clamp(0.0, 1.0)) * 180 / math.pi;
@@ -202,6 +308,16 @@ class SlantedDivisionGeometry {
   List<({double lengthMm, double startAngleDeg, double endAngleDeg})> cutPieces(
     SlantedDivider d,
   ) {
+    // A confined division is one bar between what it stops on.
+    if (d.seed != null) {
+      return [
+        (
+          lengthMm: cutLengthMm(d),
+          startAngleDeg: cutAngleDeg(d, atStart: true),
+          endAngleDeg: cutAngleDeg(d, atStart: false),
+        ),
+      ];
+    }
     final index = dividers.indexWhere((other) => other.id == d.id);
     final (a, b) = centreLine(d);
     final dir = b - a;
@@ -289,6 +405,35 @@ class SlantedDivisionGeometry {
     final cornerGap = profileWidth / 2 + 5.0;
     for (final d in dividers) {
       if (d.start.edge == d.end.edge) return SlantedDivisionError.sameEdge;
+      if (d.seed != null) {
+        // A confined division: its own ends, on a side of the zone away
+        // from the corners or on an earlier division.
+        final region = _layout().regions[d.id];
+        final segment = region == null
+            ? null
+            : _clipLineToConvex(
+                d.start.pointOn(clear),
+                d.end.pointOn(clear),
+                region,
+              );
+        if (segment == null) return SlantedDivisionError.crossesDivider;
+        for (final atStart in [true, false]) {
+          final edge = endMeets(d, atStart: atStart).edge;
+          if (edge == null) continue;
+          final p = atStart ? segment.$1 : segment.$2;
+          final horizontal = edge == ZoneEdge.top || edge == ZoneEdge.bottom;
+          final along = horizontal ? p.dx - clear.left : p.dy - clear.top;
+          final length = horizontal ? clear.width : clear.height;
+          if (along < cornerGap || length - along < cornerGap) {
+            return SlantedDivisionError.tooCloseToCorner;
+          }
+        }
+        if (angleWithEdgeDeg(d, atStart: true) < minimumAngleDeg ||
+            angleWithEdgeDeg(d, atStart: false) < minimumAngleDeg) {
+          return SlantedDivisionError.angleTooSharp;
+        }
+        continue;
+      }
       for (final anchor in [d.start, d.end]) {
         final length =
             anchor.edge == ZoneEdge.top || anchor.edge == ZoneEdge.bottom
@@ -306,6 +451,9 @@ class SlantedDivisionGeometry {
     }
     for (var i = 0; i < dividers.length; i++) {
       for (var j = i + 1; j < dividers.length; j++) {
+        // A confined division stops on the earlier ones (checked above);
+        // the glass width rule below keeps it away from the others.
+        if (dividers[i].seed != null || dividers[j].seed != null) continue;
         final (a1, b1) = centreLine(dividers[i]);
         final (a2, b2) = centreLine(dividers[j]);
         // Divisions may cross (the later one is cut at the crossing), but
@@ -546,6 +694,78 @@ class SlantedDivisionGeometry {
       maxN = math.max(maxN, n);
     }
     return (width: maxA - minA, height: maxN - minN);
+  }
+
+  static bool _convexContains(List<Offset> poly, Offset p) {
+    var sign = 0.0;
+    for (var i = 0; i < poly.length; i++) {
+      final a = poly[i];
+      final b = poly[(i + 1) % poly.length];
+      final s = (b.dx - a.dx) * (p.dy - a.dy) - (b.dy - a.dy) * (p.dx - a.dx);
+      if (s.abs() < 1e-9) continue;
+      if (sign == 0) {
+        sign = s.sign;
+      } else if (s.sign != sign) {
+        return false;
+      }
+    }
+    return poly.length >= 3;
+  }
+
+  /// Keeps the part of the convex [poly] inside the convex [region].
+  static List<Offset> _clipToConvex(List<Offset> poly, List<Offset> region) {
+    final c = centroid(region);
+    var out = poly;
+    for (var i = 0; i < region.length && out.isNotEmpty; i++) {
+      final p = region[i];
+      final q = region[(i + 1) % region.length];
+      final s = (q.dx - p.dx) * (c.dy - p.dy) - (q.dy - p.dy) * (c.dx - p.dx);
+      if (s.abs() < 1e-9) continue;
+      out = clipHalfPlane(out, p, q, keepLeft: s > 0);
+    }
+    return out;
+  }
+
+  /// The part of the straight line through [a] and [b] inside the convex
+  /// [poly], or null if it misses it.
+  static (Offset, Offset)? _clipLineToConvex(
+    Offset a,
+    Offset b,
+    List<Offset> poly,
+  ) {
+    final d = b - a;
+    final c = centroid(poly);
+    var t0 = -double.infinity;
+    var t1 = double.infinity;
+    for (var i = 0; i < poly.length; i++) {
+      final p = poly[i];
+      final e = poly[(i + 1) % poly.length] - p;
+      if (e.distance < 1e-9) continue;
+      double cross(Offset v) => e.dx * v.dy - e.dy * v.dx;
+      final inside = cross(c - p).sign;
+      if (inside == 0) continue;
+      final f0 = cross(a - p) * inside;
+      final f1 = cross(d) * inside;
+      if (f1.abs() < 1e-12) {
+        if (f0 < 0) return null;
+        continue;
+      }
+      final t = -f0 / f1;
+      if (f1 > 0) {
+        t0 = math.max(t0, t);
+      } else {
+        t1 = math.min(t1, t);
+      }
+    }
+    if (!t0.isFinite || !t1.isFinite || t1 - t0 < 1e-9) return null;
+    return (a + d * t0, a + d * t1);
+  }
+
+  static double _pointLineDistance(Offset p, Offset a, Offset b) {
+    final ab = b - a;
+    final len = ab.distance;
+    if (len < 1e-9) return (p - a).distance;
+    return ((ab.dx * (p.dy - a.dy) - ab.dy * (p.dx - a.dx)).abs()) / len;
   }
 
   static List<Offset> _rectPolygon(Rect r) => [

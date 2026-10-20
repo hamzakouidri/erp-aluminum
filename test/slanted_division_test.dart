@@ -147,6 +147,52 @@ void main() {
       );
     });
 
+    test('a later division stays in the cell it was drawn in', () {
+      final slant = divider('a', ZoneEdge.top, 0.2, ZoneEdge.bottom, 0.8);
+      // Horizontal, drawn left of the slanted division.
+      const across = SlantedDivider(
+        id: 'h',
+        start: SlantedDividerAnchor(ZoneEdge.left, 0.5),
+        end: SlantedDividerAnchor(ZoneEdge.right, 0.5),
+        seed: Offset(0.05, 0.5),
+      );
+      final g = geometry([slant, across]);
+      expect(g.validate(), isNull);
+      // Only the left part is split: three panes, the slant stays whole.
+      expect(g.cells(), hasLength(3));
+      expect(g.cutPieces(slant), hasLength(1));
+      expect(g.cutPieces(across), hasLength(1));
+      // It runs from the left side to the slanted division (x = 1000 at
+      // mid-height), stopping on its face.
+      final (a, b) = g.centreLine(across);
+      expect(a.dx, closeTo(0, 0.01));
+      expect(b.dx, inInclusiveRange(940, 1000));
+      expect(g.endMeets(across, atStart: true).edge, ZoneEdge.left);
+      expect(g.endMeets(across, atStart: false).divider?.id, 'a');
+      expect(
+        g.angleWithEdgeDeg(across, atStart: false),
+        closeTo(g.crossingAngleDeg(slant, across), 1e-6),
+      );
+      expect(g.cutLengthMm(across), lessThan(1000));
+      // Survives serialization.
+      final restored = SlantedDivider.fromMap(across.toMap())!;
+      expect(restored.seed, const Offset(0.05, 0.5));
+    });
+
+    test('a confined division keeps the 80 mm glass rule', () {
+      final slant = divider('a', ZoneEdge.top, 0.2, ZoneEdge.bottom, 0.8);
+      const nearTop = SlantedDivider(
+        id: 'h',
+        start: SlantedDividerAnchor(ZoneEdge.left, 100 / 3800),
+        end: SlantedDividerAnchor(ZoneEdge.right, 100 / 3800),
+        seed: Offset(0.05, 100 / 3800),
+      );
+      expect(
+        geometry([slant, nearTop]).validate(),
+        SlantedDivisionError.cellTooSmall,
+      );
+    });
+
     test('pricing rectangle follows the longest (slanted) side', () {
       // Right triangle 3000 x 1000: hypotenuse is the longest side.
       final r = SlantedDivisionGeometry.pricingRectangle(const [
@@ -211,6 +257,37 @@ void main() {
       expect(fixed.zones.first.slantedDividers, hasLength(1));
       fixed.undo();
       expect(fixed.zones.first.slantedDividers, isEmpty);
+    });
+
+    test('a straight stroke after a slanted one stays in its cell', () {
+      final model = makeModel(ZoneContent.fixedGlass);
+      void stroke(Offset from, Offset to) {
+        model.startDrawing(from);
+        model.updateDrawing(to);
+        model.endDrawing();
+      }
+
+      // Slanted, then horizontal left of it (the slant is at x ≈ 1055).
+      stroke(const Offset(300, 300), const Offset(1500, 3000));
+      expect(model.drawingNotice, isNull);
+      stroke(const Offset(150, 2000), const Offset(700, 2010));
+      expect(model.drawingNotice, isNull);
+      expect(model.zones, hasLength(1));
+      final zone = model.zones.single;
+      expect(zone.slantedDividers, hasLength(2));
+      final g = model.slantedGeometryFor(zone);
+      expect(g.cells(), hasLength(3));
+      // The first (slanted) division is never cut by the later one.
+      expect(g.cutPieces(zone.slantedDividers.first), hasLength(1));
+      expect(
+        g.endMeets(zone.slantedDividers.last, atStart: false).divider?.id,
+        zone.slantedDividers.first.id,
+      );
+
+      // A pane under 80 mm is refused and nothing changes.
+      stroke(const Offset(150, 110), const Offset(600, 112));
+      expect(model.drawingNotice, SlantedDivisionError.cellTooSmall);
+      expect(model.zones.single.slantedDividers, hasLength(2));
     });
 
     test('turning the zone into a sash removes its slanted divisions', () {
