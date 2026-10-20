@@ -1316,7 +1316,16 @@ extension _MaterialTable on _MaterialConsumptionScreenState {
                           (() {
                             final localizedTitle = item.getLocalizedName(_lang);
                             final parts = item.name.split('\n');
-                            final namePart = parts[0];
+                            final isGlassComposition =
+                                item.category == 'glass';
+                            final namePart = isGlassComposition
+                                ? BomItem.localizeGlassLine(
+                                    parts[0],
+                                    _lang,
+                                    translateWord: (word) =>
+                                        Localization.translate(word, lang),
+                                  )
+                                : parts[0];
                             final rawSubparts = parts.length > 1
                                 ? parts.sublist(1)
                                 : <String>[
@@ -1348,12 +1357,25 @@ extension _MaterialTable on _MaterialConsumptionScreenState {
                               }
                               if (lower == localizedTitle.toLowerCase())
                                 return false;
+                              // Glass lines are bilingual ("Face intérieure
+                              // / الوجه الداخلي: …"): they are all kept and
+                              // shown in the screen language below. Hiding
+                              // every line with Arabic left only the first
+                              // line of the composition in French.
+                              if (isGlassComposition) return true;
                               // If French language, hide pure Arabic subparts
                               if (_lang == 'fr' && _hasArabic(trimmed)) {
                                 return false;
                               }
                               return true;
                             }).toList();
+                            String glassLine(String text) =>
+                                BomItem.localizeGlassLine(
+                                  text,
+                                  _lang,
+                                  translateWord: (word) =>
+                                      Localization.translate(word, lang),
+                                );
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -1384,7 +1406,12 @@ extension _MaterialTable on _MaterialConsumptionScreenState {
                                   (subText) => Padding(
                                     padding: const EdgeInsets.only(top: 2.0),
                                     child: Text(
-                                      BomItem.localizeSubText(subText, _lang),
+                                      isGlassComposition
+                                          ? glassLine(subText)
+                                          : BomItem.localizeSubText(
+                                              subText,
+                                              _lang,
+                                            ),
                                       style: TextStyle(
                                         fontSize: 9.0,
                                         fontWeight: FontWeight.normal,

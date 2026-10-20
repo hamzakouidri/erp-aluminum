@@ -9,6 +9,8 @@ import '../Commande/order_workspace_screen.dart';
 import '../Commande/devis_builder.dart';
 import '../Commande/devis_preview_screen.dart';
 import 'client_ledger_pdf_service.dart';
+import 'client_ledger_view.dart';
+import 'material_sale_editor_screen.dart';
 import 'receipt_pdf_service.dart';
 
 class ClientLedgerScreen extends StatefulWidget {
@@ -25,6 +27,13 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
   final formatter = NumberFormat('#,##0.00');
 
   Map<String, dynamic>? _client;
+
+  /// Every line of the client, workshop and store, each tagged with its
+  /// 'scope'; [_ledgerItems] is the part shown for [_scope].
+  List<Map<String, dynamic>> _allItems = [];
+  ClientLedgerScope _scope = ClientLedgerScope.both;
+  bool _hasWorkshopActivity = false;
+  bool _hasStoreActivity = false;
   List<Map<String, dynamic>> _ledgerItems = [];
   List<Map<String, dynamic>> _ordersList = [];
   bool _isLoading = true;
@@ -134,6 +143,7 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
           'displayCode': displayCode,
           'date': date,
           'type': 'Order',
+          'scope': 'workshop',
           'label': 'طلب شراء / Commande #$displayCode',
           'debit': amount,
           'credit': 0.0,
@@ -187,6 +197,7 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
           'displayCode': orderDisplayCode,
           'date': date,
           'type': 'Delivery',
+          'scope': 'workshop',
           'label': 'وصل تسليم / Bon de livraison #$deliveryId (الطلبية #$orderDisplayCode)',
           'debit': 0.0,
           'credit': 0.0,
@@ -213,6 +224,7 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
             'id': t['id'] as int,
             'date': date,
             'type': 'Payment',
+            'scope': 'workshop',
             'label': 'دفعة مالية / Paiement (${t['payment_method'] ?? 'Espèce'})',
             'debit': 0.0,
             'credit': amount,
@@ -225,6 +237,7 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
             'id': t['id'] as int,
             'date': date,
             'type': 'Refund',
+            'scope': 'workshop',
             'label': 'مسترجع نقدي / Remboursement (${t['payment_method'] ?? 'Espèce'})',
             'debit': amount,
             'credit': 0.0,
@@ -234,28 +247,13 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
         }
       }
 
-      // Sort ascending by DateTime
-      tempItems.sort((a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime));
-
-      // Calculate running balance and totals
-      double balance = 0.0;
-      double debitTotal = 0.0;
-      double creditTotal = 0.0;
-
-      for (var i = 0; i < tempItems.length; i++) {
-        final d = tempItems[i]['debit'] as double;
-        final c = tempItems[i]['credit'] as double;
-        balance = balance + d - c;
-        tempItems[i]['runningBalance'] = balance;
-        debitTotal += d;
-        creditTotal += c;
-      }
+      _hasWorkshopActivity = tempItems.isNotEmpty;
+      tempItems.addAll(await _loadStoreItems(myDb));
+      _hasStoreActivity = tempItems.any((item) => item['scope'] == 'store');
 
       setState(() {
-        _ledgerItems = tempItems;
-        _totalDebit = debitTotal;
-        _totalCredit = creditTotal;
-        _netBalance = debitTotal - creditTotal;
+        _allItems = tempItems;
+        _applyScope();
         _isLoading = false;
       });
     } catch (e) {
@@ -263,6 +261,76 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  /// The client's store side: its sales (and returns) and the payments of
+  /// store documents, tagged 'store'.
+  Future<List<Map<String, dynamic>>> _loadStoreItems(dynamic myDb) async {
+    final items = <Map<String, dynamic>>[];
+    DateTime parseDate(Object? raw) =>
+        DateTime.tryParse(raw?.toString() ?? '') ?? DateTime.now();
+    try {
+      final sales = await myDb.query(
+        'MaterialSales',
+        where: 'client_id = ? AND COALESCE(is_deleted, 0) = 0',
+        whereArgs: [widget.clientId],
+      ) as List<Map<String, dynamic>>;
+      for (final sale in sales) {
+        if (!isClientStoreLedgerDocument(sale)) continue;
+        final amount = (sale['net_total'] as num?)?.toDouble() ?? 0.0;
+        final isReturn = (sale['doc_type'] ?? '').toString() == 'retour';
+        items.add({
+          'id': (sale['id'] as num).toInt(),
+          'displayCode': sale['sale_code'] ?? sale['id'],
+          'date': parseDate(sale['sale_date'] ?? sale['created_at']),
+          'type': isReturn ? 'Return' : 'Sale',
+          'scope': 'store',
+          'debit': isReturn ? 0.0 : amount,
+          'credit': isReturn ? amount : 0.0,
+          'details': null,
+          'rawData': sale,
+        });
+      }
+      final payments = await myDb.query(
+        'Treasury',
+        where: "entity_type = 'Client' AND entity_id = ? AND document_type = ?",
+        whereArgs: [widget.clientId, SqlDatabase.materialSaleDocumentType],
+      ) as List<Map<String, dynamic>>;
+      for (final t in payments) {
+        final type = (t['transaction_type'] ?? '').toString().toLowerCase();
+        final amount = (t['amount'] as num?)?.toDouble() ?? 0.0;
+        final isReceipt = type.startsWith('encaiss');
+        items.add({
+          'id': (t['id'] as num).toInt(),
+          'date': parseDate(t['created_at']),
+          'type': isReceipt ? 'Payment' : 'Refund',
+          'scope': 'store',
+          'debit': isReceipt ? 0.0 : amount,
+          'credit': isReceipt ? amount : 0.0,
+          'details': null,
+          'rawData': t,
+        });
+      }
+    } catch (error) {
+      debugPrint('Client ledger: store side not loaded: $error');
+    }
+    return items;
+  }
+
+  /// Shows the lines of [_scope] with their running balance and totals.
+  void _applyScope() {
+    final view = clientLedgerForScope(_allItems, _scope);
+    _ledgerItems = view.items;
+    _totalDebit = view.debit;
+    _totalCredit = view.credit;
+    _netBalance = view.balance;
+  }
+
+  void _setScope(ClientLedgerScope scope) {
+    setState(() {
+      _scope = scope;
+      _applyScope();
+    });
   }
 
   Future<void> _openDeliveryPreview(Map<String, dynamic> delivery) async {
@@ -535,7 +603,7 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
                             padding: const EdgeInsets.all(10),
                             child: Column(
                               children: [
-                                Text(Localization.translate('إجمالي الطلبيات', lang), style: const TextStyle(fontSize: 11, fontFamily: 'Cairo', color: Colors.grey)),
+                                Text(Localization.translate('client_ledger_total_purchases', lang), style: const TextStyle(fontSize: 11, fontFamily: 'Cairo', color: Colors.grey)),
                                 const SizedBox(height: 4),
                                 Text(
                                   '${formatter.format(_totalDebit)} ${lang == AppLanguage.arabic ? "د.ج" : "DA"}',
@@ -594,27 +662,102 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
                   ),
                 ),
 
-                // 3. Chronological Operations Title
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        Localization.translate('السجل الزمني للمعاملات', lang),
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'Cairo', color: Theme.of(context).colorScheme.onSurface),
-                      ),
-                      Text(
-                        '(${_ledgerItems.length} ${Localization.translate('معاملة', lang)})',
-                        style: const TextStyle(fontSize: 11, color: Colors.grey, fontFamily: 'Cairo'),
-                      ),
-                    ],
+                // 3. Workshop / store / both, then the tabs.
+                if (_hasWorkshopActivity && _hasStoreActivity)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    child: SegmentedButton<ClientLedgerScope>(
+                      segments: [
+                        ButtonSegment(
+                          value: ClientLedgerScope.workshop,
+                          icon: const Icon(Icons.factory_outlined, size: 16),
+                          label: Text(
+                            Localization.translate(
+                              'client_ledger_scope_workshop',
+                              lang,
+                            ),
+                          ),
+                        ),
+                        ButtonSegment(
+                          value: ClientLedgerScope.store,
+                          icon: const Icon(Icons.storefront_outlined, size: 16),
+                          label: Text(
+                            Localization.translate(
+                              'client_ledger_scope_store',
+                              lang,
+                            ),
+                          ),
+                        ),
+                        ButtonSegment(
+                          value: ClientLedgerScope.both,
+                          icon: const Icon(Icons.join_full_rounded, size: 16),
+                          label: Text(
+                            Localization.translate(
+                              'client_ledger_scope_both',
+                              lang,
+                            ),
+                          ),
+                        ),
+                      ],
+                      selected: {_scope},
+                      onSelectionChanged: (value) => _setScope(value.first),
+                    ),
+                  ),
+                Expanded(
+                  child: DefaultTabController(
+                    length: 3,
+                    child: Column(
+                      children: [
+                        TabBar(
+                          labelColor: Theme.of(context).colorScheme.primary,
+                          tabs: [
+                            Tab(
+                              text:
+                                  '${Localization.translate('client_ledger_tab_statement', lang)} (${_ledgerItems.length})',
+                            ),
+                            Tab(
+                              text:
+                                  '${Localization.translate('client_ledger_tab_purchases', lang)} (${_ledgerItems.where(isClientLedgerPurchase).length})',
+                            ),
+                            Tab(
+                              text:
+                                  '${Localization.translate('client_ledger_tab_payments', lang)} (${_ledgerItems.where(isClientLedgerPayment).length})',
+                            ),
+                          ],
+                        ),
+                        Expanded(
+                          child: TabBarView(
+                            children: [
+                              _buildLedgerList(_ledgerItems, lang),
+                              _buildLedgerList(
+                                _ledgerItems
+                                    .where(isClientLedgerPurchase)
+                                    .toList(),
+                                lang,
+                              ),
+                              _buildLedgerList(
+                                _ledgerItems
+                                    .where(isClientLedgerPayment)
+                                    .toList(),
+                                lang,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
+              ],
+            ),
+    );
+  }
 
-                // 4. Timeline list
-                Expanded(
-                  child: _ledgerItems.isEmpty
+  Widget _buildLedgerList(List<Map<String, dynamic>> items, AppLanguage lang) {
+    return items.isEmpty
                       ? Center(
                           child: Text(
                             Localization.translate('لا توجد معاملات مسجلة بعد لهذا الزبون', lang),
@@ -623,9 +766,9 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
                         )
                       : ListView.builder(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          itemCount: _ledgerItems.length,
+                          itemCount: items.length,
                           itemBuilder: (context, index) {
-                            final item = _ledgerItems[index];
+                            final item = items[index];
                             final String type = item['type'];
                             final date = item['date'] as DateTime;
                             final double debit = item['debit'];
@@ -642,7 +785,20 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
                             String displayLabel = '';
                             final currency = lang == AppLanguage.arabic ? 'د.ج' : 'DA';
 
-                            if (type == 'Order') {
+                            if (type == 'Sale' || type == 'Return') {
+                              final isReturn = type == 'Return';
+                              avatarIcon = isReturn
+                                  ? Icons.assignment_return_outlined
+                                  : Icons.point_of_sale_rounded;
+                              iconColor = isReturn ? Colors.red : Colors.deepPurple;
+                              amountColor = isReturn
+                                  ? Colors.red.shade700
+                                  : Colors.deepPurple.shade700;
+                              amountPrefix = isReturn ? '-' : '+';
+                              displayAmount = isReturn ? credit : debit;
+                              displayLabel =
+                                  '${Localization.translate(isReturn ? 'client_ledger_store_return' : 'client_ledger_store_sale', lang)} ${item['displayCode'] ?? item['id']}';
+                            } else if (type == 'Order') {
                               avatarIcon = Icons.receipt_long_rounded;
                               iconColor = Colors.blue;
                               amountColor = Colors.blue.shade700;
@@ -698,7 +854,12 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
                                 subtitle: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(dateStr, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                                    Text(
+                                      _scope == ClientLedgerScope.both
+                                          ? '$dateStr • ${Localization.translate(item['scope'] == 'store' ? 'client_ledger_scope_store' : 'client_ledger_scope_workshop', lang)}'
+                                          : dateStr,
+                                      style: const TextStyle(fontSize: 10, color: Colors.grey),
+                                    ),
                                     const SizedBox(height: 2),
                                     if (type != 'Delivery')
                                       Text(
@@ -771,6 +932,16 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
                                       editCommandeId: item['id'] as int,
                                       onSaved: _loadLedgerData,
                                     );
+                                  } else if (type == 'Sale' || type == 'Return') {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => MaterialSaleEditorScreen(
+                                          db: db,
+                                          saleId: item['id'] as int,
+                                        ),
+                                      ),
+                                    ).then((_) => _loadLedgerData());
                                   } else if (type == 'Delivery') {
                                     _openDeliveryPreview(item['rawData'] as Map<String, dynamic>);
                                   } else {
@@ -781,10 +952,6 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
                               ),
                             );
                           },
-                        ),
-                ),
-              ],
-            ),
-    );
+                        );
   }
 }

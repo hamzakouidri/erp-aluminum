@@ -227,7 +227,11 @@ class ClientLedgerPdfService {
                   String paymentIdStr = '-';
 
                   String descStr = '';
-                  if (type == 'Order') {
+                  if (type == 'Sale' || type == 'Return') {
+                    // Store documents of a client of both activities.
+                    orderIdStr = '${item['displayCode'] ?? id}';
+                    descStr = '${Localization.translate(type == 'Return' ? 'client_ledger_store_return' : 'client_ledger_store_sale', lang)} $orderIdStr';
+                  } else if (type == 'Order') {
                     orderIdStr = '#$id';
                     descStr = '${Localization.translate('طلب شراء', lang)} #$id';
                   } else if (type == 'Payment') {

@@ -739,6 +739,46 @@ class BomItem {
     return original;
   }
 
+  /// One line of a glass composition ("- Face intérieure / الوجه الداخلي:
+  /// شفاف شفاف (1800.00 دج/م²)") in the [lang] of the screen ('ar', 'fr'
+  /// or 'en'): its label in that language only, the material words
+  /// translated, and the units localised. Lines without a bilingual label
+  /// are returned with their units localised.
+  static String localizeGlassLine(
+    String line,
+    String lang, {
+    String Function(String word)? translateWord,
+  }) {
+    final labelled = RegExp(
+      r'^(\s*-\s*)?([^/:()]+?)\s*/\s*([^:()]+?)\s*(:\s*(.*)|(\(.*\)))$',
+    ).firstMatch(line);
+    String units(String text) => lang == 'ar'
+        ? text
+        : text
+              .replaceAll('دج/م²', 'DA/m²')
+              .replaceAll('دج', 'DA')
+              .replaceAll(' مم', ' mm');
+    if (labelled == null) return units(line);
+    final dash = labelled.group(1) ?? '';
+    final latin = labelled.group(2)!.trim();
+    final arabic = labelled.group(3)!.trim();
+    final label = lang == 'ar' ? arabic : latin;
+    final valueAfterColon = labelled.group(5);
+    if (valueAfterColon == null) {
+      return units('$dash$label ${labelled.group(6) ?? ''}'.trimRight());
+    }
+    var value = valueAfterColon;
+    if (lang != 'ar' && translateWord != null) {
+      value = value
+          .split(' ')
+          .map((word) => RegExp(r'[\u0600-\u06FF]').hasMatch(word)
+              ? translateWord(word)
+              : word)
+          .join(' ');
+    }
+    return units('$dash$label: $value');
+  }
+
   static String localizeSubText(String text, String lang) {
     if (text.contains('المطلوب الفعلي:')) {
       // The Arabic line may also contain the full-bars/remaining-centimetres

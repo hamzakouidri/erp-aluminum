@@ -1,7 +1,9 @@
 import 'dart:io';
 import 'package:database_data/widgets/svg_file/svg_file_picture.dart';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show AssetManifest, rootBundle;
 import 'package:flutter_svg/flutter_svg.dart';
 
 class SectionImageWidget extends StatelessWidget {
@@ -10,6 +12,36 @@ class SectionImageWidget extends StatelessWidget {
   // placeholder many times per second. Keep the negative result for the app
   // session and continue directly to the next known candidate.
   static final Set<String> _unavailableAssetPaths = <String>{};
+
+  /// The images bundled with the app. Trying every possible name one after
+  /// another made a card without image flash several times (each missing
+  /// candidate was blank, then failed, then the next one started). Only the
+  /// images that really exist are tried now.
+  static Set<String>? _bundledAssets;
+  static bool _manifestRequested = false;
+  static final ValueNotifier<bool> _manifestReady = ValueNotifier(false);
+
+  static void _ensureAssetManifest() {
+    if (_manifestRequested) return;
+    _manifestRequested = true;
+    AssetManifest.loadFromAssetBundle(rootBundle)
+        .then((manifest) => _bundledAssets = manifest.listAssets().toSet())
+        .catchError((Object _) => _bundledAssets = const <String>{})
+        .whenComplete(() => _manifestReady.value = true);
+  }
+
+  /// Decoded `data:` images, so a rebuild reuses the same bytes (and the
+  /// image cache) instead of decoding and loading the picture again.
+  static final Map<String, Uint8List> _dataImageBytes = {};
+
+  static Uint8List? _dataBytes(String uri) {
+    final cached = _dataImageBytes[uri];
+    if (cached != null) return cached;
+    final bytes = Uri.parse(uri).data?.contentAsBytes();
+    if (bytes == null) return null;
+    if (_dataImageBytes.length > 200) _dataImageBytes.clear();
+    return _dataImageBytes[uri] = bytes;
+  }
   final String? code;
   final String? name;
   final String? imagePath;
@@ -31,6 +63,18 @@ class SectionImageWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    _ensureAssetManifest();
+    if (_bundledAssets != null) return _buildImage(context);
+    // Until the list of bundled images is known: one stable empty space,
+    // then the final image (or placeholder) once.
+    return ValueListenableBuilder<bool>(
+      valueListenable: _manifestReady,
+      builder: (context, ready, _) =>
+          ready ? _buildImage(context) : SizedBox(width: size, height: size),
+    );
+  }
+
+  Widget _buildImage(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final String rawCode = (code ?? '').trim();
     final String codeWithoutExtension = rawCode.replaceFirst(
@@ -111,6 +155,11 @@ class SectionImageWidget extends StatelessWidget {
       color: fallbackColor ?? (isDark ? Colors.grey.shade400 : Colors.grey),
     );
 
+    // A picture still loading is an empty space, not the placeholder icon:
+    // the icon swapped for the image made the card flash.
+    Widget loadingWidget(BuildContext context) =>
+        SizedBox(width: size, height: size);
+
     Widget? loadedWidget;
 
     // Joint Frappe has one canonical image. Catalogue rows may carry an old
@@ -133,7 +182,7 @@ class SectionImageWidget extends StatelessWidget {
         width: size,
         height: size,
         fit: BoxFit.contain,
-        placeholderBuilder: (context) => fallbackWidget,
+        placeholderBuilder: loadingWidget,
       );
     }
 
@@ -143,7 +192,7 @@ class SectionImageWidget extends StatelessWidget {
         width: size,
         height: size,
         fit: BoxFit.contain,
-        placeholderBuilder: (context) => fallbackWidget,
+        placeholderBuilder: loadingWidget,
       );
     }
 
@@ -155,7 +204,7 @@ class SectionImageWidget extends StatelessWidget {
         width: size,
         height: size,
         fit: BoxFit.contain,
-        placeholderBuilder: (context) => fallbackWidget,
+        placeholderBuilder: loadingWidget,
       );
     }
 
@@ -167,7 +216,7 @@ class SectionImageWidget extends StatelessWidget {
         width: size,
         height: size,
         fit: BoxFit.contain,
-        placeholderBuilder: (context) => fallbackWidget,
+        placeholderBuilder: loadingWidget,
       );
     }
 
@@ -181,8 +230,7 @@ class SectionImageWidget extends StatelessWidget {
         (!isN245Path || isCentralJoint)) {
       if (path.startsWith('data:image/')) {
         try {
-          final uri = Uri.parse(path);
-          final bytes = uri.data?.contentAsBytes();
+          final bytes = _dataBytes(path);
           if (bytes != null) {
             final isSvg = path.contains('image/svg');
             if (isSvg) {
@@ -191,7 +239,7 @@ class SectionImageWidget extends StatelessWidget {
                 width: size,
                 height: size,
                 fit: BoxFit.contain,
-                placeholderBuilder: (context) => fallbackWidget,
+                placeholderBuilder: loadingWidget,
               );
             } else {
               loadedWidget = Image.memory(
@@ -230,7 +278,7 @@ class SectionImageWidget extends StatelessWidget {
                     width: size,
                     height: size,
                     fit: BoxFit.contain,
-                    placeholderBuilder: (context) => fallbackWidget,
+                    placeholderBuilder: loadingWidget,
                   )
                 : Image.file(
                     file,
@@ -537,6 +585,9 @@ class SectionImageWidget extends StatelessWidget {
         if (_unavailableAssetPaths.contains(assetPath)) {
           return buildExactChain(index + 1);
         }
+        final bundled = _bundledAssets;
+        final isBundled =
+            bundled == null || bundled.isEmpty || bundled.contains(assetPath);
         final isSvg = assetPath.toLowerCase().endsWith('.svg');
 
         // On desktop / local file system, first check if the file exists directly on disk
@@ -574,7 +625,7 @@ class SectionImageWidget extends StatelessWidget {
                         width: size,
                         height: size,
                         fit: BoxFit.contain,
-                        placeholderBuilder: (context) => fallbackWidget,
+                        placeholderBuilder: loadingWidget,
                       )
                     : Image.file(
                         f,
@@ -592,13 +643,19 @@ class SectionImageWidget extends StatelessWidget {
           }
         }
 
+        // Not in the app's images (and not found on disk above): skip it
+        // at once instead of trying it.
+        if (!isBundled) {
+          _unavailableAssetPaths.add(assetPath);
+          return buildExactChain(index + 1);
+        }
         if (isSvg) {
           return SvgPicture.asset(
             assetPath,
             width: size,
             height: size,
             fit: BoxFit.contain,
-            placeholderBuilder: (context) => fallbackWidget,
+            placeholderBuilder: loadingWidget,
             errorBuilder: (context, error, stackTrace) {
               _unavailableAssetPaths.add(assetPath);
               return buildExactChain(index + 1) ?? fallbackWidget;

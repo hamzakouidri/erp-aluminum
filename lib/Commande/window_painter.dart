@@ -174,8 +174,12 @@ class WindowPainter extends CustomPainter {
     final w = model.width;
     final h = model.height;
     // Refilled below by every handle-height number and angle badge drawn.
-    model.drawnHandleHeightLabels.clear();
-    model.drawnAngleBadges.clear();
+    // Only the drawing page's own painter records them: a preview of the
+    // same window used to wipe them, so a tap on the number did nothing.
+    if (recordHitTargets) {
+      model.drawnHandleHeightLabels.clear();
+      model.drawnAngleBadges.clear();
+    }
 
     // The selected frame owns its visible drawing width. PVC frame roles can
     // have a width different from the generic system profile thickness.
@@ -1532,7 +1536,9 @@ class WindowPainter extends CustomPainter {
       width: badgeW,
       height: badgeH,
     );
-    if (key != null) model.drawnAngleBadges[key] = badgeRect;
+    if (key != null && recordHitTargets) {
+      model.drawnAngleBadges[key] = badgeRect;
+    }
 
     final paint = Paint()
       ..color = const Color(0xFF2E7D32)
@@ -8360,7 +8366,7 @@ class WindowPainter extends CustomPainter {
       );
       tp.paint(canvas, labelOffset);
       // Remember the number so a tap on it edits the handle height.
-      if (zone != null && slidingHandleType == null) {
+      if (recordHitTargets && zone != null && slidingHandleType == null) {
         model.drawnHandleHeightLabels[zone.id] = (
           label: labelOffset & tp.size,
           sashTop: getSashTopY(x, sashRect.top, t, topOffset, isTopBound),
