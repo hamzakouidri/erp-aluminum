@@ -4769,7 +4769,9 @@ class WorkspaceSelectionPainter extends CustomPainter {
           ? Rect.fromLTWH(0, 0, model.width, model.height)
           : model.frameRectForSelection(key);
       if (rect != null) {
-        canvas.drawRect(rect, outline);
+        // Follow a slanted or arched head and a slanted bottom: the bounding
+        // rectangle left the slanted part of the frame unselected.
+        canvas.drawPath(model.frameSelectionPath(rect), outline);
       }
       if (rect != null && !model.frameShapeMode) {
         final side = 18.0 / scale;
@@ -4854,8 +4856,9 @@ class WorkspaceSelectionPainter extends CustomPainter {
       }
       if (zone != null) {
         for (final rect in _selectedSashRects(zone)) {
-          canvas.drawRect(rect, fill);
-          canvas.drawRect(rect, outline);
+          final shape = model.zoneSelectionPath(rect);
+          canvas.drawPath(shape, fill);
+          canvas.drawPath(shape, outline);
         }
       }
     } else if (selection.type == SelectionType.mullion &&

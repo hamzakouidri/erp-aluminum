@@ -2147,6 +2147,84 @@ extension WindowModelFrame on WindowModel {
     return _frameIndexContainingZone(key);
   }
 
+  /// Whether the head is slanted or arched, or the bottom slanted.
+  bool get hasShapedOutline =>
+      archHeight != 0 ||
+      topSlantLeftY != 0 ||
+      topSlantRightY != 0 ||
+      bottomSlantLeftY != 0 ||
+      bottomSlantRightY != 0;
+
+  /// The real outline of the window, [inset] mm inside its outer edge:
+  /// slanted or arched head and slanted bottom, in drawing coordinates (an
+  /// arch can rise above y = 0).
+  Path windowOutlinePath({double inset = 0}) {
+    final right = width - inset;
+    if (!hasShapedOutline) {
+      return Path()..addRect(Rect.fromLTRB(inset, inset, right, height - inset));
+    }
+    final path = Path()..moveTo(inset, headEdgeY(inset, inset));
+    final arc = headArc();
+    final headRight = Offset(right, headEdgeY(right, inset));
+    if (arc == null) {
+      path.lineTo(headRight.dx, headRight.dy);
+    } else {
+      path.arcToPoint(
+        headRight,
+        radius: Radius.circular(math.max(1.0, arc.radius - inset)),
+      );
+    }
+    return path
+      ..lineTo(right, height - bottomSlantRightY - inset)
+      ..lineTo(inset, height - bottomSlantLeftY - inset)
+      ..close();
+  }
+
+  /// [rect] cut to the window [outline]. A rect touching the top (or the
+  /// bottom) of [edges] is first stretched to the outline, so the part of a
+  /// slanted or arched head above it is included, not only its rectangle.
+  Path _shapedSelectionPath(Rect rect, Path outline, Rect edges) {
+    final bounds = outline.getBounds();
+    final stretched = Rect.fromLTRB(
+      rect.left,
+      rect.top <= edges.top + 0.5 ? math.min(rect.top, bounds.top) : rect.top,
+      rect.right,
+      rect.bottom >= edges.bottom - 0.5
+          ? math.max(rect.bottom, bounds.bottom)
+          : rect.bottom,
+    );
+    return Path.combine(
+      PathOperation.intersect,
+      outline,
+      Path()..addRect(stretched),
+    );
+  }
+
+  /// Outline of the selected frame [rect] (see [frameRectForSelection]),
+  /// following a slanted or arched head and a slanted bottom.
+  Path frameSelectionPath(Rect rect) {
+    if (!hasShapedOutline) return Path()..addRect(rect);
+    final frames = getFrameRects();
+    final edges = frames.isEmpty
+        ? Rect.fromLTWH(0, 0, width, height)
+        : frames.reduce((a, b) => a.expandToInclude(b));
+    return _shapedSelectionPath(rect, windowOutlinePath(), edges);
+  }
+
+  /// Highlight of a selected sash or glass [rect], following the inner edge
+  /// of a slanted or arched head and of a slanted bottom.
+  Path zoneSelectionPath(Rect rect) {
+    if (!hasShapedOutline || zones.isEmpty) return Path()..addRect(rect);
+    final edges = zones
+        .map((zone) => zone.boundary)
+        .reduce((a, b) => a.expandToInclude(b));
+    return _shapedSelectionPath(
+      rect,
+      windowOutlinePath(inset: profileThickness),
+      edges,
+    );
+  }
+
   Rect? frameRectForSelection(String? key) {
     final index =
         _frameIndexForSelection(key) ??
