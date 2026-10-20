@@ -7334,6 +7334,24 @@ class WindowPainter extends CustomPainter {
       }
     }
 
+    // The profile the cutting list uses: the series' configured role. A
+    // first match by name or type could be another montant of the series,
+    // so the drawing changed once the quantity table had stored its picks.
+    final resolverType = switch (tName) {
+      'chicane' =>
+        reinforced == true ? 'sash_central_reinforced' : 'sash_central',
+      'lateral' =>
+        reinforced == true ? 'sash_lateral_reinforced' : 'sash_lateral',
+      _ => null,
+    };
+    if (resolverType != null) {
+      final section = model.getSlidingSectionByType(resolverType);
+      if (section != null) {
+        if (section.visibleWidth > 0) return section.visibleWidth;
+        if (section.thickness > 0) return section.thickness;
+      }
+    }
+
     String? altType;
     if (tName == 'traverse') {
       altType = 'sash_traverse';
