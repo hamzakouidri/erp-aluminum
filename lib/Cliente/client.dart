@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:database_data/Screen/client_ledger_view.dart';
 import 'dart:io';
 import 'package:database_data/Cliente/show_client.dart';
 import '../Screen/client_ledger_screen.dart';
@@ -41,6 +42,12 @@ class Customers extends StatefulWidget {
 
 class _CustomersState extends State<Customers> {
   final SqlDatabase db = SqlDatabase();
+
+  /// The store's client list opens the store side of a client's account
+  /// statement, the workshop's list the workshop side.
+  ClientLedgerScope get _ledgerScope => widget.storeOnly
+      ? ClientLedgerScope.store
+      : ClientLedgerScope.workshop;
   // Explicitly bind the page/table scroll position so the desktop wheel can
   // target this list as soon as the page is opened.
   final ScrollController _mobileClientsScrollController = ScrollController();
@@ -881,7 +888,10 @@ class _CustomersState extends State<Customers> {
                                       context,
                                       MaterialPageRoute(
                                         builder: (context) =>
-                                            ShowClient(clientId: id),
+                                            ShowClient(
+                                              clientId: id,
+                                              ledgerScope: _ledgerScope,
+                                            ),
                                       ),
                                     ).then((_) => _refreshData());
                                   }
@@ -1196,13 +1206,19 @@ class _CustomersState extends State<Customers> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => ClientLedgerScreen(clientId: clientId),
+            builder: (_) => ClientLedgerScreen(
+              clientId: clientId,
+              initialScope: _ledgerScope,
+            ),
           ),
         );
       case 'details':
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => ShowClient(clientId: clientId)),
+          MaterialPageRoute(
+            builder: (_) =>
+                ShowClient(clientId: clientId, ledgerScope: _ledgerScope),
+          ),
         ).then((_) => _refreshData());
       case 'edit':
         _showUpdateClientDialog(context, client);
@@ -1569,7 +1585,8 @@ class _CustomersState extends State<Customers> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => ShowClient(clientId: clientId),
+              builder: (context) =>
+                  ShowClient(clientId: clientId, ledgerScope: _ledgerScope),
             ),
           );
         },

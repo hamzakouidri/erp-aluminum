@@ -148,6 +148,11 @@ class _WindowViewState extends State<WindowView> {
   bool get _isWindowsDesktop =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
+  /// The right mouse button never draws: it moves dimensions, cut-angle
+  /// badges, handles and hinges. Only the left button draws.
+  bool get _rightMouseDown =>
+      _isWindowsDesktop && (_pointerButtons & kSecondaryMouseButton) != 0;
+
   /// The tabs that open the left and right drawers exist on the phone only:
   /// on desktop the toolbar button opens the right drawer and a double click
   /// on the drawing (or the glass button) opens the glass drawer.
@@ -1856,18 +1861,23 @@ class _WindowViewState extends State<WindowView> {
                                           .angleBadgeAt(modelPos);
                                       if (badge != null &&
                                           (!_isWindowsDesktop ||
-                                              (_pointerButtons &
-                                                      kSecondaryMouseButton) !=
-                                                  0)) {
+                                              _rightMouseDown)) {
                                         _draggedAngleBadge = badge;
                                         return;
                                       }
+                                      // Dimensions move with the right
+                                      // button (a finger on a phone); a
+                                      // left-button drag on a number does
+                                      // nothing (it must not start drawing).
                                       final grabbed = widget.model
                                           .dimensionLabelAt(modelPos);
                                       if (grabbed != null &&
                                           grabbed.dragKey.isNotEmpty &&
                                           grabbed.normal != Offset.zero) {
-                                        _draggedDimension = grabbed;
+                                        if (!_isWindowsDesktop ||
+                                            _rightMouseDown) {
+                                          _draggedDimension = grabbed;
+                                        }
                                         return;
                                       }
                                       // An end handle of the selected slanted
@@ -2435,13 +2445,15 @@ class _WindowViewState extends State<WindowView> {
                                             return false;
                                           })()) {
                                             // Started dragging glass decoration
-                                          } else {
+                                          } else if (!_rightMouseDown) {
                                             // Defer drawing start — wait for real drag in onScaleUpdate
+                                            // (left button only).
                                             widget.model.pendingDrawStart =
                                                 modelPos;
                                           }
                                         }
                                       } else if (widget.model.isDrawingMode &&
+                                          !_rightMouseDown &&
                                           widget.model.selection.type !=
                                               SelectionType.mullion) {
                                         widget.model.pendingDrawStart =
@@ -2542,6 +2554,7 @@ class _WindowViewState extends State<WindowView> {
                                       // Commit pendingDrawStart → real drawing only after
                                       // the finger has actually moved (≥5 logical pixels)
                                       if (widget.model.drawingStart == null &&
+                                          !_rightMouseDown &&
                                           widget.model.pendingDrawStart !=
                                               null) {
                                         final pending =
