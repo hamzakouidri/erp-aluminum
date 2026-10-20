@@ -1059,6 +1059,7 @@ extension SqlDatabasePurchases on SqlDatabase {
         'phone': data['phone'] ?? '',
         'email': data['email'] ?? '',
         'notes': data['notes'] ?? '',
+        'address': data['address'] ?? '',
         'latitude': data['latitude'],
         'longitude': data['longitude'],
         'created_at': DateTime.now().toUtc().toIso8601String(),
@@ -1077,6 +1078,7 @@ extension SqlDatabasePurchases on SqlDatabase {
         'phone': data['phone'] ?? '',
         'email': data['email'] ?? '',
         'notes': data['notes'] ?? '',
+        if (data.containsKey('address')) 'address': data['address'] ?? '',
         'latitude': data['latitude'],
         'longitude': data['longitude'],
       },
@@ -1085,6 +1087,84 @@ extension SqlDatabasePurchases on SqlDatabase {
     );
     CloudSyncService().notifyChange();
     return res;
+  }
+
+  /// What a supplier sells, as set on its card.
+  Future<List<Map<String, dynamic>>> readSupplierProducts(int supplierId) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    return myDb.query(
+      'SupplierProducts',
+      where: 'supplier_id = ?',
+      whereArgs: [supplierId],
+      orderBy: 'item_type ASC, label ASC',
+    );
+  }
+
+  Future<void> insertSupplierProduct({
+    required int supplierId,
+    required String itemType,
+    int? itemId,
+    required String label,
+    String notes = '',
+  }) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    final now = DateTime.now().toUtc().toIso8601String();
+    await myDb.insert(
+      'SupplierProducts',
+      SqlDatabase._withDistributedId({
+        'supplier_id': supplierId,
+        'item_type': itemType,
+        'item_id': itemId,
+        'label': label.trim(),
+        'notes': notes.trim(),
+        'created_at': now,
+        'updated_at': now,
+      }),
+    );
+    CloudSyncService().notifyChange();
+  }
+
+  Future<void> deleteSupplierProduct(int id) async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await myDb.delete('SupplierProducts', where: 'id = ?', whereArgs: [id]);
+    CloudSyncService().notifyChange();
+  }
+
+  /// What was bought from a supplier, by article: total quantity, last price
+  /// and last date, from its purchase invoices.
+  Future<List<Map<String, dynamic>>> readSupplierPurchasedGoods(
+    int supplierId,
+    String supplierName,
+  ) async {
+    final myDb = await db;
+    if (myDb == null) return [];
+    return myDb.rawQuery(
+      '''
+      SELECT i.item_name AS item_name,
+             i.item_code AS item_code,
+             i.item_type AS item_type,
+             SUM(COALESCE(i.quantity, 0)) AS quantity,
+             COUNT(DISTINCT a.id) AS invoices,
+             MAX(a.created_at) AS last_date,
+             (SELECT i2.price FROM Achat_items i2
+                JOIN Achats a2 ON a2.id = i2.achat_id
+               WHERE i2.item_name = i.item_name
+                 AND COALESCE(i2.item_code, '') = COALESCE(i.item_code, '')
+                 AND (a2.supplier_id = ? OR a2.supplier_name = ?)
+                 AND COALESCE(a2.is_deleted, 0) = 0
+               ORDER BY a2.created_at DESC LIMIT 1) AS last_price
+        FROM Achat_items i
+        JOIN Achats a ON a.id = i.achat_id
+       WHERE (a.supplier_id = ? OR a.supplier_name = ?)
+         AND COALESCE(a.is_deleted, 0) = 0
+       GROUP BY i.item_name, COALESCE(i.item_code, '')
+       ORDER BY last_date DESC
+    ''',
+      [supplierId, supplierName, supplierId, supplierName],
+    );
   }
 
   Future<int> deleteSupplier(int id) async {

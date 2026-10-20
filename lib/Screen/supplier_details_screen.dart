@@ -9,6 +9,7 @@ import 'achat_details_screen.dart';
 import 'app_workspace_shell.dart';
 import 'supplier_ledger_pdf_service.dart';
 import 'receipt_pdf_service.dart';
+import 'supplier_card_view.dart';
 
 class SupplierDetailsScreen extends StatefulWidget {
   final Map<String, dynamic> supplier;
@@ -139,7 +140,9 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
             'date': date,
             'type': 'Payment',
             'typeLabel': 'دفعة للمورد / Paiement',
-            'number': (t['id'] is num && (t['id'] as num) < 100000) ? t['id'].toString() : '—',
+            'number': (t['id'] is num && (t['id'] as num) < 100000)
+                ? t['id'].toString()
+                : '—',
             'description': desc.isEmpty ? 'تسديد دفعة للمورد' : desc,
             'debit': 0.0,
             'credit': amount, // Credit = Paid to supplier
@@ -155,7 +158,9 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
             'date': date,
             'type': 'Return',
             'typeLabel': 'إرجاع مشتريات / Retour',
-            'number': (t['id'] is num && (t['id'] as num) < 100000) ? t['id'].toString() : '—',
+            'number': (t['id'] is num && (t['id'] as num) < 100000)
+                ? t['id'].toString()
+                : '—',
             'description': desc.isEmpty ? 'استرجاع مشتريات من المورد' : desc,
             'debit': 0.0,
             'credit': amount, // Credit = Refund received from supplier
@@ -284,290 +289,338 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
       textDirection: lang == AppLanguage.arabic
           ? TextDirection.rtl
           : TextDirection.ltr,
-      child: Scaffold(
-        backgroundColor: isDark
-            ? const Color(0xFF121212)
-            : Colors.grey.shade100,
-        appBar: AppBar(
-          title: Text(
-            '${_tr('كشف حساب المورد: ', 'Fiche Fournisseur: ', 'Supplier Statement: ', lang)}${widget.supplier['name']}',
-            style: const TextStyle(
-              fontFamily: 'Cairo',
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
-          ),
-          backgroundColor: primaryColor,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.refresh, color: Colors.white),
-              tooltip: _tr('تحديث', 'Actualiser', 'Refresh', lang),
-              onPressed: () async {
-                await CloudSyncService().syncPendingNow();
-                _loadLedgerData();
-              },
-            ),
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
-              tooltip: _tr(
-                'تصدير كشف الحساب',
-                'Exporter extrait',
-                'Export Statement',
-                lang,
+      child: DefaultTabController(
+        length: 2,
+        child: Scaffold(
+          backgroundColor: isDark
+              ? const Color(0xFF121212)
+              : Colors.grey.shade100,
+          appBar: AppBar(
+            title: Text(
+              '${_tr('بطاقة المورد: ', 'Fiche fournisseur : ', 'Supplier card: ', lang)}${widget.supplier['name']}',
+              style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
               ),
-              onSelected: (val) {
-                if (val == 'print') {
-                  SupplierLedgerPdfService.printSupplierLedger(
-                    widget.supplier,
-                    _ledgerItems,
-                    lang: lang,
-                  );
-                } else if (val == 'share') {
-                  SupplierLedgerPdfService.shareSupplierLedger(
-                    widget.supplier,
-                    _ledgerItems,
-                    lang: lang,
-                  );
-                } else if (val == 'save') {
-                  SupplierLedgerPdfService.saveSupplierLedger(
-                    widget.supplier,
-                    _ledgerItems,
-                    context,
-                    lang: lang,
-                  );
-                }
-              },
-              itemBuilder: (context) => [
-                PopupMenuItem(
-                  value: 'print',
-                  child: Row(
-                    children: [
-                      const Icon(Icons.print, color: Colors.teal),
-                      const SizedBox(width: 10),
-                      Text(
-                        _tr('طباعة PDF', 'Imprimer PDF', 'Print PDF', lang),
-                        style: const TextStyle(fontFamily: 'Cairo'),
-                      ),
-                    ],
-                  ),
+            ),
+            backgroundColor: primaryColor,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            bottom: TabBar(
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.white70,
+              indicatorColor: Colors.white,
+              tabs: [
+                Tab(
+                  icon: const Icon(Icons.badge_rounded),
+                  text: _tr('البطاقة', 'Fiche', 'Card', lang),
                 ),
-                PopupMenuItem(
-                  value: 'share',
-                  child: Row(
-                    children: [
-                      const Icon(Icons.share, color: Colors.orange),
-                      const SizedBox(width: 10),
-                      Text(
-                        _tr('مشاركة PDF', 'Partager PDF', 'Share PDF', lang),
-                        style: const TextStyle(fontFamily: 'Cairo'),
-                      ),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'save',
-                  child: Row(
-                    children: [
-                      const Icon(Icons.download, color: Colors.blue),
-                      const SizedBox(width: 10),
-                      Text(
-                        _tr('حفظ PDF', 'Enregistrer PDF', 'Save PDF', lang),
-                        style: const TextStyle(fontFamily: 'Cairo'),
-                      ),
-                    ],
+                Tab(
+                  icon: const Icon(Icons.account_balance_wallet_rounded),
+                  text: _tr(
+                    'كشف الحساب',
+                    'Extrait de compte',
+                    'Statement',
+                    lang,
                   ),
                 ),
               ],
             ),
-          ],
-        ),
-        body: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : Column(
-                children: [
-                  // 1. Header Summary Cards
-                  Container(
-                    color: primaryColor,
-                    padding: const EdgeInsets.only(
-                      bottom: 16,
-                      left: 12,
-                      right: 12,
-                      top: 8,
-                    ),
-                    child: Column(
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.refresh, color: Colors.white),
+                tooltip: _tr('تحديث', 'Actualiser', 'Refresh', lang),
+                onPressed: () async {
+                  await CloudSyncService().syncPendingNow();
+                  _loadLedgerData();
+                },
+              ),
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
+                tooltip: _tr(
+                  'تصدير كشف الحساب',
+                  'Exporter extrait',
+                  'Export Statement',
+                  lang,
+                ),
+                onSelected: (val) {
+                  if (val == 'print') {
+                    SupplierLedgerPdfService.printSupplierLedger(
+                      widget.supplier,
+                      _ledgerItems,
+                      lang: lang,
+                    );
+                  } else if (val == 'share') {
+                    SupplierLedgerPdfService.shareSupplierLedger(
+                      widget.supplier,
+                      _ledgerItems,
+                      lang: lang,
+                    );
+                  } else if (val == 'save') {
+                    SupplierLedgerPdfService.saveSupplierLedger(
+                      widget.supplier,
+                      _ledgerItems,
+                      context,
+                      lang: lang,
+                    );
+                  }
+                },
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'print',
+                    child: Row(
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildSummaryCard(
-                                title: _tr(
-                                  'إجمالي المشتريات',
-                                  'Total Achats',
-                                  'Total Purchases',
-                                  lang,
-                                ),
-                                amount: _totalPurchases,
-                                icon: Icons.shopping_cart,
-                                color: Colors.blue.shade100,
-                                textColor: Colors.blue.shade900,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _buildSummaryCard(
-                                title: _tr(
-                                  'المدفوع',
-                                  'Total Payé',
-                                  'Total Paid',
-                                  lang,
-                                ),
-                                amount: _totalPaid,
-                                icon: Icons.payments,
-                                color: Colors.green.shade100,
-                                textColor: Colors.green.shade900,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildSummaryCard(
-                                title: _tr(
-                                  'المرتجعات',
-                                  'Total Retours',
-                                  'Total Returns',
-                                  lang,
-                                ),
-                                amount: _totalReturns,
-                                icon: Icons.settings_backup_restore,
-                                color: Colors.orange.shade100,
-                                textColor: Colors.orange.shade900,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _buildSummaryCard(
-                                title: _tr(
-                                  'الديون / المستحق',
-                                  'Solde Dû',
-                                  'Remaining Due',
-                                  lang,
-                                ),
-                                amount: _remainingDebt,
-                                icon: Icons.account_balance_wallet,
-                                color: _remainingDebt > 0
-                                    ? Colors.red.shade100
-                                    : Colors.teal.shade100,
-                                textColor: _remainingDebt > 0
-                                    ? Colors.red.shade900
-                                    : Colors.teal.shade900,
-                              ),
-                            ),
-                          ],
+                        const Icon(Icons.print, color: Colors.teal),
+                        const SizedBox(width: 10),
+                        Text(
+                          _tr('طباعة PDF', 'Imprimer PDF', 'Print PDF', lang),
+                          style: const TextStyle(fontFamily: 'Cairo'),
                         ),
                       ],
                     ),
                   ),
-
-                  // 2. Search & Filter Bar
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                    child: Column(
+                  PopupMenuItem(
+                    value: 'share',
+                    child: Row(
                       children: [
-                        TextField(
-                          onChanged: (v) => setState(() => _searchQuery = v),
-                          decoration: InputDecoration(
-                            hintText: _tr(
-                              'بحث برقم الفاتورة أو الوصف...',
-                              'Rechercher par N° ou description...',
-                              'Search invoice or desc...',
-                              lang,
-                            ),
-                            hintStyle: const TextStyle(
-                              fontFamily: 'Cairo',
-                              fontSize: 13,
-                            ),
-                            prefixIcon: const Icon(Icons.search, size: 20),
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(
-                              vertical: 10,
-                              horizontal: 12,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
+                        const Icon(Icons.share, color: Colors.orange),
+                        const SizedBox(width: 10),
+                        Text(
+                          _tr('مشاركة PDF', 'Partager PDF', 'Share PDF', lang),
+                          style: const TextStyle(fontFamily: 'Cairo'),
                         ),
-                        const SizedBox(height: 8),
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'save',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.download, color: Colors.blue),
+                        const SizedBox(width: 10),
+                        Text(
+                          _tr('حفظ PDF', 'Enregistrer PDF', 'Save PDF', lang),
+                          style: const TextStyle(fontFamily: 'Cairo'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          body: TabBarView(
+            children: [
+              SupplierCardView(db: db, supplier: widget.supplier),
+              _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : Column(
+                      children: [
+                        // 1. Header Summary Cards
+                        Container(
+                          color: primaryColor,
+                          padding: const EdgeInsets.only(
+                            bottom: 16,
+                            left: 12,
+                            right: 12,
+                            top: 8,
+                          ),
+                          child: Column(
                             children: [
-                              _buildFilterChip(
-                                'All',
-                                _tr('الكل', 'Tous', 'All', lang),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildSummaryCard(
+                                      title: _tr(
+                                        'إجمالي المشتريات',
+                                        'Total Achats',
+                                        'Total Purchases',
+                                        lang,
+                                      ),
+                                      amount: _totalPurchases,
+                                      icon: Icons.shopping_cart,
+                                      color: Colors.blue.shade100,
+                                      textColor: Colors.blue.shade900,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: _buildSummaryCard(
+                                      title: _tr(
+                                        'المدفوع',
+                                        'Total Payé',
+                                        'Total Paid',
+                                        lang,
+                                      ),
+                                      amount: _totalPaid,
+                                      icon: Icons.payments,
+                                      color: Colors.green.shade100,
+                                      textColor: Colors.green.shade900,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              _buildFilterChip(
-                                'Purchase',
-                                _tr(
-                                  'فواتير الشراء',
-                                  'Achats',
-                                  'Purchases',
-                                  lang,
-                                ),
-                              ),
-                              _buildFilterChip(
-                                'Payment',
-                                _tr('المدفوعات', 'Paiements', 'Payments', lang),
-                              ),
-                              _buildFilterChip(
-                                'Return',
-                                _tr('المرتجعات', 'Retours', 'Returns', lang),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildSummaryCard(
+                                      title: _tr(
+                                        'المرتجعات',
+                                        'Total Retours',
+                                        'Total Returns',
+                                        lang,
+                                      ),
+                                      amount: _totalReturns,
+                                      icon: Icons.settings_backup_restore,
+                                      color: Colors.orange.shade100,
+                                      textColor: Colors.orange.shade900,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: _buildSummaryCard(
+                                      title: _tr(
+                                        'الديون / المستحق',
+                                        'Solde Dû',
+                                        'Remaining Due',
+                                        lang,
+                                      ),
+                                      amount: _remainingDebt,
+                                      icon: Icons.account_balance_wallet,
+                                      color: _remainingDebt > 0
+                                          ? Colors.red.shade100
+                                          : Colors.teal.shade100,
+                                      textColor: _remainingDebt > 0
+                                          ? Colors.red.shade900
+                                          : Colors.teal.shade900,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
                         ),
+
+                        // 2. Search & Filter Bar
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          color: isDark
+                              ? const Color(0xFF1E1E1E)
+                              : Colors.white,
+                          child: Column(
+                            children: [
+                              TextField(
+                                onChanged: (v) =>
+                                    setState(() => _searchQuery = v),
+                                decoration: InputDecoration(
+                                  hintText: _tr(
+                                    'بحث برقم الفاتورة أو الوصف...',
+                                    'Rechercher par N° ou description...',
+                                    'Search invoice or desc...',
+                                    lang,
+                                  ),
+                                  hintStyle: const TextStyle(
+                                    fontFamily: 'Cairo',
+                                    fontSize: 13,
+                                  ),
+                                  prefixIcon: const Icon(
+                                    Icons.search,
+                                    size: 20,
+                                  ),
+                                  isDense: true,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    vertical: 10,
+                                    horizontal: 12,
+                                  ),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  children: [
+                                    _buildFilterChip(
+                                      'All',
+                                      _tr('الكل', 'Tous', 'All', lang),
+                                    ),
+                                    _buildFilterChip(
+                                      'Purchase',
+                                      _tr(
+                                        'فواتير الشراء',
+                                        'Achats',
+                                        'Purchases',
+                                        lang,
+                                      ),
+                                    ),
+                                    _buildFilterChip(
+                                      'Payment',
+                                      _tr(
+                                        'المدفوعات',
+                                        'Paiements',
+                                        'Payments',
+                                        lang,
+                                      ),
+                                    ),
+                                    _buildFilterChip(
+                                      'Return',
+                                      _tr(
+                                        'المرتجعات',
+                                        'Retours',
+                                        'Returns',
+                                        lang,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // 3. Transactions List
+                        Expanded(
+                          child: filteredItems.isEmpty
+                              ? Center(
+                                  child: Text(
+                                    _tr(
+                                      'لا توجد معاملات مسجلة لهذا المورد',
+                                      'Aucune transaction trouvée',
+                                      'No transactions found',
+                                      lang,
+                                    ),
+                                    style: const TextStyle(
+                                      fontFamily: 'Cairo',
+                                      fontSize: 14,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                )
+                              : ListView.builder(
+                                  padding: const EdgeInsets.all(10),
+                                  itemCount: filteredItems.length,
+                                  itemBuilder: (context, index) {
+                                    final item = filteredItems[index];
+                                    return _buildTransactionCard(
+                                      item,
+                                      isDark,
+                                      lang,
+                                    );
+                                  },
+                                ),
+                        ),
                       ],
                     ),
-                  ),
-
-                  // 3. Transactions List
-                  Expanded(
-                    child: filteredItems.isEmpty
-                        ? Center(
-                            child: Text(
-                              _tr(
-                                'لا توجد معاملات مسجلة لهذا المورد',
-                                'Aucune transaction trouvée',
-                                'No transactions found',
-                                lang,
-                              ),
-                              style: const TextStyle(
-                                fontFamily: 'Cairo',
-                                fontSize: 14,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.all(10),
-                            itemCount: filteredItems.length,
-                            itemBuilder: (context, index) {
-                              final item = filteredItems[index];
-                              return _buildTransactionCard(item, isDark, lang);
-                            },
-                          ),
-                  ),
-                ],
-              ),
+            ],
+          ),
+        ),
       ),
     );
   }

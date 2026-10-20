@@ -60,6 +60,9 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
     final notesController = TextEditingController(
       text: supplier?['notes'] ?? '',
     );
+    final addressController = TextEditingController(
+      text: supplier?['address']?.toString() ?? '',
+    );
     double? latitude = supplier?['latitude'] != null ? (supplier!['latitude'] as num).toDouble() : null;
     double? longitude = supplier?['longitude'] != null ? (supplier!['longitude'] as num).toDouble() : null;
 
@@ -103,6 +106,14 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
                   keyboardType: TextInputType.emailAddress,
                   decoration: InputDecoration(
                     labelText: Localization.translate('البريد الإلكتروني', lang),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: addressController,
+                  decoration: InputDecoration(
+                    labelText: Localization.translate('العنوان', lang),
                     border: const OutlineInputBorder(),
                   ),
                 ),
@@ -191,6 +202,7 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
                   'phone': phoneController.text.trim(),
                   'email': emailController.text.trim(),
                   'notes': notesController.text.trim(),
+                  'address': addressController.text.trim(),
                   'latitude': latitude,
                   'longitude': longitude,
                 };

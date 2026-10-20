@@ -393,6 +393,7 @@ class SqlDatabase {
     'Achat_items',
     'Achat_Details',
     'Suppliers',
+    'SupplierProducts',
     'Employees',
     'Caisses',
     'Treasury',

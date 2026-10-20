@@ -353,6 +353,7 @@ extension SqlDatabaseSchema on SqlDatabase {
     await _ensureTreasuryDocumentType(db);
     await _ensureSyncTombstoneInfrastructure(db);
     await _ensureTemperedGlassItemsTable(db);
+    await _ensureSupplierCardSchema(db);
     await _ensureTemperedGlassSystemsAndRulesTables(db);
     await _ensureVROHandlesAndColorsSeeded(db);
     await _ensureTemperedGlassServicesSeeded(db);
@@ -5800,6 +5801,30 @@ extension SqlDatabaseSchema on SqlDatabase {
         }, conflictAlgorithm: ConflictAlgorithm.ignore);
       }
     });
+  }
+
+  /// The supplier card: its address, and what it sells (a series, an
+  /// accessory, a glass or anything typed by hand).
+  Future<void> _ensureSupplierCardSchema(Database db) async {
+    try {
+      await db.execute('ALTER TABLE Suppliers ADD COLUMN address TEXT');
+    } catch (_) {}
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS SupplierProducts (
+        id INTEGER PRIMARY KEY,
+        supplier_id INTEGER NOT NULL,
+        item_type TEXT NOT NULL DEFAULT 'other',
+        item_id INTEGER,
+        label TEXT NOT NULL DEFAULT '',
+        notes TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT '',
+        updated_at TEXT NOT NULL DEFAULT ''
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_supplier_products_supplier '
+      'ON SupplierProducts(supplier_id)',
+    );
   }
 
   Future<void> _ensureTemperedGlassItemsTable(Database dbInstance) =>
