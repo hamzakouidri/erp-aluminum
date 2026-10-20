@@ -1254,9 +1254,13 @@ extension WindowModelFrame on WindowModel {
   /// Whether [item] (a frame section) can be used in the current drawing:
   /// shutter, side cover and corner profile all accept it. The drawing's
   /// frame picker and the quantity table's "change" both use this rule.
+  /// With [ignoreSideCover] the side cover does not restrict the choice: the
+  /// required-goods page then adds or removes the cover with the new frame
+  /// (see [setSideCoversAfterFrameSwap]).
   bool frameFitsCurrentDrawing(
     Map<String, dynamic> item, {
     required bool sliding,
+    bool ignoreSideCover = false,
   }) {
     bool readBool(Object? value, {required bool fallback}) {
       if (value is bool) return value;
@@ -1281,7 +1285,9 @@ extension WindowModelFrame on WindowModel {
     );
     if (hasShutter && !allowedWithShutter) return false;
 
-    if (hasSideCovers && integratedFrameSideCoverWidth <= 0) {
+    if (!ignoreSideCover &&
+        hasSideCovers &&
+        integratedFrameSideCoverWidth <= 0) {
       // A separate cover: the frame must take one.
       if (integratedCover) return false;
       final allowsStandaloneCover = readBool(
@@ -4386,6 +4392,24 @@ extension WindowModelFrame on WindowModel {
   bool get _usesStandaloneSideCover =>
       getFrameRects().length > 1 ||
       (hasShutter && !isCaissonTunnel && !isFramePVC);
+
+  /// Turns the separate side cover on or off after the frame was replaced
+  /// from the required-goods page. Unlike [toggleSideCovers] it never
+  /// reselects the frame: the frame the user just chose stays.
+  void setSideCoversAfterFrameSwap(bool enabled) {
+    hasSideCovers = enabled;
+    _multiFrameSideCoverManuallyEnabled =
+        enabled && getFrameRects().length > 1;
+    if (!enabled) return;
+    final covers = availableSideCovers;
+    if (covers.isNotEmpty &&
+        !covers.any((cover) => cover.id == selectedSideCover?.id)) {
+      selectedSideCover = covers.first;
+      sideCoverOverride = covers.first.toMap();
+    } else if (selectedSideCover != null && sideCoverOverride == null) {
+      sideCoverOverride = selectedSideCover!.toMap();
+    }
+  }
 
   Future<void> toggleSideCovers(bool value) async {
     final revision = ++_sideCoverSelectionRevision;
