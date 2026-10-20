@@ -685,11 +685,6 @@ class Window3DPainter extends CustomPainter {
         ? model
               .getExposedFrameEdgeSegments()
               .where(
-                (edge) =>
-                    edge.frameRect == null ||
-                    (edge.frameRect!.center - frame.center).distance < 1,
-              )
-              .where(
                 (edge) => switch (edge.side) {
                   'top' => (edge.coordinate - frame.top).abs() <= 2,
                   'bottom' => (edge.coordinate - frame.bottom).abs() <= 2,
@@ -701,6 +696,27 @@ class Window3DPainter extends CustomPainter {
                 (edge) => edge.side == 'top' || edge.side == 'bottom'
                     ? edge.start < frame.right && edge.end > frame.left
                     : edge.start < frame.bottom && edge.end > frame.top,
+              )
+              // Edges of side-by-side frames are joined into one; each
+              // frame keeps only its own part, drawn on its own wall (a
+              // corner turns the second wall: the joined edge ran on
+              // straight past the corner as a long bar).
+              .map(
+                (edge) => edge.side == 'top' || edge.side == 'bottom'
+                    ? FrameEdgeSegment(
+                        side: edge.side,
+                        start: math.max(edge.start, frame.left),
+                        end: math.min(edge.end, frame.right),
+                        coordinate: edge.coordinate,
+                        frameRect: frame,
+                      )
+                    : FrameEdgeSegment(
+                        side: edge.side,
+                        start: math.max(edge.start, frame.top),
+                        end: math.min(edge.end, frame.bottom),
+                        coordinate: edge.coordinate,
+                        frameRect: frame,
+                      ),
               )
               .toList()
         : [
@@ -1483,7 +1499,11 @@ class Window3DPainter extends CustomPainter {
       // the frame, an ordinary box inside the window height.
       final boxTop = tunnel ? -box : 0.0;
       final boxBottom = tunnel ? 0.0 : box;
-      final boxDepth = tunnel ? frameDepth * 2.6 : math.max(box, frameDepth);
+      // A box as deep as it is high stood far out of the window: it takes
+      // about 70% of its height, never less than the frame and a lip.
+      final boxDepth = tunnel
+          ? frameDepth * 2.6
+          : math.max(box * 0.7, frameDepth + 30);
       solids.add(
         _cuboid(
           wall.at(left, boxBottom, tunnel ? frameDepth * 0.6 : boxDepth),
