@@ -2001,7 +2001,14 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
                         onChanged: (value) => update('show_in_dialog', value),
                       ),
                       const Divider(height: 20),
-                      if (isFrameRole) ...[
+                      // Rails only exist on a sliding frame: an opening
+                      // frame does not show them.
+                      if (isFrameRole &&
+                          switch (draft['usage_scope']?.toString()) {
+                            'sliding' || 'both' => true,
+                            'opening' => false,
+                            _ => _isSlidingSeries,
+                          }) ...[
                         DropdownButtonFormField<String>(
                           initialValue:
                               const {
