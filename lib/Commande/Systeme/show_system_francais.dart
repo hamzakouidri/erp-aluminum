@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:async';
 import 'dart:ui' show PointerDeviceKind;
 import 'package:database_data/Commande/Systeme/selling_price_calculator.dart';
+import 'package:database_data/Commande/Systeme/installation_fees.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/gestures.dart'

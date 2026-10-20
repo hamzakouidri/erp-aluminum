@@ -1,4 +1,5 @@
 import 'Systeme/selling_price_calculator.dart';
+import 'package:database_data/Commande/Systeme/installation_fees.dart';
 // Force compile sync trigger
 import 'package:database_data/widgets/app_material.dart';
 import 'package:intl/intl.dart';
@@ -2094,20 +2095,9 @@ class _CommandePageState extends State<CommandePage> {
       method = CostMethod.percentage;
     }
     final database = await widget.db.db;
-    Future<double> installationFee(String type) async {
-      final rows =
-          await database?.query(
-            'ShutterSqmPrices',
-            columns: ['price_per_sqm'],
-            where: 'blade_type = ? AND color_id = ?',
-            whereArgs: [type, 0],
-            limit: 1,
-          ) ??
-          [];
-      return rows.isEmpty
-          ? 0
-          : (rows.first['price_per_sqm'] as num?)?.toDouble() ?? 0;
-    }
+    final installationFees = database == null
+        ? InstallationFees.none
+        : await InstallationFees.load(database, preferences: prefs);
 
     final totals = calculateSellingTotals(
       model: product,
@@ -2126,14 +2116,13 @@ class _CommandePageState extends State<CommandePage> {
           if (rule['section_id'] is num)
             (rule['section_id'] as num).toInt(): rule,
       },
-      obInstallFee: await installationFee('OB_Install'),
-      demiObInstallFee: await installationFee('DemiOB_Install'),
-      verrouInstallFee: await installationFee('Verrou_Install'),
-      moteurInstallFee: await installationFee('Moteur_Install'),
+      installationFees: installationFees,
     );
     final quantity = product.quantity <= 0 ? 1 : product.quantity;
     final unitPrice = totals['total']!['selling']! / quantity;
     if (unitPrice.isFinite && unitPrice >= 0) {
+      product.installationFeePerUnit =
+          (totals['installation']?['selling'] ?? 0) / quantity;
       // Bulk changes intentionally replace the old calculated/manual price:
       // keeping the old override would make the invoice display stale data.
       product.manualPriceOverride = null;

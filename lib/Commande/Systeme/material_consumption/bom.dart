@@ -1285,6 +1285,8 @@ extension _MaterialBom on _MaterialConsumptionScreenState {
       if (unitPrice.isFinite && unitPrice > 0) {
         widget.model.totalCost = unitPrice;
         widget.model.manualPriceOverride = unitPrice;
+        widget.model.installationFeePerUnit =
+            (totals['installation']?['selling'] ?? 0.0) / quantity;
         Navigator.pop(context, true);
       } else {
         _automaticCompletionStarted = false;

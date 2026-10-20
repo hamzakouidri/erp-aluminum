@@ -32,6 +32,7 @@ import 'locales/glazing_fit_keys.dart';
 import 'locales/ai_agent_keys.dart';
 import 'locales/system_publication_keys.dart';
 import 'locales/moustiquaire_price_keys.dart';
+import 'locales/installation_price_keys.dart';
 import 'locales/kit_bundle_keys.dart';
 import '../utils/color_name_localization.dart';
 import 'locales/color_keys.dart';
@@ -67,6 +68,7 @@ class Localization {
     ...aiAgentKeys,
     ...systemPublicationKeys,
     ...moustiquairePriceKeys,
+    ...installationPriceKeys,
     ...kitBundleKeys,
     ...shortcutKeys,
     ...subscriptionStatusKeys,

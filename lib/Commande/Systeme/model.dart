@@ -3002,6 +3002,10 @@ class WindowModel extends ChangeNotifier {
 
   String? manualNameOverride;
   double? manualPriceOverride;
+
+  /// Installation (labour) part of one unit's selling price, kept apart so a
+  /// quote can show it; it is already included in [totalCost].
+  double installationFeePerUnit = 0.0;
   String? description;
   String? persistedDrawingImagePath;
   String? persistedDrawingImageBase64;

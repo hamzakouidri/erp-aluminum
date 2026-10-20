@@ -1,4 +1,5 @@
 import 'selling_price_calculator.dart';
+import 'package:database_data/Commande/Systeme/installation_fees.dart';
 
 // ==========================================================================
 // ملف: MaterialConsumptionScreen
@@ -222,10 +223,8 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   double? _shutterSqmPriceOverride; // تعديل يدوي لسعر متر الستار
   double _moustiquaireSqmPriceFromDb = 0.0;
   int _priceLoadGeneration = 0;
-  double _moteurInstallFee = 0.0; // أجرة تركيب المحرك
-  double _obInstallFee = 0.0; // أجرة تركيب System OB
-  double _demiObInstallFee = 0.0; // أجرة تركيب Demi System OB
-  double _verrouInstallFee = 0.0; // أجرة تركيب Verrou Central
+  // أجور التركيب (اليد العاملة) من صفحة «أجور التركيب»، منفصلة عن سعر القطع
+  InstallationFees _installationFees = InstallationFees.none;
   CostMethod _costMethod = CostMethod
       .percentage; // طريقة احتساب سعر البيع الحالية (نسبة/متر مربع/متر خطي)
   Map<String, List<Map<String, dynamic>>> _kitBundleData =
@@ -1110,10 +1109,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         shutterSqmPrice: _shutterSqmPriceOverride ?? _shutterSqmPriceFromDb,
         moustiquaireSqmPrice: _moustiquaireSqmPriceFromDb,
         profileRules: _profileCalculationRules,
-        obInstallFee: _obInstallFee,
-        demiObInstallFee: _demiObInstallFee,
-        verrouInstallFee: _verrouInstallFee,
-        moteurInstallFee: _moteurInstallFee,
+        installationFees: _installationFees,
       );
 
 
@@ -1230,6 +1226,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                       totals['shutter']?['selling'] ?? 0.0,
                       totals['accessory']?['selling'] ?? 0.0,
                       totals['moustiquaire']?['selling'] ?? 0.0,
+                      totals['installation']?['selling'] ?? 0.0,
                       sellingPrice,
                     ),
                     icon: Icon(
@@ -1403,6 +1400,9 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                               // حفظ السعر النهائي للقطعة الواحدة في النموذج لمنع مضاعفته عند ضربه في الكمية في الفاتورة
                               widget.model.totalCost = unitPrice;
                               widget.model.manualPriceOverride = unitPrice;
+                              widget.model.installationFeePerUnit =
+                                  (totals['installation']?['selling'] ?? 0.0) /
+                                  math.max(1, widget.model.quantity);
                               Navigator.pop(context, true);
                             }
                           : null,
