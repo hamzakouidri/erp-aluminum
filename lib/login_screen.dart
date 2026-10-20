@@ -16,6 +16,7 @@ import 'package:database_data/services/supabase_workshop_sync_service.dart';
 import 'package:database_data/services/legacy_workshop_migration_service.dart';
 import 'package:database_data/services/windows_google_sign_in.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
@@ -2843,19 +2844,11 @@ class _LoginScreenState extends State<LoginScreen>
                                           mainAxisAlignment:
                                               MainAxisAlignment.center,
                                           children: [
-                                            Image.network(
-                                              'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1024px-Google_%22G%22_logo.svg.png',
+                                            SvgPicture.asset(
+                                              'assets/images/google_g_logo.svg',
+                                              width: 22,
                                               height: 22,
-                                              errorBuilder:
-                                                  (
-                                                    context,
-                                                    error,
-                                                    stackTrace,
-                                                  ) => const Icon(
-                                                    Icons.g_mobiledata,
-                                                    size: 22,
-                                                    color: Colors.white,
-                                                  ),
+                                              fit: BoxFit.contain,
                                             ),
                                             const SizedBox(width: 12),
                                             Text(

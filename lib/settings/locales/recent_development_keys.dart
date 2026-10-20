@@ -991,4 +991,84 @@ const Map<String, Map<AppLanguage, String>> recentDevelopmentKeys = {
     AppLanguage.french: 'Voulez-vous imprimer les étiquettes maintenant ?',
     AppLanguage.english: 'Do you want to print the remnant labels now?',
   },
+  'تقطيع موحّد': {
+    AppLanguage.arabic: 'تقطيع موحّد',
+    AppLanguage.french: 'Découpe groupée',
+    AppLanguage.english: 'Grouped cutting',
+  },
+  'طباعة الكمية المطلوبة': {
+    AppLanguage.arabic: 'طباعة الكمية المطلوبة',
+    AppLanguage.french: 'Imprimer les quantités requises',
+    AppLanguage.english: 'Print required quantities',
+  },
+  'القصات': {
+    AppLanguage.arabic: 'القصات',
+    AppLanguage.french: 'Coupes',
+    AppLanguage.english: 'Cuts',
+  },
+  'إطار مزدوج': {
+    AppLanguage.arabic: 'إطار مزدوج',
+    AppLanguage.french: 'Cadre doublé',
+    AppLanguage.english: 'Double frame',
+  },
+  'إطار منزلق': {
+    AppLanguage.arabic: 'إطار منزلق',
+    AppLanguage.french: 'Cadre coulissant',
+    AppLanguage.english: 'Sliding frame',
+  },
+  'قائم وسطي': {
+    AppLanguage.arabic: 'قائم وسطي',
+    AppLanguage.french: 'Montant central',
+    AppLanguage.english: 'Central stile',
+  },
+  'قائم جانبي': {
+    AppLanguage.arabic: 'قائم جانبي',
+    AppLanguage.french: 'Montant latéral',
+    AppLanguage.english: 'Lateral stile',
+  },
+  'قائم وسطي معزز': {
+    AppLanguage.arabic: 'قائم وسطي معزز',
+    AppLanguage.french: 'Montant central renforcé',
+    AppLanguage.english: 'Reinforced central stile',
+  },
+  'قائم جانبي معزز': {
+    AppLanguage.arabic: 'قائم جانبي معزز',
+    AppLanguage.french: 'Montant latéral renforcé',
+    AppLanguage.english: 'Reinforced lateral stile',
+  },
+  'شيكان': {
+    AppLanguage.arabic: 'شيكان',
+    AppLanguage.french: 'Chicane',
+    AppLanguage.english: 'Chicane',
+  },
+  'شيكان معزز': {
+    AppLanguage.arabic: 'شيكان معزز',
+    AppLanguage.french: 'Chicane renforcée',
+    AppLanguage.english: 'Reinforced chicane',
+  },
+  'الضلفة المنزلقة': {
+    AppLanguage.arabic: 'الضلفة المنزلقة',
+    AppLanguage.french: 'Ouvrant coulissant',
+    AppLanguage.english: 'Sliding sash',
+  },
+  'باكيت زجاج منزلق مفرد': {
+    AppLanguage.arabic: 'باكيت زجاج منزلق مفرد',
+    AppLanguage.french: 'Parclose simple coulissante',
+    AppLanguage.english: 'Single sliding glazing bead',
+  },
+  'باكيت زجاج منزلق مزدوج': {
+    AppLanguage.arabic: 'باكيت زجاج منزلق مزدوج',
+    AppLanguage.french: 'Parclose double coulissante',
+    AppLanguage.english: 'Double sliding glazing bead',
+  },
+  'باكيت زجاج مفرد': {
+    AppLanguage.arabic: 'باكيت زجاج مفرد',
+    AppLanguage.french: 'Parclose simple',
+    AppLanguage.english: 'Single glazing bead',
+  },
+  'باكيت زجاج مزدوج': {
+    AppLanguage.arabic: 'باكيت زجاج مزدوج',
+    AppLanguage.french: 'Parclose double',
+    AppLanguage.english: 'Double glazing bead',
+  },
 };

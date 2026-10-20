@@ -1679,6 +1679,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   }
 
   String _t(String key) {
+    if (key.contains(' • ')) {
+      return key.split(' • ').map(_t).join(' • ');
+    }
     var result = Localization.translate(key, _currentLang);
     if (result != key || _currentLang == AppLanguage.arabic) return result;
     // Generated material descriptions combine catalogue names and UI labels.
@@ -3093,6 +3096,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           ? const Color(0xFF121212)
           : const Color(0xFFF0F4FF),
       appBar: AppBar(
+        leading: const BackButton(color: Colors.white),
         title: _isSearching
             ? SizedBox(
                 height: 42,
@@ -3218,7 +3222,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                         if (!_isLoading && _errorMessage == null && _aggregatedItems.isNotEmpty)
                           IconButton(
                             icon: const Icon(Icons.print),
-                            tooltip: 'طباعة الكمية المطلوبة',
+                            tooltip: _t('طباعة الكمية المطلوبة'),
                             onPressed: _printRequiredGoods,
                           ),
                         if (!_isLoading &&
@@ -3532,7 +3536,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           style: const TextStyle(color: Colors.white70, fontSize: 10),
         ),
         Text(
-          '${_grandTotal.toStringAsFixed(2)} دج',
+          '${_grandTotal.toStringAsFixed(2)} DA',
           style: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
@@ -3973,7 +3977,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         const SizedBox.shrink(),
         const SizedBox.shrink(),
         Text(
-          '${totalCatCost.toStringAsFixed(2)} دج',
+          '${totalCatCost.toStringAsFixed(2)} DA',
           style: TextStyle(
             color: color,
             fontWeight: FontWeight.bold,
@@ -4121,12 +4125,12 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         ),
         _desktopTextCell(
           item.unitPrice > 0
-              ? '${item.unitPrice.toStringAsFixed(2)} دج / ${_t(item.unit)}'
+              ? '${item.unitPrice.toStringAsFixed(2)} DA / ${_t(item.unit)}'
               : _t('السعر غير محدد'),
           isDark: isDark,
         ),
         _desktopTextCell(
-          '${item.totalCost.toStringAsFixed(2)} دج',
+          '${item.totalCost.toStringAsFixed(2)} DA',
           isDark: isDark,
           fontWeight: FontWeight.w800,
         ),
@@ -4156,7 +4160,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         Icon(Icons.subdirectory_arrow_left, size: 18, color: color),
         _desktopCategoryCell(category, color, isDark),
         _desktopNameCell(
-          title: requiredGoodsDisplayName(child),
+          title: _t(requiredGoodsDisplayName(child)),
           subtitle: _t('مكوّن داخل الكِت'),
           isDark: isDark,
         ),
@@ -4185,11 +4189,11 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           fontWeight: FontWeight.w700,
         ),
         _desktopTextCell(
-          '${child.unitPrice.toStringAsFixed(2)} دج / ${_t(child.unit)}',
+          '${child.unitPrice.toStringAsFixed(2)} DA / ${_t(child.unit)}',
           isDark: isDark,
         ),
         _desktopTextCell(
-          '${child.total.toStringAsFixed(2)} دج',
+          '${child.total.toStringAsFixed(2)} DA',
           isDark: isDark,
           fontWeight: FontWeight.w700,
         ),
@@ -5594,7 +5598,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '${item.totalCost.toStringAsFixed(2)} دج',
+                          '${item.totalCost.toStringAsFixed(2)} DA',
                           style: TextStyle(
                             color: isDark
                                 ? Colors.white70
@@ -5672,7 +5676,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                           ),
                           const SizedBox(width: 12),
                           Text(
-                            '${subCost.toStringAsFixed(2)} دج',
+                            '${subCost.toStringAsFixed(2)} DA',
                             style: TextStyle(
                               fontSize: 11,
                               color: isDark
@@ -5811,7 +5815,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                       // السعر والوحدة؛ الاسم أعلاه هو اسم الصنف الفعلي.
                       Text(
                         item.unitPrice > 0
-                            ? '${item.unitPrice.toStringAsFixed(2)} دج / ${_t(item.unit)}'
+                            ? '${item.unitPrice.toStringAsFixed(2)} DA / ${_t(item.unit)}'
                             : category == 'profile'
                             ? '📌 ${_t('انقر هنا لاختيار القطاع المناسب')}'
                             : _t('السعر غير محدد'),
@@ -5851,7 +5855,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${item.totalCost.toStringAsFixed(2)} دج',
+                      '${item.totalCost.toStringAsFixed(2)} DA',
                       style: TextStyle(
                         color: isDark ? Colors.white70 : Colors.grey.shade700,
                         fontSize: 12,
@@ -5951,7 +5955,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       final pieces =
           item.pieceCount > 0 ? '${item.pieceCount} ${_t('قطعة')}' : '';
       final dims =
-          '${item.stockLength!.round()} × ${item.glassHeight!.round()} mm';
+          '${item.stockLength!.round()} × ${item.glassHeight!.round()} ${_t('مم')}';
       final sqm = '${_roundQuantity(item.totalQuantity, 'm²')} m²';
       if (pieces.isNotEmpty) {
         return '$pieces ($dims)\n$sqm';
@@ -6005,7 +6009,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         final pieces =
             item.pieceCount > 0 ? '${item.pieceCount} ${_t('قطعة')} ' : '';
         final dims =
-            '${item.stockLength!.round()} × ${item.glassHeight!.round()} mm';
+            '${item.stockLength!.round()} × ${item.glassHeight!.round()} ${_t('مم')}';
         final sqm = '${_roundQuantity(item.totalQuantity, 'm²')} m²';
         return '$pieces($dims)\n$sqm';
       }
@@ -6029,7 +6033,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         (item.stockLength ?? 0) > 0 &&
         (item.glassHeight ?? 0) > 0) {
       parts.add(
-        '${_t('القياس')}: ${item.stockLength!.round()} × ${item.glassHeight!.round()} mm',
+        '${_t('القياس')}: ${item.stockLength!.round()} × ${item.glassHeight!.round()} ${_t('مم')}',
       );
       if (item.pieceCount > 0) {
         parts.add('${_t('العدد')}: ${item.pieceCount} ${_t('قطعة')}');
@@ -6060,8 +6064,12 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     }
     final plan = item.cuttingPlan;
     if (plan != null) {
-      parts.add('تقطيع موحّد: ${item.cuttingPieces.length} قطعة');
-      parts.add('الباقي: ${(plan.wasteLength * 1000).round()} مم');
+      parts.add(
+        '${_t('تقطيع موحّد')}: ${item.cuttingPieces.length} ${_t('قطعة')}',
+      );
+      parts.add(
+        '${_t('الباقي')}: ${(plan.wasteLength * 1000).round()} ${_t('مم')}',
+      );
     } else if (item.cuttingPieces.isNotEmpty) {
       final visiblePieces = item.cuttingPieces
           .take(5)
@@ -6070,7 +6078,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
       final suffix = item.cuttingPieces.length > 5
           ? ' (+${item.cuttingPieces.length - 5})'
           : '';
-      parts.add('القصات: $visiblePieces مم$suffix');
+      parts.add('${_t('القصات')}: $visiblePieces ${_t('مم')}$suffix');
     }
     return parts.join(' • ');
   }
@@ -6332,14 +6340,18 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
               ? const Color(0xFF121212)
               : const Color(0xFFF0F4FF),
           appBar: AppBar(
+            leading: const BackButton(color: Colors.white),
             title: Text(
               _t('تفاصيل حساب كل منتج'),
-              style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1A237E)),
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
             ),
-            backgroundColor: Colors.white,
+            backgroundColor: const Color(0xFF1A237E),
             surfaceTintColor: Colors.transparent,
-            foregroundColor: const Color(0xFF1A237E),
-            iconTheme: const IconThemeData(color: Color(0xFF1A237E)),
+            foregroundColor: Colors.white,
+            iconTheme: const IconThemeData(color: Colors.white),
           ),
           body: ListView.builder(
             padding: const EdgeInsets.all(16.0),
