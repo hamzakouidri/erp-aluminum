@@ -2530,6 +2530,9 @@ class ComponentCalculator {
       String? selectorType,
       String? roleKey,
       bool ignoreSavedOverride = false,
+      // The series of the frame the row was cut for, when the caller knows
+      // it; otherwise it is read from the row name.
+      bool? slidingSeries,
     }) {
       // Section overrides always carry the Sections schema. Ignore a legacy
       // Accessories row saved under the same Bouchon Batmo name; otherwise
@@ -2554,8 +2557,9 @@ class ComponentCalculator {
       final resolvedRoleKey =
           roleKey ?? _roleKeyForProfileSelector(resolvedSelectorType);
       final usesSlidingSeries =
-          _profileSelectorUsesSlidingSeries(window, originalName) ||
-          _profileSelectorUsesSlidingSeries(window, resolvedSelectorType);
+          slidingSeries ??
+          (_profileSelectorUsesSlidingSeries(window, originalName) ||
+              _profileSelectorUsesSlidingSeries(window, resolvedSelectorType));
       final configuredOverride = window
           .getConfiguredSectionForRole(
             resolvedRoleKey ?? resolvedSelectorType,
@@ -2631,7 +2635,11 @@ class ComponentCalculator {
             : (usesSlidingSeries
                   ? (window.activeSlidingSeries?.id ?? window.activeSeries?.id)
                   : window.activeSeries?.id),
-        materialType: _materialTypeForProfile(window, resolvedSelectorType),
+        materialType: slidingSeries == null
+            ? _materialTypeForProfile(window, resolvedSelectorType)
+            : slidingSeries
+            ? (window.isSlidingPVC ? 'pvc' : 'aluminium')
+            : (window.isPVC ? 'pvc' : 'aluminium'),
       );
     }
 
@@ -4066,6 +4074,10 @@ class ComponentCalculator {
           unit: 'قطاع',
           overrideMap: override,
           preferOverrideMap: true,
+          // A side of the sliding frame is checked against the sliding
+          // series rules; read from its name it fell to the opening series
+          // and the row vanished from the table.
+          slidingSeries: entry.key.contains('sliding:'),
         ),
       );
     }
@@ -4467,7 +4479,7 @@ class ComponentCalculator {
           // Sides of a frame that takes no cover break the cover before
           // neighbouring edges are joined.
           final exposedEdges = window.getExposedFrameEdgeSegments(
-            includeSide: window.frameSideAllowsSideCover,
+            includeSide: window.frameSideTakesSideCover,
           );
           bool isHorizontal(String side) => side == 'top' || side == 'bottom';
 
@@ -4487,12 +4499,11 @@ class ComponentCalculator {
           bool isEdgeAllowed(FrameEdgeSegment edge) {
             if (window.hiddenSideCoverSegments.contains(edge.side) ||
                 window.removedShutterSides.contains(edge.side) ||
-                (edge.side == 'bottom' && !window.hasBottomFrame) ||
                 !window.isSideCoverSegmentEnabled(edge.side)) {
               return false;
             }
             if (edge.frameRect != null &&
-                !window.frameSideAllowsSideCover(edge.frameRect!, edge.side)) {
+                !window.frameSideTakesSideCover(edge.frameRect!, edge.side)) {
               return false;
             }
             return true;
@@ -4585,19 +4596,18 @@ class ComponentCalculator {
           // Sides of a frame that takes no cover break the cover before
           // neighbouring edges are joined.
           final exposedEdges = window.getExposedFrameEdgeSegments(
-            includeSide: window.frameSideAllowsSideCover,
+            includeSide: window.frameSideTakesSideCover,
           );
           bool isHorizontal(String side) => side == 'top' || side == 'bottom';
 
           bool isEdgeAllowed(FrameEdgeSegment edge) {
             if (window.hiddenSideCoverSegments.contains(edge.side) ||
                 window.removedShutterSides.contains(edge.side) ||
-                (edge.side == 'bottom' && !window.hasBottomFrame) ||
                 !window.isSideCoverSegmentEnabled(edge.side)) {
               return false;
             }
             if (edge.frameRect != null &&
-                !window.frameSideAllowsSideCover(edge.frameRect!, edge.side)) {
+                !window.frameSideTakesSideCover(edge.frameRect!, edge.side)) {
               return false;
             }
             return true;

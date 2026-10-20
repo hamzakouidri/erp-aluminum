@@ -2973,9 +2973,7 @@ class WindowPainter extends CustomPainter {
     // A frame without a cover on a side (for example a plain frame under a
     // frame with an integrated cover) breaks the cover there.
     final edges = model.getExposedFrameEdgeSegments(
-      includeSide: (frame, side) => model.isIntegratedFrame
-          ? model.frameSideHasIntegratedCover(frame, side)
-          : model.frameSideAllowsSideCover(frame, side),
+      includeSide: model.frameSideTakesSideCover,
     );
     if (edges.isEmpty) return;
 
@@ -3150,9 +3148,15 @@ class WindowPainter extends CustomPainter {
       if (model.getFrameRects().any((rect) => rect.contains(below))) {
         return false;
       }
+      // Where that bottom carries no cover (hidden, or its frame takes
+      // none) the side cover is cut square with the frame, as it is cut.
+      if (model.hiddenSideCoverSegments.contains('bottom') ||
+          model.removedShutterSides.contains('bottom')) {
+        return false;
+      }
       return model.getFrameRects().any(
         (rect) =>
-            model.hasBottomFrameForRect(rect) &&
+            model.frameSideTakesSideCover(rect, 'bottom') &&
             (point.dy - rect.bottom).abs() <= tolerance &&
             ((point.dx - rect.left).abs() <= tolerance ||
                 (point.dx - rect.right).abs() <= tolerance),

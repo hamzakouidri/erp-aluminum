@@ -1168,6 +1168,18 @@ extension WindowModelFrame on WindowModel {
     return _overrideAllowsStandaloneSideCover(effective);
   }
 
+  /// Whether [side] of [frame] carries the cover: a bottom needs its frame,
+  /// and the side's own frame must take the cover. The drawing and the
+  /// quantities both use it, so one frame never takes away its neighbour's
+  /// cover.
+  bool frameSideTakesSideCover(Rect frame, String side) {
+    final normalized = side.toLowerCase();
+    if (normalized == 'bottom' && !hasBottomFrameForRect(frame)) return false;
+    return isIntegratedFrame
+        ? frameSideHasIntegratedCover(frame, normalized)
+        : frameSideAllowsSideCover(frame, normalized);
+  }
+
   /// The frames whose [side] lies on the outside of the drawing.
   List<Rect> framesOnOuterSide(String side) {
     final frames = getFrameRects();
@@ -1332,7 +1344,15 @@ extension WindowModelFrame on WindowModel {
           ? _overrideHasIntegratedSideCover(effective)
           : _overrideAllowsStandaloneSideCover(effective);
 
-      if (!allowsCover) {
+      if (getFrameRects().length > 1) {
+        // With several frames the cover is kept or dropped per frame side
+        // (frameSideTakesSideCover): a neighbouring frame on the same
+        // side keeps its own cover.
+        if (allowsCover && hasSideCovers) {
+          removedShutterSides.remove(side);
+          hiddenSideCoverSegments.remove(side);
+        }
+      } else if (!allowsCover) {
         _materializeLegacySideCoverSegments();
         sideCoverSegments = sideCoverSegments
             .where((s) => s.side != side)
@@ -1930,6 +1950,10 @@ extension WindowModelFrame on WindowModel {
     final maxRight = frames.map((f) => f.right).reduce(math.max);
     final minTop = frames.map((f) => f.top).reduce(math.min);
     final maxBottom = frames.map((f) => f.bottom).reduce(math.max);
+    // With several frames, one frame on the side taking a cover is enough:
+    // the frames without one are dropped edge by edge.
+    final multiFrame = frames.length > 1;
+    var anyAllows = false;
 
     for (final frame in frames) {
       bool touchesSide = false;
@@ -1943,13 +1967,13 @@ extension WindowModelFrame on WindowModel {
         touchesSide = true;
       if (!touchesSide) continue;
 
-      if (normalized == 'bottom' && !hasBottomFrameForRect(frame)) return false;
-      final allows = isIntegratedFrame
-          ? frameSideHasIntegratedCover(frame, normalized)
-          : frameSideAllowsSideCover(frame, normalized);
-      if (!allows) return false;
+      if (frameSideTakesSideCover(frame, normalized)) {
+        anyAllows = true;
+      } else if (!multiFrame) {
+        return false;
+      }
     }
-    return true;
+    return !multiFrame || anyAllows;
   }
 
   bool isSideCoverSegmentEnabled(String side) {
