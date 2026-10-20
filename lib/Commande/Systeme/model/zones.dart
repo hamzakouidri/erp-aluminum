@@ -1038,8 +1038,24 @@ extension WindowModelZones on WindowModel {
         pos.dx > width - borderSlop ||
         pos.dy < topY + borderSlop ||
         pos.dy > height - borderSlop) {
-      if (getFrameRects().isNotEmpty) {
-        selectFrameByIndex(0);
+      final frames = getFrameRects();
+      if (frames.isNotEmpty) {
+        // The frame under the press (or the nearest one), never simply the
+        // first: a long press on the right frame deleted the left one.
+        var index = 0;
+        var nearest = double.infinity;
+        for (var i = 0; i < frames.length; i++) {
+          final r = frames[i];
+          final gap = Offset(
+            math.max(0.0, math.max(r.left - pos.dx, pos.dx - r.right)),
+            math.max(0.0, math.max(r.top - pos.dy, pos.dy - r.bottom)),
+          ).distance;
+          if (gap < nearest) {
+            nearest = gap;
+            index = i;
+          }
+        }
+        selectFrameByIndex(index);
       } else {
         selection = SelectionInfo(type: SelectionType.frame);
         showZoneMenu = false;
