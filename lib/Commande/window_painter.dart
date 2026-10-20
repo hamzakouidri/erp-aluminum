@@ -173,6 +173,8 @@ class WindowPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final w = model.width;
     final h = model.height;
+    // Refilled below by every handle-height number actually drawn.
+    model.drawnHandleHeightLabels.clear();
 
     // The selected frame owns its visible drawing width. PVC frame roles can
     // have a width different from the generic system profile thickness.
@@ -8288,13 +8290,19 @@ class WindowPainter extends CustomPainter {
         text: TextSpan(text: '${distance.toInt()}', style: textStyle),
         textDirection: TextDirection.ltr,
       )..layout();
-      tp.paint(
-        canvas,
-        Offset(
-          (handleSide == OpenDirection.left) ? dimX + 6 : dimX - tp.width - 6,
-          handleY + (distance / 2) - (tp.height / 2),
-        ),
+      final labelOffset = Offset(
+        (handleSide == OpenDirection.left) ? dimX + 6 : dimX - tp.width - 6,
+        handleY + (distance / 2) - (tp.height / 2),
       );
+      tp.paint(canvas, labelOffset);
+      // Remember the number so a tap on it edits the handle height.
+      if (zone != null && slidingHandleType == null) {
+        model.drawnHandleHeightLabels[zone.id] = (
+          label: labelOffset & tp.size,
+          sashTop: getSashTopY(x, sashRect.top, t, topOffset, isTopBound),
+          sashBottom: sashRect.bottom,
+        );
+      }
     } else {
       double dimY = (handleSide == OpenDirection.top)
           ? handleY + 25

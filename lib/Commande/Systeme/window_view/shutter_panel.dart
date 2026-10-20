@@ -300,6 +300,22 @@ extension _WindowViewShutter on _WindowViewState {
       context,
       listen: false,
     ).language;
+    // Second press: back to the window drawing.
+    if (widget.model.isShutterDrawing) {
+      _setViewState(() {
+        widget.model.convertShutterBackToWindow();
+        _isShutterSelected = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            Localization.translate('shutter_toggle_back_to_window', lang),
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
     final hasMeasuredDrawing =
         widget.model.width > 0 && widget.model.height > 0;
     final convertingExistingDrawing =

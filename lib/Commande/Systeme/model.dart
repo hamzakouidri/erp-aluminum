@@ -3996,6 +3996,44 @@ class WindowModel extends ChangeNotifier {
   /// selection overlay highlights exactly the leaf picked.
   final Map<String, List<Rect>> drawnSlidingLeafRects = {};
 
+  /// Where the handle-height number of each opening sash was last drawn
+  /// (zone id → the number's rect and the sash span it measures), so a tap
+  /// on the number can edit the handle height.
+  final Map<String, ({Rect label, double sashTop, double sashBottom})>
+  drawnHandleHeightLabels = {};
+
+  /// The zone whose handle-height number is at [point] (with a margin for a
+  /// finger), or null.
+  String? handleHeightLabelAt(Offset point, {double margin = 20}) {
+    for (final entry in drawnHandleHeightLabels.entries) {
+      if (!zones.any((zone) => zone.id == entry.key)) continue;
+      if (entry.value.label.inflate(margin).contains(point)) return entry.key;
+    }
+    return null;
+  }
+
+  /// The handle height of [zoneId] in mm from the sash bottom, as drawn.
+  double? handleHeightFromBottom(String zoneId) {
+    final label = drawnHandleHeightLabels[zoneId];
+    if (label == null) return null;
+    final zone = zones.where((z) => z.id == zoneId).firstOrNull;
+    if (zone == null) return null;
+    final span = label.sashBottom - label.sashTop;
+    return span * (zone.handlePositionRatio ?? 0.5);
+  }
+
+  /// Sets the handle of [zoneId] at [mm] from the sash bottom. Returns false
+  /// when the number was never drawn or [mm] is outside the sash.
+  bool setHandleHeightFromBottom(String zoneId, double mm) {
+    final label = drawnHandleHeightLabels[zoneId];
+    if (label == null) return false;
+    final span = label.sashBottom - label.sashTop;
+    if (span <= 0 || mm <= 0 || mm >= span) return false;
+    _saveSnapshot();
+    updateHandlePosition(zoneId, mm / span);
+    return true;
+  }
+
   /// A selected frame shows its resize squares (one tap) or, after a double
   /// tap, its slant/arch circles: never both at once.
   bool frameShapeMode = false;
@@ -4040,6 +4078,10 @@ class WindowModel extends ChangeNotifier {
   bool showZoneMenu = false;
   final List<WindowSnapshot> _history = [];
   final List<WindowSnapshot> _redoHistory = [];
+
+  /// The window drawing that was converted into a shutter, so pressing the
+  /// shutter button again brings it back (see convertShutterBackToWindow).
+  WindowSnapshot? _drawingBeforeShutter;
 
 
 

@@ -1961,6 +1961,7 @@ extension WindowModelShutter on WindowModel {
 
   void prepareShutterOnlyDrawing() {
     _saveSnapshot();
+    _drawingBeforeShutter = null;
     zones.clear();
     width = 0;
     height = 0;
@@ -2009,6 +2010,9 @@ extension WindowModelShutter on WindowModel {
 
     final currentLeft = drawnLeft;
     final currentTop = drawnTop;
+    // Keep the window drawing to bring it back from the shutter button.
+    _saveSnapshot();
+    final drawingBefore = _history.removeLast();
 
     // Reuse the same cleanup used when starting a new shutter drawing, then
     // restore the existing dimensions instead of asking the user to redraw.
@@ -2025,7 +2029,55 @@ extension WindowModelShutter on WindowModel {
     drawingStart = null;
     drawingCurrent = null;
     pendingDrawStart = null;
+    _drawingBeforeShutter = drawingBefore;
     unawaited(updateShutterDefaultsIfNeeded());
+    _notifyModelListeners();
+  }
+
+  /// Whether the shutter button currently stands for a shutter drawing (a
+  /// converted or drawn shutter, or one waiting to be drawn).
+  bool get isShutterDrawing => isShutterOnly || drawNextShapeAsShutterOnly;
+
+  /// Second press of the shutter button: back to a window. A drawing that
+  /// was converted into a shutter comes back as it was; a shutter drawn on
+  /// its own becomes a plain frame of the same size.
+  void convertShutterBackToWindow() {
+    final previous = _drawingBeforeShutter;
+    _drawingBeforeShutter = null;
+    if (previous != null) {
+      _history.add(previous);
+      undo();
+      return;
+    }
+    _saveSnapshot();
+    isShutterOnly = false;
+    hasShutter = false;
+    drawNextShapeAsShutterOnly = false;
+    drawingMode = 'new_frame';
+    drawingStart = null;
+    drawingCurrent = null;
+    pendingDrawStart = null;
+    selection = SelectionInfo.none;
+    activeSubZone = null;
+    zones.clear();
+    if (width > 0 && height > 0) {
+      final bottomOffset = hasBottomFrame ? profileThickness : 0.0;
+      zones.add(
+        WindowZone(
+          id: UniqueKey().toString(),
+          glass: defaultGlass.clone(),
+          boundary: Rect.fromLTRB(
+            profileThickness,
+            profileThickness,
+            width - profileThickness,
+            height - bottomOffset,
+          ),
+          sashThickness: _calculateSashThickness(false),
+          sashColor: FrameColor.white,
+          selectedDbColor: _selectedDbColor,
+        ),
+      );
+    }
     _notifyModelListeners();
   }
 }

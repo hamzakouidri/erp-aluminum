@@ -1219,6 +1219,12 @@ class _WindowViewState extends State<WindowView> {
                                       }
                                     }
 
+                                    final handleLabelZone = widget.model
+                                        .handleHeightLabelAt(modelPos);
+                                    if (handleLabelZone != null) {
+                                      _showHandleHeightDialog(handleLabelZone);
+                                      return;
+                                    }
                                     final headDimension = widget.model
                                         .dimensionLabelAt(modelPos)
                                         ?.key;
@@ -3388,7 +3394,12 @@ class _WindowViewState extends State<WindowView> {
                                         ? 62
                                         : 14,
                                     left: _isLeftDrawerOpen ? 342 : 12,
-                                    bottom: 120,
+                                    // The drawing area already ends at the
+                                    // bottom menu: the bar runs down to it
+                                    // and scrolls only when it is too long
+                                    // (clear of the button that raises a
+                                    // hidden bottom menu).
+                                    bottom: _isBottomPanelExpanded ? 12 : 56,
                                     child: _buildQuickActionsBar(
                                       context,
                                       isVertical: true,
@@ -3766,6 +3777,60 @@ class _WindowViewState extends State<WindowView> {
   /// may rise above the overall height (up to one bar length) or drop until
   /// the frame or a top zone reaches its minimum; the arch rises from zero to
   /// a semicircle.
+  /// Tap on the handle-height number: type the height of the handle above
+  /// the sash bottom.
+  void _showHandleHeightDialog(String zoneId) {
+    final model = widget.model;
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    final label = model.drawnHandleHeightLabels[zoneId];
+    final current = model.handleHeightFromBottom(zoneId);
+    if (label == null || current == null) return;
+    final span = label.sashBottom - label.sashTop;
+    final title = Localization.translate('ارتفاع المقبض', lang);
+    final ctrl = TextEditingController(text: current.round().toString());
+
+    void apply(BuildContext dialogContext) {
+      final value = double.tryParse(ctrl.text.replaceAll(',', '.'));
+      if (!_acceptDimension(value, 1, span - 1)) return;
+      model.setHandleHeightFromBottom(zoneId, value!);
+      Navigator.pop(dialogContext);
+    }
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          onSubmitted: (_) => apply(dialogContext),
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          decoration: InputDecoration(
+            labelText: '$title (mm)',
+            helperText: Localization.translate(
+              'handle_height_from_sash_bottom',
+              lang,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(Localization.translate('إلغاء', lang)),
+          ),
+          ElevatedButton(
+            onPressed: () => apply(dialogContext),
+            child: Text(Localization.translate('تطبيق', lang)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showHeadDimensionDialog(String key) {
     final model = widget.model;
     final lang = Provider.of<AppSettingsProvider>(
