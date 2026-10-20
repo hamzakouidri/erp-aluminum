@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:database_data/widgets/app_material.dart';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:provider/provider.dart';
 
 import '../services/cloud_sync_service.dart';
+import 'audit_details_format.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
 import '../sql_database.dart';
@@ -455,7 +455,7 @@ class _TrashScreenState extends State<TrashScreen>
     // the UI thread and render the lines lazily instead of one huge Text.
     final lines = raw.trim().isEmpty
         ? const <String>[]
-        : await compute(_formatAuditDetailsLines, raw);
+        : await compute(_formatAuditDetailsLines, (raw, lang));
     if (!mounted) return;
     final controller = ScrollController();
     await showDialog<void>(
@@ -471,19 +471,21 @@ class _TrashScreenState extends State<TrashScreen>
                     Localization.translate('audit_details_empty', lang),
                   ),
                 )
-              : Directionality(
-                  textDirection: TextDirection.ltr,
-                  child: Scrollbar(
+              : Scrollbar(
+                  controller: controller,
+                  thumbVisibility: true,
+                  child: ListView.builder(
                     controller: controller,
-                    thumbVisibility: true,
-                    child: ListView.builder(
-                      controller: controller,
-                      itemCount: lines.length,
-                      itemBuilder: (_, i) => Text(
+                    itemCount: lines.length,
+                    itemBuilder: (_, i) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 1.5),
+                      child: SelectableText(
                         lines[i],
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 12,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: lines[i].startsWith('—')
+                              ? FontWeight.bold
+                              : FontWeight.normal,
                         ),
                       ),
                     ),
@@ -1909,13 +1911,6 @@ class _TrashScreenState extends State<TrashScreen>
   }
 }
 
-/// Pretty-prints an audit payload (runs in a background isolate).
-List<String> _formatAuditDetailsLines(String raw) {
-  try {
-    return const JsonEncoder.withIndent(
-      '  ',
-    ).convert(jsonDecode(raw)).split('\n');
-  } catch (_) {
-    return raw.split('\n');
-  }
-}
+/// Readable lines of an audit payload (runs in a background isolate).
+List<String> _formatAuditDetailsLines((String, AppLanguage) args) =>
+    formatAuditDetails(args.$1, args.$2);

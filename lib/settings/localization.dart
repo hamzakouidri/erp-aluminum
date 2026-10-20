@@ -24,6 +24,7 @@ import 'locales/translation_phase11_keys.dart';
 import 'locales/translation_phase12_keys.dart';
 import 'locales/translation_phase13_keys.dart';
 import 'locales/audit_log_keys.dart';
+import 'locales/audit_details_keys.dart';
 import 'locales/dashboard_activity_keys.dart';
 import 'locales/drawing_validation_keys.dart';
 import 'locales/window_3d_keys.dart';
@@ -80,6 +81,7 @@ class Localization {
     ...shortcutKeys,
     ...subscriptionStatusKeys,
     ...auditLogKeys,
+    ...auditDetailsKeys,
     ...dashboardActivityKeys,
     ...drawingValidationKeys,
     ...colorKeys,
