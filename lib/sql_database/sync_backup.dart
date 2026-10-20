@@ -1957,7 +1957,16 @@ extension SqlDatabaseSync on SqlDatabase {
     Map<String, dynamic> data, {
     bool replaceAllData = false,
     bool mergeAllData = false,
-  }) {
+  }) async {
+    // A backup or workshop restore may replace the rule tables as well:
+    // keep a local copy of them first.
+    if (SqlDatabase.workshopCatalogConfigurationTables.any(data.containsKey)) {
+      try {
+        await saveCatalogConfigSnapshot(reason: 'data_import');
+      } catch (error) {
+        debugPrint('Rule snapshot before import skipped: $error');
+      }
+    }
     return _retryAfterDatabaseMove(
       () => _importAllDataOnce(
         data,
@@ -2297,9 +2306,13 @@ extension SqlDatabaseSync on SqlDatabase {
     return _exportSelectedTables(SqlDatabase.workshopCatalogConfigurationTables);
   }
 
-  Future<void> importWorkshopCatalogConfiguration(
-    Map<String, dynamic> data,
-  ) async {
+  /// Applies the workshop's remote rule tables. A copy that would remove
+  /// many series roles or accessory rules is held back for the manager
+  /// unless [force] is set (the manager chose it).
+  Future<CatalogConfigImportResult> importWorkshopCatalogConfiguration(
+    Map<String, dynamic> data, {
+    bool force = false,
+  }) async {
     final configuration = <String, dynamic>{};
     final myDb = await db;
     for (final table in SqlDatabase.workshopCatalogConfigurationTables) {
@@ -2318,13 +2331,28 @@ extension SqlDatabaseSync on SqlDatabase {
       }
       configuration[table] = remote;
     }
-    if (configuration.isEmpty) return;
+    if (configuration.isEmpty || myDb == null) {
+      return CatalogConfigImportResult.unchanged;
+    }
+    if (!force &&
+        await _holdBackShrinkingConfiguration(myDb, configuration)) {
+      debugPrint(
+        'Remote workshop rules would remove many local rules; '
+        'kept local and waiting for the manager.',
+      );
+      return CatalogConfigImportResult.conflict;
+    }
+    await saveCatalogConfigSnapshot(reason: 'remote_configuration');
     // Configuration tables are replaceable: an explicit deletion made by the
     // manager must also delete the old row on the receiving phone.
     await importAllData(configuration);
     if (configuration.containsKey('ShutterCalcRules')) {
       await ShutterCalcRules.load(this);
     }
+    // A newer copy that no longer shrinks the rules replaces an older
+    // held-back one.
+    await discardPendingCatalogConfigConflict();
+    return CatalogConfigImportResult.applied;
   }
 
   Future<void> importWorkshopData(

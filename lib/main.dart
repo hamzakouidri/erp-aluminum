@@ -12,6 +12,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
 import 'package:provider/provider.dart';
 import 'package:database_data/widgets/price_publication_prompt.dart';
+import 'package:database_data/widgets/rule_conflict_prompt.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/app_theme.dart';
@@ -425,6 +426,22 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       const Duration(seconds: 12),
       _checkPricePublications,
     );
+
+    // A remote rule copy that would remove many series roles or accessory
+    // rules is held back; ask the manager as soon as it happens, and after
+    // a restart if it is still waiting.
+    SqlDatabaseCatalogConfigGuard.conflictSignal.addListener(
+      _checkRuleConflict,
+    );
+    Future<void>.delayed(const Duration(seconds: 15), _checkRuleConflict);
+  }
+
+  void _checkRuleConflict() {
+    final context = _navigatorKey.currentContext;
+    if (!mounted || context == null || AppAuthService().currentUser == null) {
+      return;
+    }
+    unawaited(showPendingRuleConflict(context));
   }
 
   Timer? _pricePublicationTimer;
@@ -446,6 +463,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
     WidgetsBinding.instance.removeObserver(this);
     _pricePublicationTimer?.cancel();
+    SqlDatabaseCatalogConfigGuard.conflictSignal.removeListener(
+      _checkRuleConflict,
+    );
     super.dispose();
   }
 

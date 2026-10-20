@@ -538,10 +538,14 @@ class SupabaseWorkshopSyncService {
         final config = Map<String, dynamic>.from(payload['tables'] as Map);
         _isApplyingRemoteData = true;
         try {
-          await _db.importWorkshopCatalogConfiguration(config);
-          debugPrint(
-            '✅ تم بنجاح تنزيل وتطبيق قواعد إكسسوارات الورشة من السحابة',
-          );
+          // A copy that would remove many local rules is held back for the
+          // manager instead of being applied.
+          final result = await _db.importWorkshopCatalogConfiguration(config);
+          if (result == CatalogConfigImportResult.applied) {
+            debugPrint(
+              '✅ تم بنجاح تنزيل وتطبيق قواعد إكسسوارات الورشة من السحابة',
+            );
+          }
         } finally {
           _isApplyingRemoteData = false;
         }

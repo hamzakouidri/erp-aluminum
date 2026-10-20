@@ -8,6 +8,7 @@ import '../services/supabase_account_service.dart';
 import '../services/supabase_catalog_sync_service.dart';
 import '../services/supabase_workshop_sync_service.dart';
 import 'workshop_profile_screen.dart';
+import 'rule_snapshots_screen.dart';
 import 'cutting_settings_screen.dart';
 import 'keyboard_shortcuts_screen.dart';
 import 'selected_systems_screen.dart';
@@ -1074,6 +1075,40 @@ class SettingsScreen extends StatelessWidget {
                             ),
                           ),
                         ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+
+                // Local copies of the workshop rules, taken before each sync.
+                if (settings.isManager) ...[
+                  Card(
+                    elevation: 2,
+                    child: ListTile(
+                      leading: const Icon(
+                        Icons.history_rounded,
+                        color: Colors.indigo,
+                      ),
+                      title: Text(
+                        Localization.translate('rule_snapshot_title', lang),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'Cairo',
+                        ),
+                      ),
+                      subtitle: Text(
+                        Localization.translate(
+                          'rule_snapshot_menu_subtitle',
+                          lang,
+                        ),
+                        style: const TextStyle(fontFamily: 'Cairo'),
+                      ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const RuleSnapshotsScreen(),
+                        ),
                       ),
                     ),
                   ),

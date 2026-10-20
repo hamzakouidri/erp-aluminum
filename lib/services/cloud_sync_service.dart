@@ -4972,6 +4972,20 @@ class CloudSyncService {
     await _syncWorkshopCatalogConfiguration();
   }
 
+  /// Uploads the local rule tables as the workshop's copy after the manager
+  /// restored a snapshot or kept the local rules against a remote copy, and
+  /// refreshes the open screens.
+  Future<void> uploadWorkshopCatalogConfiguration() async {
+    notifyWorkshopRulesChanged();
+    await _syncWorkshopCatalogConfiguration(throwOnFailure: true);
+  }
+
+  /// Refreshes the open screens after the workshop rule tables were replaced
+  /// locally (a held-back remote copy applied by the manager).
+  void notifyWorkshopRulesChanged() {
+    _dbUpdateController.add('catalog_changed');
+  }
+
   /// Reads an old Firebase workshop backup without changing the current
   /// workshop context. It is used only while a legacy account is being moved
   /// to Supabase.

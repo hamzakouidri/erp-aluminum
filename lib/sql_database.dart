@@ -27,6 +27,7 @@ import 'package:database_data/services/price_sync_service.dart';
 
 part 'sql_database/schema.dart';
 part 'sql_database/sync_backup.dart';
+part 'sql_database/catalog_config_guard.dart';
 part 'sql_database/tempered_glass.dart';
 part 'sql_database/finance.dart';
 part 'sql_database/purchases.dart';
@@ -548,6 +549,13 @@ class SqlDatabase {
     try {
       final dbInstance = await SqlDatabase().db;
       if (dbInstance == null) return;
+      // The rule tables below are emptied too; keep a local copy so a wrong
+      // workshop switch can be undone from the rule snapshots screen.
+      try {
+        await SqlDatabase().saveCatalogConfigSnapshot(reason: 'workshop_change');
+      } catch (error) {
+        debugPrint('Rule snapshot before workshop change skipped: $error');
+      }
       await dbInstance.transaction((txn) async {
         for (final table in workshopTables) {
           try {
