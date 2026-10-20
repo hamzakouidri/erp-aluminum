@@ -173,8 +173,9 @@ class WindowPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final w = model.width;
     final h = model.height;
-    // Refilled below by every handle-height number actually drawn.
+    // Refilled below by every handle-height number and angle badge drawn.
     model.drawnHandleHeightLabels.clear();
+    model.drawnAngleBadges.clear();
 
     // The selected frame owns its visible drawing width. PVC frame roles can
     // have a width different from the generic system profile thickness.
@@ -441,6 +442,12 @@ class WindowPainter extends CustomPainter {
         } else {
           _drawShutterBox(canvas, w, topOffset, h);
         }
+      } else if (model.isSeparateShutter) {
+        // Seen from inside through the glass.
+        _drawSeparateShutter(canvas, w, seeThrough: true);
+      }
+      if (model.showsBeltPulley) {
+        _drawBeltPulley(canvas, w, t, isInternal: true);
       }
     } else {
       if (!model.isShutterOnly) {
@@ -548,6 +555,8 @@ class WindowPainter extends CustomPainter {
         } else {
           _drawShutterBox(canvas, w, topOffset, h);
         }
+      } else if (model.isSeparateShutter) {
+        _drawSeparateShutter(canvas, w, seeThrough: false);
       }
     }
 
@@ -787,11 +796,13 @@ class WindowPainter extends CustomPainter {
           canvas,
           Offset(40, topOffset + model.topSlantLeftY + 30),
           leftAngle,
+          key: 'top_left',
         );
         _drawAngleBadge(
           canvas,
           Offset(w - 40, topOffset + model.topSlantRightY + 30),
           rightAngle,
+          key: 'top_right',
         );
       }
       if (model.bottomSlantLeftY != model.bottomSlantRightY) {
@@ -811,11 +822,13 @@ class WindowPainter extends CustomPainter {
           canvas,
           Offset(40, h - model.bottomSlantLeftY - 30),
           leftAngle,
+          key: 'bottom_left',
         );
         _drawAngleBadge(
           canvas,
           Offset(w - 40, h - model.bottomSlantRightY - 30),
           rightAngle,
+          key: 'bottom_right',
         );
       }
     }
@@ -1489,28 +1502,37 @@ class WindowPainter extends CustomPainter {
     canvas.restore();
   }
 
-  void _drawAngleBadge(Canvas canvas, Offset center, double angleDeg) {
+  /// A cut-angle badge. With a [key] the user can move it (right mouse
+  /// button) when it covers something; its offset is kept with the drawing.
+  void _drawAngleBadge(
+    Canvas canvas,
+    Offset anchor,
+    double angleDeg, {
+    String? key,
+  }) {
     if (angleDeg < 0.1) return;
+    final center = anchor + (model.angleBadgeOffsets[key] ?? Offset.zero);
     final String text = '${angleDeg.toStringAsFixed(1)}°';
     final textPainter = TextPainter(
       text: TextSpan(
         text: text,
         style: const TextStyle(
           color: Colors.white,
-          fontSize: 24,
+          fontSize: 36,
           fontWeight: FontWeight.bold,
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
 
-    final badgeW = textPainter.width + 24;
-    final badgeH = textPainter.height + 14;
+    final badgeW = textPainter.width + 30;
+    final badgeH = textPainter.height + 18;
     final badgeRect = Rect.fromCenter(
       center: center,
       width: badgeW,
       height: badgeH,
     );
+    if (key != null) model.drawnAngleBadges[key] = badgeRect;
 
     final paint = Paint()
       ..color = const Color(0xFF2E7D32)
@@ -2622,6 +2644,8 @@ class WindowPainter extends CustomPainter {
 
     // عند الإطار المدمج مع ستار: الزوايا العلوية عمودية 90° لا مائلة 45°
     if (headTopY != null) {
+      // The cuts where a slanted or arched head meets the jambs: bold.
+      p.strokeWidth = 2.8;
       // Under a slanted or arched head the top joints run from the raised or
       // lowered outer corner to the inner corner of the same head, not from
       // the corners of the nominal rectangle (that line cut across the jamb).
@@ -2635,6 +2659,7 @@ class WindowPainter extends CustomPainter {
         Offset(outer.right - t, getInnerTopY(outer.right - t, t, headTopY)),
         p,
       );
+      p.strokeWidth = 1.55;
     } else if (!(model.hasShutter && model.isIntegratedFrame)) {
       canvas.drawLine(outer.topLeft, inner.topLeft, p);
       canvas.drawLine(outer.topRight, inner.topRight, p);
@@ -3488,6 +3513,13 @@ class WindowPainter extends CustomPainter {
     final bool isIntegrated = model.isIntegratedFrame;
 
     // رسم مسارات التعبئة (Fill) أولاً لكل جهة
+    // Under a slanted or arched head the cuts where the head meets the
+    // jambs are drawn bold so the workshop sees them clearly.
+    final headJointPaint = Paint()
+      ..color = _fb
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.8;
+
     void drawCoverSegment({
       required Path path,
       required Offset outerStart,
@@ -3496,6 +3528,9 @@ class WindowPainter extends CustomPainter {
       required Offset innerEnd,
       required bool hasStartJoin,
       required bool hasEndJoin,
+      Path? outerEdgePath,
+      bool boldStartJoin = false,
+      bool boldEndJoin = false,
     }) {
       // 1. تعبئة اللون (سواء خشب أو لون عادي)
       canvas.drawPath(path, paint);
@@ -3506,15 +3541,25 @@ class WindowPainter extends CustomPainter {
       } else {
         // إذا كان إطاراً مدمجاً: نرسم فقط الحد الخارجي وخطوط زوايا 45° الخارجية
         // ولا نرسم الخط الداخلي المشترك مع الحلق
-        final outerEdge = Path()
-          ..moveTo(outerStart.dx, outerStart.dy)
-          ..lineTo(outerEnd.dx, outerEnd.dy);
+        // An arched head has a curved outer edge: a straight line between
+        // its ends crossed the whole window.
+        final outerEdge =
+            outerEdgePath ??
+            (Path()
+              ..moveTo(outerStart.dx, outerStart.dy)
+              ..lineTo(outerEnd.dx, outerEnd.dy));
         canvas.drawPath(outerEdge, borderPaint);
 
         // خط زاوية البداية المائل 45° أو حد النهاية المستقيم
         canvas.drawLine(outerStart, innerStart, borderPaint);
         // خط زاوية النهاية المائل 45° أو حد النهاية المستقيم
         canvas.drawLine(outerEnd, innerEnd, borderPaint);
+      }
+      if (boldStartJoin) {
+        canvas.drawLine(outerStart, innerStart, headJointPaint);
+      }
+      if (boldEndJoin) {
+        canvas.drawLine(outerEnd, innerEnd, headJointPaint);
       }
     }
 
@@ -3547,6 +3592,7 @@ class WindowPainter extends CustomPainter {
         innerEnd: pInnerEnd,
         hasStartJoin: hasT,
         hasEndJoin: hasBottomFrameForJoin,
+        boldStartJoin: hasT && _isSlantedOrArched,
       );
     }
 
@@ -3579,6 +3625,7 @@ class WindowPainter extends CustomPainter {
         innerEnd: pInnerEnd,
         hasStartJoin: hasT,
         hasEndJoin: hasBottomFrameForJoin,
+        boldStartJoin: hasT && _isSlantedOrArched,
       );
     }
 
@@ -3598,18 +3645,28 @@ class WindowPainter extends CustomPainter {
         ..moveTo(pInnerStart.dx, pInnerStart.dy)
         ..lineTo(pOuterStart.dx, pOuterStart.dy);
 
+      var outerStart = pOuterStart;
+      var outerEnd = pOuterEnd;
+      Path? outerEdgePath;
       if (model.archHeight > 0) {
         // Concentric band: the cover's outer edge is the head circle grown
         // by the cover width, its inner edge is the frame's outer edge.
         final outerStartX = pOuterStart.dx;
         final outerEndX = pOuterEnd.dx;
+        outerStart = Offset(
+          outerStartX,
+          getInnerTopY(outerStartX, -cW, topY),
+        );
+        outerEnd = Offset(outerEndX, getInnerTopY(outerEndX, -cW, topY));
         path
           ..reset()
           ..moveTo(pInnerStart.dx, pInnerStart.dy)
-          ..lineTo(outerStartX, getInnerTopY(outerStartX, -cW, topY));
+          ..lineTo(outerStart.dx, outerStart.dy);
         _lineAlongHead(path, outerStartX, outerEndX, -cW, topY);
         path.lineTo(pInnerEnd.dx, pInnerEnd.dy);
         _lineAlongHead(path, pInnerEnd.dx, pInnerStart.dx, 0, topY);
+        outerEdgePath = Path()..moveTo(outerStart.dx, outerStart.dy);
+        _lineAlongHead(outerEdgePath, outerStartX, outerEndX, -cW, topY);
       } else {
         path.lineTo(pOuterEnd.dx, pOuterEnd.dy);
         path.lineTo(pInnerEnd.dx, pInnerEnd.dy);
@@ -3619,12 +3676,15 @@ class WindowPainter extends CustomPainter {
 
       drawCoverSegment(
         path: path,
-        outerStart: pOuterStart,
-        outerEnd: pOuterEnd,
+        outerStart: outerStart,
+        outerEnd: outerEnd,
         innerStart: pInnerStart,
         innerEnd: pInnerEnd,
         hasStartJoin: hasL,
         hasEndJoin: hasR,
+        outerEdgePath: outerEdgePath,
+        boldStartJoin: hasL && _isSlantedOrArched,
+        boldEndJoin: hasR && _isSlantedOrArched,
       );
     }
 
@@ -4776,11 +4836,14 @@ class WindowPainter extends CustomPainter {
             isRightSash: true,
           );
         } else {
-          // Mirror horizontally for external view: L sash drawn on rightR, R sash drawn on leftR
+          // Mirror horizontally for external view: L sash drawn on rightR,
+          // R sash drawn on leftR. The handles stay on the central stiles
+          // (the meeting of the two sashes): only the sash carrying them is
+          // mirrored, never moved to the outer stile.
           _renderSash(
             canvas,
             leftR,
-            zone.copyWith(openDirection: OpenDirection.left),
+            zone.copyWith(openDirection: OpenDirection.right),
             leftR,
             forceHandle: drawBothHandles || isRightActive,
             isRightSash: true,
@@ -4788,7 +4851,7 @@ class WindowPainter extends CustomPainter {
           _renderSash(
             canvas,
             rightR,
-            zone.copyWith(openDirection: OpenDirection.right),
+            zone.copyWith(openDirection: OpenDirection.left),
             rightR,
             forceHandle: drawBothHandles || isLeftActive,
             isRightSash: false,
@@ -8568,6 +8631,74 @@ class WindowPainter extends CustomPainter {
         3,
       ),
       holePaint,
+    );
+  }
+
+  /// A shutter over a slanted or arched head: a separate box and curtain in
+  /// front of the window, as wide as the frame and as tall as its flat
+  /// part. From inside it shows faintly through the glass.
+  void _drawSeparateShutter(
+    Canvas canvas,
+    double w, {
+    required bool seeThrough,
+  }) {
+    final top = model.separateShutterTop;
+    final flat = model.shutterFlatHeight;
+    final box = model.separateShutterBoxHeight;
+    if (flat <= box || w <= 0) return;
+    canvas.save();
+    if (seeThrough) {
+      canvas.saveLayer(
+        Rect.fromLTWH(-60, top - 60, w + 120, flat + 120),
+        Paint()..color = const Color(0x59000000),
+      );
+    }
+    canvas.translate(0, top);
+    _drawShutterSlatsAndTracks(canvas, w, flat, model.shutterPosition, box);
+    _drawShutterBox(canvas, w, box, flat);
+    if (seeThrough) canvas.restore();
+    canvas.restore();
+  }
+
+  /// The pulley set in the frame jamb when the belt of a separate shutter
+  /// is brought inside the house, with the belt running down from it.
+  void _drawBeltPulley(
+    Canvas canvas,
+    double w,
+    double t, {
+    required bool isInternal,
+  }) {
+    final splits = model.effectiveShutterSplits;
+    final driveSide = splits.isEmpty ? null : splits.first.driveSide;
+    final onLeft = (driveSide == 'left') == isInternal;
+    final x = onLeft ? t / 2 : w - t / 2;
+    final y = model.separateShutterTop + model.separateShutterBoxHeight * 0.5;
+    final radius = math.max(8.0, t * 0.38);
+    final beltBottom = math.min(
+      y + 900.0,
+      model.separateShutterTop + model.shutterFlatHeight - t,
+    );
+    canvas.drawRect(
+      Rect.fromLTRB(x - radius * 0.35, y, x + radius * 0.35, beltBottom),
+      Paint()..color = const Color(0xFF5D4037),
+    );
+    canvas.drawCircle(
+      Offset(x, y),
+      radius,
+      Paint()..color = const Color(0xFF263238),
+    );
+    canvas.drawCircle(
+      Offset(x, y),
+      radius,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5,
+    );
+    canvas.drawCircle(
+      Offset(x, y),
+      radius * 0.35,
+      Paint()..color = Colors.grey.shade300,
     );
   }
 

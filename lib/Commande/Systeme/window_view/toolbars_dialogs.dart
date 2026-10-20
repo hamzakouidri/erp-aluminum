@@ -4055,6 +4055,58 @@ extension _WindowViewToolbars on _WindowViewState {
                   ),
                 ),
               ),
+              if (widget.model.canChooseSeparateShutterBelt) ...[
+                const SizedBox(width: 8),
+                Tooltip(
+                  message: Localization.translate(
+                    'separate_shutter_belt_hint',
+                    lang,
+                  ),
+                  child: InkWell(
+                    onTap: () => _setViewState(() {
+                      widget.model.setSeparateShutterBeltInside(
+                        !widget.model.separateShutterBeltInside,
+                      );
+                    }),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: widget.model.separateShutterBeltInside
+                            ? Colors.brown.shade600
+                            : Colors.blueGrey,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.settings_input_component_rounded,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            Localization.translate(
+                              widget.model.separateShutterBeltInside
+                                  ? 'separate_shutter_belt_inside'
+                                  : 'separate_shutter_belt_outside',
+                              lang,
+                            ),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
             const SizedBox(width: 8),
             // زر إعادة التكبير

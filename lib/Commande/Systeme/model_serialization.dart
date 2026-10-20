@@ -653,6 +653,11 @@ extension WindowModelSerialization on WindowModel {
       'useVerrouCentral': useVerrouCentral,
       'parcloseCutMode': parcloseCutMode,
       'parcloseCornerCaps': parcloseCornerCaps,
+      'separateShutterBeltInside': separateShutterBeltInside,
+      'angleBadgeOffsets': {
+        for (final entry in angleBadgeOffsets.entries)
+          entry.key: [entry.value.dx, entry.value.dy],
+      },
       'hasSideCovers': hasSideCovers,
       'multiFrameSideCoverManuallyEnabled': multiFrameSideCoverManuallyEnabled,
       'sideCoverUseSecondWidth': sideCoverUseSecondWidth,
@@ -904,6 +909,28 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> savedMap) {
   model.useVerrouCentral =
       map['useVerrouCentral'] == true ||
       map['useVerrouCentral']?.toString().toLowerCase() == 'true';
+  model.angleBadgeOffsets.clear();
+  final savedBadges = map['angleBadgeOffsets'];
+  if (savedBadges is Map) {
+    for (final entry in savedBadges.entries) {
+      final value = entry.value;
+      if (value is List && value.length == 2) {
+        final dx = value[0];
+        final dy = value[1];
+        if (dx is num && dy is num) {
+          model.angleBadgeOffsets[entry.key.toString()] = Offset(
+            dx.toDouble(),
+            dy.toDouble(),
+          );
+        }
+      }
+    }
+  }
+  final savedBeltInside = map['separateShutterBeltInside'];
+  model.separateShutterBeltInside =
+      savedBeltInside == true ||
+      savedBeltInside == 1 ||
+      savedBeltInside?.toString().toLowerCase() == 'true';
   final savedCornerCaps = map['parcloseCornerCaps'];
   model.parcloseCornerCaps =
       savedCornerCaps == true ||

@@ -9,6 +9,29 @@ final Map<String, Map<AppLanguage, String>> drawingPageKeys = {
     AppLanguage.french: 'Le dessin est revenu à une fenêtre',
     AppLanguage.english: 'The drawing is back to a window',
   },
+  'separate_shutter_belt_inside': {
+    AppLanguage.arabic: 'الحزام: داخلي',
+    AppLanguage.french: 'Sangle : intérieure',
+    AppLanguage.english: 'Belt: inside',
+  },
+  'separate_shutter_belt_outside': {
+    AppLanguage.arabic: 'الحزام: خارجي',
+    AppLanguage.french: 'Sangle : extérieure',
+    AppLanguage.english: 'Belt: outside',
+  },
+  'separate_shutter_belt_hint': {
+    AppLanguage.arabic:
+        'داخلي: بكرة في الإطار تُدخل الحزام إلى المنزل. خارجي: يبقى الحزام بين النافذة وسكك الستار.',
+    AppLanguage.french:
+        'Intérieure : une poulie dans le dormant fait entrer la sangle. Extérieure : la sangle reste entre la fenêtre et les coulisses.',
+    AppLanguage.english:
+        'Inside: a pulley in the frame brings the belt indoors. Outside: the belt stays between the window and the shutter rails.',
+  },
+  'بكرة الحزام الداخلية (Poulie sangle)': {
+    AppLanguage.arabic: 'بكرة الحزام الداخلية',
+    AppLanguage.french: 'Poulie de sangle intérieure',
+    AppLanguage.english: 'Inside belt pulley',
+  },
   'handle_height_from_sash_bottom': {
     AppLanguage.arabic: 'المسافة من أسفل الضلفة إلى المقبض',
     AppLanguage.french: 'Distance du bas de l’ouvrant à la poignée',

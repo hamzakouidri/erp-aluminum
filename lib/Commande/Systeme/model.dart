@@ -3833,6 +3833,37 @@ class WindowModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// How far the user moved each cut-angle badge of a slanted head (key →
+  /// mm), so a badge covering something can be pushed aside.
+  final Map<String, Offset> angleBadgeOffsets = {};
+
+  /// Where each cut-angle badge was last drawn, for hit tests.
+  final Map<String, Rect> drawnAngleBadges = {};
+
+  /// The cut-angle badge at [point], or null.
+  String? angleBadgeAt(Offset point, {double margin = 10}) {
+    for (final entry in drawnAngleBadges.entries) {
+      if (entry.value.inflate(margin).contains(point)) return entry.key;
+    }
+    return null;
+  }
+
+  void dragAngleBadge(String key, Offset deltaMm) {
+    angleBadgeOffsets[key] = (angleBadgeOffsets[key] ?? Offset.zero) + deltaMm;
+    drawingRepaint.notifyListeners();
+  }
+
+  /// The belt of a separate shutter (over a slanted or arched head) is
+  /// brought inside through a pulley set in the frame jamb; otherwise it
+  /// stays outside, between the window and the shutter rails.
+  bool separateShutterBeltInside = false;
+
+  void setSeparateShutterBeltInside(bool inside) {
+    if (separateShutterBeltInside == inside) return;
+    separateShutterBeltInside = inside;
+    notifyListeners();
+  }
+
   /// With a 90° parclose cut, a plastic corner cap (bouchon) may cover each
   /// corner where two parclose pieces meet. It is drawn and counted only
   /// while the cut is at 90° (see [showsParcloseCornerCaps]).
@@ -5504,15 +5535,49 @@ class WindowModel extends ChangeNotifier {
       final startsInsideFrame = zones.any(
         (zone) => zone.boundary.inflate(profileThickness).contains(pos),
       );
-      if (windowRect.contains(pos) && startsInsideFrame) {
+      // Inside the arch (above the openings) a stroke is never a new frame:
+      // it divides the opening under the arch.
+      final startsInsideArch =
+          archHeight > 0 && this.windowOutlinePath().contains(pos);
+      if ((windowRect.contains(pos) && startsInsideFrame) ||
+          startsInsideArch) {
         drawingMode = 'split';
       } else {
         drawingMode = 'add_frame';
       }
     }
+    _splitRawStart = drawingMode == 'split' ? pos : null;
     drawingStart = pos;
     drawingCurrent = pos;
     notifyListeners();
+  }
+
+  /// Where a division stroke started, before [splitStartUnderArch] moved it.
+  Offset? _splitRawStart;
+
+  /// Start of a division stroke begun at [start] and now at [current]. Under
+  /// an arch a horizontal division never rises into the arch: it stays at
+  /// or below the springing line (where the arch ends). A vertical or
+  /// slanted one starts in the opening right under the arch.
+  Offset splitStartUnderArch(Offset start, Offset current) {
+    if (archHeight <= 0) return start;
+    final delta = current - start;
+    final horizontal = delta.dx.abs() > delta.dy.abs();
+    final springing =
+        math.max(topSlantLeftY, topSlantRightY) + profileThickness;
+    var y = horizontal ? math.max(start.dy, springing) : start.dy;
+    final under = zones
+        .where(
+          (zone) =>
+              start.dx >= zone.boundary.left && start.dx <= zone.boundary.right,
+        )
+        .toList();
+    if (under.isEmpty) return start;
+    if (!under.any((zone) => zone.boundary.contains(Offset(start.dx, y)))) {
+      final top = under.map((zone) => zone.boundary.top).reduce(math.min);
+      if (y < top) y = top + 1;
+    }
+    return Offset(start.dx, y);
   }
 
   void updateDrawing(Offset pos) {
@@ -5531,6 +5596,11 @@ class WindowModel extends ChangeNotifier {
       );
     } else {
       drawingCurrent = pos;
+      final rawStart = _splitRawStart;
+      if (drawingMode == 'split' && rawStart != null) {
+        // The dashed preview shows the division where it will really go.
+        drawingStart = splitStartUnderArch(rawStart, pos);
+      }
     }
     notifyListeners();
   }
@@ -5558,6 +5628,7 @@ class WindowModel extends ChangeNotifier {
         notifyListeners();
       }
       pendingDrawStart = null;
+      _splitRawStart = null;
     }
   }
 

@@ -1004,6 +1004,56 @@ extension WindowModelShutter on WindowModel {
   bool get shutterIsLongerThanWindow =>
       hasShutter && shutterDrawingHeight > height + 0.5;
 
+  /// Over a slanted or arched head the shutter is a separate box in front
+  /// of the window, as tall as the flat part of the frame: the lower jamb
+  /// (150 and 120 → 120), never the slant or the arch. Its width is the
+  /// frame width.
+  bool get isSeparateShutter => hasShutter && !isShutterOnly && hasArchOrSlant;
+
+  /// Top of the separate shutter, where the flat part of the frame starts.
+  double get separateShutterTop =>
+      math.max(0.0, math.max(topSlantLeftY, topSlantRightY));
+
+  /// Height of the shutter: the whole height, or the flat part of a
+  /// slanted or arched frame.
+  double get shutterFlatHeight {
+    if (!hasArchOrSlant) return height.toDouble();
+    final bottom =
+        height - math.max(0.0, math.max(bottomSlantLeftY, bottomSlantRightY));
+    return math.max(0.0, bottom - separateShutterTop);
+  }
+
+  /// The box of a separate shutter, sized from its own height.
+  double get separateShutterBoxHeight {
+    if (!isSeparateShutter) return 0.0;
+    if (isCaissonTunnel) return caissonTunnelHeight;
+    if (customShutterBoxHeight != null) return customShutterBoxHeight!;
+    final flat = shutterFlatHeight;
+    if (flat <= 1600) return 155.0;
+    if (flat <= 2400) return 185.0;
+    return 205.0;
+  }
+
+  bool get _usesBeltMechanism {
+    final mechanism = shutterMechanism.trim().toLowerCase();
+    return mechanism == 'حزام' ||
+        mechanism.contains('sangle') ||
+        mechanism.contains('belt');
+  }
+
+  /// The inside/outside belt choice exists for a separate shutter worked
+  /// by a belt.
+  bool get canChooseSeparateShutterBelt =>
+      isSeparateShutter && _usesBeltMechanism;
+
+  /// A pulley in the frame brings the belt inside.
+  bool get showsBeltPulley =>
+      canChooseSeparateShutterBelt && separateShutterBeltInside;
+
+  /// Box height used to cut the shutter's own parts (rails, blades, box).
+  double get shutterPartsBoxHeight =>
+      isSeparateShutter ? separateShutterBoxHeight : shutterBoxHeight;
+
   double get shutterBoxHeight {
     if (!(hasShutter && !hasArchOrSlant)) return 0.0;
     if (isCaissonTunnel) {

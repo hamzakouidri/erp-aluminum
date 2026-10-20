@@ -7008,15 +7008,29 @@ class ComponentCalculator {
 
     // --- 3. الستائر (Shutters) ---
     if (hasShutter) {
-      int caissonSize = window.shutterBoxHeight.toInt();
+      // Over a slanted or arched head the shutter is a separate box as tall
+      // as the flat part of the frame; otherwise the window height.
+      final double shutterHeightMm = window.shutterFlatHeight;
+      int caissonSize = window.shutterPartsBoxHeight.toInt();
+      // The belt of a separate shutter brought inside through the frame.
+      if (window.showsBeltPulley) {
+        items.add(
+          createAccessory(
+            'بكرة الحزام الداخلية (Poulie sangle)',
+            qty: 1,
+            roleKeyOverride: 'shutter_belt_pulley',
+            selectorTypeOverride: 'shutter_belt_pulley',
+          ),
+        );
+      }
       // A tunnel rail is the shutter height plus the workshop's addition.
       final tunnelRailAdd = ShutterCalcRules.value(
         ShutterCalcRules.tunnelRailAdd,
       );
       double coulisseLengthM =
           (window.isCaissonTunnel
-              ? (window.height + tunnelRailAdd)
-              : (window.height - caissonSize)) /
+              ? (shutterHeightMm + tunnelRailAdd)
+              : (shutterHeightMm - caissonSize)) /
           1000.0;
       if (coulisseLengthM < 0) coulisseLengthM = 0;
 
@@ -7156,8 +7170,8 @@ class ComponentCalculator {
                 0.0);
       final shutterWeightKg = shutterCurtainWeightKg(
         windowWidthMm: window.width.toDouble(),
-        windowHeightMm: window.height.toDouble(),
-        shutterBoxHeightMm: window.shutterBoxHeight,
+        windowHeightMm: shutterHeightMm.toDouble(),
+        shutterBoxHeightMm: window.shutterPartsBoxHeight,
         isTunnel: isTunnel,
         bladeHeightMm: selectedBladeHeightMm,
         bladeWeightPerSqm: bladeWeightPerSqm,
@@ -7214,7 +7228,7 @@ class ComponentCalculator {
         final candidates = compatibleKitBundles(
           kits: kitBundleMetadata.values,
           descriptionCode: descriptionCode,
-          minimumSizeMm: sizeBound ? window.shutterBoxHeight : null,
+          minimumSizeMm: sizeBound ? window.shutterPartsBoxHeight : null,
           allowWithoutSize: !sizeBound,
         );
         final normalizedRequiredTokens = requiredKitTokens
@@ -7271,7 +7285,7 @@ class ComponentCalculator {
         // Compatibility fallback for orders saved before description codes
         // were introduced. New catalogues always use the code above.
         if (matchedKitName == null && kitBundleMetadata.isEmpty) {
-          final targetSize = window.shutterBoxHeight;
+          final targetSize = window.shutterPartsBoxHeight;
           final legacy =
               kitBundleData.keys.where((name) {
                 final normalized = name.toLowerCase();
@@ -7333,7 +7347,7 @@ class ComponentCalculator {
           var expandedItems = expandKitBundle(
             groupName,
             matchedKitItems!,
-            leafHeightMm: sectionHeightMm ?? window.height.toDouble(),
+            leafHeightMm: sectionHeightMm ?? shutterHeightMm.toDouble(),
             leafWidthMm: sectionWidthMm ?? window.width.toDouble(),
             shutterWeightKg: sectionWeightKg ?? shutterWeightKg,
             mechanismScope: shutterMechanismScope(effectiveMechanism),
@@ -7399,11 +7413,11 @@ class ComponentCalculator {
         // must use that section's width/height/weight, not the full opening.
         for (final split in shutterSplits) {
           final mechanism = splitMechanism(split);
-          final sectionHeight = split.customHeight ?? window.height.toDouble();
+          final sectionHeight = split.customHeight ?? shutterHeightMm.toDouble();
           final sectionWeight = shutterCurtainWeightKg(
             windowWidthMm: split.width,
             windowHeightMm: sectionHeight,
-            shutterBoxHeightMm: window.shutterBoxHeight,
+            shutterBoxHeightMm: window.shutterPartsBoxHeight,
             isTunnel: false,
             bladeHeightMm: selectedBladeHeightMm,
             bladeWeightPerSqm: bladeWeightPerSqm,
@@ -7462,11 +7476,11 @@ class ComponentCalculator {
         final tunnelSize = window.caissonTunnelHeight.toInt().toString();
         for (final split in shutterSplits) {
           final mechanism = splitMechanism(split);
-          final sectionHeight = split.customHeight ?? window.height.toDouble();
+          final sectionHeight = split.customHeight ?? shutterHeightMm.toDouble();
           final sectionWeight = shutterCurtainWeightKg(
             windowWidthMm: split.width,
             windowHeightMm: sectionHeight,
-            shutterBoxHeightMm: window.shutterBoxHeight,
+            shutterBoxHeightMm: window.shutterPartsBoxHeight,
             isTunnel: true,
             bladeHeightMm: selectedBladeHeightMm,
             bladeWeightPerSqm: bladeWeightPerSqm,
@@ -7643,7 +7657,7 @@ class ComponentCalculator {
       // A tunnel height is measured under the box: the blades cover it
       // plus the workshop's addition. Any other box sits inside the height.
       int bladeCountFor(double heightMm) =>
-          ((heightMm - (isTunnel ? 0.0 : window.shutterBoxHeight) +
+          ((heightMm - (isTunnel ? 0.0 : window.shutterPartsBoxHeight) +
                           bladeHeightAdd) /
                       safeBladeHeightMm +
                   extraBlades)
@@ -7668,7 +7682,7 @@ class ComponentCalculator {
       if (window.isShutterSplit && window.effectiveShutterSplits.isNotEmpty) {
         for (final split in window.effectiveShutterSplits) {
           final sWidth = split.width;
-          final sHeight = split.customHeight ?? window.height;
+          final sHeight = split.customHeight ?? shutterHeightMm;
           final sNumBlades = bladeCountFor(sHeight.toDouble());
           totalBladesCount += sNumBlades;
 
@@ -7716,7 +7730,7 @@ class ComponentCalculator {
           lameFinalePieces.add(fLameFinaleM);
         }
       } else {
-        final numBladesShutter = bladeCountFor(window.height.toDouble());
+        final numBladesShutter = bladeCountFor(shutterHeightMm.toDouble());
         totalBladesCount = numBladesShutter;
         double bladeLengthM = math.max(0.0, (window.width - bladeDeduction)) / 1000.0;
         if (capThick > 0) {
@@ -7773,7 +7787,7 @@ class ComponentCalculator {
       if (window.isShutterSplit && window.effectiveShutterSplits.isNotEmpty) {
         coulissePieces = [];
         for (final split in window.effectiveShutterSplits) {
-          final sH = split.customHeight ?? window.height;
+          final sH = split.customHeight ?? shutterHeightMm;
           final sLengthM =
               (window.isCaissonTunnel
                   ? (sH + tunnelRailAdd)

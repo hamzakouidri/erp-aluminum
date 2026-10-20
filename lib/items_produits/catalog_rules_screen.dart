@@ -441,6 +441,11 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
             'Bouchon d’angle parclose',
           ),
           _RuleRole(
+            'shutter_belt_pulley',
+            'بكرة الحزام الداخلية',
+            'Poulie de sangle intérieure',
+          ),
+          _RuleRole(
             'sliding_kit_40000',
             'كيت سلسلة 40000 TPR',
             'Kit série 40000 TPR',
@@ -840,7 +845,13 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
         ar: 'الطاسو والإيكار',
         fr: 'Tasso et Ekar',
         icon: Icons.crop_square_rounded,
-        roleKeys: {'tasso', 'ekar', 'alignment_square', 'parclose_corner_cap'},
+        roleKeys: {
+          'tasso',
+          'ekar',
+          'alignment_square',
+          'parclose_corner_cap',
+          'shutter_belt_pulley',
+        },
       ),
       _CatalogGroup(
         key: 'moving',
@@ -1222,6 +1233,10 @@ class _CatalogRulesScreenState extends State<CatalogRulesScreen>
               text.contains('بركلوز') ||
               text.contains('باكيت'))) {
         return 'parclose_corner_cap';
+      }
+      if ((text.contains('poulie') || text.contains('بكرة')) &&
+          (text.contains('sangle') || text.contains('حزام'))) {
+        return 'shutter_belt_pulley';
       }
       if (text.contains('tasso') || text.contains('طاسو')) return 'tasso';
       if (text.contains('alignement') ||

@@ -3002,6 +3002,7 @@ extension WindowModelZones on WindowModel {
         .where((item) => !previousZoneIds.contains(item.id))
         .toList();
     _normalizeDecorAfterSplit(zone, splitZones);
+    _carrySlantedDividers(zone, splitZones);
     updatePrimaryMullionAxis();
     selection = SelectionInfo.none;
     showZoneMenu = false;
@@ -3304,6 +3305,7 @@ extension WindowModelZones on WindowModel {
         .where((item) => !previousZoneIds.contains(item.id))
         .toList();
     _normalizeDecorAfterSplit(zone, splitZones);
+    _carrySlantedDividers(zone, splitZones);
     selection = SelectionInfo.none;
     showZoneMenu = false;
     activeSubZone = null;
@@ -3944,6 +3946,20 @@ extension WindowModelZones on WindowModel {
     }
   }
 
+  /// A straight division must not erase the slanted ones: each slanted
+  /// division of [source] is carried into the [parts] it was split into,
+  /// every part keeping the piece of the line that crosses it.
+  void _carrySlantedDividers(WindowZone source, List<WindowZone> parts) {
+    if (source.slantedDividers.isEmpty) return;
+    for (final part in parts) {
+      part.slantedDividers = slantedDividersInPart(
+        source.slantedDividers,
+        source.boundary,
+        part.boundary,
+      );
+    }
+  }
+
   void _splitIntersectingZonesSmart(Offset start, Offset end, bool horizontal) {
     _saveSnapshot();
     // 🟢 تثبيت أولوية التقسيم الأول (إذا كان أول تقسيم عمودياً يثبت كـ v ولا يتغير)
@@ -4028,6 +4044,7 @@ extension WindowModelZones on WindowModel {
           );
         }
         _normalizeDecorAfterSplit(z, splitZones);
+        _carrySlantedDividers(z, splitZones);
         newZones.addAll(splitZones);
       } else {
         newZones.add(z);
@@ -4724,4 +4741,82 @@ extension WindowModelZones on WindowModel {
       }
     }
   }
+}
+
+/// The pieces of [dividers] (anchored on [source]) that cross [part], a
+/// rectangle cut out of [source], anchored on the edges of [part]. A piece
+/// shorter than 50 mm, or with both ends on the same edge, is dropped.
+List<SlantedDivider> slantedDividersInPart(
+  List<SlantedDivider> dividers,
+  Rect source,
+  Rect part,
+) {
+  final kept = <SlantedDivider>[];
+  for (final divider in dividers) {
+    final clipped = _clipSegmentToRect(
+      divider.start.pointOn(source),
+      divider.end.pointOn(source),
+      part,
+    );
+    if (clipped == null || (clipped.$2 - clipped.$1).distance < 50) continue;
+    final start = _anchorOnRectEdge(clipped.$1, part);
+    final end = _anchorOnRectEdge(clipped.$2, part);
+    if (start == null || end == null || start.edge == end.edge) continue;
+    kept.add(
+      SlantedDivider(
+        id: divider.id,
+        start: start,
+        end: end,
+        profileCode: divider.profileCode,
+      ),
+    );
+  }
+  return kept;
+}
+
+/// Liang-Barsky clipping of the segment [a]-[b] to [rect].
+(Offset, Offset)? _clipSegmentToRect(Offset a, Offset b, Rect rect) {
+  final d = b - a;
+  var t0 = 0.0;
+  var t1 = 1.0;
+  final checks = <(double, double)>[
+    (-d.dx, a.dx - rect.left),
+    (d.dx, rect.right - a.dx),
+    (-d.dy, a.dy - rect.top),
+    (d.dy, rect.bottom - a.dy),
+  ];
+  for (final (p, q) in checks) {
+    if (p.abs() < 1e-9) {
+      if (q < 0) return null;
+      continue;
+    }
+    final r = q / p;
+    if (p < 0) {
+      if (r > t1) return null;
+      if (r > t0) t0 = r;
+    } else {
+      if (r < t0) return null;
+      if (r < t1) t1 = r;
+    }
+  }
+  return (a + d * t0, a + d * t1);
+}
+
+/// The anchor of [point], lying on the outline of [rect], on its nearest
+/// edge; null when the point is not on the outline.
+SlantedDividerAnchor? _anchorOnRectEdge(Offset point, Rect rect) {
+  final distances = <ZoneEdge, double>{
+    ZoneEdge.top: (point.dy - rect.top).abs(),
+    ZoneEdge.bottom: (point.dy - rect.bottom).abs(),
+    ZoneEdge.left: (point.dx - rect.left).abs(),
+    ZoneEdge.right: (point.dx - rect.right).abs(),
+  };
+  final nearest = distances.entries.reduce((a, b) => a.value <= b.value ? a : b);
+  if (nearest.value > 1.0) return null;
+  final horizontalEdge =
+      nearest.key == ZoneEdge.top || nearest.key == ZoneEdge.bottom;
+  final ratio = horizontalEdge
+      ? (point.dx - rect.left) / rect.width
+      : (point.dy - rect.top) / rect.height;
+  return SlantedDividerAnchor(nearest.key, ratio.clamp(0.0, 1.0));
 }

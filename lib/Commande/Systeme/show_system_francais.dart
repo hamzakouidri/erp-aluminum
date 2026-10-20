@@ -180,6 +180,9 @@ class _WindowViewState extends State<WindowView> {
   bool _suppressHandleDragForLongPress = false;
   bool _isDraggingSlantLeft = false;
   DimensionLabelHit? _draggedDimension;
+
+  /// The cut-angle badge being moved (right mouse button on desktop).
+  String? _draggedAngleBadge;
   ({String zoneId, String dividerId, bool atStart})? _draggedSlantEnd;
   bool _isDraggingSlantRight = false;
   bool _isDraggingArch = false;
@@ -1845,6 +1848,19 @@ class _WindowViewState extends State<WindowView> {
                                       // Grabbing a dimension number moves its
                                       // whole row away from (or back to) the
                                       // frame; nothing in the design changes.
+                                      // A cut-angle badge moves with the
+                                      // right mouse button (a finger on a
+                                      // phone) when it covers something.
+                                      final badge = widget.model
+                                          .angleBadgeAt(modelPos);
+                                      if (badge != null &&
+                                          (!_isWindowsDesktop ||
+                                              (_pointerButtons &
+                                                      kSecondaryMouseButton) !=
+                                                  0)) {
+                                        _draggedAngleBadge = badge;
+                                        return;
+                                      }
                                       final grabbed = widget.model
                                           .dimensionLabelAt(modelPos);
                                       if (grabbed != null &&
@@ -2453,6 +2469,16 @@ class _WindowViewState extends State<WindowView> {
                                       });
                                       return;
                                     }
+                                    final draggedBadge = _draggedAngleBadge;
+                                    if (draggedBadge != null) {
+                                      widget.model.dragAngleBadge(
+                                        draggedBadge,
+                                        details.focalPointDelta /
+                                            (_userScale *
+                                                widget.model.canvasScale),
+                                      );
+                                      return;
+                                    }
                                     final draggedDimension = _draggedDimension;
                                     if (draggedDimension != null) {
                                       final delta =
@@ -2851,6 +2877,7 @@ class _WindowViewState extends State<WindowView> {
                                     _isMiddlePanning = false;
                                     _draggedHandleKey = null;
                                     _draggedDimension = null;
+                                    _draggedAngleBadge = null;
                                     _commitShapeDragPreview();
                                     _isDraggingHandle = false;
                                     _isDraggingHinge = false;
@@ -6099,6 +6126,65 @@ class AppWorkspacePainter extends CustomPainter {
               dragKey: 'archRise',
               normal: Offset.zero,
             );
+          }
+
+          // Total height of the arched frame, from its bottom up to the
+          // apex, beside the right jamb.
+          final apexTop = arc.apex.dy;
+          final frameBottom =
+              pos.dy +
+              model.height -
+              math.min(model.bottomSlantLeftY, model.bottomSlantRightY);
+          final totalX =
+              pos.dx +
+              model.width +
+              offsetDistRight +
+              (isSlanted ? px(70.0) : 0.0) +
+              dragged('archTotal');
+          _drawDimension(
+            canvas,
+            '${(frameBottom - apexTop).round()} mm',
+            Offset(totalX, apexTop),
+            Offset(totalX, frameBottom),
+            isVerticalLine: true,
+            dragKey: 'archTotal',
+            normal: const Offset(1, 0),
+          );
+          _drawWitnessLine(
+            canvas,
+            arc.apex,
+            Offset(totalX + px(6.0), apexTop),
+          );
+          _drawWitnessLine(
+            canvas,
+            Offset(pos.dx + model.width, frameBottom),
+            Offset(totalX + px(6.0), frameBottom),
+          );
+
+          // Chord of the arch, corner to corner: parallel to it, beyond the
+          // arch, with a witness line from each corner (as for a slanted
+          // head).
+          if (chord.distance > 0) {
+            final d = chord / chord.distance;
+            final outward = Offset(d.dy, -d.dx);
+            final rise = (arc.apex - (chordStart + chordEnd) / 2).distance;
+            double dist = rise + px(44.0) + dragged('archChord');
+            if (model.hasSideCovers &&
+                !model.removedShutterSides.contains('top')) {
+              dist += scW + 15.0;
+            }
+            final q1 = chordStart + outward * dist;
+            final q2 = chordEnd + outward * dist;
+            _drawAlignedDimension(
+              canvas,
+              '${chord.distance.round()} mm',
+              q1,
+              q2,
+              dragKey: 'archChord',
+              normal: outward,
+            );
+            _drawWitnessLine(canvas, chordStart, q1 + outward * px(6.0));
+            _drawWitnessLine(canvas, chordEnd, q2 + outward * px(6.0));
           }
         } else if (chord.distance > 0 &&
             (model.topSlantLeftY - model.topSlantRightY).abs() >= 1.0) {
