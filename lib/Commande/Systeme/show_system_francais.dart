@@ -147,6 +147,12 @@ class _WindowViewState extends State<WindowView> {
   bool get _isWindowsDesktop =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
+  /// The tabs that open the left and right drawers exist on the phone only:
+  /// on desktop the toolbar button opens the right drawer and a double click
+  /// on the drawing (or the glass button) opens the glass drawer.
+  static const double _drawerHandleWidth = 28;
+  static const double _drawerHandleHeight = 50;
+
 
 
   bool _isDraggingHandle = false;
@@ -3476,6 +3482,7 @@ class _WindowViewState extends State<WindowView> {
                             ),
                             child: _buildLeftDrawerContent(context),
                           ),
+                          if (!_isWindowsDesktop)
                           GestureDetector(
                             onTap: () {
                               if (!_isLeftDrawerOpen)
@@ -3493,7 +3500,7 @@ class _WindowViewState extends State<WindowView> {
                                 double maxTop =
                                     MediaQuery.of(context).size.height -
                                     120 -
-                                    70 -
+                                    _drawerHandleHeight -
                                     15;
                                 if (_leftDrawerHandleTop > maxTop) {
                                   _leftDrawerHandleTop = maxTop;
@@ -3504,8 +3511,8 @@ class _WindowViewState extends State<WindowView> {
                               margin: EdgeInsets.only(
                                 top: _leftDrawerHandleTop,
                               ),
-                              width: 40,
-                              height: 70,
+                              width: _drawerHandleWidth,
+                              height: _drawerHandleHeight,
                               decoration: BoxDecoration(
                                 color:
                                     Theme.of(context).brightness ==
@@ -3532,7 +3539,7 @@ class _WindowViewState extends State<WindowView> {
                                         Brightness.dark
                                     ? Colors.blue.shade300
                                     : Colors.blue.shade800,
-                                size: 26,
+                                size: 20,
                               ),
                             ),
                           ),
@@ -3565,6 +3572,7 @@ class _WindowViewState extends State<WindowView> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       // 🟢 جعل زر السحب في الأعلى بدلاً من المنتصف
                       children: [
+                        if (!_isWindowsDesktop)
                         GestureDetector(
                           onTap: () =>
                               setState(() => _isDrawerOpen = !_isDrawerOpen),
@@ -3577,7 +3585,7 @@ class _WindowViewState extends State<WindowView> {
                               double maxTop =
                                   MediaQuery.of(context).size.height -
                                   120 -
-                                  70 -
+                                  _drawerHandleHeight -
                                   15;
                               if (_rightDrawerHandleTop > maxTop) {
                                 _rightDrawerHandleTop = maxTop;
@@ -3587,8 +3595,8 @@ class _WindowViewState extends State<WindowView> {
                           child: Container(
                             margin: EdgeInsets.only(top: _rightDrawerHandleTop),
                             // 🟢 إزاحة بسيطة للزر ليكون شكله أنيقاً
-                            width: 40,
-                            height: 70,
+                            width: _drawerHandleWidth,
+                            height: _drawerHandleHeight,
                             decoration: BoxDecoration(
                               color:
                                   Theme.of(context).brightness ==
@@ -3615,7 +3623,7 @@ class _WindowViewState extends State<WindowView> {
                                       Brightness.dark
                                   ? Colors.blue.shade300
                                   : Colors.blue.shade800,
-                              size: 26,
+                              size: 20,
                             ),
                           ),
                         ),

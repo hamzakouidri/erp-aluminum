@@ -15,11 +15,14 @@ import 'package:database_data/Commande/Systeme/model_serialization.dart';
 import 'package:database_data/Commande/Systeme/calculate_component.dart';
 import 'package:database_data/Commande/Systeme/bom_engine_v2.dart';
 import 'package:database_data/Commande/Systeme/cutting_settings.dart';
+import 'package:database_data/Commande/Systeme/profile_display_order.dart';
+import 'package:database_data/Commande/Systeme/profile_selector_dialog.dart';
 import 'package:database_data/Commande/window_painter.dart';
 import 'package:database_data/Commande/capture_image.dart';
 import 'package:database_data/Commande/production_measurements.dart';
 import 'package:database_data/widgets/section_image.dart';
 import 'package:database_data/widgets/resizable_columns_table.dart';
+import 'package:database_data/widgets/numeric_filter_search_field.dart';
 import 'package:database_data/services/remnant_ticket_service.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/Screen/achat_details_screen.dart';
@@ -27,6 +30,7 @@ import 'package:database_data/Screen/sheet_optimization_screen.dart';
 import 'package:database_data/Screen/app_workspace_shell.dart'
     show openAdaptiveScreen;
 import 'required_goods_labels.dart';
+import 'required_goods_profile_swap.dart';
 
 bool isExplicitlyReplacedProduct(bool modelIsReplaced, dynamic savedValue) {
   if (modelIsReplaced || savedValue == true) return true;
@@ -421,6 +425,44 @@ bool isRequiredGoodsKitHeader(BomItem item, String kitName) =>
 /// already French-named bundle such as "Kit Volet 155" into "Kit Kit Volet".
 String requiredGoodsKitDisplayName(String kitName) => kitName.trim();
 
+/// The shared display rank of a BOM row, used by the required-goods page.
+int requiredGoodsProfileRank(BomItem bom) => profileDisplayRank(
+  roleKey: bom.roleKey,
+  selectorType: bom.selectorType,
+  originalName: bom.originalName,
+);
+
+/// Required-goods display order: category, then the shared profile order,
+/// then colour, then name.
+int compareRequiredGoods(
+  AggregatedGoodItem a,
+  AggregatedGoodItem b, {
+  required String Function(AggregatedGoodItem item) colourSortKey,
+}) {
+  const order = <String>[
+    'profile',
+    'accessory',
+    'glass',
+    'shutter',
+    'joint',
+    'panneau',
+  ];
+  final rawAi = order.indexOf(a.category);
+  final rawBi = order.indexOf(b.category);
+  final ai = rawAi < 0 ? order.length : rawAi;
+  final bi = rawBi < 0 ? order.length : rawBi;
+  if (ai != bi) return ai.compareTo(bi);
+  if (a.category == 'profile') {
+    final byRank = a.profileRank.compareTo(b.profileRank);
+    if (byRank != 0) return byRank;
+  }
+  if (a.category == 'profile' || a.category == 'accessory') {
+    final colorComparison = colourSortKey(a).compareTo(colourSortKey(b));
+    if (colorComparison != 0) return colorComparison;
+  }
+  return a.name.compareTo(b.name);
+}
+
 class OrderCuttingPlan {
   const OrderCuttingPlan({
     required this.bars,
@@ -753,6 +795,13 @@ class AggregatedGoodItem {
   final List<BomItem> kitSubItems;
   final String? kitGroupName;
 
+  /// Shared display rank of a profile row (see profile_display_order.dart).
+  int profileRank;
+
+  /// The BOM rows gathered in this line, so a change made from it reaches
+  /// exactly the order lines that use it.
+  final Set<BomItem> sourceBoms = Set<BomItem>.identity();
+
   double? get length => stockLength;
 
   AggregatedGoodItem({
@@ -779,6 +828,7 @@ class AggregatedGoodItem {
     this.cuttingPlan,
     this.kitSubItems = const [],
     this.kitGroupName,
+    this.profileRank = profileRankOther,
   }) : cuttingPieces = List<double>.from(cuttingPieces);
 
   void mergeWith(
@@ -790,6 +840,9 @@ class AggregatedGoodItem {
   }) {
     totalCost += bomCost;
     totalQuantity += purchaseQty;
+    sourceBoms.add(bom);
+    final rank = requiredGoodsProfileRank(bom);
+    if (rank < profileRank) profileRank = rank;
     if (bom.pieceCount != null && bom.pieceCount! > 0) {
       pieceCount += bom.pieceCount!;
     } else if (unit.trim().toLowerCase() == 'قطعة' ||
@@ -1542,10 +1595,69 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  /// The search fields under the desktop table headers, per column.
+  final Map<String, TextEditingController> _columnFilterControllers = {
+    for (final id in const ['category', 'name', 'color', 'details'])
+      id: TextEditingController(),
+  };
+
   @override
   void dispose() {
     _searchController.dispose();
+    for (final controller in _columnFilterControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
+  }
+
+  String _columnFilter(String id) =>
+      _columnFilterControllers[id]?.text.trim().toLowerCase() ?? '';
+
+  bool get _hasColumnFilters =>
+      _columnFilterControllers.values.any((c) => c.text.trim().isNotEmpty);
+
+  void _clearColumnFilters() {
+    setState(() {
+      for (final controller in _columnFilterControllers.values) {
+        controller.clear();
+      }
+    });
+  }
+
+  String _colorLabel(String? colorName) => (colorName ?? '').trim().isEmpty
+      ? ''
+      : Localization.colorName(colorName, _currentLang);
+
+  /// Whether [item] matches what is typed in the table's search fields.
+  bool _matchesColumnFilters(AggregatedGoodItem item) {
+    final category = _columnFilter('category');
+    if (category.isNotEmpty &&
+        !'${item.category} ${_categoryLabel(item.category)}'
+            .toLowerCase()
+            .contains(category)) {
+      return false;
+    }
+    final name = _columnFilter('name');
+    if (name.isNotEmpty &&
+        !'${item.name} ${_t(item.name)} ${item.originalName} '
+                '${item.profileCode ?? ''} ${item.kitGroupName ?? ''}'
+            .toLowerCase()
+            .contains(name)) {
+      return false;
+    }
+    final color = _columnFilter('color');
+    if (color.isNotEmpty &&
+        !'${item.colorName ?? ''} ${_colorLabel(item.colorName)}'
+            .toLowerCase()
+            .contains(color)) {
+      return false;
+    }
+    final details = _columnFilter('details');
+    if (details.isNotEmpty &&
+        !_itemMeta(item, includeColor: false).toLowerCase().contains(details)) {
+      return false;
+    }
+    return true;
   }
 
   Future<void> _refreshReservationStatus() async {
@@ -2479,7 +2591,8 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                       : const [],
                   kitSubItems: const [],
                   kitGroupName: null,
-                );
+                  profileRank: requiredGoodsProfileRank(bom),
+                )..sourceBoms.add(bom);
               }
             }
           }
@@ -2553,7 +2666,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         }
       }
 
-      // ترتيب العرض: البروفيلات ثم الإكسسوارات ثم الزجاج. داخل كل فئة
+      // ترتيب العرض: البروفيلات ثم الإكسسوارات ثم الزجاج. البروفيلات بترتيب
+      // الأدوار المشترك مع جدول الكمية والتكلفة (الإطار، حديده، الأغطية...).
+      // داخل كل فئة
       // ذات ألوان، تسبق الأبيضُ الخشبيَّ ثم الداكن فبقية الألوان.
       // A profile row with nothing to cut and nothing to buy is not a need:
       // it only repeated a profile (often in another colour) with zero.
@@ -2566,28 +2681,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 item.totalQuantity > 0,
           )
           .toList();
-      sorted.sort((a, b) {
-        const order = <String>[
-          'profile',
-          'accessory',
-          'glass',
-          'shutter',
-          'joint',
-          'panneau',
-        ];
-        final rawAi = order.indexOf(a.category);
-        final rawBi = order.indexOf(b.category);
-        final ai = rawAi < 0 ? order.length : rawAi;
-        final bi = rawBi < 0 ? order.length : rawBi;
-        if (ai != bi) return ai.compareTo(bi);
-        if (a.category == 'profile' || a.category == 'accessory') {
-          final colorComparison = _colourSortKey(
-            a,
-          ).compareTo(_colourSortKey(b));
-          if (colorComparison != 0) return colorComparison;
-        }
-        return a.name.compareTo(b.name);
-      });
+      sorted.sort(
+        (a, b) => compareRequiredGoods(a, b, colourSortKey: _colourSortKey),
+      );
 
       final stockSnapshot = await _loadMainWarehouseStock();
       final isReserved = await widget.db.isOrderStockReserved(orderId);
@@ -3070,7 +3166,12 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     final entries = groups.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
     for (final entry in entries) {
-      entry.value.sort((a, b) => a.name.compareTo(b.name));
+      entry.value.sort((a, b) {
+        final byRank = a.category == 'profile'
+            ? a.profileRank.compareTo(b.profileRank)
+            : 0;
+        return byRank != 0 ? byRank : a.name.compareTo(b.name);
+      });
     }
     return entries;
   }
@@ -3761,13 +3862,19 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
     // تجميع العناصر حسب الفئات لعرض أقسام مفصولة ومنظمة
     final Map<String, List<AggregatedGoodItem>> grouped = {};
-    for (final item in _visibleItems) {
+    for (final item in _visibleItems.where(_matchesColumnFilters)) {
       grouped.putIfAbsent(item.category, () => []).add(item);
     }
     final categories = grouped.keys.toList()
       ..sort((a, b) => _categorySortIndex(a).compareTo(_categorySortIndex(b)));
 
     final showCategoryHeaders = _selectedCategory == 'all';
+    Widget searchField(String id, String hintKey) => CompactTableFilterField(
+      hintText: _t(hintKey),
+      controller: _columnFilterControllers[id],
+      lang: _currentLang,
+      onTextChanged: (_) => setState(() {}),
+    );
 
     for (final cat in categories) {
       final items = grouped[cat]!;
@@ -3804,9 +3911,9 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           const SizedBox(height: 5),
           Expanded(
             child: ResizableColumnsTable(
-              key: ValueKey(
-                'required-goods-$_selectedCategory-${_visibleItems.length}',
-              ),
+              // The key must not follow the row count: typing in a search
+              // field would rebuild the table and drop the field's focus.
+              key: ValueKey('required-goods-$_selectedCategory'),
               persistenceKey: 'order_required_goods',
               headerColor: isDark
                   ? Colors.grey.shade900
@@ -3834,6 +3941,10 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 ResizableTableColumn(
                   id: 'category',
                   label: Text(_t('الفئة'), style: headerStyle),
+                  filter: searchField(
+                    'category',
+                    'required_goods_search_category',
+                  ),
                   initialWidth: 160,
                   minWidth: 120,
                   maxWidth: 240,
@@ -3841,13 +3952,29 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 ResizableTableColumn(
                   id: 'name',
                   label: Text(_t('Libellé / Description'), style: headerStyle),
+                  filter: searchField('name', 'required_goods_search_name'),
                   initialWidth: 330,
                   minWidth: 220,
                   maxWidth: 620,
                 ),
                 ResizableTableColumn(
+                  id: 'color',
+                  label: Text(
+                    _t('required_goods_color_column'),
+                    style: headerStyle,
+                  ),
+                  filter: searchField('color', 'required_goods_search_color'),
+                  initialWidth: 130,
+                  minWidth: 90,
+                  maxWidth: 240,
+                ),
+                ResizableTableColumn(
                   id: 'details',
                   label: Text(_t('التفاصيل'), style: headerStyle),
+                  filter: searchField(
+                    'details',
+                    'required_goods_search_details',
+                  ),
                   initialWidth: 300,
                   minWidth: 180,
                   maxWidth: 520,
@@ -3893,6 +4020,20 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 ResizableTableColumn(
                   id: 'actions',
                   label: Text(_t('إجراء'), style: headerStyle),
+                  filter: _hasColumnFilters
+                      ? Center(
+                          child: IconButton(
+                            tooltip: _t('required_goods_clear_filters'),
+                            visualDensity: VisualDensity.compact,
+                            icon: const Icon(
+                              Icons.filter_alt_off,
+                              color: Colors.red,
+                              size: 18,
+                            ),
+                            onPressed: _clearColumnFilters,
+                          ),
+                        )
+                      : null,
                   initialWidth: 110,
                   minWidth: 90,
                   maxWidth: 180,
@@ -3962,6 +4103,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
             fontSize: 12,
           ),
         ),
+        const SizedBox.shrink(),
         Text(
           isGlass
               ? '${_t('المساحة الإجمالية')}: ${totalGlassArea.toStringAsFixed(2)} m²'
@@ -4098,7 +4240,12 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
                 )
               : null,
         ),
-        _desktopTextCell(_itemMeta(item), isDark: isDark, maxLines: 3),
+        _desktopColorCell(item.colorName, isDark),
+        _desktopTextCell(
+          _itemMeta(item, includeColor: false),
+          isDark: isDark,
+          maxLines: 3,
+        ),
         _desktopTextCell(
           _actualRequiredLabel(item),
           isDark: isDark,
@@ -4145,8 +4292,6 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     final details = <String>[
       if ((child.profileCode ?? '').trim().isNotEmpty)
         '${_t('الكود')}: ${child.profileCode}',
-      if ((child.colorName ?? '').trim().isNotEmpty)
-        '${_t('اللون')}: ${_t(child.colorName!)}',
       if ((child.length ?? 0) > 0) '${_t('القياس')}: ${child.length}',
     ].join(' • ');
 
@@ -4164,6 +4309,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           subtitle: _t('مكوّن داخل الكِت'),
           isDark: isDark,
         ),
+        _desktopColorCell(child.colorName, isDark),
         _desktopTextCell(details, isDark: isDark, maxLines: 2),
         _desktopTextCell(
           '${_roundQuantity(child.purchaseQuantity, child.unit)} ${_t(child.unit)}',
@@ -4198,6 +4344,28 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           fontWeight: FontWeight.w700,
         ),
         const SizedBox.shrink(),
+      ],
+    );
+  }
+
+  Widget _desktopColorCell(String? colorName, bool isDark) {
+    final label = _colorLabel(colorName);
+    if (label.isEmpty) return _desktopTextCell('-', isDark: isDark);
+    return Row(
+      children: [
+        Icon(
+          Icons.palette_outlined,
+          size: 15,
+          color: isDark ? Colors.white54 : Colors.blueGrey.shade400,
+        ),
+        const SizedBox(width: 5),
+        Expanded(
+          child: _desktopTextCell(
+            label,
+            isDark: isDark,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ],
     );
   }
@@ -5076,6 +5244,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
   }
 
   bool _bomRowIsGood(BomItem bom, AggregatedGoodItem item) {
+    if (item.sourceBoms.contains(bom)) return true;
     if (bom.originalName != item.originalName) return false;
     return item.catalogItemId == null ||
         bom.catalogItemId == item.catalogItemId;
@@ -5120,11 +5289,23 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
           }
         }
       } else if (isFrame) {
+        final hadSideCovers = model.hasSideCovers;
+        final oldFrame = model.activeFrameOverride;
         model.applyFrameOverride(
           section,
           sliding: sliding,
           manualSelection: true,
         );
+        // A frame without a separate cover removes the side cover; leaving
+        // such a frame for one that takes a cover adds it.
+        final keepCovers = sideCoversAfterFrameSwap(
+          hadSideCovers: hadSideCovers,
+          oldFrame: oldFrame,
+          newFrame: section,
+        );
+        if (keepCovers != model.hasSideCovers) {
+          model.setSideCoversAfterFrameSwap(keepCovers);
+        }
         await model.syncFrameReinforcement();
       } else {
         model.applySashOverride(
@@ -5141,11 +5322,226 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     if (mounted) await _loadAndAggregate();
   }
 
+  /// The warehouse snapshot keyed the way [ProfileSelectorDialog] reads it
+  /// (`Section|id|colour`).
+  Map<String, double> _selectorWarehouseStock() {
+    final pattern = RegExp(r'^(.+)_(\d+)_(\d+)$');
+    return {
+      for (final entry in _mainWarehouseStock.entries)
+        if (pattern.firstMatch(entry.key) case final match?)
+          '${match.group(1)}|${match.group(2)}|${match.group(3)}': entry.value,
+    };
+  }
+
+  /// Writes the replacement of a side cover or of another profile (parclose,
+  /// battement, division...) into each order line that uses it, then
+  /// recalculates the goods.
+  Future<void> _replaceComponentInOrder(
+    List<(ProductBreakdown, BomItem)> affected,
+    Map<String, dynamic> section,
+    ProfileSwapKind kind,
+  ) async {
+    final saved = <int>{};
+    final catalogCache = <String, WindowModel>{};
+    for (final (pb, bom) in affected) {
+      final detailId = pb.detailId;
+      final savedMap = pb.modelMap;
+      if (detailId == null || savedMap == null || !saved.add(detailId)) {
+        continue;
+      }
+      final model = WindowModel(db: widget.db);
+      await _applyWindowModelWithCatalogCache(
+        model,
+        Map<String, dynamic>.from(savedMap),
+        catalogCache,
+      );
+      final role = (bom.roleKey ?? '').trim().toLowerCase();
+      final roleText = '${bom.roleKey ?? ''} ${bom.originalName}'.toLowerCase();
+      if (kind == ProfileSwapKind.sideCover) {
+        model.sideCoverOverride = section;
+        model.selectedSideCover = AluminumSection.fromMap(section);
+        model.componentOverrides['الغطاء الجانبي (Side Cover)'] = section;
+        model.componentOverrides[bom.overrideKey ?? bom.originalName] = section;
+      } else if (role.startsWith('sash_lateral') || role == 'lateral') {
+        model.applySlidingMontantOverride(
+          section,
+          central: false,
+          manualSelection: true,
+        );
+      } else if (role.startsWith('sash_central') || role == 'central') {
+        model.applySlidingMontantOverride(
+          section,
+          central: true,
+          manualSelection: true,
+        );
+      } else if (role == 'glazing_bead' ||
+          roleText.contains('parclose') ||
+          roleText.contains('باكيت') ||
+          roleText.contains('بيركلوز')) {
+        // The row is the whole parclose family: every parclose of the
+        // drawing takes the choice.
+        model.componentOverrides.removeWhere((key, _) {
+          final lower = key.toLowerCase();
+          return lower.contains('parclose') ||
+              key.contains('باكيت') ||
+              key.contains('بيركلوز');
+        });
+        model.componentOverrides['باكيت الزجاج (Parclose)'] = section;
+      } else if (role == 'plant' || roleText.contains('plinthe')) {
+        model.componentOverrides['بلانت (Plinthe)'] = section;
+        model.componentOverrides[bom.overrideKey ?? bom.originalName] = section;
+      } else {
+        model.componentOverrides[bom.overrideKey ?? bom.originalName] = section;
+      }
+      await model.updateGlassGasket();
+      await widget.db.updateCommandeDetailPartitions(
+        detailId,
+        jsonEncode({...savedMap, ...model.toMap()}),
+      );
+    }
+    if (mounted) await _loadAndAggregate();
+  }
+
+  /// Replaces a profile row with one of its compatible alternatives, like
+  /// the drawing page: the same role, from the series and material of the
+  /// row (a frame lists the frames, a parclose the parcloses).
+  Future<void> _showProfileReplacementDialog(
+    AggregatedGoodItem item,
+    List<(ProductBreakdown, BomItem)> affected,
+  ) async {
+    void showMessage(String key) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_t(key))));
+    }
+
+    if (affected.isEmpty) {
+      showMessage('required_goods_no_alternative');
+      return;
+    }
+    final (firstProduct, bom) = affected.first;
+    final model = firstProduct.model;
+    final kind = profileSwapKind(bom);
+    final rowText = '${bom.originalName} ${item.originalName}'.toLowerCase();
+    if (kind == ProfileSwapKind.frame &&
+        (rowText.contains('لجهة بروفيل الزاوية') ||
+            rowText.contains('côté angle') ||
+            rowText.contains('إطار جهة'))) {
+      showMessage('إطار هذه الجهة يتبع ربط الإطارات: غيّره من صفحة الرسم.');
+      return;
+    }
+    final sliding =
+        rowText.contains('منزلق') ||
+        rowText.contains('coulissant') ||
+        rowText.contains('sliding') ||
+        (kind == ProfileSwapKind.frame && model.usesSlidingPrimaryProfiles);
+    final seriesId =
+        bom.sourceSeriesId ??
+        (sliding
+            ? (model.activeSlidingSeries?.id ?? model.activeSeries?.id)
+            : model.activeSeries?.id);
+    final materialType = (bom.materialType ?? '').trim().isNotEmpty
+        ? bom.materialType!
+        : ((sliding ? model.isSlidingPVC : model.isPVC) ? 'PVC' : 'Aluminium');
+    final roleKeys = profileSwapRoleKeys(bom);
+    if (seriesId == null || roleKeys.isEmpty) {
+      showMessage('required_goods_no_alternative');
+      return;
+    }
+    final isFrame = kind == ProfileSwapKind.frame;
+    final isFrameOrSash = isFrame || kind == ProfileSwapKind.sash;
+
+    bool accepted(Map<String, dynamic> candidate) {
+      if (!profileSwapMaterialMatches(candidate, materialType)) return false;
+      if (!isFrame) return true;
+      // Every drawing using the row must take the frame. The side cover is
+      // left out: it follows the new frame (see _replaceProfileInOrder).
+      return affected.every(
+        (entry) => entry.$1.model.frameFitsCurrentDrawing(
+          candidate,
+          sliding: sliding,
+          ignoreSideCover: true,
+        ),
+      );
+    }
+
+    final selected = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => ProfileSelectorDialog(
+        profileType: switch (kind) {
+          ProfileSwapKind.frame => 'frame',
+          ProfileSwapKind.sash => 'sash',
+          ProfileSwapKind.sideCover => 'side_cover',
+          ProfileSwapKind.other =>
+            (bom.selectorType ?? '').trim().isNotEmpty
+                ? bom.selectorType!
+                : bom.originalName,
+        },
+        category: 'profile',
+        seriesId: seriesId,
+        materialType: materialType,
+        hasShutter: model.hasShutter,
+        isCaissonTunnel: model.isCaissonTunnel,
+        hasSideCovers: isFrame ? false : model.hasSideCovers,
+        multiFrameDrawing: model.getFrameRects().length > 1,
+        accessoryDrawingMode: isFrameOrSash
+            ? (sliding
+                  ? AccessoryDrawingMode.sliding
+                  : AccessoryDrawingMode.opening)
+            : null,
+        roleKeys: roleKeys,
+        hasSimpleGlassForReducer: model.hasSimpleGlassForReducer,
+        hasDoubleGlassForRules: model.hasDoubleGlassForRules,
+        targetThicknessMm: bom.targetThicknessMm,
+        mainWarehouseStock: _selectorWarehouseStock(),
+        stockColorId: item.colorId,
+        candidateFilter: accepted,
+      ),
+    );
+    if (selected == null || !mounted) return;
+
+    final colorId = item.colorId ?? _safeInt(model.selectedDbColor?['id']);
+    var price = await SqlDatabase().getSectionPrice(selected['id'], colorId);
+    if (price <= 0) {
+      price = _safeDouble(selected['price_dzd'] ?? selected['price']);
+    }
+    final section = Map<String, dynamic>.from(selected)
+      ..['calculated_price'] = price
+      ..['manual_selection'] = true
+      ..['user_selected'] = true
+      ..['automatic_selection'] = false;
+    if (isFrameOrSash) {
+      await _replaceProfileInOrder(
+        affected,
+        section,
+        item.catalogItemId,
+        isFrame: isFrame,
+        sliding: sliding,
+        sidesOnly: false,
+      );
+    } else {
+      await _replaceComponentInOrder(affected, section, kind);
+    }
+  }
+
   Future<void> _showSectionSelectionDialog(
     AggregatedGoodItem item,
     String category,
   ) async {
     if (_productBreakdowns.isEmpty) return;
+    // The order lines whose BOM holds this row.
+    final affected = <(ProductBreakdown, BomItem)>[
+      for (final pb in _productBreakdowns)
+        for (final bom in pb.bomItems
+            .where((bom) => _bomRowIsGood(bom, item))
+            .take(1))
+          (pb, bom),
+    ];
+    if (category.toLowerCase() != 'accessory') {
+      await _showProfileReplacementDialog(item, affected);
+      return;
+    }
+
     final model = _productBreakdowns.first.model;
     final activeSeries = model.activeSlidingSeries ?? model.activeSeries;
     if (activeSeries == null) return;
@@ -5154,194 +5550,27 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     final dbInstance = await widget.db.db;
     if (dbInstance == null) return;
 
-    final origLower = item.originalName.toLowerCase();
-
-    final isAccessory = category.toLowerCase() == 'accessory';
-    // The order lines whose BOM holds this row. A frame row offers frames
-    // only, a sash row sashes only, and only those the drawing accepts.
-    final affected = <(ProductBreakdown, BomItem)>[
-      for (final pb in _productBreakdowns)
-        for (final bom in pb.bomItems
-            .where((bom) => _bomRowIsGood(bom, item))
-            .take(1))
-          (pb, bom),
-    ];
-    final rowKind = affected.isEmpty
-        ? ''
-        : (affected.first.$2.selectorType ?? '').trim().toLowerCase();
-    final isFrameRow = !isAccessory && rowKind == 'frame';
-    final isSashRow = !isAccessory && rowKind == 'sash';
-    final rowSliding =
-        origLower.contains('منزلق') ||
-        origLower.contains('coulissant') ||
-        origLower.contains('sliding');
-    final isAngleSideRow =
-        origLower.contains('لجهة بروفيل الزاوية') ||
-        origLower.contains('côté angle');
-    final isSideRow = isAngleSideRow || origLower.contains('إطار جهة');
-    final rowSeriesId = affected.isEmpty
-        ? null
-        : affected.first.$2.sourceSeriesId;
     // Accessories are catalogue products, not aluminium Sections.  Looking
     // them up in Sections made the change sheet offer an unrelated profile;
     // the next BOM refresh then correctly discarded that invalid selection.
-    final rawSections = isAccessory
-        ? await dbInstance.query(
-            'Accessories',
-            where:
-                '(is_active = 1 OR is_active IS NULL) AND '
-                '(series_id = ? OR series_id IS NULL OR series_id = 0 OR '
-                "(',' || REPLACE(COALESCE(series_ids, ''), ' ', '') || ',') LIKE ?)",
-            whereArgs: [activeSeries.id, '%,${activeSeries.id},%'],
-            orderBy: 'is_default DESC, id ASC',
-          )
-        : await dbInstance.query(
-            'Sections',
-            where: 'series_id = ? AND (is_active = 1 OR is_active IS NULL)',
-            whereArgs: [rowSeriesId ?? activeSeries.id],
-          );
+    // The rule engine validates the saved choice. This list deliberately
+    // contains only active products compatible with the selected series.
+    final filteredSections = await dbInstance.query(
+      'Accessories',
+      where:
+          '(is_active = 1 OR is_active IS NULL) AND '
+          '(series_id = ? OR series_id IS NULL OR series_id = 0 OR '
+          "(',' || REPLACE(COALESCE(series_ids, ''), ' ', '') || ',') LIKE ?)",
+      whereArgs: [activeSeries.id, '%,${activeSeries.id},%'],
+      orderBy: 'is_default DESC, id ASC',
+    );
 
-    if (rawSections.isEmpty) {
+    if (filteredSections.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_t('لا توجد قطاعات متوفرة لهذه السلسلة'))),
       );
       return;
-    }
-
-    List<Map<String, dynamic>> filteredSections = [];
-
-    if (isAccessory) {
-      // The rule engine validates the saved choice. This list deliberately
-      // contains only active products compatible with the selected series.
-      filteredSections = List<Map<String, dynamic>>.from(rawSections);
-    } else if (isFrameRow && isSideRow) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _t('إطار هذه الجهة يتبع ربط الإطارات: غيّره من صفحة الرسم.'),
-          ),
-        ),
-      );
-      return;
-    } else if (isFrameRow || isSashRow) {
-      filteredSections = rawSections.where((s) {
-        final type = (s['type'] ?? '').toString().trim().toLowerCase();
-        if (type != rowKind) return false;
-        if (isSashRow) return true;
-        // The frames that every drawing using this row would accept.
-        return affected.every(
-          (entry) =>
-              entry.$1.model.frameFitsCurrentDrawing(s, sliding: rowSliding),
-        );
-      }).toList();
-      if (filteredSections.isEmpty) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_t('لا يوجد بديل يقبله الرسم لهذا القطاع'))),
-        );
-        return;
-      }
-    } else if (origLower.contains('rail') || origLower.contains('سكة')) {
-      // 1. السكة Rail: جلب نوع rail فقط واستبعاد الإطارات Cadre 2 Rail / Cadre 3 Rail
-      filteredSections = rawSections.where((s) {
-        final t = (s['type'] ?? '').toString().toLowerCase();
-        final n = (s['name'] ?? '').toString().toLowerCase();
-        return (t == 'rail' || t.contains('rail') || n.startsWith('rail')) &&
-            !t.contains('frame') &&
-            !t.contains('cadre') &&
-            !n.contains('cadre') &&
-            !n.contains('إطار');
-      }).toList();
-    } else if (origLower.contains('réducteur') ||
-        origLower.contains('ريديكتور') ||
-        origLower.contains('reducteur') ||
-        origLower.contains('مخفض')) {
-      // 2. الريديكتور Réducteur: جلب كود 67114 أو reducteur واستبعاد الإطارات والسكك
-      filteredSections = rawSections.where((s) {
-        final t = (s['type'] ?? '').toString().toLowerCase();
-        final n = (s['name'] ?? '').toString().toLowerCase();
-        final c = (s['code'] ?? '').toString().toLowerCase();
-        return (c.contains('67114') ||
-                t.contains('reduct') ||
-                n.contains('reduct') ||
-                n.contains('مخفض') ||
-                n.contains('ريديكتور')) &&
-            !t.contains('frame') &&
-            !t.contains('cadre') &&
-            !t.contains('rail') &&
-            !n.contains('cadre') &&
-            !n.contains('إطار') &&
-            !n.contains('rail') &&
-            !n.contains('سكة');
-      }).toList();
-    } else if (origLower.contains('side cover') ||
-        origLower.contains('غطاء جانبي') ||
-        origLower.contains('couvre')) {
-      // 3. الغطاء الجانبي Couvre-joint
-      filteredSections = rawSections.where((s) {
-        final t = (s['type'] ?? '').toString().toLowerCase();
-        final n = (s['name'] ?? '').toString().toLowerCase();
-        return t.contains('couvre') ||
-            t.contains('side_cover') ||
-            n.contains('couvre') ||
-            n.contains('جانبي') ||
-            n.contains('غطاء');
-      }).toList();
-    } else if (origLower.contains('sash lateral') ||
-        origLower.contains('قائم جانبي') ||
-        origLower.contains('latéral') ||
-        origLower.contains('lateral')) {
-      // 4. القائم الجانبي Ouvrant Latéral: مطابقة الكود 67108 (المدعم) والكود 67104 (غير المدعم)
-      filteredSections = rawSections.where((s) {
-        final c = (s['code'] ?? '').toString().toLowerCase();
-        final n = (s['name'] ?? '').toString().toLowerCase();
-        final t = (s['type'] ?? '').toString().toLowerCase();
-        return c.contains('67108') ||
-            c.contains('67104') ||
-            c.endsWith('108') ||
-            c.endsWith('104') ||
-            ((t.contains('sash') || t.contains('ouvrant')) &&
-                (n.contains('latéral') ||
-                    n.contains('lateral') ||
-                    n.contains('جانبي')) &&
-                !n.contains('central') &&
-                !n.contains('chicane') &&
-                !c.contains('105') &&
-                !c.contains('107'));
-      }).toList();
-    } else if (origLower.contains('sash central') ||
-        origLower.contains('قائم وسطي') ||
-        origLower.contains('central') ||
-        origLower.contains('chicane')) {
-      // 5. القائم الوسطي Ouvrant Central: تصفية القوائم الوسطية واستبعاد الجانبي
-      filteredSections = rawSections.where((s) {
-        final t = (s['type'] ?? '').toString().toLowerCase();
-        final n = (s['name'] ?? '').toString().toLowerCase();
-        final c = (s['code'] ?? '').toString().toLowerCase();
-        return (t.contains('sash') || t.contains('ouvrant')) &&
-            (t.contains('central') ||
-                n.contains('central') ||
-                n.contains('وسطي') ||
-                n.contains('chicane') ||
-                c.contains('105') ||
-                c.contains('107')) &&
-            !n.contains('latéral') &&
-            !n.contains('جانبي');
-      }).toList();
-    } else if (category == 'frame') {
-      // الإطار Frame
-      filteredSections = rawSections.where((s) {
-        final t = (s['type'] ?? '').toString().toLowerCase();
-        return t.contains('frame') || t.contains('cadre') || t.contains('إطار');
-      }).toList();
-    } else {
-      filteredSections = List.from(rawSections);
-    }
-
-    if (filteredSections.isEmpty) {
-      filteredSections = List.from(rawSections);
     }
 
     if (!mounted) return;
@@ -5433,34 +5662,14 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
 
                         final mutableSec = Map<String, dynamic>.from(sec);
                         mutableSec['calculated_price'] = price;
-                        if (isFrameRow || isSashRow) {
-                          await _replaceProfileInOrder(
-                            affected,
-                            mutableSec,
-                            item.catalogItemId,
-                            isFrame: isFrameRow,
-                            sliding: rowSliding,
-                            sidesOnly: isSideRow,
-                          );
-                          return;
-                        }
-                        if (isAccessory) {
-                          // A replacement selected from this sheet is an
-                          // explicit user decision. BomEngineV2 keeps it if
-                          // it is active and compatible with this series.
-                          mutableSec['manual_selection'] = true;
-                        }
+                        // A replacement selected from this sheet is an
+                        // explicit user decision. BomEngineV2 keeps it if
+                        // it is active and compatible with this series.
+                        mutableSec['manual_selection'] = true;
 
                         for (var pb in _productBreakdowns) {
                           pb.model.componentOverrides[item.originalName] =
                               mutableSec;
-                          if (category == 'frame') {
-                            pb.model.frameOverride = mutableSec;
-                            pb.model.slidingFrameOverride = mutableSec;
-                          } else if (origLower.contains('side cover') ||
-                              origLower.contains('غطاء جانبي')) {
-                            pb.model.sideCoverOverride = mutableSec;
-                          }
                         }
 
                         _loadAndAggregate();
@@ -6018,12 +6227,13 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
     return _purchaseQuantityLabel(item);
   }
 
-  String _itemMeta(AggregatedGoodItem item) {
+  String _itemMeta(AggregatedGoodItem item, {bool includeColor = true}) {
     final parts = <String>[];
     if (item.profileCode != null && item.profileCode!.trim().isNotEmpty) {
       parts.add('${_t('الكود')}: ${item.profileCode}');
     }
-    if (item.category != 'glass' &&
+    if (includeColor &&
+        item.category != 'glass' &&
         item.category != 'panneau' &&
         item.colorName != null &&
         item.colorName!.trim().isNotEmpty) {

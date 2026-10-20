@@ -82,7 +82,18 @@ extension _MaterialTable on _MaterialConsumptionScreenState {
       final item = byKey[key];
       if (item != null && used.add(key)) ordered.add(item);
     }
-    for (final item in items) {
+    // Profiles follow the shared display order of the required-goods page.
+    final remaining = section == 'profile'
+        ? sortedByProfileDisplayRank(
+            items,
+            (item) => profileDisplayRank(
+              roleKey: item.roleKey,
+              selectorType: item.selectorType,
+              originalName: item.originalName,
+            ),
+          )
+        : items;
+    for (final item in remaining) {
       final key = _materialRowKey(item);
       if (used.add(key)) ordered.add(item);
     }

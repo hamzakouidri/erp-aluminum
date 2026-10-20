@@ -18,6 +18,7 @@ import 'package:database_data/Commande/Systeme/model.dart'; // نموذج بيا
 import 'package:database_data/Commande/Systeme/calculate_component.dart'; // منطق توليد قائمة المكونات (BOM)
 import 'package:database_data/Commande/Systeme/bom_engine_v2.dart';
 import 'package:database_data/Commande/Systeme/parclose_cut_mode_selector.dart';
+import 'package:database_data/Commande/Systeme/profile_display_order.dart';
 import 'package:database_data/Commande/window_painter.dart'; // رسّام يعرض شكل النافذة (Custom Painter)
 import 'package:database_data/Commande/Systeme/profile_selector_dialog.dart'; // نافذة اختيار بروفيل/مكون بدي
 import 'package:provider/provider.dart'; // لإدارة حالة الإعدادات العامة (اللغة...)
