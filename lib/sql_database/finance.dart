@@ -870,12 +870,11 @@ extension SqlDatabaseFinance on SqlDatabase {
       WorkerPushNotificationService.instance
           .sendManagerEvent(
             eventType: isPayment ? 'payments' : 'cashbox',
-            title: isPayment ? 'حركة دفع جديدة' : 'حركة صندوق جديدة',
-            body: '$description - ${amount.toStringAsFixed(2)} د.ج',
             data: {
               'treasury_id': res.toString(),
               'transaction_type': transactionType,
               'amount': amount.toString(),
+              'description': description,
             },
           )
           .catchError((_) {}),

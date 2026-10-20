@@ -7,6 +7,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:database_data/Commande/Systeme/installation_fees.dart';
 import '../settings/app_settings.dart';
+import '../settings/localization.dart';
+import 'notification_texts.dart';
 import 'app_admin_status_service.dart';
 import 'supabase_workshop_sync_service.dart';
 
@@ -474,6 +476,25 @@ class PriceSyncService {
     final publicationId = inserted['id']?.toString() ?? '';
 
     final category = categoryFor(categoryKey);
+    final englishTitle = Localization.translate(
+      category.titleAr,
+      AppLanguage.english,
+    );
+    // Each manager's device gets the text in its own language: the server
+    // picks the category title matching the language stored with the token.
+    final data = {
+      'category': categoryKey,
+      'publication_id': publicationId,
+      'category_title_ar': category.titleAr,
+      'category_title_fr': category.titleFr,
+      'category_title_en': englishTitle == category.titleAr
+          ? category.titleFr
+          : englishTitle,
+    };
+    final fallback = NotificationTexts.fromPushData({
+      ...data,
+      'type': 'price_publication',
+    }, await AppSettingsProvider.loadSavedLanguage())!;
     try {
       await client.functions.invoke(
         'send-worker-assignment',
@@ -481,11 +502,9 @@ class PriceSyncService {
           'audience': 'all_managers',
           'event_type': 'price_publication',
           'preference_type': 'prices',
-          'title': 'أسعار جديدة متوفرة',
-          'body':
-              'نشر مدير التطبيق تحديثاً في: ${category.titleAr}. '
-              'افتح التطبيق لقبوله أو تجاهله.',
-          'data': {'category': categoryKey, 'publication_id': publicationId},
+          'title': fallback.title,
+          'body': fallback.body,
+          'data': data,
         },
       );
     } catch (error) {

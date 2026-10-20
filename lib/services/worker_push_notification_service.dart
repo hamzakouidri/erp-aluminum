@@ -7,6 +7,9 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../firebase_options.dart';
+import '../settings/app_settings.dart';
+import '../settings/localization.dart';
+import 'notification_texts.dart';
 import 'order_notification_service.dart';
 import 'supabase_workshop_sync_service.dart';
 
@@ -77,13 +80,49 @@ class WorkerPushNotificationService {
       // The download above applies the new prices and shows the in-app
       // price notification itself; showing this one too would duplicate it.
       if (type == 'prices') return;
-      final notification = message.notification;
-      OrderNotificationService().showAssignmentNotification(
-        title: notification?.title ?? 'مهمة جديدة',
-        body: notification?.body ?? 'تم إسناد عمل جديد إليك',
-        data: message.data,
-      );
+      unawaited(_showForegroundPush(message));
     });
+    AppSettingsProvider.onLanguageChanged = (_) {
+      unawaited(_registerCurrentTokenWithRetry());
+    };
+  }
+
+  /// The server already wrote the text in this device's language; rebuilding
+  /// it from the data still follows a language changed since registration.
+  Future<void> _showForegroundPush(RemoteMessage message) async {
+    final lang = await AppSettingsProvider.loadSavedLanguage();
+    final text = NotificationTexts.fromPushData(message.data, lang);
+    final notification = message.notification;
+    await OrderNotificationService().showAssignmentNotification(
+      title:
+          text?.title ??
+          notification?.title ??
+          Localization.translate('notification.generic.title', lang),
+      body:
+          text?.body ??
+          notification?.body ??
+          Localization.translate('notification.generic.body', lang),
+      data: message.data,
+    );
+  }
+
+  static Future<Map<String, String>> _fallbackText(
+    String eventType,
+    Map<String, String> data,
+  ) async {
+    final lang = await AppSettingsProvider.loadSavedLanguage();
+    final text = NotificationTexts.fromPushData({
+      ...data,
+      'type': eventType,
+    }, lang);
+    return {
+      'title':
+          text?.title ??
+          Localization.translate('notification.generic.title', lang),
+      'body':
+          text?.body ??
+          Localization.translate('notification.generic.body', lang),
+    };
   }
 
   void setNotificationTapHandler(void Function(Map<String, dynamic>) handler) {
@@ -170,16 +209,29 @@ class WorkerPushNotificationService {
       return;
     }
     final platform = kIsWeb ? 'web' : Platform.operatingSystem;
+    // The server writes the text of a push shown while the app is closed, so
+    // it needs the language chosen on this device.
+    final language = NotificationTexts.languageCode(
+      await AppSettingsProvider.loadSavedLanguage(),
+    );
+    final params = {
+      'requested_token': token,
+      'requested_workshop_id': workshopId,
+      'requested_platform': platform,
+    };
     try {
       // Moves a token previously owned by another account on this phone.
       await Supabase.instance.client.rpc(
         'register_push_token',
-        params: {
-          'requested_token': token,
-          'requested_workshop_id': workshopId,
-          'requested_platform': platform,
-        },
+        params: {...params, 'requested_language': language},
       );
+      return;
+    } catch (error) {
+      debugPrint('register_push_token with language unavailable: $error');
+    }
+    try {
+      // Databases where push_notifications.sql predates the language column.
+      await Supabase.instance.client.rpc('register_push_token', params: params);
       return;
     } catch (error) {
       // Older databases without supabase/push_notifications.sql applied.
@@ -210,6 +262,7 @@ class WorkerPushNotificationService {
         'order_id': orderId,
         'order_number': orderNumber,
         'quantity': quantity,
+        'data': {'quantity': quantity.toString()},
       },
     );
     _verifyPushResponse(response.data);
@@ -258,22 +311,24 @@ class WorkerPushNotificationService {
     });
   }
 
+  /// [data] carries language-neutral fields (see [NotificationTexts]); each
+  /// recipient gets the text in its own language. The sender's text is only a
+  /// fallback for a server function that predates the templates.
   Future<void> sendManagerEvent({
     required String eventType,
-    required String title,
-    required String body,
     Map<String, String> data = const {},
   }) async {
     final workshopId = SupabaseWorkshopSyncService().currentWorkshopUuid;
     if (workshopId.isEmpty) return;
+    final fallback = await _fallbackText(eventType, data);
     final response = await Supabase.instance.client.functions.invoke(
       'send-worker-assignment',
       body: {
         'workshop_id': workshopId,
         'audience': 'managers',
         'event_type': eventType,
-        'title': title,
-        'body': body,
+        'title': fallback['title'],
+        'body': fallback['body'],
         'data': data,
       },
     );
@@ -296,18 +351,21 @@ class WorkerPushNotificationService {
       _ => throw ArgumentError.value(action, 'action'),
     };
     final eventType = 'order_$normalizedAction';
-    final title = switch (normalizedAction) {
-      'created' => 'طلبية جديدة في الورشة',
-      'updated' => 'تم تعديل طلبية',
-      _ => 'تم حذف طلبية',
-    };
     final displayCode = orderCode.trim().isEmpty
         ? orderId.toString()
         : orderCode.trim();
-    final cleanClient = clientName.trim().isEmpty ? 'عميل' : clientName.trim();
-    final body =
-        '$cleanClient | #$displayCode'
-        '${author.trim().isEmpty ? '' : '\nبواسطة: ${author.trim()}'}';
+    // An empty client name is rendered as "Customer" in each reader's
+    // language rather than in the sender's.
+    final cleanClient = clientName.trim();
+    final fallback = NotificationTexts.order(
+      action: normalizedAction,
+      clientName: cleanClient,
+      orderCode: displayCode,
+      author: author,
+      lang: await AppSettingsProvider.loadSavedLanguage(),
+    );
+    final title = fallback.title;
+    final body = fallback.body;
     final eventId =
         '${eventType}_${orderId}_${DateTime.now().microsecondsSinceEpoch}';
     final senderUserId = Supabase.instance.client.auth.currentUser?.id ?? '';

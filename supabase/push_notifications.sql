@@ -7,6 +7,17 @@ create table if not exists public.device_push_tokens (
   updated_at timestamptz not null default now()
 );
 
+-- Language chosen in the app on this device (ar / fr / en). The push
+-- function writes each notification in it, because a push shown by the
+-- system while the app is closed cannot be translated on the phone.
+alter table public.device_push_tokens
+  add column if not exists language text not null default 'ar';
+alter table public.device_push_tokens
+  drop constraint if exists device_push_tokens_language_check;
+alter table public.device_push_tokens
+  add constraint device_push_tokens_language_check
+  check (language in ('ar', 'fr', 'en'));
+
 create index if not exists device_push_tokens_target_idx
   on public.device_push_tokens (workshop_id, user_id);
 
@@ -49,10 +60,14 @@ grant select, insert, update, delete on public.notification_preferences to authe
 -- RLS policy above forbids updating a row owned by the previous account, so
 -- a plain upsert failed and the new account never received pushes on that
 -- device. This function moves the token to the current member atomically.
+-- The three-argument version is replaced by one that also stores the
+-- language; keeping both would make the RPC call ambiguous.
+drop function if exists public.register_push_token(text, uuid, text);
 create or replace function public.register_push_token(
   requested_token text,
   requested_workshop_id uuid,
-  requested_platform text default 'android'
+  requested_platform text default 'android',
+  requested_language text default 'ar'
 )
 returns boolean
 language plpgsql
@@ -73,17 +88,22 @@ begin
     raise exception 'not a workshop member';
   end if;
 
-  insert into public.device_push_tokens (user_id, workshop_id, token, platform, updated_at)
+  insert into public.device_push_tokens
+    (user_id, workshop_id, token, platform, language, updated_at)
   values (auth.uid(), requested_workshop_id, trim(requested_token),
-          coalesce(nullif(trim(requested_platform), ''), 'android'), now())
+          coalesce(nullif(trim(requested_platform), ''), 'android'),
+          case when lower(trim(requested_language)) in ('ar', 'fr', 'en')
+               then lower(trim(requested_language)) else 'ar' end,
+          now())
   on conflict (token) do update
   set user_id = excluded.user_id,
       workshop_id = excluded.workshop_id,
       platform = excluded.platform,
+      language = excluded.language,
       updated_at = now();
   return true;
 end;
 $$;
 
-revoke all on function public.register_push_token(text, uuid, text) from public, anon;
-grant execute on function public.register_push_token(text, uuid, text) to authenticated;
+revoke all on function public.register_push_token(text, uuid, text, text) from public, anon;
+grant execute on function public.register_push_token(text, uuid, text, text) to authenticated;

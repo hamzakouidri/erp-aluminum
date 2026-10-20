@@ -6,6 +6,166 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
   headers: { "content-type": "application/json" },
 });
 
+type Lang = "ar" | "fr" | "en";
+
+// Mirrors lib/settings/locales/notification_keys.dart. A push shown by the
+// phone while the app is closed is displayed as sent, so the text is written
+// here in the language stored with each device token.
+const TEXTS: Record<string, Record<Lang, string>> = {
+  "generic.title": { ar: "تنبيه جديد", fr: "Nouvelle alerte", en: "New alert" },
+  "generic.body": {
+    ar: "حدث جديد في الورشة",
+    fr: "Nouvel événement dans l'atelier",
+    en: "New event in the workshop",
+  },
+  "order_created.title": {
+    ar: "📋 طلبية جديدة في الورشة",
+    fr: "📋 Nouvelle commande dans l'atelier",
+    en: "📋 New order in the workshop",
+  },
+  "order_updated.title": {
+    ar: "✏️ تعديل طلبية في الورشة",
+    fr: "✏️ Commande modifiée dans l'atelier",
+    en: "✏️ Order updated in the workshop",
+  },
+  "order_deleted.title": {
+    ar: "🗑️ تم حذف طلبية",
+    fr: "🗑️ Commande supprimée",
+    en: "🗑️ Order deleted",
+  },
+  "order.default_client": { ar: "عميل", fr: "Client", en: "Customer" },
+  "order.by": { ar: "بواسطة: {author}", fr: "Par : {author}", en: "By: {author}" },
+  "assignment.title": { ar: "مهمة جديدة", fr: "Nouvelle tâche", en: "New task" },
+  "assignment.body": {
+    ar: "تم إسناد {quantity} عنصر لك من الطلبية #{order}",
+    fr: "{quantity} élément(s) de la commande #{order} vous ont été assignés",
+    en: "{quantity} item(s) from order #{order} were assigned to you",
+  },
+  "prices.title": { ar: "تحديث الأسعار", fr: "Mise à jour des prix", en: "Price update" },
+  "prices.body": {
+    ar: "تم تحديث {count} سعر في إدارة الأسعار",
+    fr: "{count} prix mis à jour dans la gestion des prix",
+    en: "{count} prices updated in price management",
+  },
+  "price_publication.title": {
+    ar: "أسعار جديدة متوفرة",
+    fr: "Nouveaux prix disponibles",
+    en: "New prices available",
+  },
+  "price_publication.body": {
+    ar: "نشر مدير التطبيق تحديثاً في: {category}. افتح التطبيق لقبوله أو تجاهله.",
+    fr: "L'administrateur a publié une mise à jour : {category}. Ouvrez l'application pour l'accepter ou l'ignorer.",
+    en: "The administrator published an update: {category}. Open the app to accept or ignore it.",
+  },
+  "payments.title": { ar: "حركة دفع جديدة", fr: "Nouveau paiement", en: "New payment" },
+  "cashbox.title": {
+    ar: "حركة صندوق جديدة",
+    fr: "Nouveau mouvement de caisse",
+    en: "New cash movement",
+  },
+  "money.body": {
+    ar: "{description} - {amount} د.ج",
+    fr: "{description} - {amount} DA",
+    en: "{description} - {amount} DZD",
+  },
+  "delivery_plan.title": {
+    ar: "خطة توزيع جديدة",
+    fr: "Nouveau plan de distribution",
+    en: "New distribution plan",
+  },
+  "delivery_plan.body": {
+    ar: "تم إنشاء خطة توزيع للطلبية #{order}",
+    fr: "Un plan de distribution a été créé pour la commande #{order}",
+    en: "A distribution plan was created for order #{order}",
+  },
+  "delivered.title": { ar: "تم تسليم الطلبية", fr: "Commande livrée", en: "Order delivered" },
+  "delivered.body": {
+    ar: "تم تأكيد خطة التوزيع بنجاح",
+    fr: "Le plan de distribution a été confirmé",
+    en: "The distribution plan was confirmed",
+  },
+};
+
+const t = (key: string, lang: Lang, args: Record<string, string> = {}) =>
+  Object.entries(args).reduce(
+    (text, [name, value]) => text.replaceAll(`{${name}}`, value),
+    TEXTS[key]?.[lang] ?? TEXTS[key]?.ar ?? key,
+  );
+
+const asLang = (value: unknown): Lang =>
+  value === "fr" || value === "en" ? value : "ar";
+
+// Same rules as NotificationTexts.fromPushData in the application. Returns
+// null when the event lacks the fields, so the caller's own text is kept.
+function render(
+  eventType: string,
+  data: Record<string, string>,
+  lang: Lang,
+): { title: string; body: string } | null {
+  const field = (name: string) => (data[name] ?? "").trim();
+  if (eventType.startsWith("order_")) {
+    const action = field("action") || eventType.slice("order_".length);
+    const titleKey = action === "created"
+      ? "order_created.title"
+      : action === "deleted"
+      ? "order_deleted.title"
+      : "order_updated.title";
+    let body = field("client_name") || t("order.default_client", lang);
+    const code = field("order_code") || field("order_number");
+    if (code) body += `  |  #${code}`;
+    if (field("author")) body += `\n${t("order.by", lang, { author: field("author") })}`;
+    return { title: t(titleKey, lang), body };
+  }
+  switch (eventType) {
+    case "worker_assignment":
+      return {
+        title: t("assignment.title", lang),
+        body: t("assignment.body", lang, {
+          quantity: field("quantity") || "0",
+          order: field("order_number"),
+        }),
+      };
+    case "prices":
+      if (!field("count")) return null;
+      return {
+        title: t("prices.title", lang),
+        body: t("prices.body", lang, { count: field("count") }),
+      };
+    case "price_publication": {
+      const category = field(`category_title_${lang}`) ||
+        field("category_title_fr") || field("category");
+      return {
+        title: t("price_publication.title", lang),
+        body: t("price_publication.body", lang, { category }),
+      };
+    }
+    case "payments":
+    case "cashbox": {
+      if (!field("amount")) return null;
+      const amount = Number(field("amount"));
+      return {
+        title: t(`${eventType}.title`, lang),
+        body: t("money.body", lang, {
+          description: field("description"),
+          amount: Number.isFinite(amount) ? amount.toFixed(2) : field("amount"),
+        }),
+      };
+    }
+    case "deliveries":
+      if (field("kind") === "plan_created") {
+        return {
+          title: t("delivery_plan.title", lang),
+          body: t("delivery_plan.body", lang, { order: field("order_id") }),
+        };
+      }
+      if (field("kind") === "delivered") {
+        return { title: t("delivered.title", lang), body: t("delivered.body", lang) };
+      }
+      return null;
+  }
+  return null;
+}
+
 Deno.serve(async (req) => {
   try {
     const authorization = req.headers.get("authorization") ?? "";
@@ -94,10 +254,19 @@ Deno.serve(async (req) => {
       .in("user_id", allowed);
     const disabledUsers = new Set((disabled ?? []).map((row) => row.user_id));
     allowed = allowed.filter((userId) => !disabledUsers.has(userId));
-    let tokenQuery = admin.from("device_push_tokens")
-      .select("token").in("user_id", allowed);
-    if (!isGlobalAudience) tokenQuery = tokenQuery.eq("workshop_id", workshopId);
-    const { data: rawTokenRows } = await tokenQuery;
+    const selectTokens = (columns: string) => {
+      let query = admin.from("device_push_tokens")
+        .select(columns).in("user_id", allowed);
+      if (!isGlobalAudience) query = query.eq("workshop_id", workshopId);
+      return query;
+    };
+    // deno-lint-ignore no-explicit-any
+    let { data: rawTokenRows, error: tokenError }: { data: any[] | null; error: any } =
+      await selectTokens("token,language");
+    if (tokenError) {
+      // Database where push_notifications.sql predates the language column.
+      ({ data: rawTokenRows } = await selectTokens("token"));
+    }
     const tokenRows = [...new Map(
       (rawTokenRows ?? []).map((row) => [row.token, row]),
     ).values()];
@@ -118,11 +287,6 @@ Deno.serve(async (req) => {
     const orderNumber = Number(input.order_number ?? 0);
     const orderId = Number(input.order_id ?? 0);
     const quantity = Number(input.quantity ?? 0);
-    const title = audience !== "workers"
-      ? String(input.title ?? "تنبيه جديد") : "مهمة جديدة";
-    const body = audience !== "workers"
-      ? String(input.body ?? "حدث جديد في الورشة")
-      : `تم إسناد ${quantity} عنصر لك من الطلبية #${orderNumber}`;
     const data = Object.fromEntries(
       Object.entries(input.data ?? {}).map(([key, value]) => [key, String(value ?? "")]),
     );
@@ -130,7 +294,27 @@ Deno.serve(async (req) => {
     // client-supplied id for recipient filtering, but always forward it so a
     // foreground client can also reject its own event defensively.
     data.sender_user_id = user.id;
-    const results = await Promise.all((tokenRows ?? []).map(async ({ token }) => {
+    const textData: Record<string, string> = {
+      order_number: String(orderNumber),
+      order_id: String(orderId),
+      quantity: String(quantity),
+      ...data,
+    };
+    const textFor = (lang: Lang) => {
+      const rendered = render(
+        audience === "workers" ? "worker_assignment" : eventType,
+        textData,
+        lang,
+      );
+      if (rendered) return rendered;
+      // Unknown event: keep the caller's text (written in its language).
+      return {
+        title: String(input.title ?? t("generic.title", lang)),
+        body: String(input.body ?? t("generic.body", lang)),
+      };
+    };
+    const results = await Promise.all((tokenRows ?? []).map(async ({ token, language }) => {
+      const { title, body } = textFor(asLang(language));
       const response = await fetch(endpoint, {
         method: "POST",
         headers: {
