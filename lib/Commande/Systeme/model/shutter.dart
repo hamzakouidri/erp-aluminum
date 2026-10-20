@@ -1066,7 +1066,6 @@ extension WindowModelShutter on WindowModel {
     final previousBoxHeight = shutterBoxHeight;
     caissonTunnelHeight = value;
     _synchronizeZonesAfterShutterBoxChange(previousBoxHeight, shutterBoxHeight);
-    lastLayoutSize = null;
     _notifyModelListeners();
   }
 
@@ -1076,7 +1075,6 @@ extension WindowModelShutter on WindowModel {
     final previousBoxHeight = shutterBoxHeight;
     customShutterBoxHeight = value;
     _synchronizeZonesAfterShutterBoxChange(previousBoxHeight, shutterBoxHeight);
-    lastLayoutSize = null;
     _notifyModelListeners();
   }
 

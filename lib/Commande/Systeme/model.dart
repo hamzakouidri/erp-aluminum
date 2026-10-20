@@ -3986,6 +3986,39 @@ class WindowModel extends ChangeNotifier {
   /// tap, its slant/arch circles: never both at once.
   bool frameShapeMode = false;
 
+  /// The selected frame can show the slant/arch circles: a window without
+  /// sliding sashes, and in a coupled drawing only its first frame.
+  bool get canShapeSelectedFrame {
+    if (selection.type != SelectionType.frame || !canBeArchedOrSlanted) {
+      return false;
+    }
+    final key = selection.zoneId;
+    return key == null || key == 'frame:0' || getFrameRects().length <= 1;
+  }
+
+  /// Sets the frame mode after a tap selected something. A tap on a frame
+  /// shows its resize squares (green); a second quick tap on the same frame
+  /// ([isDoubleTap], with [frameKeyBeforeTap] the frame selected before
+  /// this tap) shows its slant/arch circles (orange). Anything else that is
+  /// selected leaves the frame mode.
+  void applyFrameTapMode({
+    required bool isDoubleTap,
+    String? frameKeyBeforeTap,
+  }) {
+    if (selection.type != SelectionType.frame) {
+      frameShapeMode = false;
+      return;
+    }
+    final key = selection.zoneId ?? 'frame:0';
+    frameShapeMode = isDoubleTap && frameKeyBeforeTap == key;
+    _notifySelectionChanged();
+  }
+
+  /// The selected frame key before a tap, for [applyFrameTapMode].
+  String? get selectedFrameKey => selection.type == SelectionType.frame
+      ? (selection.zoneId ?? 'frame:0')
+      : null;
+
   /// How far the last frame resize moved the whole drawing to keep it at
   /// the origin (growing from the left or the top). The view moves the
   /// camera back by as much, so the side dragged is the side that grows.
@@ -4561,8 +4594,8 @@ class WindowModel extends ChangeNotifier {
     }
   }
 
+  /// Fits and centres the drawing: only when the user asks for it.
   void centerDrawingOnCanvas() {
-    if (drawnLeft == null && drawnTop == null) return;
     drawnLeft = null;
     drawnTop = null;
     lastLayoutSize = null;
@@ -4831,7 +4864,8 @@ class WindowModel extends ChangeNotifier {
     height = newH;
     _resizeSideCoverSegments(oldWidth, oldHeight, newW, newH);
     synchronizeShutterAfterFrameResize(oldWidth, oldHeight);
-    lastLayoutSize = null; // أجبر إعادة حساب canvasScale عند تغيير الحجم
+    // The camera keeps its zoom and place: a new size never refits the
+    // drawing (the user zooms, pans or centres it).
     updateShutterDefaultsIfNeeded();
     notifyListeners();
   }
