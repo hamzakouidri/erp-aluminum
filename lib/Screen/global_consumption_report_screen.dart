@@ -137,7 +137,7 @@ class _GlobalConsumptionReportScreenState
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(32),
         textDirection: pw.TextDirection.rtl,
-        theme: pw.ThemeData.withFont(base: ttf),
+        theme: pw.ThemeData.withFont(base: ttf, bold: bold),
         footer: (_) => pw.Center(child: PdfBranding.footerMark(ttf)),
         build: (pw.Context context) {
           return [

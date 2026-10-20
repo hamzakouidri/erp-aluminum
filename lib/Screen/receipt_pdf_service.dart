@@ -127,6 +127,7 @@ class ReceiptPdfService {
         pageFormat: PdfPageFormat.a5,
         textDirection: pw.TextDirection.rtl,
         margin: const pw.EdgeInsets.all(20),
+        theme: pw.ThemeData.withFont(base: fontRegular, bold: fontBold),
         build: (context) {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.stretch,

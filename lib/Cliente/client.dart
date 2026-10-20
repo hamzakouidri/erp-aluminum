@@ -1252,15 +1252,13 @@ class _CustomersState extends State<Customers> {
   }
 
   Widget _buildSortableHeaderCell({
-    int flex = 1,
     required String label,
     required String colKey,
     required Color mutedColor,
   }) {
     final isSorted = _clientSortColumn == colKey;
-    return Expanded(
-      flex: flex,
-      child: InkWell(
+    // The table places each header in an Align: no Expanded here.
+    return InkWell(
         onTap: () {
           setState(() {
             if (_clientSortColumn == colKey) {
@@ -1307,7 +1305,6 @@ class _CustomersState extends State<Customers> {
             ],
           ),
         ),
-      ),
     );
   }
 

@@ -104,6 +104,7 @@ class SupplierLedgerPdfService {
         pageFormat: PdfPageFormat.a4,
         textDirection: pw.TextDirection.ltr,
         margin: const pw.EdgeInsets.all(30),
+        theme: pw.ThemeData.withFont(base: fontRegular, bold: fontBold),
         footer: (_) => pw.Center(child: PdfBranding.footerMark(fontRegular)),
         build: (context) {
           return [

@@ -97,6 +97,7 @@ class ClientLedgerPdfService {
         pageFormat: PdfPageFormat.a4,
         textDirection: pw.TextDirection.ltr, // _ar() visual order requires LTR run direction
         margin: const pw.EdgeInsets.all(30),
+        theme: pw.ThemeData.withFont(base: fontRegular, bold: fontBold),
         footer: (_) => pw.Center(child: PdfBranding.footerMark(fontRegular)),
         build: (context) {
           return [
