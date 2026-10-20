@@ -4943,6 +4943,16 @@ class CloudSyncService {
       }
       final configuration = await _db.exportWorkshopCatalogConfiguration();
       if (configuration.isEmpty) return;
+      // A device without series roles or accessory rules (a fresh install,
+      // another account) must not overwrite the workshop's rules with empty
+      // tables.
+      bool hasRows(String table) =>
+          configuration[table] is List &&
+          (configuration[table] as List).isNotEmpty;
+      if (!hasRows('SeriesDesignRoles') && !hasRows('CatalogItemRules')) {
+        await prefs.remove('has_pending_workshop_catalog_configuration');
+        return;
+      }
       await sync.saveWorkshopCatalogConfiguration(configuration);
       await prefs.remove('has_pending_workshop_catalog_configuration');
     } catch (error) {

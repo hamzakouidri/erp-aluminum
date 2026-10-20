@@ -2301,8 +2301,22 @@ extension SqlDatabaseSync on SqlDatabase {
     Map<String, dynamic> data,
   ) async {
     final configuration = <String, dynamic>{};
+    final myDb = await db;
     for (final table in SqlDatabase.workshopCatalogConfigurationTables) {
-      if (data.containsKey(table)) configuration[table] = data[table];
+      if (!data.containsKey(table)) continue;
+      final remote = data[table];
+      // An empty remote table never wipes local rules: a device or account
+      // without rules uploaded empty tables and every phone that synced
+      // afterwards lost its series roles and accessory rules.
+      if (remote is List && remote.isEmpty && myDb != null) {
+        try {
+          final local = await myDb.rawQuery(
+            'SELECT COUNT(*) AS n FROM $table',
+          );
+          if (((local.first['n'] as num?) ?? 0) > 0) continue;
+        } catch (_) {}
+      }
+      configuration[table] = remote;
     }
     if (configuration.isEmpty) return;
     // Configuration tables are replaceable: an explicit deletion made by the
