@@ -1525,6 +1525,7 @@ extension WindowModelZones on WindowModel {
 
   void clearSelection() {
     selection = SelectionInfo.none;
+    frameShapeMode = false;
     selectedHinge = null;
     activeSubZone = null;
     showZoneMenu = false;

@@ -2398,6 +2398,8 @@ extension WindowModelFrame on WindowModel {
       type: SelectionType.frame,
       zoneId: _frameSelectionKey(index),
     );
+    // A newly selected frame shows its resize squares first.
+    frameShapeMode = false;
     showZoneMenu = false;
     activeSubZone = null;
     _notifySelectionChanged();

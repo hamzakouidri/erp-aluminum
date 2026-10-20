@@ -11,7 +11,9 @@ import 'package:flutter/gestures.dart'
         GestureBinding,
         PointerScrollEvent,
         PointerSignalEvent,
+        kLongPressTimeout,
         kMiddleMouseButton,
+        kPrimaryMouseButton,
         kSecondaryMouseButton;
 import 'package:database_data/widgets/app_material.dart';
 import 'package:flutter/services.dart'
@@ -157,6 +159,15 @@ class _WindowViewState extends State<WindowView> {
 
   /// A drag with the wheel button only moves the view.
   bool _isMiddlePanning = false;
+
+  /// A left click in progress on the canvas, where and when it was pressed
+  /// (null once it moved too far to be a click). With the mouse the drag
+  /// recognizer wins after a single pixel, which used to swallow clicks
+  /// that moved slightly, so clicks are recognised from the raw pointer.
+  ({Offset position, Duration time})? _mouseClickStart;
+
+  /// How far (logical pixels) a mouse click may move and stay a click.
+  static const double _mouseClickSlop = 4.0;
   bool _isDraggingHinge = false;
   SashHingeEdge? _draggedHingeEdge;
   int _draggedHingeIndex = 0;
@@ -206,7 +217,14 @@ class _WindowViewState extends State<WindowView> {
   double _rightDrawerHandleTop = 15.0;
 
   String? _previousSelectionKey;
-  DateTime? _lastTapTime;
+  /// When the last canvas tap was released, as the pointer event's own
+  /// time stamp: a busy frame after the first tap (the panel opening) no
+  /// longer turns a quick double tap into two single taps.
+  Duration? _lastTapTime;
+
+  /// Release time of the latest pointer on the canvas (set before the tap
+  /// recognizer reports it).
+  Duration _lastPointerUpTime = Duration.zero;
   Offset? _lastTapPosition;
 
   // 🎨 Paintbrush Quick Apply Mode State
@@ -649,11 +667,10 @@ class _WindowViewState extends State<WindowView> {
                             widget.model.updateLayoutMetrics(
                               Size(constraints.maxWidth, constraints.maxHeight),
                             );
-                            return Stack(
-                              children: [
-                                GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onTapUp: (details) async {
+                            // A tap or click on the canvas: selects what is under it.
+                            Future<void> handleCanvasTap(
+                              TapUpDetails details,
+                            ) async {
                                     final modelPos = _getModelPos(
                                       details.localPosition,
                                     );
@@ -1320,10 +1337,10 @@ class _WindowViewState extends State<WindowView> {
                                       }
                                     }
 
-                                    final now = DateTime.now();
+                                    final now = _lastPointerUpTime;
                                     bool isDoubleTap = false;
                                     if (_lastTapTime != null &&
-                                        now.difference(_lastTapTime!) <
+                                        now - _lastTapTime! <
                                             const Duration(milliseconds: 450)) {
                                       if (_lastTapPosition != null &&
                                           (details.localPosition -
@@ -1336,24 +1353,34 @@ class _WindowViewState extends State<WindowView> {
                                     _lastTapTime = now;
                                     _lastTapPosition = details.localPosition;
                                     final frameKeyBeforeTap =
-                                        widget.model.selection.type ==
-                                            SelectionType.frame
-                                        ? (widget.model.selection.zoneId ??
-                                              'frame:0')
-                                        : null;
+                                        widget.model.selectedFrameKey;
+                                    // One tap on a frame: green resize squares.
+                                    // A second quick tap on it: orange slant/arch
+                                    // circles (a sliding window says why not).
                                     void updateFrameShapeMode() {
-                                      final selection = widget.model.selection;
-                                      if (selection.type !=
-                                          SelectionType.frame) {
-                                        widget.model.frameShapeMode = false;
-                                        return;
+                                      widget.model.applyFrameTapMode(
+                                        isDoubleTap: isDoubleTap,
+                                        frameKeyBeforeTap: frameKeyBeforeTap,
+                                      );
+                                      if (isDoubleTap &&
+                                          frameKeyBeforeTap != null &&
+                                          widget.model.selectedFrameKey ==
+                                              frameKeyBeforeTap &&
+                                          !widget.model.canBeArchedOrSlanted) {
+                                        ScaffoldMessenger.of(context)
+                                          ..hideCurrentSnackBar()
+                                          ..showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                _tr(
+                                                  'نظام المنزلق لا يدعم الشكل المائل والمقوس',
+                                                ),
+                                              ),
+                                              duration: const Duration(seconds: 2),
+                                              behavior: SnackBarBehavior.floating,
+                                            ),
+                                          );
                                       }
-                                      final key =
-                                          selection.zoneId ?? 'frame:0';
-                                      widget.model.frameShapeMode =
-                                          isDoubleTap &&
-                                          frameKeyBeforeTap == key;
-                                      widget.model.refreshUI();
                                     }
 
                                     final frameAtBorderHit = _frameAtBorder(
@@ -1365,17 +1392,19 @@ class _WindowViewState extends State<WindowView> {
                                         outerTap == DimensionTap.none &&
                                         innerTap == null &&
                                         mullionDimTap == null) {
-                                      // Double click on empty canvas brings the
-                                      // drawing back to the centre (the band
-                                      // under the frame keeps toggling the
-                                      // bottom wall).
-                                      final belowFrame =
-                                          modelPos.dy >=
-                                              widget.model.height - 30.0 &&
-                                          modelPos.dy <=
-                                              widget.model.height + 250.0;
-                                      if (isDoubleTap && !belowFrame) {
-                                        _resetDrawingZoom();
+                                      // The view never moves on its own, not
+                                      // even on a double click here: only the
+                                      // wheel, a drag or the centre button. A
+                                      // double click just under the frame
+                                      // still shows or hides the bottom wall.
+                                      final h = widget.model.height;
+                                      if (isDoubleTap &&
+                                          modelPos.dx >= 0 &&
+                                          modelPos.dx <= widget.model.width &&
+                                          modelPos.dy >= h &&
+                                          modelPos.dy <= h + 250.0) {
+                                        widget.model.toggleBottomWall();
+                                        return;
                                       }
                                       setState(() {
                                         _isDrawerOpen = false;
@@ -1409,7 +1438,10 @@ class _WindowViewState extends State<WindowView> {
 
                                     if (isDoubleTap) {
                                       final double h = widget.model.height;
-                                      if (modelPos.dy >= h - 30.0 &&
+                                      // Under the frame (not on its bottom
+                                      // profile, which shows the orange circles).
+                                      if (frameAtBorderHit == null &&
+                                          modelPos.dy >= h - 30.0 &&
                                           modelPos.dy <= h + 250.0) {
                                         widget.model.toggleBottomWall();
                                         return;
@@ -1492,6 +1524,20 @@ class _WindowViewState extends State<WindowView> {
                                         widget.model.clearSelection();
                                         _isLeftDrawerOpen = true;
                                       });
+                                    }
+                            }
+
+                            return Stack(
+                              children: [
+                                GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTapUp: (details) {
+                                    // Mouse clicks come from the Listener
+                                    // below, which also keeps a click that
+                                    // moved a pixel or two.
+                                    if (details.kind !=
+                                        PointerDeviceKind.mouse) {
+                                      handleCanvasTap(details);
                                     }
                                   },
                                   onSecondaryTapUp: (details) async {
@@ -1596,6 +1642,9 @@ class _WindowViewState extends State<WindowView> {
                                         widget.model.selection = SelectionInfo(
                                           type: SelectionType.frame,
                                         );
+                                        // The long press announces the
+                                        // slant/arch circles: show them.
+                                        widget.model.frameShapeMode = true;
                                         widget.model.showZoneMenu = false;
                                         widget.model.activeSubZone = null;
                                         widget.model.refreshUI();
@@ -1836,23 +1885,11 @@ class _WindowViewState extends State<WindowView> {
                                           details.localFocalPoint;
                                       const double hitRadius = 35.0;
 
-                                      final isFrameSelected =
-                                          widget.model.selection.type ==
-                                          SelectionType.frame;
                                       final frameResizeHandle =
                                           _frameResizeHandleAt(touchScreen);
                                       final canSlantOrArch =
-                                          isFrameSelected &&
                                           widget.model.frameShapeMode &&
-                                          widget.model.canBeArchedOrSlanted &&
-                                          (widget.model.selection.zoneId ==
-                                                  null ||
-                                              widget.model.selection.zoneId ==
-                                                  'frame:0' ||
-                                              widget.model
-                                                      .getFrameRects()
-                                                      .length <=
-                                                  1);
+                                          widget.model.canShapeSelectedFrame;
                                       if (frameResizeHandle != null) {
                                         _draggedFrameResizeHandle =
                                             frameResizeHandle;
@@ -2514,20 +2551,32 @@ class _WindowViewState extends State<WindowView> {
                                             handle ==
                                                 _FrameResizeHandle.bottomRight;
 
+                                        // A click on a handle that moves a
+                                        // pixel or two is a click (a second
+                                        // one shows the shape circles), not
+                                        // a resize.
+                                        var moved = details.focalPointDelta;
+                                        if (!_frameResizeHistorySaved) {
+                                          moved =
+                                              details.localFocalPoint -
+                                              _focalPointStart;
+                                          if (moved.distance <=
+                                              _mouseClickSlop) {
+                                            return;
+                                          }
+                                        }
                                         final scaleFactor =
                                             _userScale *
                                             widget.model.canvasScale;
                                         final deltaX =
                                             (moveLeft || moveRight) &&
                                                 scaleFactor > 0.0001
-                                            ? details.focalPointDelta.dx /
-                                                  scaleFactor
+                                            ? moved.dx / scaleFactor
                                             : 0.0;
                                         final deltaY =
                                             (moveTop || moveBottom) &&
                                                 scaleFactor > 0.0001
-                                            ? details.focalPointDelta.dy /
-                                                  scaleFactor
+                                            ? moved.dy / scaleFactor
                                             : 0.0;
                                         widget.model.resizeFrameFromHandles(
                                           _draggedFrameZoneId!,
@@ -2816,8 +2865,48 @@ class _WindowViewState extends State<WindowView> {
                                         _handleDrawingPointerSignal,
                                     onPointerDown: (event) {
                                       _pointerButtons = event.buttons;
+                                      _mouseClickStart =
+                                          event.kind ==
+                                                  PointerDeviceKind.mouse &&
+                                              event.buttons ==
+                                                  kPrimaryMouseButton
+                                          ? (
+                                              position: event.localPosition,
+                                              time: event.timeStamp,
+                                            )
+                                          : null;
+                                    },
+                                    onPointerCancel: (_) =>
+                                        _mouseClickStart = null,
+                                    onPointerUp: (event) {
+                                      _lastPointerUpTime = event.timeStamp;
+                                      final start = _mouseClickStart;
+                                      _mouseClickStart = null;
+                                      if (start == null ||
+                                          event.timeStamp - start.time >=
+                                              kLongPressTimeout) {
+                                        return;
+                                      }
+                                      final details = TapUpDetails(
+                                        kind: PointerDeviceKind.mouse,
+                                        globalPosition: event.position,
+                                        localPosition: start.position,
+                                      );
+                                      // After the gesture recognizers have
+                                      // seen the release (a drag ends first).
+                                      scheduleMicrotask(() {
+                                        if (mounted) handleCanvasTap(details);
+                                      });
                                     },
                                     onPointerMove: (event) {
+                                      final start = _mouseClickStart;
+                                      if (start != null &&
+                                          (event.localPosition -
+                                                      start.position)
+                                                  .distance >
+                                              _mouseClickSlop) {
+                                        _mouseClickStart = null;
+                                      }
                                       if (event.kind ==
                                               PointerDeviceKind.mouse &&
                                           (event.buttons &
@@ -4703,11 +4792,7 @@ class WorkspaceSelectionPainter extends CustomPainter {
         }
       }
 
-      if (model.frameShapeMode &&
-          model.canBeArchedOrSlanted &&
-          (key == null ||
-              key == 'frame:0' ||
-              model.getFrameRects().length <= 1)) {
+      if (model.frameShapeMode && model.canShapeSelectedFrame) {
         final radius = 10.0 / scale;
         final amber = Paint()
           ..color = Colors.amber.shade800
