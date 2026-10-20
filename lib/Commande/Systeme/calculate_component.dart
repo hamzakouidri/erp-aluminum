@@ -3316,12 +3316,15 @@ class ComponentCalculator {
       return double.tryParse(value?.toString() ?? '') ?? fallback;
     }
 
+    // Every overlap of two sashes takes one chicane on each sash, in PVC as
+    // in aluminium. Older series saved 1 (the former default): never less
+    // than 2.
     final int pvcChicanePiecesPerJunction = math
         .max(
-          1,
+          2,
           slidingRuleNumber(
             'sliding_chicane_pieces_per_junction',
-            fallback: 1.0,
+            fallback: 2.0,
           ).round(),
         )
         .toInt();

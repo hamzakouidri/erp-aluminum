@@ -587,7 +587,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
     _glassWidthController.text = number('glass_w_deduction', fallback: '10');
     _chicanePiecesController.text = number(
       'sliding_chicane_pieces_per_junction',
-      fallback: '1',
+      fallback: '2',
     );
     _railClearanceController.text = number(
       'sliding_rail_clearance',
