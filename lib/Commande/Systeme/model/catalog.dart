@@ -125,8 +125,11 @@ extension WindowModelCatalog on WindowModel {
       }
       final map = section.toMap();
       if (allowsSideCover != null) {
-        map['allows_side_cover'] = allowsSideCover ? 1 : 0;
-        map['design_allows_side_cover'] = allowsSideCover ? 1 : 0;
+        // A frame the catalogue says can never take a cover (40 102 "scj")
+        // stays so: the role's default "allows" does not override it.
+        final allows = allowsSideCover && section.allowsSideCover;
+        map['allows_side_cover'] = allows ? 1 : 0;
+        map['design_allows_side_cover'] = allows ? 1 : 0;
       }
       if (integratedSideCover != null) {
         map['design_integrated_side_cover'] = integratedSideCover ? 1 : 0;

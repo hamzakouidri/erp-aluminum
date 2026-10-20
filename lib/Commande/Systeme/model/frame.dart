@@ -148,9 +148,17 @@ extension WindowModelFrame on WindowModel {
   ) {
     final isMultiFrame = getFrameRects().length > 1;
     if (isMultiFrame) {
-      final plain = frames
+      var plain = frames
           .where((frame) => !_sectionHasIntegratedSideCover(frame))
           .toList();
+      // With a separate side cover switched on, a frame that can never
+      // carry one (40 102 "scj") is not a default choice.
+      if (hasSideCovers) {
+        final coverable = plain
+            .where(_sectionAllowsStandaloneSideCover)
+            .toList();
+        if (coverable.isNotEmpty) plain = coverable;
+      }
       if (plain.isNotEmpty && _frameJoinPartners.isNotEmpty) {
         final otherFrame = _otherJoinedActiveFrame(series);
         if (otherFrame != null) {
@@ -207,6 +215,12 @@ extension WindowModelFrame on WindowModel {
     AluminumSeries series,
   ) {
     if (frames.length <= 1) return frames.first;
+    // The frame marked as the default in the series components comes first.
+    for (final frame in frames) {
+      final row = _seriesDesignRoleOptions[series.id]?['frame']?[frame.id];
+      final raw = row?['is_default'];
+      if (raw == 1 || raw == true || raw?.toString() == '1') return frame;
+    }
     final seriesLabel = '${series.name} ${series.type}'.toLowerCase();
     String? family;
     if (seriesLabel.contains('67000') || seriesLabel.contains('67')) {

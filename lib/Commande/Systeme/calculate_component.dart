@@ -1820,8 +1820,10 @@ class ComponentCalculator {
         lower.contains('rail') ||
         lower.contains('chicane') ||
         lower.contains('monorail') ||
-        lower == 'sash_lateral' ||
-        lower == 'sash_central' ||
+        // The reinforced montants too (sash_lateral_reinforced...): they
+        // fell back to the opening series and vanished from the table.
+        lower.startsWith('sash_lateral') ||
+        lower.startsWith('sash_central') ||
         lower == 'sash_traverse';
 
     if (isExplicitSlidingProfile) {
@@ -3945,7 +3947,11 @@ class ComponentCalculator {
                       integratedCoverCutExtension) /
                   1000.0,
         );
+        // A side standing against a corner profile (not chosen by hand)
+        // gets its own row name.
+        final cornerSide = window.frameSideIsAutomatic(r, side);
         final key =
+            '${cornerSide ? 'angle:' : ''}'
             '${useSlidingOuterFrame ? 'sliding' : 'opening'}:$overrideId';
         customFrameSideProfiles[key] = override;
         customFrameSidePieces
@@ -4015,70 +4021,6 @@ class ComponentCalculator {
       }
     }
 
-    final angleJunctionFramePieces = <String, List<double>>{};
-    final angleJunctionFrameAngles = <String, List<String>>{};
-    final angleJunctionFrames = <String, AluminumSection>{};
-    final angleJunctionSliding = <String, bool>{};
-    if (window.usesProfileAngle &&
-        window.hasSideCovers &&
-        !window.isIntegratedFrame) {
-      void substituteJunctionSide(Rect frame) {
-        final currentFrame = window.frameSectionForRect(frame);
-        if (currentFrame == null) return;
-        final sliding = window.frameUsesSlidingSeries(frame);
-        final compatible = window.findCompatibleNoCoverFrame(
-          currentFrame: currentFrame,
-          sliding: sliding,
-        );
-        // A null result means that the selected frame is already explicitly
-        // compatible with the tube carré; it must remain unchanged.
-        if (compatible == null) return;
-
-        final cuts = frameCutsByRect[frame];
-        if (cuts == null || cuts.length < 3) return;
-        final verticalCut = cuts.last;
-        final sourcePieces = sliding ? slidingOuterFramePieces : framePieces;
-        final sourceAngles = sliding
-            ? slidingOuterFramePieceAngles
-            : framePieceAngles;
-        final sourceIndex = sourcePieces.indexOf(verticalCut);
-        if (sourceIndex < 0) return;
-        sourcePieces.removeAt(sourceIndex);
-        final removedAngles = sourceAngles.removeAt(sourceIndex);
-        final itemKey = '${sliding ? 'sliding' : 'opening'}:${compatible.id}';
-        angleJunctionFrames[itemKey] = compatible;
-        angleJunctionSliding[itemKey] = sliding;
-        angleJunctionFramePieces
-            .putIfAbsent(itemKey, () => <double>[])
-            .add(verticalCut);
-        angleJunctionFrameAngles
-            .putIfAbsent(itemKey, () => <String>[])
-            .add(removedAngles);
-      }
-
-      final junctions = window.getAdjacentFrameJunctions();
-      for (final junction in junctions) {
-        if (!window.activeProfileAngleJunctions.contains(junction.index)) {
-          continue;
-        }
-        // Only the two faces that touch the tube carré are changed: the
-        // right jamb of the first frame and the left jamb of the second.
-        substituteJunctionSide(junction.firstFrame);
-        substituteJunctionSide(junction.secondFrame);
-      }
-
-      // The legacy outer-edge mode has no frame-to-frame junction. Apply it
-      // to the corresponding outer jambs only.
-      if (junctions.isEmpty && frameRects.isNotEmpty) {
-        if (window.profileAngleMode == 2 || window.profileAngleMode == 3) {
-          substituteJunctionSide(frameRects.first);
-        }
-        if (window.profileAngleMode == 1 || window.profileAngleMode == 3) {
-          substituteJunctionSide(frameRects.last);
-        }
-      }
-    }
-
     if (framePieces.isNotEmpty) {
       items.add(
         appendSideCoverNote(
@@ -4110,33 +4052,19 @@ class ComponentCalculator {
         _ => side,
       };
       final label = sideLabels.map(sideName).join(' + ');
+      final rowName = entry.key.startsWith('angle:sliding')
+          ? 'إطار منزلق لجهة بروفيل الزاوية (Cadre coulissant côté angle)'
+          : entry.key.startsWith('angle:')
+          ? 'إطار فتح لجهة بروفيل الزاوية (Dormant côté angle)'
+          : 'إطار جهة $label (Frame side)';
       items.add(
         createProfile(
-          'إطار جهة $label (Frame side)',
+          rowName,
           colorName,
           pieces: entry.value,
           pieceCutAngles: customFrameSideAngles[entry.key],
           unit: 'قطاع',
           overrideMap: override,
-          preferOverrideMap: true,
-        ),
-      );
-    }
-
-    for (final entry in angleJunctionFramePieces.entries) {
-      final angleJunctionFrame = angleJunctionFrames[entry.key];
-      if (angleJunctionFrame == null || entry.value.isEmpty) continue;
-      final sliding = angleJunctionSliding[entry.key] == true;
-      items.add(
-        createProfile(
-          sliding
-              ? 'إطار منزلق لجهة بروفيل الزاوية (Cadre coulissant côté angle)'
-              : 'إطار فتح لجهة بروفيل الزاوية (Dormant côté angle)',
-          colorName,
-          pieces: entry.value,
-          pieceCutAngles: angleJunctionFrameAngles[entry.key],
-          unit: 'قطاع',
-          overrideMap: angleJunctionFrame.toMap(),
           preferOverrideMap: true,
         ),
       );
