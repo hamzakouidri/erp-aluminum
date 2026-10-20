@@ -5771,6 +5771,7 @@ class WindowPainter extends CustomPainter {
 
     // Kept for the selection highlight, drawn after the zones.
     _slidingLeafRects[zone.id] = [for (var i = 0; i < count; i++) getSashRect(i)];
+    model.drawnSlidingLeafRects[zone.id] = _slidingLeafRects[zone.id]!;
 
     List<int> tracks;
     List<int> sashDrawOrder;

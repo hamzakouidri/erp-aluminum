@@ -3974,6 +3974,10 @@ class WindowModel extends ChangeNotifier {
   /// zone); null when the whole zone, or every sash, is selected.
   int? selectedSlidingLeaf;
 
+  /// The leaves of each sliding zone as last drawn (zone id → rects), so the
+  /// selection overlay highlights exactly the leaf picked.
+  final Map<String, List<Rect>> drawnSlidingLeafRects = {};
+
   /// A selected frame shows its resize squares (one tap) or, after a double
   /// tap, its slant/arch circles: never both at once.
   bool frameShapeMode = false;

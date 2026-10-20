@@ -4601,6 +4601,43 @@ class WorkspaceSelectionPainter extends CustomPainter {
     tp.paint(canvas, box.topLeft + Offset(pad, pad));
   }
 
+  /// What a zone selection highlights: every sash after a long press, the
+  /// leaf tapped in a sliding zone, the half tapped in a double sash, else
+  /// the whole zone.
+  List<Rect> _selectedSashRects(WindowZone zone) {
+    if (model.allSashesSelected) {
+      return [for (final z in model.selectedSashZones) z.boundary];
+    }
+    if (zone.content == ZoneContent.slidingSash) {
+      final leaves = model.drawnSlidingLeafRects[zone.id];
+      final index = model.selectedSlidingLeaf;
+      if (leaves != null &&
+          index != null &&
+          index >= 0 &&
+          index < leaves.length) {
+        return [leaves[index]];
+      }
+    }
+    final sub = model.activeSubZone;
+    if (zone.content == ZoneContent.doubleSash &&
+        sub != null &&
+        sub != 'all' &&
+        (sub.startsWith('left') || sub.startsWith('right'))) {
+      final r = zone.boundary;
+      // Same split as the drawing (mirrored in the inside view).
+      final ratio = model.isInternalView
+          ? zone.doubleSashRatio
+          : 1.0 - zone.doubleSashRatio;
+      final midX = r.left + r.width * ratio;
+      return [
+        sub.startsWith('left')
+            ? Rect.fromLTRB(r.left, r.top, midX, r.bottom)
+            : Rect.fromLTRB(midX, r.top, r.right, r.bottom),
+      ];
+    }
+    return [zone.boundary];
+  }
+
   WorkspaceSelectionPainter({
     required this.model,
     this.userScale = 1.0,
@@ -4722,8 +4759,10 @@ class WorkspaceSelectionPainter extends CustomPainter {
         }
       }
       if (zone != null) {
-        canvas.drawRect(zone.boundary, fill);
-        canvas.drawRect(zone.boundary, outline);
+        for (final rect in _selectedSashRects(zone)) {
+          canvas.drawRect(rect, fill);
+          canvas.drawRect(rect, outline);
+        }
       }
     } else if (selection.type == SelectionType.mullion &&
         selection.mullionPosition != null) {
