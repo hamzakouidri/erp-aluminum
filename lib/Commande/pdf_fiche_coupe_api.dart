@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:database_data/Commande/capture_image.dart';
 import 'package:database_data/Commande/devis_builder.dart';
@@ -484,7 +485,7 @@ class PdfFicheCoupeApi {
 
     // عمود الرسم
     final pw.Widget drawingWidget = data.drawing != null
-        ? pw.Image(pw.MemoryImage(data.drawing!), fit: pw.BoxFit.contain)
+        ? pw.Image(data.drawing!, fit: pw.BoxFit.contain)
         : pw.Container(
             decoration: pw.BoxDecoration(
               border: pw.Border.all(color: _kBorder),
@@ -1344,6 +1345,29 @@ class PdfFicheCoupeApi {
     return loaded;
   }
 
+  /// The drawing as raw pixels. The PDF library decodes a PNG and packs it
+  /// again in Dart, seconds for each large drawing of a big order; the
+  /// engine decodes it at once and the pixels go into the PDF as they are.
+  static Future<pw.ImageProvider> _pdfImageFromPng(Uint8List png) async {
+    final codec = await ui.instantiateImageCodec(png);
+    final frame = await codec.getNextFrame();
+    final image = frame.image;
+    try {
+      final data = await image.toByteData(
+        format: ui.ImageByteFormat.rawStraightRgba,
+      );
+      if (data == null) return pw.MemoryImage(png);
+      return pw.RawImage(
+        bytes: data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+        width: image.width,
+        height: image.height,
+      );
+    } finally {
+      image.dispose();
+      codec.dispose();
+    }
+  }
+
   static String _bomImageKey(BomItem item) =>
       '${item.inventoryItemType ?? ''}|${item.catalogItemId ?? ''}|'
       '${item.profileCode ?? ''}|${item.name}|${item.imagePath ?? ''}';
@@ -1587,7 +1611,7 @@ class PdfFicheCoupeApi {
         );
       }
 
-      Uint8List? drawing;
+      pw.ImageProvider? drawing;
       final storedShutterPosition = model.shutterPosition;
       try {
         // A fully lowered shutter hides the actual construction and turns the
@@ -1597,10 +1621,14 @@ class PdfFicheCoupeApi {
         if (model.hasShutter && model.shutterPosition > 0.42) {
           model.shutterPosition = 0.42;
         }
-        drawing = await captureWindowImage(
-          model,
-          maxSide: 2400,
-          showDrawingDimensions: true,
+        drawing = await _pdfImageFromPng(
+          await captureWindowImage(
+            model,
+            // Still sharp in the drawing column of an A4 page, for half
+            // the pixels of 2400.
+            maxSide: 1800,
+            showDrawingDimensions: true,
+          ),
         );
       } catch (e, stackTrace) {
         // Keep the PDF usable with the dimension fallback, but retain the
@@ -3286,7 +3314,7 @@ class _ArticleData {
   final List<_ProfileCutRow> shutterProfiles;
   final Map<String, pw.Widget?> itemImages;
   final List<_ConfirmedMeasurement> measurements;
-  final Uint8List? drawing;
+  final pw.ImageProvider? drawing;
 
   /// One line per hinged sash: its hinge centres in mm.
   final List<String> hingeLines;

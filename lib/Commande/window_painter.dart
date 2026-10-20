@@ -328,7 +328,11 @@ class WindowPainter extends CustomPainter {
     // Paint the pocket of each real frame before its glazing, so any exposed
     // rebate uses the profile finish instead of the white page background.
     // Do not fill the overall bounding box: gaps between frames stay empty.
-    final physicalFrames = model.getFrameRects();
+    // A shutter alone has no frame: under its raised curtain is the open
+    // wall opening, not a panel in the profile colour.
+    final physicalFrames = model.isShutterOnly
+        ? const <Rect>[]
+        : model.getFrameRects();
     final pocketFrames = physicalFrames.length == 1
         ? [Rect.fromLTRB(0, topOffset, w, h)]
         : physicalFrames;
