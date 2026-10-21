@@ -1,103 +1,51 @@
+import 'dart:convert';
+
+import 'package:flutter/services.dart' show AssetBundle, rootBundle;
+
 import 'app_settings.dart';
-import 'locales/subscription_status_keys.dart';
-import 'locales/shortcut_keys.dart';
-import 'locales/main_menu_keys.dart';
-import 'locales/drawer_keys.dart';
-import 'locales/product_keys.dart';
-import 'locales/order_keys.dart';
-import 'locales/general_keys.dart';
-import 'locales/caisson_tunnel_keys.dart';
-import 'locales/measurement_keys.dart';
-import 'locales/recent_development_keys.dart';
-import 'locales/app_wide_keys.dart';
-import 'locales/translation_phase1_keys.dart';
-import 'locales/translation_phase2_keys.dart';
-import 'locales/translation_phase3_keys.dart';
-import 'locales/translation_phase4_keys.dart';
-import 'locales/translation_phase5_keys.dart';
-import 'locales/translation_phase6_keys.dart';
-import 'locales/translation_phase7_keys.dart';
-import 'locales/translation_phase8_keys.dart';
-import 'locales/translation_phase9_keys.dart';
-import 'locales/translation_phase10_keys.dart';
-import 'locales/translation_phase11_keys.dart';
-import 'locales/translation_phase12_keys.dart';
-import 'locales/translation_phase13_keys.dart';
-import 'locales/audit_log_keys.dart';
-import 'locales/audit_details_keys.dart';
-import 'locales/dashboard_activity_keys.dart';
-import 'locales/drawing_validation_keys.dart';
-import 'locales/window_3d_keys.dart';
-import 'locales/product_movement_keys.dart';
-import 'locales/glazing_fit_keys.dart';
-import 'locales/ai_agent_keys.dart';
-import 'locales/system_publication_keys.dart';
-import 'locales/moustiquaire_price_keys.dart';
-import 'locales/installation_price_keys.dart';
-import 'locales/kit_bundle_keys.dart';
 import '../utils/color_name_localization.dart';
-import 'locales/color_keys.dart';
-import 'locales/workshop_scan_keys.dart';
-import 'locales/rule_snapshot_keys.dart';
-import 'locales/business_loss_keys.dart';
-import 'locales/notification_keys.dart';
-import 'locales/required_goods_table_keys.dart';
-import 'locales/parclose_corner_cap_keys.dart';
-import 'locales/parclose_cut_rule_keys.dart';
-import 'locales/drawing_page_keys.dart';
-import 'locales/trash_keys.dart';
-import 'locales/client_ledger_keys.dart';
 
 class Localization {
-  static final Map<String, Map<AppLanguage, String>> _dictionary = {
-    ...mainMenuKeys,
-    ...drawerKeys,
-    ...productKeys,
-    ...orderKeys,
-    ...generalKeys,
-    ...caissonTunnelKeys,
-    ...measurementKeys,
-    ...recentDevelopmentKeys,
-    ...appWideKeys,
-    ...translationPhase1Keys,
-    ...translationPhase2Keys,
-    ...translationPhase3Keys,
-    ...translationPhase4Keys,
-    ...translationPhase5Keys,
-    ...translationPhase6Keys,
-    ...translationPhase7Keys,
-    ...translationPhase8Keys,
-    ...translationPhase9Keys,
-    ...translationPhase10Keys,
-    ...translationPhase11Keys,
-    ...translationPhase12Keys,
-    ...translationPhase13Keys,
-    ...productMovementKeys,
-    ...glazingFitKeys,
-    ...window3dKeys,
-    ...aiAgentKeys,
-    ...systemPublicationKeys,
-    ...moustiquairePriceKeys,
-    ...installationPriceKeys,
-    ...kitBundleKeys,
-    ...shortcutKeys,
-    ...subscriptionStatusKeys,
-    ...auditLogKeys,
-    ...auditDetailsKeys,
-    ...dashboardActivityKeys,
-    ...drawingValidationKeys,
-    ...colorKeys,
-    ...workshopScanKeys,
-    ...ruleSnapshotKeys,
-    ...businessLossKeys,
-    ...notificationKeys,
-    ...requiredGoodsTableKeys,
-    ...parcloseCornerCapKeys,
-    ...parcloseCutRuleKeys,
-    ...drawingPageKeys,
-    ...trashKeys,
-    ...clientLedgerKeys,
+  /// Translations by key, then language. Filled from `assets/i18n/<code>.json`
+  /// by [load] before the first frame; a key absent from a language's file
+  /// has no entry for that language.
+  static final Map<String, Map<AppLanguage, String>> _dictionary = {};
+
+  static const _assetCodes = {
+    AppLanguage.arabic: 'ar',
+    AppLanguage.french: 'fr',
+    AppLanguage.english: 'en',
   };
+
+  static bool _loaded = false;
+
+  /// Loads the built-in languages from the asset bundle. Safe to call again.
+  static Future<void> load({AssetBundle? bundle}) async {
+    if (_loaded) return;
+    for (final entry in _assetCodes.entries) {
+      final source = await (bundle ?? rootBundle).loadString(
+        'assets/i18n/${entry.value}.json',
+      );
+      loadJson(entry.key, source);
+    }
+    _loaded = true;
+  }
+
+  /// Adds the `strings` of a language file (`{"meta": …, "strings": …}`).
+  static void loadJson(AppLanguage lang, String source) {
+    final decoded = jsonDecode(source) as Map<String, dynamic>;
+    final strings = decoded['strings'] as Map<String, dynamic>;
+    for (final entry in strings.entries) {
+      (_dictionary[entry.key] ??= {})[lang] = entry.value as String;
+    }
+  }
+
+  /// Every key known to at least one language.
+  static Iterable<String> get keys => _dictionary.keys;
+
+  /// The text stored for [key] in [lang], without any fallback.
+  static String? stored(String key, AppLanguage lang) =>
+      _dictionary[key]?[lang];
 
   static String translate(String key, AppLanguage lang) {
     final trimmedKey = key.trim();

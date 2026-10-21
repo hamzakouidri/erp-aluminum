@@ -59,6 +59,9 @@ void main(List<String> args) async {
     return true; // تم التعامل مع الخطأ دون إغلاق التطبيق
   };
 
+  // Every screen, the bootstrap one included, reads its texts from here.
+  await Localization.load();
+
   // Paint the first Flutter frame immediately. Platform services, Supabase,
   // preferences, synchronization, and image decoding are intentionally moved
   // behind this lightweight bootstrap screen.

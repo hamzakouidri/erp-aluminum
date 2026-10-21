@@ -1,17 +1,19 @@
 import 'package:database_data/services/notification_texts.dart';
 import 'package:database_data/settings/app_settings.dart';
-import 'package:database_data/settings/locales/notification_keys.dart';
+import 'package:database_data/settings/localization.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   test('every notification key has Arabic, French and English text', () {
-    for (final entry in notificationKeys.entries) {
+    final keys = Localization.keys.where((k) => k.startsWith('notification.'));
+    expect(keys, isNotEmpty);
+    for (final key in keys) {
       for (final lang in AppLanguage.values) {
         expect(
-          entry.value[lang]?.trim() ?? '',
+          Localization.stored(key, lang)?.trim() ?? '',
           isNotEmpty,
-          reason: '${entry.key} has no $lang text',
+          reason: '$key has no $lang text',
         );
       }
     }

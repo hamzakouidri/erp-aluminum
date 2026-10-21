@@ -94,6 +94,8 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
+    # Built-in languages; other languages are downloaded as packs.
+    - assets/i18n/
     - assets/fonts/Amiri-Regular.ttf
     - assets/fonts/Amiri-Bold.ttf
     - assets/fonts/Cairo-Regular.ttf
