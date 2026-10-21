@@ -39,6 +39,7 @@ import '../utils/color_name_localization.dart';
 import 'locales/color_keys.dart';
 import 'locales/workshop_scan_keys.dart';
 import 'locales/rule_snapshot_keys.dart';
+import 'locales/business_loss_keys.dart';
 import 'locales/notification_keys.dart';
 import 'locales/required_goods_table_keys.dart';
 import 'locales/parclose_corner_cap_keys.dart';
@@ -88,6 +89,7 @@ class Localization {
     ...colorKeys,
     ...workshopScanKeys,
     ...ruleSnapshotKeys,
+    ...businessLossKeys,
     ...notificationKeys,
     ...requiredGoodsTableKeys,
     ...parcloseCornerCapKeys,

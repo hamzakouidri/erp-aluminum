@@ -13,6 +13,7 @@ import 'firebase_options.dart';
 import 'package:provider/provider.dart';
 import 'package:database_data/widgets/price_publication_prompt.dart';
 import 'package:database_data/widgets/rule_conflict_prompt.dart';
+import 'package:database_data/widgets/business_loss_prompt.dart';
 import 'package:database_data/settings/app_settings.dart';
 import 'package:database_data/settings/localization.dart';
 import 'package:database_data/app_theme.dart';
@@ -434,6 +435,21 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       _checkRuleConflict,
     );
     Future<void>.delayed(const Duration(seconds: 15), _checkRuleConflict);
+
+    // Downloaded deletions that would remove many clients, orders or
+    // treasury rows wait for the manager in the same way.
+    SqlDatabaseBusinessDataGuard.conflictSignal.addListener(
+      _checkBusinessDataLoss,
+    );
+    Future<void>.delayed(const Duration(seconds: 18), _checkBusinessDataLoss);
+  }
+
+  void _checkBusinessDataLoss() {
+    final context = _navigatorKey.currentContext;
+    if (!mounted || context == null || AppAuthService().currentUser == null) {
+      return;
+    }
+    unawaited(showPendingBusinessDataLoss(context));
   }
 
   void _checkRuleConflict() {
@@ -465,6 +481,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     _pricePublicationTimer?.cancel();
     SqlDatabaseCatalogConfigGuard.conflictSignal.removeListener(
       _checkRuleConflict,
+    );
+    SqlDatabaseBusinessDataGuard.conflictSignal.removeListener(
+      _checkBusinessDataLoss,
     );
     super.dispose();
   }
