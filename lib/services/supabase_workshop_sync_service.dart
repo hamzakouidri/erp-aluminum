@@ -119,6 +119,20 @@ class SupabaseWorkshopSyncService {
     return !remoteDeleted.contains(key) || reviveRows.contains(key);
   }
 
+  /// A live row downloaded from Supabase replaces a local deletion of the
+  /// same row only when Supabase stored it after that deletion. An unknown
+  /// time keeps the deletion.
+  @visibleForTesting
+  static bool liveRowSupersedesDeletion({
+    required String liveUpdatedAt,
+    required String deletedAt,
+  }) {
+    final live = DateTime.tryParse(liveUpdatedAt.trim());
+    final deleted = DateTime.tryParse(deletedAt.trim());
+    if (live == null || deleted == null) return false;
+    return live.isAfter(deleted);
+  }
+
   /// True when the deletions this device is about to send ([deleted], per
   /// table) would remove too many of the workshop's clients, orders or
   /// treasury rows; [remaining] is what this device still holds.
@@ -1587,6 +1601,8 @@ class SupabaseWorkshopSyncService {
     Map<String, String>? nextAppliedRows;
     final data = <String, dynamic>{};
     final tombstones = <Map<String, dynamic>>[];
+    // When Supabase stored each downloaded live row, per table and row id.
+    final liveRowTimes = <String, Map<String, String>>{};
     Map<String, dynamic>? catalogConfiguration;
     Map<String, dynamic>? pendingProfilePayload;
     var profileChanged = false;
@@ -1668,6 +1684,9 @@ class SupabaseWorkshopSyncService {
             data.putIfAbsent(table, () => <Map<String, dynamic>>[])
                 as List<Map<String, dynamic>>;
         list.add(Map<String, dynamic>.from(payload));
+        if (updatedAt != null) {
+          liveRowTimes.putIfAbsent(table, () => {})[rowId] = updatedAt;
+        }
         downloadedRows++;
         downloadedBusinessRows++;
       }
@@ -1737,6 +1756,9 @@ class SupabaseWorkshopSyncService {
                 .eq('workshop_id', workshopUuid)
                 .eq('table_name', table)
                 .order('updated_at', ascending: true)
+                // Rows uploaded together share updated_at; without a unique
+                // tie-breaker, offset pages can skip or repeat them.
+                .order('row_id', ascending: true)
                 .range(offset, offset + tableBatchSize - 1);
           } catch (batchError) {
             debugPrint(
@@ -1759,6 +1781,7 @@ class SupabaseWorkshopSyncService {
                       .eq('workshop_id', workshopUuid)
                       .eq('table_name', table)
                       .order('updated_at', ascending: true)
+                      .order('row_id', ascending: true)
                       .range(single, single);
                   if (singleRows.isEmpty) break;
                   processRow(
@@ -1942,6 +1965,15 @@ class SupabaseWorkshopSyncService {
     if (data.isNotEmpty) {
       _isApplyingRemoteData = true;
       try {
+        // A row restored on another device after its deletion must come back
+        // here too; otherwise the old local deletion hides it for ever.
+        await _db.dropDeletionsSupersededByLiveRows(
+          liveRowTimes,
+          supersedes: (liveUpdatedAt, deletedAt) => liveRowSupersedesDeletion(
+            liveUpdatedAt: liveUpdatedAt,
+            deletedAt: deletedAt,
+          ),
+        );
         await _db.importWorkshopData(data);
       } finally {
         _isApplyingRemoteData = false;
