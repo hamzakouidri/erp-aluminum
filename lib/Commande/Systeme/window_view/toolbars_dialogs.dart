@@ -4856,6 +4856,7 @@ extension _WindowViewToolbars on _WindowViewState {
     bool applyToAllSashes = false;
     TextEditingController part1Ctrl = TextEditingController();
     TextEditingController part2Ctrl = TextEditingController();
+    String? splitError;
 
     final lang = Provider.of<AppSettingsProvider>(
       context,
@@ -5239,6 +5240,19 @@ extension _WindowViewToolbars on _WindowViewState {
                           ],
                         ],
                       ),
+                    if (splitError != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        Localization.translate(splitError!, lang).replaceAll(
+                          '{min}',
+                          WindowModel.minimumZoneMm.round().toString(),
+                        ),
+                        style: const TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -5293,11 +5307,12 @@ extension _WindowViewToolbars on _WindowViewState {
                       Navigator.pop(context);
                       return;
                     }
+                    String? error;
                     if (isEqualSplit) {
                       if (isHorizontal) {
-                        widget.model.splitSelectedZoneHorizontal(parts: parts);
+                        error =widget.model.splitSelectedZoneHorizontal(parts: parts);
                       } else {
-                        widget.model.splitSelectedZoneVertical(parts: parts);
+                        error = widget.model.splitSelectedZoneVertical(parts: parts);
                       }
                     } else {
                       List<double> customSizes = [];
@@ -5307,13 +5322,13 @@ extension _WindowViewToolbars on _WindowViewState {
                             (totalNetSize / 2);
                         customSizes.add(val);
                         if (isHorizontal) {
-                          widget.model.splitSelectedZoneHorizontal(
+                          error = widget.model.splitSelectedZoneHorizontal(
                             parts: 2,
                             customSizes: customSizes,
                             fromTop: fromStart,
                           );
                         } else {
-                          widget.model.splitSelectedZoneVertical(
+                          error = widget.model.splitSelectedZoneVertical(
                             parts: 2,
                             customSizes: customSizes,
                             fromLeft: fromStart,
@@ -5328,17 +5343,21 @@ extension _WindowViewToolbars on _WindowViewState {
                             (totalNetSize / 3);
                         customSizes.addAll([val1, val2]);
                         if (isHorizontal) {
-                          widget.model.splitSelectedZoneHorizontal(
+                          error = widget.model.splitSelectedZoneHorizontal(
                             parts: 3,
                             customSizes: customSizes,
                           );
                         } else {
-                          widget.model.splitSelectedZoneVertical(
+                          error = widget.model.splitSelectedZoneVertical(
                             parts: 3,
                             customSizes: customSizes,
                           );
                         }
                       }
+                    }
+                    if (error != null) {
+                      setState(() => splitError = error);
+                      return;
                     }
                     Navigator.pop(context);
                   },

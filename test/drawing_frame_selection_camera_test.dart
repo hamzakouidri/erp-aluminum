@@ -81,43 +81,71 @@ void main() {
     });
   });
 
-  group('the camera only moves when the user asks', () {
+  // The view passes a fixed working area above the bottom menu, so panels
+  // never change the size the model fits into. Only a new drawing size or a
+  // resized app window refits the drawing, and never during a drag.
+  group('the camera refits only for a new drawing or window size', () {
     const viewport = Size(1200, 800);
 
     ({double scale, double dx, double dy}) camera(WindowModel m) =>
         (scale: m.canvasScale, dx: m.canvasDx, dy: m.canvasDy);
 
-    test('edits, panels and window size changes keep zoom and place', () {
+    test('the same drawing in the same area keeps zoom and place', () {
       final model = _framedWindow();
       model.updateLayoutMetrics(viewport);
       final fitted = camera(model);
       expect(fitted.scale, greaterThan(0));
 
-      model.resizeWindow(2400, 1600);
       model.updateLayoutMetrics(viewport);
-      expect(camera(model), fitted);
-
-      model.setManualShutterBoxHeight(250);
+      model.notifyListeners();
       model.updateLayoutMetrics(viewport);
-      expect(camera(model), fitted);
-
-      // A panel opens (less height) and the app window gets wider.
-      model.updateLayoutMetrics(const Size(1200, 500));
-      model.updateLayoutMetrics(const Size(1600, 800));
       expect(camera(model), fitted);
     });
 
-    test('the centre action refits the drawing', () {
+    test('a new drawing size or app window size refits the drawing', () {
       final model = _framedWindow();
       model.updateLayoutMetrics(viewport);
       final fitted = camera(model);
+
+      model.resizeWindow(3000, 2000);
+      model.updateLayoutMetrics(viewport);
+      expect(model.canvasScale, lessThan(fitted.scale));
+
+      final bigDrawing = camera(model);
+      model.updateLayoutMetrics(const Size(1600, 800));
+      expect(camera(model), isNot(bigDrawing));
+    });
+
+    test('a drag holds the camera; the release refits', () {
+      final model = _framedWindow();
+      model.updateLayoutMetrics(viewport);
+      final fitted = camera(model);
+
+      model.holdCamera = true;
       model.resizeWindow(3000, 2000);
       model.updateLayoutMetrics(viewport);
       expect(camera(model), fitted);
 
-      model.centerDrawingOnCanvas();
+      model.holdCamera = false;
       model.updateLayoutMetrics(viewport);
       expect(model.canvasScale, lessThan(fitted.scale));
+    });
+
+    test('the drawing is centred wherever the first frame was drawn', () {
+      final model = _framedWindow();
+      model.updateLayoutMetrics(viewport);
+      final centred = camera(model);
+
+      final moved = _framedWindow()
+        ..drawnLeft = 300
+        ..drawnTop = 150;
+      moved.updateLayoutMetrics(viewport);
+      expect(camera(moved), centred);
+
+      // The centre action gives the same fit.
+      moved.centerDrawingOnCanvas();
+      moved.updateLayoutMetrics(viewport);
+      expect(camera(moved), centred);
     });
   });
 

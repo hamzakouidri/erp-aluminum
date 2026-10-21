@@ -2849,12 +2849,74 @@ extension WindowModelZones on WindowModel {
     }
   }
 
-  void splitSelectedZoneHorizontal({
+  /// Spans along the cut axis of the zones that splitting [zone] into
+  /// [parts] would create, in the same way the split functions below place
+  /// their mullions. Empty when the split itself would be skipped.
+  List<double> _splitSpans(
+    WindowZone zone, {
+    required bool isWidth,
+    required int parts,
+    List<double>? customSizes,
+    bool fromStart = true,
+  }) {
+    final start = isWidth ? zone.boundary.left : zone.boundary.top;
+    final end = isWidth ? zone.boundary.right : zone.boundary.bottom;
+    final sep = mullionThickness / 2;
+    if (customSizes == null || customSizes.isEmpty) {
+      if (parts < 2) return const [];
+      final step = ((end - start) - (parts - 1) * mullionThickness) / parts;
+      return List.filled(parts, step);
+    }
+    if (parts == 2) {
+      final cut = fromStart ? start + customSizes[0] : end - customSizes[0];
+      return [cut - sep - start, end - cut - sep];
+    }
+    if (parts == 3 && customSizes.length >= 2) {
+      final cut1 = start + customSizes[0];
+      final cut2 = end - customSizes[1];
+      return [cut1 - sep - start, cut2 - cut1 - 2 * sep, end - cut2 - sep];
+    }
+    return const [];
+  }
+
+  /// [WindowModel.zoneTooSmallKey] when a split of the selected zone would
+  /// leave a zone under [minimumZoneSpanMm]; null when it may go ahead.
+  String? _splitTooSmall({
+    required bool isWidth,
+    required int parts,
+    List<double>? customSizes,
+    bool fromStart = true,
+  }) {
+    final zone = selectedZone;
+    if (zone == null) return null;
+    final minimum = minimumZoneSpanMm(zone, isWidth: isWidth);
+    final spans = _splitSpans(
+      zone,
+      isWidth: isWidth,
+      parts: parts,
+      customSizes: customSizes,
+      fromStart: fromStart,
+    );
+    return spans.any((span) => span + 0.01 < minimum)
+        ? WindowModel.zoneTooSmallKey
+        : null;
+  }
+
+  /// Returns [WindowModel.zoneTooSmallKey] (and changes nothing) when a
+  /// resulting zone would be smaller than [minimumZoneSpanMm].
+  String? splitSelectedZoneHorizontal({
     int parts = 2,
     List<double>? customSizes,
     bool fromTop = true,
   }) {
-    if (selectedZone == null) return;
+    if (selectedZone == null) return null;
+    final tooSmall = _splitTooSmall(
+      isWidth: false,
+      parts: parts,
+      customSizes: customSizes,
+      fromStart: fromTop,
+    );
+    if (tooSmall != null) return tooSmall;
     primaryMullionAxis ??= 'h'; // 🟢 يثبت أول تقسيم أفقي إذا كانت النافذة فارغة
     _saveSnapshot();
     final zone = selectedZone!;
@@ -3026,6 +3088,7 @@ extension WindowModelZones on WindowModel {
     showZoneMenu = false;
     activeSubZone = null;
     _notifyModelListeners();
+    return null;
   }
 
   /// Applies a regular/custom division pattern inside sash glass without
@@ -3152,12 +3215,21 @@ extension WindowModelZones on WindowModel {
     _notifyModelListeners();
   }
 
-  void splitSelectedZoneVertical({
+  /// Returns [WindowModel.zoneTooSmallKey] (and changes nothing) when a
+  /// resulting zone would be smaller than [minimumZoneSpanMm].
+  String? splitSelectedZoneVertical({
     int parts = 2,
     List<double>? customSizes,
     bool fromLeft = true,
   }) {
-    if (selectedZone == null) return;
+    if (selectedZone == null) return null;
+    final tooSmall = _splitTooSmall(
+      isWidth: true,
+      parts: parts,
+      customSizes: customSizes,
+      fromStart: fromLeft,
+    );
+    if (tooSmall != null) return tooSmall;
     primaryMullionAxis ??= 'v'; // 🟢 يثبت أول تقسيم رأسي إذا كانت النافذة فارغة
     _saveSnapshot();
     final zone = selectedZone!;
@@ -3329,6 +3401,7 @@ extension WindowModelZones on WindowModel {
     activeSubZone = null;
     updatePrimaryMullionAxis();
     _notifyModelListeners();
+    return null;
   }
 
   bool canZoneHaveSash(WindowZone zone) {
@@ -3980,12 +4053,6 @@ extension WindowModelZones on WindowModel {
 
   void _splitIntersectingZonesSmart(Offset start, Offset end, bool horizontal) {
     _saveSnapshot();
-    // 🟢 تثبيت أولوية التقسيم الأول (إذا كان أول تقسيم عمودياً يثبت كـ v ولا يتغير)
-    if (horizontal) {
-      primaryMullionAxis ??= 'h';
-    } else {
-      primaryMullionAxis ??= 'v';
-    }
     final List<WindowZone> newZones = [];
     final sep = mullionThickness / 2;
     double minPath = horizontal
@@ -3995,24 +4062,47 @@ extension WindowModelZones on WindowModel {
         ? math.max(start.dx, end.dx)
         : math.max(start.dy, end.dy);
     double cutLine = _snapCutLineToNearbyMullion(start, end, horizontal);
+
+    bool intersectsCut(WindowZone z) {
+      if (horizontal) {
+        return cutLine > z.boundary.top + 20 &&
+            cutLine < z.boundary.bottom - 20 &&
+            maxPath > z.boundary.left &&
+            minPath < z.boundary.right;
+      }
+      return cutLine > z.boundary.left + 20 &&
+          cutLine < z.boundary.right - 20 &&
+          maxPath > z.boundary.top &&
+          minPath < z.boundary.bottom;
+    }
+
+    // The whole stroke is refused when any zone it cuts would keep a part
+    // under the minimum, so a division is never added half way.
+    final cutZones = zones.where(intersectsCut).toList();
+    final tooSmall = cutZones.any((z) {
+      final first = horizontal
+          ? cutLine - sep - z.boundary.top
+          : cutLine - sep - z.boundary.left;
+      final second = horizontal
+          ? z.boundary.bottom - cutLine - sep
+          : z.boundary.right - cutLine - sep;
+      final minimum = minimumZoneSpanMm(z, isWidth: !horizontal);
+      return first + 0.01 < minimum || second + 0.01 < minimum;
+    });
+    if (tooSmall) {
+      drawingNotice = WindowModel.zoneTooSmallKey;
+      return;
+    }
+    // 🟢 تثبيت أولوية التقسيم الأول (إذا كان أول تقسيم عمودياً يثبت كـ v ولا يتغير)
+    if (horizontal) {
+      primaryMullionAxis ??= 'h';
+    } else {
+      primaryMullionAxis ??= 'v';
+    }
     recordMullionCreation(horizontal, cutLine);
 
     for (var z in zones) {
-      bool intersects = false;
-      if (horizontal) {
-        if (cutLine > z.boundary.top + 20 && cutLine < z.boundary.bottom - 20) {
-          if (maxPath > z.boundary.left && minPath < z.boundary.right) {
-            intersects = true;
-          }
-        }
-      } else {
-        if (cutLine > z.boundary.left + 20 && cutLine < z.boundary.right - 20) {
-          if (maxPath > z.boundary.top && minPath < z.boundary.bottom) {
-            intersects = true;
-          }
-        }
-      }
-      if (intersects) {
+      if (cutZones.contains(z)) {
         final splitZones = <WindowZone>[];
         if (horizontal) {
           splitZones.add(

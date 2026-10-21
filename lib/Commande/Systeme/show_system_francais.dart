@@ -4031,6 +4031,8 @@ class _WindowViewState extends State<WindowView> {
   void _showSlantNotice(String key) {
     final min = key == SlantedDivisionError.angleTooSharp
         ? SlantedDivisionGeometry.minimumAngleDeg.round().toString()
+        : key == WindowModel.zoneTooSmallKey
+        ? WindowModel.minimumZoneMm.round().toString()
         : WindowModel.minimumSashCellMm.round().toString();
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(

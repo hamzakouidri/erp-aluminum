@@ -488,8 +488,25 @@ extension WindowModelFrame on WindowModel {
 
   /// Smallest clear opening a zone may keep along one axis. A fixed glass
   /// only needs its glazing strip; an opening sash must also fit both of its
-  /// sash bars (minus the rebate overlap it shares with the frame).
-  double minimumZoneSpanMm(WindowZone zone, {required bool isWidth}) {
+  /// sash bars (minus the rebate overlap it shares with the frame). No zone
+  /// is ever narrower than [WindowModel.minimumZoneMm].
+  double minimumZoneSpanMm(WindowZone zone, {required bool isWidth}) =>
+      math.max(
+        WindowModel.minimumZoneMm,
+        _contentMinimumSpanMm(zone, isWidth: isWidth),
+      );
+
+  /// Whether every zone in [parts] keeps [minimumZoneSpanMm] along the axis
+  /// a division just cut ([isWidth] for a vertical mullion).
+  bool zonesKeepMinimumSpan(
+    Iterable<WindowZone> parts, {
+    required bool isWidth,
+  }) => parts.every((zone) {
+    final span = isWidth ? zone.boundary.width : zone.boundary.height;
+    return span + 0.01 >= minimumZoneSpanMm(zone, isWidth: isWidth);
+  });
+
+  double _contentMinimumSpanMm(WindowZone zone, {required bool isWidth}) {
     final sashT =
         zone.sashThickness ?? getSectionThickness('sash', fallback: 45.0);
     final overlap = openingSashOverlap.clamp(0.0, sashT).toDouble();

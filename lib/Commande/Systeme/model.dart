@@ -2711,6 +2711,13 @@ class WindowModel extends ChangeNotifier {
   /// traverses inside one leaf).
   static const double minimumSashCellMm = 80.0;
 
+  /// Smallest width or height of any zone between the frame and a mullion
+  /// or between two mullions. A division that would leave less is refused.
+  static const double minimumZoneMm = 80.0;
+
+  static const zoneTooSmallKey =
+      'لا يمكن التقسيم هنا: كل منطقة يجب أن تكون {min} مم على الأقل طولاً وعرضاً';
+
   static const hingeObLockedKey =
       'مفاصل نظام OB ثابتة ضمن الطقم ولا يمكن تعديلها';
   static const hingeNoRoomKey =
