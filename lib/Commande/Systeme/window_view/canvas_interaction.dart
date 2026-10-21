@@ -798,8 +798,6 @@ extension _WindowViewCanvas on _WindowViewState {
       _userScale = 1.0;
       _userPan = Offset.zero;
     });
-    // The drawing stays where it was created until the user explicitly asks
-    // to centre it using this control.
     widget.model.centerDrawingOnCanvas();
   }
 

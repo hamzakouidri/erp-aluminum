@@ -149,7 +149,8 @@ class _WindowViewState extends State<WindowView> {
       !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
   /// The right mouse button never draws: it moves dimensions, cut-angle
-  /// badges, handles and hinges. Only the left button draws.
+  /// badges, handles and hinges, and anywhere else it moves the view. Only
+  /// the left button draws.
   bool get _rightMouseDown =>
       _isWindowsDesktop && (_pointerButtons & kSecondaryMouseButton) != 0;
 
@@ -258,6 +259,13 @@ class _WindowViewState extends State<WindowView> {
 
   int _activeBottomTab = 0; // 0: شائع, 1: إطار, 2: ورقة, 3: عامود, 4: زجاج
   bool _isBottomPanelExpanded = false;
+
+  /// Height of the page body (under the app bar), measured each layout.
+  double _drawingBodyHeight = 0;
+
+  /// Room kept free under the drawing for the open bottom menu (header,
+  /// tabs and the 128 px options strip).
+  static const double _bottomMenuRoom = 220;
 
   // ── حالة الضغط على منطقة الستار ──
   bool _isShutterSelected = false;
@@ -490,9 +498,6 @@ class _WindowViewState extends State<WindowView> {
     // Any model opened through the full design workspace must return here
     // when it is edited, including designs that use a tunnel box or wall.
     widget.model.isDesignDrawing = true;
-    // Panels and toolbars open over the drawing: the camera keeps the
-    // drawing's size and place (see WindowModel.updateLayoutMetrics).
-    widget.model.isMovementLocked = true;
     _positionCtrl = TextEditingController(text: widget.model.position ?? '');
     widget.model.addListener(_onModelChanged);
     _syncDrawerGlassFromDrawing();
@@ -606,7 +611,10 @@ class _WindowViewState extends State<WindowView> {
         appBar: _buildAppBar(context),
         body: !_initialCatalogReady
             ? const Center(child: CircularProgressIndicator())
-            : Stack(
+            : LayoutBuilder(
+                builder: (context, bodyConstraints) {
+                  _drawingBodyHeight = bodyConstraints.maxHeight;
+                  return Stack(
                 children: [
                   Column(
                     children: [
@@ -679,8 +687,23 @@ class _WindowViewState extends State<WindowView> {
                       Expanded(
                         child: LayoutBuilder(
                           builder: (context, constraints) {
+                            // The bottom menu shrinks this canvas when it
+                            // opens. The camera fits a fixed working area
+                            // above the room the menu takes, so opening or
+                            // closing it never moves the drawing.
+                            final menuRoom = math.min(
+                              _bottomMenuRoom +
+                                  MediaQuery.paddingOf(context).bottom,
+                              _drawingBodyHeight * 0.3,
+                            );
                             widget.model.updateLayoutMetrics(
-                              Size(constraints.maxWidth, constraints.maxHeight),
+                              Size(
+                                constraints.maxWidth,
+                                math.max(
+                                  100.0,
+                                  _drawingBodyHeight - menuRoom,
+                                ),
+                              ),
                             );
                             // A tap or click on the canvas: selects what is under it.
                             Future<void> handleCanvasTap(
@@ -1568,6 +1591,7 @@ class _WindowViewState extends State<WindowView> {
                                     );
                                   }),
                                   onLongPressStart: (details) async {
+                                    widget.model.holdCamera = true;
                                     final modelPos = _getModelPos(
                                       details.localPosition,
                                     );
@@ -1810,8 +1834,12 @@ class _WindowViewState extends State<WindowView> {
                                     _isDraggingHinge = false;
                                     _suppressHandleDragForLongPress = false;
                                     _propertyDragHistorySaved = false;
+                                    setState(
+                                      () => widget.model.holdCamera = false,
+                                    );
                                   },
                                   onScaleStart: (details) {
+                                    widget.model.holdCamera = true;
                                     if (_isDrawerOpen || _isLeftDrawerOpen) {
                                       setState(() {
                                         _isDrawerOpen = false;
@@ -2437,15 +2465,20 @@ class _WindowViewState extends State<WindowView> {
                                             return false;
                                           })()) {
                                             // Started dragging glass decoration
-                                          } else if (!_rightMouseDown) {
+                                          } else if (_rightMouseDown) {
+                                            // A right-button drag that grabs
+                                            // nothing moves the view.
+                                            _isPanningCanvas = true;
+                                          } else {
                                             // Defer drawing start — wait for real drag in onScaleUpdate
                                             // (left button only).
                                             widget.model.pendingDrawStart =
                                                 modelPos;
                                           }
                                         }
+                                      } else if (_rightMouseDown) {
+                                        _isPanningCanvas = true;
                                       } else if (widget.model.isDrawingMode &&
-                                          !_rightMouseDown &&
                                           widget.model.selection.type !=
                                               SelectionType.mullion) {
                                         widget.model.pendingDrawStart =
@@ -2904,6 +2937,10 @@ class _WindowViewState extends State<WindowView> {
                                     _draggedFrameZoneId = null;
                                     _frameResizeHistorySaved = false;
                                     _propertyDragHistorySaved = false;
+                                    // Refit and recentre after the drag.
+                                    setState(
+                                      () => widget.model.holdCamera = false,
+                                    );
                                   },
                                   child: Listener(
                                     onPointerSignal:
@@ -2921,8 +2958,10 @@ class _WindowViewState extends State<WindowView> {
                                             )
                                           : null;
                                     },
-                                    onPointerCancel: (_) =>
-                                        _mouseClickStart = null,
+                                    onPointerCancel: (_) {
+                                      _mouseClickStart = null;
+                                      widget.model.holdCamera = false;
+                                    },
                                     onPointerUp: (event) {
                                       _lastPointerUpTime = event.timeStamp;
                                       final start = _mouseClickStart;
@@ -3695,6 +3734,8 @@ class _WindowViewState extends State<WindowView> {
                     ),
                   ),
                 ],
+              );
+                },
               ),
       ),
     );

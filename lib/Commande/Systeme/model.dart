@@ -4564,11 +4564,18 @@ class WindowModel extends ChangeNotifier {
 
 
 
-  bool isMovementLocked = true;
+  /// Set while a finger or the mouse is dragging on the canvas: the camera
+  /// waits for the release before it refits, so a handle never runs away
+  /// from the pointer.
+  bool holdCamera = false;
 
+  /// Fits the drawing into [widgetSize] and centres it. The view passes a
+  /// fixed working area (not the canvas that the bottom menu shrinks), so
+  /// panels and menus never move the drawing; only a new drawing size or a
+  /// resized app window does.
   void updateLayoutMetrics(Size widgetSize) {
     // تجنب إعادة الحساب أثناء الرسم النشط لمنع تحريف الإحداثيات
-    if (drawingStart != null) return;
+    if (drawingStart != null || holdCamera) return;
 
     bool stateChanged =
         _lastIsEmpty != zones.isEmpty ||
@@ -4583,40 +4590,6 @@ class WindowModel extends ChangeNotifier {
         _lastShutterBoxHeight != shutterBoxHeight ||
         _lastHeadRise != headRiseMm;
 
-    // إذا كان تثبيت الرسم مفعلاً، يتم منع أي حركة أو إعادة حساب للموقع طالما تم حساب الحجم الأولي ولم يتغير نموذج النافذة
-    // Panels only change the canvas height; a new width means the app window
-    // itself was resized, which refits the drawing.
-    if (isMovementLocked &&
-        lastLayoutSize != null &&
-        (lastLayoutSize!.width - widgetSize.width).abs() < 1.0 &&
-        canvasScale > 0 &&
-        (canvasDx != 0 || canvasDy != 0) &&
-        !stateChanged) {
-      return;
-    }
-
-    // Once the drawing is on screen the camera stays where it is: panels,
-    // banners and dimension changes no longer zoom or move it. Only the
-    // user moves it (wheel, drag) or asks to centre it.
-    if (isMovementLocked &&
-        lastLayoutSize != null &&
-        canvasScale > 0 &&
-        !zones.isEmpty &&
-        _lastIsEmpty == false) {
-      lastLayoutSize = widgetSize;
-      _lastWidth = width;
-      _lastHeight = height;
-      _lastDrawnLeft = drawnLeft;
-      _lastDrawnTop = drawnTop;
-      _lastShowWall = showWall;
-      _lastShowBottomWall = showBottomWall;
-      _lastHasShutter = hasShutter;
-      _lastIsCaissonTunnel = isCaissonTunnel;
-      _lastShutterBoxHeight = shutterBoxHeight;
-      _lastHeadRise = headRiseMm;
-      return;
-    }
-
     // تجنب إعادة الحساب إذا لم يتغير الحجم فعلياً (اقتصاداً في الحساب)
     if (lastLayoutSize == widgetSize &&
         !stateChanged &&
@@ -4625,8 +4598,6 @@ class WindowModel extends ChangeNotifier {
       return;
     }
 
-    // عند تحرير الحركة (isMovementLocked == false):
-    // يتكيف الرسم تلقائياً مع المساحة المتاحة صعوداً ونزولاً عند فتح أو إغلاق اللوحة السفلية أو ظهور الأشرطة
     final double effectiveHeight = widgetSize.height;
 
     lastLayoutSize = widgetSize;
@@ -4646,19 +4617,7 @@ class WindowModel extends ChangeNotifier {
     // camera then fits the window *and* its dimension lines, rather than
     // shrinking the drawing by an arbitrary percentage.
     const double viewportPadding = 24.0;
-    final bool isTallViewport = effectiveHeight > widgetSize.width * 1.15;
-    final double preferredCenterY =
-        effectiveHeight * (isTallViewport ? 0.61 : 0.52);
-
-    double centeredY(double contentHeight) {
-      final halfHeight = contentHeight * canvasScale / 2;
-      final minCenter = halfHeight + viewportPadding / 2;
-      final maxCenter = effectiveHeight - halfHeight - viewportPadding / 2;
-      if (maxCenter < minCenter) {
-        return effectiveHeight / 2;
-      }
-      return math.min(maxCenter, math.max(minCenter, preferredCenterY));
-    }
+    final double centerY = effectiveHeight / 2;
 
     if (width <= 0 || height <= 0 || zones.isEmpty) {
       double virtualW = 2400.0;
@@ -4667,7 +4626,7 @@ class WindowModel extends ChangeNotifier {
       double sY = (effectiveHeight - viewportPadding) / virtualH;
       canvasScale = math.min(sX, sY) * 0.94;
       canvasDx = widgetSize.width / 2 - (virtualW / 2 * canvasScale);
-      canvasDy = centeredY(virtualH) - (virtualH / 2 * canvasScale);
+      canvasDy = centerY - (virtualH / 2 * canvasScale);
       return;
     }
 
@@ -4737,43 +4696,15 @@ class WindowModel extends ChangeNotifier {
       wallBottom,
       dimensionBottomPx / canvasScale + sideCoverExtension,
     );
-    final double totalH = height + contentTop + contentBottom;
-
     final double boundsCenterX = (width + contentRight - contentLeft) / 2;
     final double boundsCenterY = (height + contentBottom - contentTop) / 2;
 
-    if (drawnLeft != null && drawnTop != null) {
-      // Keep the first frame exactly where the user dragged it on an empty
-      // canvas.  The previous behaviour discarded this anchor and centred the
-      // drawing after every layout update, which is especially disruptive on
-      // a wide desktop canvas.
-      const double virtualW = 2400.0;
-      const double virtualH = 1800.0;
-      final emptyScale =
-          math.min(
-            (widgetSize.width - viewportPadding) / virtualW,
-            (widgetSize.height - viewportPadding) / virtualH,
-          ) *
-          0.94;
-      final emptyHalfHeight = virtualH * emptyScale / 2;
-      final emptyMinCenter = emptyHalfHeight + viewportPadding / 2;
-      final emptyMaxCenter =
-          widgetSize.height - emptyHalfHeight - viewportPadding / 2;
-      final emptyCenterY = math.min(
-        emptyMaxCenter,
-        math.max(emptyMinCenter, preferredCenterY),
-      );
-      final emptyDx = widgetSize.width / 2 - virtualW * emptyScale / 2;
-      final emptyDy = emptyCenterY - virtualH * emptyScale / 2;
-      canvasDx = emptyDx + drawnLeft! * emptyScale;
-      canvasDy = emptyDy + drawnTop! * emptyScale;
-    } else {
-      canvasDx = widgetSize.width / 2 - (boundsCenterX * canvasScale);
-      canvasDy = centeredY(totalH) - (boundsCenterY * canvasScale);
-    }
+    // Always centred, wherever the first frame was drawn on the canvas.
+    canvasDx = widgetSize.width / 2 - (boundsCenterX * canvasScale);
+    canvasDy = centerY - (boundsCenterY * canvasScale);
   }
 
-  /// Fits and centres the drawing: only when the user asks for it.
+  /// Refits and recentres the drawing (the reset-zoom control).
   void centerDrawingOnCanvas() {
     drawnLeft = null;
     drawnTop = null;
