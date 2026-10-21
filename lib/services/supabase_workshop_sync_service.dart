@@ -96,6 +96,26 @@ class SupabaseWorkshopSyncService {
     return !remoteDeleted.contains(key) || reviveRows.contains(key);
   }
 
+  /// True when the deletions this device is about to send ([deleted], per
+  /// table) would remove too many of the workshop's clients, orders or
+  /// treasury rows; [remaining] is what this device still holds.
+  @visibleForTesting
+  static bool deletionUploadNeedsApproval({
+    required Map<String, int> deleted,
+    required Map<String, int> remaining,
+  }) {
+    for (final table in SqlDatabaseBusinessDataGuard.guardedTables) {
+      final lost = deleted[table] ?? 0;
+      if (SqlDatabaseBusinessDataGuard.losesTooMany(
+        localRows: (remaining[table] ?? 0) + lost,
+        lostRows: lost,
+      )) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   @visibleForTesting
   static bool shouldCompleteFullBootstrap({
     required int downloadedBusinessRows,
@@ -474,6 +494,18 @@ class SupabaseWorkshopSyncService {
       return;
     }
 
+    // A kept row must be newer than the deletion Supabase holds, or the
+    // keep-newer trigger skips it.
+    if (reviveRows.isNotEmpty) {
+      final now = DateTime.now().toUtc().toIso8601String();
+      for (final row in missingRows) {
+        final key = _rowKey(
+          row['table_name']?.toString() ?? '',
+          row['row_id']?.toString() ?? '',
+        );
+        if (reviveRows.contains(key)) row['updated_at'] = now;
+      }
+    }
     await _upsertRows(missingRows);
     // Only the changes of rows uploaded here are done; an edit of a row the
     // server already holds still waits for the normal upload.
@@ -1297,9 +1329,11 @@ class SupabaseWorkshopSyncService {
 
   Future<void> _performPendingUpload() async {
     await _ensureReady();
-    final pending = await _db.exportPendingCloudChanges(
+    var pending = await _db.exportPendingCloudChanges(
       allowedTables: SqlDatabase.workshopTables.toSet(),
     );
+    if (pending.isEmpty) return;
+    pending = await _withoutUnapprovedMassDeletions(pending);
     if (pending.isEmpty) return;
 
     final workshopUuid = _workshopUuid!;
@@ -1396,6 +1430,113 @@ class SupabaseWorkshopSyncService {
     final keys = await _db.discardPendingBusinessDataLoss();
     if (keys.isEmpty) return;
     await uploadLocalWorkshopDataMerge(reviveRows: keys);
+  }
+
+  static const String _heldDeletionUploadKey = 'held_deletion_upload_summary';
+  static const String _deletionUploadApprovedUntilKey =
+      'deletion_upload_approved_until';
+
+  /// Bumped when this device holds back its own deletions for the manager.
+  static final ValueNotifier<int> deletionUploadSignal = ValueNotifier<int>(0);
+
+  /// Removes the deletions from [pending] when they would remove too many
+  /// clients, orders or treasury rows and no manager approved them. They stay
+  /// queued (not acknowledged) and the manager is asked.
+  Future<PendingCloudChanges> _withoutUnapprovedMassDeletions(
+    PendingCloudChanges pending,
+  ) async {
+    final tombstones = pending.data['SyncTombstones'];
+    if (tombstones is! List || tombstones.isEmpty) return pending;
+    final deleted = <String, int>{};
+    final deletionKeys = <String>{};
+    for (final raw in tombstones.whereType<Map>()) {
+      final table = raw['table_name']?.toString() ?? '';
+      final rowId = raw['row_id']?.toString() ?? '';
+      deleted[table] = (deleted[table] ?? 0) + 1;
+      deletionKeys.add(_rowKey(table, rowId));
+    }
+    final remaining = await _db.countGuardedBusinessRows();
+    final prefs = await SharedPreferences.getInstance();
+    if (!deletionUploadNeedsApproval(deleted: deleted, remaining: remaining)) {
+      await prefs.remove(_heldDeletionUploadKey);
+      return pending;
+    }
+    final approvedUntil = DateTime.tryParse(
+      prefs.getString(_deletionUploadApprovedUntilKey) ?? '',
+    );
+    if (approvedUntil != null && approvedUntil.isAfter(DateTime.now())) {
+      return pending;
+    }
+
+    await prefs.setString(
+      _heldDeletionUploadKey,
+      jsonEncode({'deleted': deleted, 'remaining': remaining}),
+    );
+    deletionUploadSignal.value++;
+    final data = Map<String, dynamic>.from(pending.data)
+      ..remove('SyncTombstones');
+    return PendingCloudChanges(
+      data: data,
+      acknowledgements: pending.acknowledgements
+          .where((ack) => !deletionKeys.contains(_rowKey(ack.table, ack.rowId)))
+          .toList(growable: false),
+      changedRows: pending.changedRows,
+      deletedRows: 0,
+    );
+  }
+
+  /// Deletions of this device waiting for the manager: per table, how many
+  /// would be sent and how many rows the device still holds. Null when none.
+  Future<({Map<String, int> deleted, Map<String, int> remaining})?>
+  readHeldDeletionUpload() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_heldDeletionUploadKey);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw) as Map;
+      Map<String, int> counts(Object? value) => {
+        if (value is Map)
+          for (final entry in value.entries)
+            entry.key.toString(): (entry.value as num?)?.toInt() ?? 0,
+      };
+      return (
+        deleted: counts(decoded['deleted']),
+        remaining: counts(decoded['remaining']),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The manager confirmed the deletions: they are sent now (Supabase is
+  /// told to accept a large deletion from this workshop for ten minutes).
+  Future<void> approveHeldDeletionUpload() async {
+    await _ensureReady();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _deletionUploadApprovedUntilKey,
+      DateTime.now().add(const Duration(minutes: 10)).toIso8601String(),
+    );
+    await prefs.remove(_heldDeletionUploadKey);
+    try {
+      await _client.rpc(
+        'allow_workshop_mass_deletion',
+        params: {'p_workshop_id': _workshopUuid, 'p_minutes': 10},
+      );
+    } catch (error) {
+      // The server guard may not be installed yet; the deletions still go.
+      debugPrint('Mass deletion allowance not set on Supabase: $error');
+    }
+    await uploadPendingChanges();
+  }
+
+  /// The manager refused the deletions: they are dropped without being sent
+  /// and the deleted rows are brought back from Supabase.
+  Future<void> cancelHeldDeletionUpload() async {
+    await _db.dropUnsentDeletions();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_heldDeletionUploadKey);
+    await downloadWorkshopData(full: true);
   }
 
   Future<void> _downloadChanges({required bool full}) async {
@@ -2214,7 +2355,14 @@ class SupabaseWorkshopSyncService {
             'workshop_id': workshopUuid,
             'table_name': deletedTable,
             'row_id': rowId,
-            'payload': {'id': rowId},
+            // Who deleted the row and from where. Supabase keeps the last
+            // copy of the row and stores this beside it
+            // (supabase/sync_deletion_guard.sql).
+            'payload': {
+              'id': rowId,
+              'deleted_by': tombstone['deleted_by']?.toString() ?? userId,
+              'delete_source': tombstone['delete_source']?.toString() ?? '',
+            },
             'updated_at': tombstone['deleted_at']?.toString() ?? now,
             'deleted_at': tombstone['deleted_at']?.toString() ?? now,
             'device_id': _deviceId,

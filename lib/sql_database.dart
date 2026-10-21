@@ -29,6 +29,7 @@ part 'sql_database/schema.dart';
 part 'sql_database/sync_backup.dart';
 part 'sql_database/catalog_config_guard.dart';
 part 'sql_database/business_data_guard.dart';
+part 'sql_database/user_deletion.dart';
 part 'sql_database/tempered_glass.dart';
 part 'sql_database/finance.dart';
 part 'sql_database/purchases.dart';
@@ -557,37 +558,9 @@ class SqlDatabase {
       } catch (error) {
         debugPrint('Rule snapshot before workshop change skipped: $error');
       }
-      final cleared = [...workshopTables, ...workshopCatalogConfigurationTables];
-      await dbInstance.transaction((txn) async {
-        // These rows belong to the previous workshop. Deleting them must not
-        // create tombstones that the next upload would send to the new
-        // workshop, where the same ids may be live rows.
-        await SqlDatabase()._ensureSyncTombstoneInfrastructure(txn);
-        await txn.update('_sync_runtime_flags', {
-          'suppress_tombstones': 1,
-        }, where: 'id = 1');
-        for (final table in cleared) {
-          try {
-            await txn.delete(table);
-          } catch (_) {}
-        }
-        final marks = List.filled(cleared.length, '?').join(',');
-        await txn.delete(
-          'SyncTombstones',
-          where: 'table_name IN ($marks)',
-          whereArgs: cleared,
-        );
-        await txn.delete(
-          '_sync_change_log',
-          where: 'table_name IN ($marks)',
-          whereArgs: cleared,
-        );
-        await txn.update('_sync_runtime_flags', {
-          'suppress_tombstones': 0,
-        }, where: 'id = 1');
-      });
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(SqlDatabaseBusinessDataGuard.localDataOwnerKey);
+      // No deletion is recorded: the rows belong to the workshop this
+      // device leaves and must stay on the server.
+      await SqlDatabase().clearLocalWorkshopTables();
       debugPrint('Workshop data cleared successfully; catalog preserved.');
     } catch (e) {
       debugPrint('Error clearing workshop data: $e');
@@ -1729,19 +1702,21 @@ class SqlDatabase {
   /// saying who emptied it and how many entries went. Each deleted row gets
   /// a sync tombstone, so the other devices of the workshop empty it too.
   Future<int> clearAuditLogs() async {
-    final database = await db;
-    if (database == null) return 0;
-    await _ensureAuditLogsInfrastructure(database);
-    final removed = await database.delete('AuditLogs');
-    await logAuditAction(
-      actionType: 'CLEAR',
-      entityType: 'audit',
-      entityId: '0',
-      entityTitle: 'audit_journal_cleared',
-      details: jsonEncode({'removed_entries': removed}),
-    );
-    CloudSyncService().notifyChange();
-    return removed;
+    return runUserDeletion<int>('clearAuditLogs', () async {
+      final database = await db;
+      if (database == null) return 0;
+      await _ensureAuditLogsInfrastructure(database);
+      final removed = await database.delete('AuditLogs');
+      await logAuditAction(
+        actionType: 'CLEAR',
+        entityType: 'audit',
+        entityId: '0',
+        entityTitle: 'audit_journal_cleared',
+        details: jsonEncode({'removed_entries': removed}),
+      );
+      CloudSyncService().notifyChange();
+      return removed;
+    });
   }
 
   // ========================= KIT BUNDLES CRUD =========================

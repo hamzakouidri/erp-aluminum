@@ -148,21 +148,23 @@ extension SqlDatabaseFinance on SqlDatabase {
   }
 
   Future<int> deleteCaisse(int id, String name) async {
-    Database? myDb = await db;
-    if (myDb == null) return 0;
-    final res = await myDb.delete('Caisses', where: 'id = ?', whereArgs: [id]);
-    final others = await readCaisses();
-    if (others.isNotEmpty) {
-      final fallbackName = others.first['name'].toString();
-      await myDb.update(
-        'Treasury',
-        {'caisse_name': fallbackName},
-        where: 'caisse_name = ?',
-        whereArgs: [name],
-      );
-    }
-    CloudSyncService().notifyChange();
-    return res;
+    return runUserDeletion<int>('deleteCaisse', () async {
+      Database? myDb = await db;
+      if (myDb == null) return 0;
+      final res = await myDb.delete('Caisses', where: 'id = ?', whereArgs: [id]);
+      final others = await readCaisses();
+      if (others.isNotEmpty) {
+        final fallbackName = others.first['name'].toString();
+        await myDb.update(
+          'Treasury',
+          {'caisse_name': fallbackName},
+          where: 'caisse_name = ?',
+          whereArgs: [name],
+        );
+      }
+      CloudSyncService().notifyChange();
+      return res;
+    });
   }
 
   Future<int> updateAchatPayment(
@@ -244,181 +246,183 @@ extension SqlDatabaseFinance on SqlDatabase {
     DatabaseExecutor executor,
     int clientId,
   ) async {
-    await _ensurePaymentAllocationSchema(executor);
-    final orders = await executor.query(
-      'Commandes',
-      where: 'client_id = ? AND (is_deleted IS NULL OR is_deleted = 0)',
-      whereArgs: [clientId],
-      orderBy: 'created_at ASC, id ASC',
-    );
-    // A receipt attached to a trashed order stays stored for a possible
-    // restore, but it must not become client credit nor be allocated to a
-    // different active order.
-    final allTransactions = await executor.rawQuery(
-      '''
-      SELECT t.* FROM Treasury t
-      LEFT JOIN Commandes c ON c.id = t.reference_id
-      WHERE t.entity_type = ? AND t.entity_id = ?
-        AND (t.reference_id IS NULL OR c.id IS NULL
-             OR c.is_deleted IS NULL OR c.is_deleted = 0)
-        AND (t.document_type IS NULL OR t.document_type != ?)
-      ORDER BY t.created_at ASC, t.id ASC
-      ''',
-      ['Client', clientId, SqlDatabase.materialSaleDocumentType],
-    );
-    final receipts = allTransactions.where(SqlDatabase._isClientReceipt).toList();
+    return runUserDeletion<void>('_rebuildClientPaymentLedger', () async {
+      await _ensurePaymentAllocationSchema(executor);
+      final orders = await executor.query(
+        'Commandes',
+        where: 'client_id = ? AND (is_deleted IS NULL OR is_deleted = 0)',
+        whereArgs: [clientId],
+        orderBy: 'created_at ASC, id ASC',
+      );
+      // A receipt attached to a trashed order stays stored for a possible
+      // restore, but it must not become client credit nor be allocated to a
+      // different active order.
+      final allTransactions = await executor.rawQuery(
+        '''
+        SELECT t.* FROM Treasury t
+        LEFT JOIN Commandes c ON c.id = t.reference_id
+        WHERE t.entity_type = ? AND t.entity_id = ?
+          AND (t.reference_id IS NULL OR c.id IS NULL
+               OR c.is_deleted IS NULL OR c.is_deleted = 0)
+          AND (t.document_type IS NULL OR t.document_type != ?)
+        ORDER BY t.created_at ASC, t.id ASC
+        ''',
+        ['Client', clientId, SqlDatabase.materialSaleDocumentType],
+      );
+      final receipts = allTransactions.where(SqlDatabase._isClientReceipt).toList();
 
-    // Bring forward only the part of historic advances that has no matching
-    // cash receipt yet. This avoids the old duplicate-migration behaviour.
-    var missingLegacy =
-        orders.fold<double>(
-          0.0,
-          (sum, row) => sum + SqlDatabase._paymentNumber(row['advance_payment']),
-        ) -
-        receipts.fold<double>(
-          0.0,
-          (sum, row) => sum + SqlDatabase._paymentNumber(row['amount']),
-        );
-    if (missingLegacy > SqlDatabase._paymentTolerance) {
-      for (final order in orders) {
-        if (missingLegacy <= SqlDatabase._paymentTolerance) break;
-        final orderId = SqlDatabase._paymentRecordId(order['id']);
-        final recordedAdvance = SqlDatabase._paymentNumber(order['advance_payment']);
-        if (orderId == null || recordedAdvance <= SqlDatabase._paymentTolerance) continue;
-        final amount = recordedAdvance < missingLegacy
-            ? recordedAdvance
-            : missingLegacy;
-        final legacyId = SqlDatabase._nextDistributedId();
-        final createdAt = order['created_at']?.toString();
-        final orderCode = _positiveInt(order['order_code']);
-        final displayCode = (orderCode != null && orderCode > 0)
-            ? orderCode
-            : orderId;
-        await executor.insert(
-          'Treasury',
-          SqlDatabase._withDistributedId({
+      // Bring forward only the part of historic advances that has no matching
+      // cash receipt yet. This avoids the old duplicate-migration behaviour.
+      var missingLegacy =
+          orders.fold<double>(
+            0.0,
+            (sum, row) => sum + SqlDatabase._paymentNumber(row['advance_payment']),
+          ) -
+          receipts.fold<double>(
+            0.0,
+            (sum, row) => sum + SqlDatabase._paymentNumber(row['amount']),
+          );
+      if (missingLegacy > SqlDatabase._paymentTolerance) {
+        for (final order in orders) {
+          if (missingLegacy <= SqlDatabase._paymentTolerance) break;
+          final orderId = SqlDatabase._paymentRecordId(order['id']);
+          final recordedAdvance = SqlDatabase._paymentNumber(order['advance_payment']);
+          if (orderId == null || recordedAdvance <= SqlDatabase._paymentTolerance) continue;
+          final amount = recordedAdvance < missingLegacy
+              ? recordedAdvance
+              : missingLegacy;
+          final legacyId = SqlDatabase._nextDistributedId();
+          final createdAt = order['created_at']?.toString();
+          final orderCode = _positiveInt(order['order_code']);
+          final displayCode = (orderCode != null && orderCode > 0)
+              ? orderCode
+              : orderId;
+          await executor.insert(
+            'Treasury',
+            SqlDatabase._withDistributedId({
+              'id': legacyId,
+              'transaction_type': 'Encaissement',
+              'amount': amount,
+              'description': 'ترحيل دفعة قديمة للطلبية #$displayCode',
+              'reference_id': orderId,
+              'recorded_by': 'migration',
+              'entity_type': 'Client',
+              'entity_id': clientId,
+              'old_balance': 0.0,
+              'new_balance': 0.0,
+              'caisse_name': 'الصندوق الرئيسي',
+              'payment_method': 'نقداً / Espèce',
+              'created_at': (createdAt == null || createdAt.trim().isEmpty)
+                  ? DateTime.now().toUtc().toIso8601String()
+                  : createdAt,
+            }),
+          );
+          receipts.add({
             'id': legacyId,
-            'transaction_type': 'Encaissement',
-            'amount': amount,
-            'description': 'ترحيل دفعة قديمة للطلبية #$displayCode',
             'reference_id': orderId,
-            'recorded_by': 'migration',
-            'entity_type': 'Client',
-            'entity_id': clientId,
-            'old_balance': 0.0,
-            'new_balance': 0.0,
-            'caisse_name': 'الصندوق الرئيسي',
-            'payment_method': 'نقداً / Espèce',
-            'created_at': (createdAt == null || createdAt.trim().isEmpty)
-                ? DateTime.now().toUtc().toIso8601String()
-                : createdAt,
-          }),
-        );
-        receipts.add({
-          'id': legacyId,
-          'reference_id': orderId,
-          'amount': amount,
-          'created_at': createdAt ?? DateTime.now().toUtc().toIso8601String(),
-        });
-        missingLegacy -= amount;
+            'amount': amount,
+            'created_at': createdAt ?? DateTime.now().toUtc().toIso8601String(),
+          });
+          missingLegacy -= amount;
+        }
       }
-    }
 
-    receipts.sort((a, b) {
-      final byDate = (a['created_at']?.toString() ?? '').compareTo(
-        b['created_at']?.toString() ?? '',
-      );
-      return byDate != 0
-          ? byDate
-          : (SqlDatabase._paymentRecordId(a['id']) ?? 0).compareTo(
-              SqlDatabase._paymentRecordId(b['id']) ?? 0,
-            );
-    });
-    final receiptIds = receipts
-        .map((row) => SqlDatabase._paymentRecordId(row['id']))
-        .whereType<int>()
-        .toList();
-    if (receiptIds.isNotEmpty) {
-      final placeholders = List.filled(receiptIds.length, '?').join(',');
-      await executor.rawDelete(
-        'DELETE FROM PaymentAllocations WHERE treasury_id IN ($placeholders)',
-        receiptIds,
-      );
-    }
-
-    final settledByOrder = <int, double>{};
-    double orderTotal(Map<String, dynamic> order) {
-      final net = SqlDatabase._paymentNumber(order['net_payable']);
-      return net > 0 ? net : SqlDatabase._paymentNumber(order['total']);
-    }
-
-    for (final receipt in receipts) {
-      final treasuryId = SqlDatabase._paymentRecordId(receipt['id']);
-      if (treasuryId == null) continue;
-      var amountLeft = SqlDatabase._paymentNumber(receipt['amount']);
-      final preferredId = SqlDatabase._paymentRecordId(receipt['reference_id']);
-      final referencedOrders = orders
-          .where((row) => SqlDatabase._paymentRecordId(row['id']) == preferredId)
+      receipts.sort((a, b) {
+        final byDate = (a['created_at']?.toString() ?? '').compareTo(
+          b['created_at']?.toString() ?? '',
+        );
+        return byDate != 0
+            ? byDate
+            : (SqlDatabase._paymentRecordId(a['id']) ?? 0).compareTo(
+                SqlDatabase._paymentRecordId(b['id']) ?? 0,
+              );
+      });
+      final receiptIds = receipts
+          .map((row) => SqlDatabase._paymentRecordId(row['id']))
+          .whereType<int>()
           .toList();
-      // Settle the selected order first. Any excess is a real Treasury
-      // receipt and becomes customer credit, so let it flow to the client's
-      // other (including subsequently-created) open orders.
-      final candidates = preferredId != null && referencedOrders.isNotEmpty
-          ? <Map<String, dynamic>>[
-              ...referencedOrders,
-              ...orders.where(
-                (row) => SqlDatabase._paymentRecordId(row['id']) != preferredId,
-              ),
-            ]
-          : orders;
-      for (final order in candidates) {
-        if (amountLeft <= SqlDatabase._paymentTolerance) break;
+      if (receiptIds.isNotEmpty) {
+        final placeholders = List.filled(receiptIds.length, '?').join(',');
+        await executor.rawDelete(
+          'DELETE FROM PaymentAllocations WHERE treasury_id IN ($placeholders)',
+          receiptIds,
+        );
+      }
+
+      final settledByOrder = <int, double>{};
+      double orderTotal(Map<String, dynamic> order) {
+        final net = SqlDatabase._paymentNumber(order['net_payable']);
+        return net > 0 ? net : SqlDatabase._paymentNumber(order['total']);
+      }
+
+      for (final receipt in receipts) {
+        final treasuryId = SqlDatabase._paymentRecordId(receipt['id']);
+        if (treasuryId == null) continue;
+        var amountLeft = SqlDatabase._paymentNumber(receipt['amount']);
+        final preferredId = SqlDatabase._paymentRecordId(receipt['reference_id']);
+        final referencedOrders = orders
+            .where((row) => SqlDatabase._paymentRecordId(row['id']) == preferredId)
+            .toList();
+        // Settle the selected order first. Any excess is a real Treasury
+        // receipt and becomes customer credit, so let it flow to the client's
+        // other (including subsequently-created) open orders.
+        final candidates = preferredId != null && referencedOrders.isNotEmpty
+            ? <Map<String, dynamic>>[
+                ...referencedOrders,
+                ...orders.where(
+                  (row) => SqlDatabase._paymentRecordId(row['id']) != preferredId,
+                ),
+              ]
+            : orders;
+        for (final order in candidates) {
+          if (amountLeft <= SqlDatabase._paymentTolerance) break;
+          final orderId = SqlDatabase._paymentRecordId(order['id']);
+          if (orderId == null) continue;
+          final due = orderTotal(order) - (settledByOrder[orderId] ?? 0.0);
+          if (due <= SqlDatabase._paymentTolerance) continue;
+          final allocated = amountLeft < due ? amountLeft : due;
+          await _insertPaymentAllocation(
+            executor,
+            treasuryId: treasuryId,
+            documentType: 'Commande',
+            documentId: orderId,
+            amount: allocated,
+          );
+          settledByOrder[orderId] = (settledByOrder[orderId] ?? 0.0) + allocated;
+          amountLeft -= allocated;
+        }
+      }
+
+      for (final order in orders) {
         final orderId = SqlDatabase._paymentRecordId(order['id']);
         if (orderId == null) continue;
-        final due = orderTotal(order) - (settledByOrder[orderId] ?? 0.0);
-        if (due <= SqlDatabase._paymentTolerance) continue;
-        final allocated = amountLeft < due ? amountLeft : due;
-        await _insertPaymentAllocation(
-          executor,
-          treasuryId: treasuryId,
-          documentType: 'Commande',
-          documentId: orderId,
-          amount: allocated,
+        final total = orderTotal(order);
+        final paid = (settledByOrder[orderId] ?? 0.0)
+            .clamp(0.0, total)
+            .toDouble();
+        final paymentStatus =
+            total > SqlDatabase._paymentTolerance && paid >= total - SqlDatabase._paymentTolerance
+            ? 'Paid'
+            : paid > SqlDatabase._paymentTolerance
+            ? 'Partial'
+            : 'Unpaid';
+        if ((SqlDatabase._paymentNumber(order['advance_payment']) - paid).abs() <=
+                SqlDatabase._paymentTolerance &&
+            order['payment_status']?.toString() == paymentStatus) {
+          continue;
+        }
+        await executor.update(
+          'Commandes',
+          {
+            'advance_payment': paid,
+            'payment_status': paymentStatus,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          },
+          where: 'id = ?',
+          whereArgs: [orderId],
         );
-        settledByOrder[orderId] = (settledByOrder[orderId] ?? 0.0) + allocated;
-        amountLeft -= allocated;
       }
-    }
-
-    for (final order in orders) {
-      final orderId = SqlDatabase._paymentRecordId(order['id']);
-      if (orderId == null) continue;
-      final total = orderTotal(order);
-      final paid = (settledByOrder[orderId] ?? 0.0)
-          .clamp(0.0, total)
-          .toDouble();
-      final paymentStatus =
-          total > SqlDatabase._paymentTolerance && paid >= total - SqlDatabase._paymentTolerance
-          ? 'Paid'
-          : paid > SqlDatabase._paymentTolerance
-          ? 'Partial'
-          : 'Unpaid';
-      if ((SqlDatabase._paymentNumber(order['advance_payment']) - paid).abs() <=
-              SqlDatabase._paymentTolerance &&
-          order['payment_status']?.toString() == paymentStatus) {
-        continue;
-      }
-      await executor.update(
-        'Commandes',
-        {
-          'advance_payment': paid,
-          'payment_status': paymentStatus,
-          'updated_at': DateTime.now().toUtc().toIso8601String(),
-        },
-        where: 'id = ?',
-        whereArgs: [orderId],
-      );
-    }
+    }, executor: executor);
   }
 
   Future<void> reconcileClientPayments(int clientId) async {
@@ -434,157 +438,159 @@ extension SqlDatabaseFinance on SqlDatabase {
     DatabaseExecutor executor,
     int supplierId,
   ) async {
-    await _ensurePaymentAllocationSchema(executor);
-    await _ensureAchatTrashInfrastructure(executor);
-    // Invoices in the trash are cancelled: supplier payments must not be
-    // allocated to them (the client ledger already skips deleted orders).
-    final purchases = await executor.query(
-      'Achats',
-      where: 'supplier_id = ? AND (is_deleted IS NULL OR is_deleted = 0)',
-      whereArgs: [supplierId],
-      orderBy: 'created_at ASC, id ASC',
-    );
-    final allTransactions = await executor.query(
-      'Treasury',
-      where: 'entity_type = ? AND entity_id = ?',
-      whereArgs: ['Supplier', supplierId],
-      orderBy: 'created_at ASC, id ASC',
-    );
-    final payments = allTransactions.where(SqlDatabase._isSupplierPayment).toList();
+    return runUserDeletion<void>('_rebuildSupplierPaymentLedger', () async {
+      await _ensurePaymentAllocationSchema(executor);
+      await _ensureAchatTrashInfrastructure(executor);
+      // Invoices in the trash are cancelled: supplier payments must not be
+      // allocated to them (the client ledger already skips deleted orders).
+      final purchases = await executor.query(
+        'Achats',
+        where: 'supplier_id = ? AND (is_deleted IS NULL OR is_deleted = 0)',
+        whereArgs: [supplierId],
+        orderBy: 'created_at ASC, id ASC',
+      );
+      final allTransactions = await executor.query(
+        'Treasury',
+        where: 'entity_type = ? AND entity_id = ?',
+        whereArgs: ['Supplier', supplierId],
+        orderBy: 'created_at ASC, id ASC',
+      );
+      final payments = allTransactions.where(SqlDatabase._isSupplierPayment).toList();
 
-    var missingLegacy =
-        purchases.fold<double>(
-          0.0,
-          (sum, row) => sum + SqlDatabase._paymentNumber(row['paid_amount']),
-        ) -
-        payments.fold<double>(
-          0.0,
-          (sum, row) => sum + SqlDatabase._paymentNumber(row['amount']),
-        );
-    if (missingLegacy > SqlDatabase._paymentTolerance) {
-      for (final purchase in purchases) {
-        if (missingLegacy <= SqlDatabase._paymentTolerance) break;
-        final purchaseId = SqlDatabase._paymentRecordId(purchase['id']);
-        final recordedPaid = SqlDatabase._paymentNumber(purchase['paid_amount']);
-        if (purchaseId == null || recordedPaid <= SqlDatabase._paymentTolerance) continue;
-        final amount = recordedPaid < missingLegacy
-            ? recordedPaid
-            : missingLegacy;
-        final legacyId = SqlDatabase._nextDistributedId();
-        final createdAt = purchase['created_at']?.toString();
-        await executor.insert(
-          'Treasury',
-          SqlDatabase._withDistributedId({
+      var missingLegacy =
+          purchases.fold<double>(
+            0.0,
+            (sum, row) => sum + SqlDatabase._paymentNumber(row['paid_amount']),
+          ) -
+          payments.fold<double>(
+            0.0,
+            (sum, row) => sum + SqlDatabase._paymentNumber(row['amount']),
+          );
+      if (missingLegacy > SqlDatabase._paymentTolerance) {
+        for (final purchase in purchases) {
+          if (missingLegacy <= SqlDatabase._paymentTolerance) break;
+          final purchaseId = SqlDatabase._paymentRecordId(purchase['id']);
+          final recordedPaid = SqlDatabase._paymentNumber(purchase['paid_amount']);
+          if (purchaseId == null || recordedPaid <= SqlDatabase._paymentTolerance) continue;
+          final amount = recordedPaid < missingLegacy
+              ? recordedPaid
+              : missingLegacy;
+          final legacyId = SqlDatabase._nextDistributedId();
+          final createdAt = purchase['created_at']?.toString();
+          await executor.insert(
+            'Treasury',
+            SqlDatabase._withDistributedId({
+              'id': legacyId,
+              'transaction_type': 'Décaissement',
+              'amount': amount,
+              'description': 'ترحيل دفع قديم لفاتورة الشراء #$purchaseId',
+              'reference_id': purchaseId,
+              'recorded_by': 'migration',
+              'entity_type': 'Supplier',
+              'entity_id': supplierId,
+              'old_balance': 0.0,
+              'new_balance': 0.0,
+              'caisse_name': 'الصندوق الرئيسي',
+              'payment_method': 'نقداً / Espèce',
+              'created_at': (createdAt == null || createdAt.trim().isEmpty)
+                  ? DateTime.now().toUtc().toIso8601String()
+                  : createdAt,
+            }),
+          );
+          payments.add({
             'id': legacyId,
-            'transaction_type': 'Décaissement',
-            'amount': amount,
-            'description': 'ترحيل دفع قديم لفاتورة الشراء #$purchaseId',
             'reference_id': purchaseId,
-            'recorded_by': 'migration',
-            'entity_type': 'Supplier',
-            'entity_id': supplierId,
-            'old_balance': 0.0,
-            'new_balance': 0.0,
-            'caisse_name': 'الصندوق الرئيسي',
-            'payment_method': 'نقداً / Espèce',
-            'created_at': (createdAt == null || createdAt.trim().isEmpty)
-                ? DateTime.now().toUtc().toIso8601String()
-                : createdAt,
-          }),
-        );
-        payments.add({
-          'id': legacyId,
-          'reference_id': purchaseId,
-          'amount': amount,
-          'created_at': createdAt ?? DateTime.now().toUtc().toIso8601String(),
-        });
-        missingLegacy -= amount;
+            'amount': amount,
+            'created_at': createdAt ?? DateTime.now().toUtc().toIso8601String(),
+          });
+          missingLegacy -= amount;
+        }
       }
-    }
 
-    payments.sort((a, b) {
-      final byDate = (a['created_at']?.toString() ?? '').compareTo(
-        b['created_at']?.toString() ?? '',
-      );
-      return byDate != 0
-          ? byDate
-          : (SqlDatabase._paymentRecordId(a['id']) ?? 0).compareTo(
-              SqlDatabase._paymentRecordId(b['id']) ?? 0,
-            );
-    });
-    final paymentIds = payments
-        .map((row) => SqlDatabase._paymentRecordId(row['id']))
-        .whereType<int>()
-        .toList();
-    if (paymentIds.isNotEmpty) {
-      final placeholders = List.filled(paymentIds.length, '?').join(',');
-      await executor.rawDelete(
-        'DELETE FROM PaymentAllocations WHERE treasury_id IN ($placeholders)',
-        paymentIds,
-      );
-    }
-
-    final settledByPurchase = <int, double>{};
-    for (final payment in payments) {
-      final treasuryId = SqlDatabase._paymentRecordId(payment['id']);
-      if (treasuryId == null) continue;
-      var amountLeft = SqlDatabase._paymentNumber(payment['amount']);
-      final preferredId = SqlDatabase._paymentRecordId(payment['reference_id']);
-      final referencedPurchases = purchases
-          .where((row) => SqlDatabase._paymentRecordId(row['id']) == preferredId)
+      payments.sort((a, b) {
+        final byDate = (a['created_at']?.toString() ?? '').compareTo(
+          b['created_at']?.toString() ?? '',
+        );
+        return byDate != 0
+            ? byDate
+            : (SqlDatabase._paymentRecordId(a['id']) ?? 0).compareTo(
+                SqlDatabase._paymentRecordId(b['id']) ?? 0,
+              );
+      });
+      final paymentIds = payments
+          .map((row) => SqlDatabase._paymentRecordId(row['id']))
+          .whereType<int>()
           .toList();
-      final candidates = preferredId != null && referencedPurchases.isNotEmpty
-          ? referencedPurchases
-          : purchases;
-      for (final purchase in candidates) {
-        if (amountLeft <= SqlDatabase._paymentTolerance) break;
+      if (paymentIds.isNotEmpty) {
+        final placeholders = List.filled(paymentIds.length, '?').join(',');
+        await executor.rawDelete(
+          'DELETE FROM PaymentAllocations WHERE treasury_id IN ($placeholders)',
+          paymentIds,
+        );
+      }
+
+      final settledByPurchase = <int, double>{};
+      for (final payment in payments) {
+        final treasuryId = SqlDatabase._paymentRecordId(payment['id']);
+        if (treasuryId == null) continue;
+        var amountLeft = SqlDatabase._paymentNumber(payment['amount']);
+        final preferredId = SqlDatabase._paymentRecordId(payment['reference_id']);
+        final referencedPurchases = purchases
+            .where((row) => SqlDatabase._paymentRecordId(row['id']) == preferredId)
+            .toList();
+        final candidates = preferredId != null && referencedPurchases.isNotEmpty
+            ? referencedPurchases
+            : purchases;
+        for (final purchase in candidates) {
+          if (amountLeft <= SqlDatabase._paymentTolerance) break;
+          final purchaseId = SqlDatabase._paymentRecordId(purchase['id']);
+          if (purchaseId == null) continue;
+          final total = SqlDatabase._paymentNumber(purchase['total']);
+          final due = total - (settledByPurchase[purchaseId] ?? 0.0);
+          if (due <= SqlDatabase._paymentTolerance) continue;
+          final allocated = amountLeft < due ? amountLeft : due;
+          await _insertPaymentAllocation(
+            executor,
+            treasuryId: treasuryId,
+            documentType: 'Achat',
+            documentId: purchaseId,
+            amount: allocated,
+          );
+          settledByPurchase[purchaseId] =
+              (settledByPurchase[purchaseId] ?? 0.0) + allocated;
+          amountLeft -= allocated;
+        }
+      }
+
+      // Do not infer a purchase workflow status from payment; a confirmed
+      // purchase may legitimately be only partially paid. Only its financial
+      // figures are derived from Treasury here.
+      for (final purchase in purchases) {
         final purchaseId = SqlDatabase._paymentRecordId(purchase['id']);
         if (purchaseId == null) continue;
         final total = SqlDatabase._paymentNumber(purchase['total']);
-        final due = total - (settledByPurchase[purchaseId] ?? 0.0);
-        if (due <= SqlDatabase._paymentTolerance) continue;
-        final allocated = amountLeft < due ? amountLeft : due;
-        await _insertPaymentAllocation(
-          executor,
-          treasuryId: treasuryId,
-          documentType: 'Achat',
-          documentId: purchaseId,
-          amount: allocated,
+        final paid = (settledByPurchase[purchaseId] ?? 0.0)
+            .clamp(0.0, total)
+            .toDouble();
+        final remaining = (total - paid).clamp(0.0, double.infinity).toDouble();
+        if ((SqlDatabase._paymentNumber(purchase['paid_amount']) - paid).abs() <=
+                SqlDatabase._paymentTolerance &&
+            (SqlDatabase._paymentNumber(purchase['remaining_amount']) - remaining).abs() <=
+                SqlDatabase._paymentTolerance) {
+          continue;
+        }
+        await executor.update(
+          'Achats',
+          {
+            'paid_amount': paid,
+            'remaining_amount': remaining,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          },
+          where: 'id = ?',
+          whereArgs: [purchaseId],
         );
-        settledByPurchase[purchaseId] =
-            (settledByPurchase[purchaseId] ?? 0.0) + allocated;
-        amountLeft -= allocated;
       }
-    }
-
-    // Do not infer a purchase workflow status from payment; a confirmed
-    // purchase may legitimately be only partially paid. Only its financial
-    // figures are derived from Treasury here.
-    for (final purchase in purchases) {
-      final purchaseId = SqlDatabase._paymentRecordId(purchase['id']);
-      if (purchaseId == null) continue;
-      final total = SqlDatabase._paymentNumber(purchase['total']);
-      final paid = (settledByPurchase[purchaseId] ?? 0.0)
-          .clamp(0.0, total)
-          .toDouble();
-      final remaining = (total - paid).clamp(0.0, double.infinity).toDouble();
-      if ((SqlDatabase._paymentNumber(purchase['paid_amount']) - paid).abs() <=
-              SqlDatabase._paymentTolerance &&
-          (SqlDatabase._paymentNumber(purchase['remaining_amount']) - remaining).abs() <=
-              SqlDatabase._paymentTolerance) {
-        continue;
-      }
-      await executor.update(
-        'Achats',
-        {
-          'paid_amount': paid,
-          'remaining_amount': remaining,
-          'updated_at': DateTime.now().toUtc().toIso8601String(),
-        },
-        where: 'id = ?',
-        whereArgs: [purchaseId],
-      );
-    }
+    }, executor: executor);
   }
 
   Future<void> reconcileSupplierPayments(int supplierId) async {
@@ -601,56 +607,58 @@ extension SqlDatabaseFinance on SqlDatabase {
     double amount,
     String createdAt,
   ) async {
-    Database? myDb = await db;
-    if (myDb == null) return;
+    return runUserDeletion<void>('deallocateWorkerPayment', () async {
+      Database? myDb = await db;
+      if (myDb == null) return;
 
-    final workerRows = await myDb.query(
-      'Employees',
-      where: 'id = ?',
-      whereArgs: [workerId],
-    );
-    if (workerRows.isEmpty) return;
-
-    final emp = workerRows.first;
-    final workerUid = (emp['uid']?.toString() ?? '').isNotEmpty
-        ? emp['uid'].toString()
-        : (emp['id']?.toString() ?? workerId.toString());
-    final email = emp['email']?.toString() ?? '';
-
-    List<String> allKeys = [];
-    if (workerUid.isNotEmpty) allKeys.add(workerUid);
-    if (workerId > 0 && !allKeys.contains(workerId.toString()))
-      allKeys.add(workerId.toString());
-    if (email.isNotEmpty && !allKeys.contains(email)) allKeys.add(email);
-
-    final placeholders = List.filled(allKeys.length, '?').join(',');
-
-    // 1. Unsettle all allocations for this worker (is_settled = 0, settled_at = null)
-    await myDb.rawUpdate(
-      "UPDATE WorkerAllocations SET is_settled = 0, settled_at = NULL WHERE worker_uid IN ($placeholders)",
-      allKeys,
-    );
-
-    // 2. Unsettle all transactions for this worker (is_settled = 0, settled_at = null)
-    await myDb.rawUpdate(
-      "UPDATE WorkerTransactions SET is_settled = 0, settled_at = NULL WHERE worker_uid IN ($placeholders)",
-      allKeys,
-    );
-
-    // 3. Delete salary payout transactions and carryover transactions created around settlement or with matching createdAt
-    if (createdAt.isNotEmpty) {
-      await myDb.rawDelete(
-        "DELETE FROM WorkerTransactions WHERE worker_uid IN ($placeholders) AND (created_at = ? OR amount = ? OR transaction_type = 'salary' OR note LIKE '%تسوية%')",
-        [...allKeys, createdAt, amount],
+      final workerRows = await myDb.query(
+        'Employees',
+        where: 'id = ?',
+        whereArgs: [workerId],
       );
-    } else {
-      await myDb.rawDelete(
-        "DELETE FROM WorkerTransactions WHERE worker_uid IN ($placeholders) AND (transaction_type = 'salary' OR note LIKE '%تسوية%')",
+      if (workerRows.isEmpty) return;
+
+      final emp = workerRows.first;
+      final workerUid = (emp['uid']?.toString() ?? '').isNotEmpty
+          ? emp['uid'].toString()
+          : (emp['id']?.toString() ?? workerId.toString());
+      final email = emp['email']?.toString() ?? '';
+
+      List<String> allKeys = [];
+      if (workerUid.isNotEmpty) allKeys.add(workerUid);
+      if (workerId > 0 && !allKeys.contains(workerId.toString()))
+        allKeys.add(workerId.toString());
+      if (email.isNotEmpty && !allKeys.contains(email)) allKeys.add(email);
+
+      final placeholders = List.filled(allKeys.length, '?').join(',');
+
+      // 1. Unsettle all allocations for this worker (is_settled = 0, settled_at = null)
+      await myDb.rawUpdate(
+        "UPDATE WorkerAllocations SET is_settled = 0, settled_at = NULL WHERE worker_uid IN ($placeholders)",
         allKeys,
       );
-    }
 
-    CloudSyncService().notifyChangeImmediate();
+      // 2. Unsettle all transactions for this worker (is_settled = 0, settled_at = null)
+      await myDb.rawUpdate(
+        "UPDATE WorkerTransactions SET is_settled = 0, settled_at = NULL WHERE worker_uid IN ($placeholders)",
+        allKeys,
+      );
+
+      // 3. Delete salary payout transactions and carryover transactions created around settlement or with matching createdAt
+      if (createdAt.isNotEmpty) {
+        await myDb.rawDelete(
+          "DELETE FROM WorkerTransactions WHERE worker_uid IN ($placeholders) AND (created_at = ? OR amount = ? OR transaction_type = 'salary' OR note LIKE '%تسوية%')",
+          [...allKeys, createdAt, amount],
+        );
+      } else {
+        await myDb.rawDelete(
+          "DELETE FROM WorkerTransactions WHERE worker_uid IN ($placeholders) AND (transaction_type = 'salary' OR note LIKE '%تسوية%')",
+          allKeys,
+        );
+      }
+
+      CloudSyncService().notifyChangeImmediate();
+    });
   }
 
   Future<void> _ensureTreasuryDocumentType(Database database) =>
@@ -903,100 +911,102 @@ extension SqlDatabaseFinance on SqlDatabase {
   }
 
   Future<int> deleteTreasury(int id) async {
-    Database? myDb = await db;
-    if (myDb == null) return 0;
+    return runUserDeletion<int>('deleteTreasury', () async {
+      Database? myDb = await db;
+      if (myDb == null) return 0;
 
-    // Legacy databases restored from Firebase can predate the generic sync
-    // triggers. Ensure the infrastructure exists before deleting; otherwise
-    // Supabase still owns a live copy and restores the transaction on the
-    // next download.
-    await _ensureSyncTombstoneInfrastructure(myDb);
+      // Legacy databases restored from Firebase can predate the generic sync
+      // triggers. Ensure the infrastructure exists before deleting; otherwise
+      // Supabase still owns a live copy and restores the transaction on the
+      // next download.
+      await _ensureSyncTombstoneInfrastructure(myDb);
 
-    final List<Map<String, dynamic>> records = await myDb.query(
-      'Treasury',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    if (records.isEmpty) return 0;
-    final row = records.first;
-    final amount = (row['amount'] as num?)?.toDouble() ?? 0.0;
-    final entityId = SqlDatabase._paymentRecordId(row['entity_id']);
-    final isClientReceipt = SqlDatabase._isClientReceipt(row);
-    final isSupplierPayment = SqlDatabase._isSupplierPayment(row);
-    final auditDetails =
-        '${row['transaction_type'] ?? ''} ${amount.toStringAsFixed(2)} DA — '
-        '${row['description'] ?? ''}';
-
-    final res = await myDb.transaction((txn) async {
-      await _ensurePaymentAllocationSchema(txn);
-      final deleted = await txn.delete(
+      final List<Map<String, dynamic>> records = await myDb.query(
         'Treasury',
         where: 'id = ?',
         whereArgs: [id],
       );
-      if (deleted > 0) {
-        final deletedAt = DateTime.now().toUtc().toIso8601String();
-        // Write this explicitly as well as relying on the trigger. INSERT OR
-        // REPLACE keeps it idempotent and guarantees migrated rows receive a
-        // cloud deletion marker.
-        await txn.insert('SyncTombstones', {
-          'table_name': 'Treasury',
-          'row_id': id.toString(),
-          'deleted_at': deletedAt,
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
-        await txn.insert('_sync_change_log', {
-          'table_name': 'Treasury',
-          'row_id': id.toString(),
-          'operation': 'delete',
-          'changed_at': deletedAt,
-          'revision': 1,
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
-      }
-      await txn.delete(
-        'PaymentAllocations',
-        where: 'treasury_id = ?',
-        whereArgs: [id],
-      );
-      final saleId = SqlDatabase._paymentRecordId(row['reference_id']);
-      if (deleted > 0 &&
-          isClientReceipt &&
-          row['document_type']?.toString() == SqlDatabase.materialSaleDocumentType &&
-          saleId != null) {
-        // The shop document loses the payment that was just removed from
-        // the cash box, so both keep the same amount.
-        await txn.rawUpdate(
-          '''
-          UPDATE MaterialSales
-          SET paid_amount = MAX(0, paid_amount - ?),
-              remaining_amount = MAX(0, net_total - MAX(0, paid_amount - ?)),
-              updated_at = ?
-          WHERE id = ?
-          ''',
-          [amount, amount, DateTime.now().toUtc().toIso8601String(), saleId],
-        );
-      }
-      if (deleted > 0 && isClientReceipt && entityId != null) {
-        await _rebuildClientPaymentLedger(txn, entityId);
-      } else if (deleted > 0 && isSupplierPayment && entityId != null) {
-        await _rebuildSupplierPaymentLedger(txn, entityId);
-      }
-      return deleted;
-    });
+      if (records.isEmpty) return 0;
+      final row = records.first;
+      final amount = (row['amount'] as num?)?.toDouble() ?? 0.0;
+      final entityId = SqlDatabase._paymentRecordId(row['entity_id']);
+      final isClientReceipt = SqlDatabase._isClientReceipt(row);
+      final isSupplierPayment = SqlDatabase._isSupplierPayment(row);
+      final auditDetails =
+          '${row['transaction_type'] ?? ''} ${amount.toStringAsFixed(2)} DA — '
+          '${row['description'] ?? ''}';
 
-    if (res > 0) {
-      if (row['entity_type']?.toString() == 'Worker' && entityId != null) {
-        await deallocateWorkerPayment(
-          entityId,
-          amount,
-          row['created_at']?.toString() ?? '',
+      final res = await myDb.transaction((txn) async {
+        await _ensurePaymentAllocationSchema(txn);
+        final deleted = await txn.delete(
+          'Treasury',
+          where: 'id = ?',
+          whereArgs: [id],
         );
+        if (deleted > 0) {
+          final deletedAt = DateTime.now().toUtc().toIso8601String();
+          // Write this explicitly as well as relying on the trigger. INSERT OR
+          // REPLACE keeps it idempotent and guarantees migrated rows receive a
+          // cloud deletion marker.
+          await txn.insert('SyncTombstones', {
+            'table_name': 'Treasury',
+            'row_id': id.toString(),
+            'deleted_at': deletedAt,
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+          await txn.insert('_sync_change_log', {
+            'table_name': 'Treasury',
+            'row_id': id.toString(),
+            'operation': 'delete',
+            'changed_at': deletedAt,
+            'revision': 1,
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+        await txn.delete(
+          'PaymentAllocations',
+          where: 'treasury_id = ?',
+          whereArgs: [id],
+        );
+        final saleId = SqlDatabase._paymentRecordId(row['reference_id']);
+        if (deleted > 0 &&
+            isClientReceipt &&
+            row['document_type']?.toString() == SqlDatabase.materialSaleDocumentType &&
+            saleId != null) {
+          // The shop document loses the payment that was just removed from
+          // the cash box, so both keep the same amount.
+          await txn.rawUpdate(
+            '''
+            UPDATE MaterialSales
+            SET paid_amount = MAX(0, paid_amount - ?),
+                remaining_amount = MAX(0, net_total - MAX(0, paid_amount - ?)),
+                updated_at = ?
+            WHERE id = ?
+            ''',
+            [amount, amount, DateTime.now().toUtc().toIso8601String(), saleId],
+          );
+        }
+        if (deleted > 0 && isClientReceipt && entityId != null) {
+          await _rebuildClientPaymentLedger(txn, entityId);
+        } else if (deleted > 0 && isSupplierPayment && entityId != null) {
+          await _rebuildSupplierPaymentLedger(txn, entityId);
+        }
+        return deleted;
+      });
+
+      if (res > 0) {
+        if (row['entity_type']?.toString() == 'Worker' && entityId != null) {
+          await deallocateWorkerPayment(
+            entityId,
+            amount,
+            row['created_at']?.toString() ?? '',
+          );
+        }
+        CloudSyncService().notifyChangeImmediate();
       }
-      CloudSyncService().notifyChangeImmediate();
-    }
-    if (res > 0) {
-      unawaited(_logTreasuryAudit(id, 'DELETE', auditDetails));
-    }
-    return res;
+      if (res > 0) {
+        unawaited(_logTreasuryAudit(id, 'DELETE', auditDetails));
+      }
+      return res;
+    });
   }
 
   Future<int> updateTreasury(

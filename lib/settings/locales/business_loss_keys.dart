@@ -74,4 +74,47 @@ final Map<String, Map<AppLanguage, String>> businessLossKeys = {
     AppLanguage.french: 'L’opération a échoué',
     AppLanguage.english: 'The operation failed',
   },
+  'business_loss_upload_title': {
+    AppLanguage.arabic: 'حذف كبير على هذا الجهاز',
+    AppLanguage.french: 'Suppression importante sur cet appareil',
+    AppLanguage.english: 'Large deletion on this device',
+  },
+  'business_loss_upload_body': {
+    AppLanguage.arabic:
+        'حُذف من هذا الجهاز عدد كبير من الزبائن أو الطلبيات أو حركات الصندوق. لم يُرسل الحذف إلى السيرفر ولا إلى الأجهزة الأخرى بعد. هل تريد إرساله؟',
+    AppLanguage.french:
+        'Beaucoup de clients, de commandes ou de mouvements de caisse ont été supprimés sur cet appareil. La suppression n’a pas encore été envoyée au serveur ni aux autres appareils. Voulez-vous l’envoyer ?',
+    AppLanguage.english:
+        'Many clients, orders or treasury entries were deleted on this device. The deletion has not been sent to the server or the other devices yet. Send it?',
+  },
+  'business_loss_upload_deleted': {
+    AppLanguage.arabic: 'محذوف',
+    AppLanguage.french: 'Supprimés',
+    AppLanguage.english: 'Deleted',
+  },
+  'business_loss_upload_remaining': {
+    AppLanguage.arabic: 'متبقٍّ',
+    AppLanguage.french: 'Restants',
+    AppLanguage.english: 'Remaining',
+  },
+  'business_loss_upload_send': {
+    AppLanguage.arabic: 'إرسال الحذف',
+    AppLanguage.french: 'Envoyer la suppression',
+    AppLanguage.english: 'Send the deletion',
+  },
+  'business_loss_upload_restore': {
+    AppLanguage.arabic: 'إلغاء الحذف واسترجاع البيانات',
+    AppLanguage.french: 'Annuler et récupérer les données',
+    AppLanguage.english: 'Cancel and bring the data back',
+  },
+  'business_loss_upload_sent': {
+    AppLanguage.arabic: 'تم إرسال الحذف.',
+    AppLanguage.french: 'La suppression a été envoyée.',
+    AppLanguage.english: 'The deletion was sent.',
+  },
+  'business_loss_upload_restored': {
+    AppLanguage.arabic: 'أُلغي الحذف واستُرجعت البيانات من السيرفر.',
+    AppLanguage.french: 'Suppression annulée, données récupérées du serveur.',
+    AppLanguage.english: 'Deletion cancelled; data brought back from the server.',
+  },
 };

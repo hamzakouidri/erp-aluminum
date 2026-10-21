@@ -253,6 +253,41 @@ extension SqlDatabaseBusinessDataGuard on SqlDatabase {
     );
   }
 
+  /// Rows of each guarded table on this device.
+  Future<Map<String, int>> countGuardedBusinessRows() async {
+    final myDb = await db;
+    if (myDb == null) return const {};
+    return {
+      for (final table in guardedTables)
+        if (await _configTableExists(myDb, table))
+          table: await _countTable(myDb, table),
+    };
+  }
+
+  /// Drops the deletions recorded on this device that were not sent yet. The
+  /// rows stay deleted here until the next full download brings them back.
+  Future<void> dropUnsentDeletions() async {
+    final myDb = await db;
+    if (myDb == null) return;
+    await myDb.transaction((txn) async {
+      await _ensureSyncTombstoneInfrastructure(txn);
+      await txn.rawDelete('''
+        DELETE FROM SyncTombstones
+        WHERE EXISTS (
+          SELECT 1 FROM _sync_change_log log
+          WHERE log.operation = 'delete'
+            AND log.table_name = SyncTombstones.table_name
+            AND log.row_id = SyncTombstones.row_id
+        )
+      ''');
+      await txn.delete(
+        '_sync_change_log',
+        where: 'operation = ?',
+        whereArgs: ['delete'],
+      );
+    });
+  }
+
   /// The manager accepted the remote deletions: they are applied like any
   /// downloaded deletion (no new tombstone is created for them).
   Future<void> applyPendingBusinessDataLoss() async {

@@ -232,4 +232,94 @@ void main() {
       expect(await db.readPendingBusinessDataLoss(), isNull);
     });
   });
+
+  group('only an explicit delete is a deletion', () {
+    Future<List<Map<String, dynamic>>> exportedDeletions() async {
+      final pending = await db.exportPendingCloudChanges(
+        allowedTables: SqlDatabase.workshopTables.toSet(),
+      );
+      final rows = pending.data['SyncTombstones'];
+      return rows is List
+          ? [for (final row in rows) Map<String, dynamic>.from(row as Map)]
+          : const [];
+    }
+
+    test('a wipe of every table records nothing', () async {
+      await connection.delete('Client');
+
+      expect(await _count(connection, 'Client'), 0);
+      expect(await _count(connection, 'SyncTombstones'), 0);
+      expect(await _count(connection, '_sync_change_log'), 0);
+      expect(await exportedDeletions(), isEmpty);
+    });
+
+    test('a user delete is recorded with its source', () async {
+      await db.runUserDeletion(
+        'deleteClient',
+        () => connection.delete('Client', where: 'id = ?', whereArgs: [4]),
+      );
+      // Outside the action deletions are not recorded again.
+      await connection.delete('Client', where: 'id = ?', whereArgs: [5]);
+
+      final deletions = await exportedDeletions();
+      expect(deletions, hasLength(1));
+      expect(deletions.single['row_id'], '4');
+      expect(deletions.single['delete_source'], 'deleteClient');
+    });
+
+    test('a row edited then wiped is not sent as a deletion', () async {
+      await connection.update(
+        'Client',
+        {'lastname': 'Edited'},
+        where: 'id = ?',
+        whereArgs: [6],
+      );
+      await connection.delete('Client', where: 'id = ?', whereArgs: [6]);
+
+      expect(await exportedDeletions(), isEmpty);
+    });
+
+    test('leaving a workshop clears its rows and sends nothing', () async {
+      await connection.insert('Client', _client(77, name: 'Unsent'));
+      await db.runUserDeletion(
+        'deleteClient',
+        () => connection.delete('Client', where: 'id = ?', whereArgs: [8]),
+      );
+
+      await db.clearLocalWorkshopTables();
+
+      expect(await _count(connection, 'Client'), 0);
+      expect(await _count(connection, 'SyncTombstones'), 0);
+      expect(await db.hasPendingCloudChanges(), isFalse);
+    });
+
+    test('many deletions of this device wait for a manager', () {
+      expect(
+        SupabaseWorkshopSyncService.deletionUploadNeedsApproval(
+          deleted: {'Client': 52, 'Commandes': 54, 'Commandes_details': 900},
+          remaining: {'Client': 0, 'Commandes': 0},
+        ),
+        isTrue,
+      );
+      expect(
+        SupabaseWorkshopSyncService.deletionUploadNeedsApproval(
+          deleted: {'Client': 1, 'Commandes': 2, 'Commandes_details': 40},
+          remaining: {'Client': 51, 'Commandes': 52},
+        ),
+        isFalse,
+      );
+    });
+
+    test('refused deletions are dropped without being sent', () async {
+      await db.runUserDeletion(
+        'deleteClient',
+        () => connection.delete('Client', where: 'id <= ?', whereArgs: [6]),
+      );
+      expect(await exportedDeletions(), hasLength(6));
+
+      await db.dropUnsentDeletions();
+
+      expect(await exportedDeletions(), isEmpty);
+    });
+  });
 }

@@ -441,6 +441,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     SqlDatabaseBusinessDataGuard.conflictSignal.addListener(
       _checkBusinessDataLoss,
     );
+    // And so do this device's own deletions when they are many.
+    SupabaseWorkshopSyncService.deletionUploadSignal.addListener(
+      _checkBusinessDataLoss,
+    );
     Future<void>.delayed(const Duration(seconds: 18), _checkBusinessDataLoss);
   }
 
@@ -449,7 +453,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     if (!mounted || context == null || AppAuthService().currentUser == null) {
       return;
     }
-    unawaited(showPendingBusinessDataLoss(context));
+    unawaited(() async {
+      if (await showPendingBusinessDataLoss(context)) return;
+      if (context.mounted) await showHeldDeletionUpload(context);
+    }());
   }
 
   void _checkRuleConflict() {
@@ -483,6 +490,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       _checkRuleConflict,
     );
     SqlDatabaseBusinessDataGuard.conflictSignal.removeListener(
+      _checkBusinessDataLoss,
+    );
+    SupabaseWorkshopSyncService.deletionUploadSignal.removeListener(
       _checkBusinessDataLoss,
     );
     super.dispose();
