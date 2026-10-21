@@ -2350,9 +2350,12 @@ extension SqlDatabaseSync on SqlDatabase {
     return CatalogConfigImportResult.applied;
   }
 
-  /// Removes the local deletions of rows that Supabase now holds live and
-  /// stored after that deletion ([supersedes] compares the two times), so
-  /// the import that follows brings those rows back. [liveRowTimes] maps a
+  /// Removes the local deletions of rows that Supabase now holds live, so
+  /// the import that follows brings those rows back. A deletion that came
+  /// from Supabase always gives way: Supabase holds one state per row and
+  /// now says live. A deletion made here and not uploaded yet gives way only
+  /// to a row stored after it ([supersedes] compares the two times).
+  /// [liveRowTimes] maps a
   /// table to its row ids and their Supabase update time. Returns the number
   /// of deletions removed.
   Future<int> dropDeletionsSupersededByLiveRows(
@@ -2377,13 +2380,26 @@ extension SqlDatabaseSync on SqlDatabase {
             where: 'table_name = ? AND row_id IN ($marks)',
             whereArgs: [table, ...chunk],
           );
+          if (deletions.isEmpty) continue;
+          // A deletion still waiting for upload was made here; the others
+          // came from Supabase, which now holds the row live again.
+          final pending = {
+            for (final row in await txn.query(
+              '_sync_change_log',
+              columns: ['row_id'],
+              where: 'table_name = ? AND row_id IN ($marks)',
+              whereArgs: [table, ...chunk],
+            ))
+              row['row_id']?.toString() ?? '',
+          };
           for (final deletion in deletions) {
             final rowId = deletion['row_id']?.toString() ?? '';
             final liveUpdatedAt = entry.value[rowId] ?? '';
-            if (!supersedes(
-              liveUpdatedAt,
-              deletion['deleted_at']?.toString() ?? '',
-            )) {
+            if (pending.contains(rowId) &&
+                !supersedes(
+                  liveUpdatedAt,
+                  deletion['deleted_at']?.toString() ?? '',
+                )) {
               continue;
             }
             dropped += await txn.delete(

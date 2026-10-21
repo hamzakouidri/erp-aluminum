@@ -72,9 +72,10 @@ void main() {
       connection = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
       db = _ReviveDatabase(connection);
       await db.importWorkshopData({
-        'Client': [_client(3)],
+        'Client': [_client(2), _client(3)],
       });
-      // This phone downloaded the 2026-10-20 deletions of clients 1 and 2.
+      await connection.delete('_sync_change_log');
+      // This phone downloaded the 2026-10-20 deletion of client 1.
       await db.importWorkshopData({
         'SyncTombstones': [
           {
@@ -82,13 +83,13 @@ void main() {
             'row_id': '1',
             'deleted_at': '2026-10-20T06:07:07.786+00:00',
           },
-          {
-            'table_name': 'Client',
-            'row_id': '2',
-            'deleted_at': '2026-10-22T08:00:00.000Z',
-          },
         ],
       });
+      // Client 2 is deleted here by the user, not uploaded yet.
+      await db.runUserDeletion(
+        'deleteClient',
+        () => connection.delete('Client', where: 'id = 2'),
+      );
     });
 
     tearDown(() => connection.close());
@@ -103,7 +104,8 @@ void main() {
     test('a row revived on the server comes back on this device', () async {
       final dropped = await db.dropDeletionsSupersededByLiveRows({
         'Client': {
-          '1': '2026-10-21T13:27:33.000+00:00',
+          // Revived on Supabase without a newer time: Supabase still wins.
+          '1': '2026-10-01T10:00:00.000Z',
           '2': '2026-10-21T13:27:33.000+00:00',
         },
       }, supersedes: _supersedes);
@@ -116,6 +118,16 @@ void main() {
       expect(await _clientIds(connection), [1, 3]);
       final kept = await connection.query('SyncTombstones');
       expect(kept.map((row) => row['row_id']), ['2']);
+    });
+
+    test('a newer server copy replaces an unsent local deletion', () async {
+      await db.dropDeletionsSupersededByLiveRows({
+        'Client': {'2': '2099-01-01T00:00:00.000Z'},
+      }, supersedes: _supersedes);
+      await db.importWorkshopData({
+        'Client': [_client(2)],
+      });
+      expect(await _clientIds(connection), [2, 3]);
     });
   });
 }
