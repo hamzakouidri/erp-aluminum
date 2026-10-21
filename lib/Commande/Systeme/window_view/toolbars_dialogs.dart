@@ -2831,6 +2831,7 @@ extension _WindowViewToolbars on _WindowViewState {
             ),
           ),
           const Spacer(),
+          _buildCornerNotchButton(),
           if (widget.model.getFrameRects().length > 1)
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(

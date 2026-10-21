@@ -2,6 +2,7 @@ import 'dart:convert';
 import '../../utils/shutter_selection.dart';
 import 'package:flutter/material.dart';
 import 'model.dart';
+import 'corner_notch.dart';
 
 /// Colors are saved with the order, then reconnected to the active series
 /// when the order is opened again.  Keep only stable, JSON-safe color fields
@@ -599,6 +600,8 @@ extension WindowModelSerialization on WindowModel {
       'topSlantRightY': topSlantRightY,
       'bottomSlantLeftY': bottomSlantLeftY,
       'bottomSlantRightY': bottomSlantRightY,
+      // Written only for a cut frame: other drawings keep the same JSON.
+      if (hasCornerNotches) 'cornerNotches': cornerNotches.toJson(),
       'profileThickness': profileThickness,
       'hasBottomFrame': hasBottomFrame,
       'useOptionalSeuil': useOptionalSeuil,
@@ -803,6 +806,7 @@ void applyWindowModelFromMap(WindowModel model, Map<String, dynamic> savedMap) {
   model.bottomSlantLeftY = (map['bottomSlantLeftY'] as num?)?.toDouble() ?? 0.0;
   model.bottomSlantRightY =
       (map['bottomSlantRightY'] as num?)?.toDouble() ?? 0.0;
+  model.cornerNotches = CornerNotches.fromJson(map['cornerNotches']);
   model.profileThickness =
       (map['profileThickness'] as num?)?.toDouble() ?? 40.0;
   model.hasBottomFrame = map['hasBottomFrame'] ?? true;

@@ -37,6 +37,7 @@ import 'package:database_data/Commande/Systeme/calculate_component.dart';
 import 'package:database_data/Commande/Systeme/profile_selector_dialog.dart'
     hide getComponentSize;
 import 'package:database_data/Commande/Systeme/glass_joint_fit.dart';
+import 'package:database_data/Commande/Systeme/corner_notch.dart';
 import 'package:database_data/Commande/Systeme/parclose_cut_mode_selector.dart';
 import 'package:database_data/Commande/Systeme/glazing_fit_message.dart';
 import 'package:database_data/utils/real_color_resolver.dart';
@@ -57,6 +58,7 @@ part 'window_view/canvas_interaction.dart';
 part 'window_view/toolbars_dialogs.dart';
 part 'window_view/drawers.dart';
 part 'window_view/frame_controls.dart';
+part 'window_view/corner_notch_editor.dart';
 
 enum _FrameResizeHandle {
   topLeft,
@@ -203,6 +205,7 @@ class _WindowViewState extends State<WindowView> {
   bool _draggedDecorIsHorizontal = true;
   String? _draggedDecorZoneId;
   _FrameResizeHandle? _draggedFrameResizeHandle;
+  NotchCorner? _draggedNotchCorner;
   String? _draggedFrameZoneId;
   bool _frameResizeHistorySaved = false;
   bool _propertyDragHistorySaved = false;
@@ -393,7 +396,8 @@ class _WindowViewState extends State<WindowView> {
         _isDraggingSlantLeft ||
         _isDraggingSlantRight ||
         _isDraggingArch ||
-        _draggedFrameResizeHandle != null;
+        _draggedFrameResizeHandle != null ||
+        _draggedNotchCorner != null;
     if (isAnyDragActive && !selectionChanged) {
       return;
     }
@@ -579,9 +583,9 @@ class _WindowViewState extends State<WindowView> {
         widget.model.selection.type == SelectionType.mullion;
     final isInnerDivisionSelected =
         widget.model.selection.type == SelectionType.innerDivision;
+    // A single frame shows the toolbar too: it holds the corner-cut button.
     final isFrameSelected =
-        widget.model.selection.type == SelectionType.frame &&
-        widget.model.getFrameRects().length > 1;
+        widget.model.selection.type == SelectionType.frame;
 
     Widget? activeTopToolbar;
     if (isInnerDivisionSelected) {
@@ -1228,6 +1232,11 @@ class _WindowViewState extends State<WindowView> {
                                       }
                                     }
 
+                                    if (_handleCornerNotchLabelTap(
+                                      details.localPosition,
+                                    )) {
+                                      return;
+                                    }
                                     final handleLabelZone = widget.model
                                         .handleHeightLabelAt(modelPos);
                                     if (handleLabelZone != null) {
@@ -1924,6 +1933,12 @@ class _WindowViewState extends State<WindowView> {
                                           details.localFocalPoint;
                                       const double hitRadius = 35.0;
 
+                                      final notchHandle =
+                                          _cornerNotchHandleAt(touchScreen);
+                                      if (notchHandle != null) {
+                                        _draggedNotchCorner = notchHandle;
+                                        return;
+                                      }
                                       final frameResizeHandle =
                                           _frameResizeHandleAt(touchScreen);
                                       final canSlantOrArch =
@@ -2464,6 +2479,14 @@ class _WindowViewState extends State<WindowView> {
                                   onScaleUpdate: (details) {
                                     // The pointer listener pans the view.
                                     if (_isMiddlePanning) return;
+                                    final notchCorner = _draggedNotchCorner;
+                                    if (notchCorner != null) {
+                                      _updateCornerNotchDrag(
+                                        notchCorner,
+                                        details.localFocalPoint,
+                                      );
+                                      return;
+                                    }
                                     final slantEnd = _draggedSlantEnd;
                                     if (slantEnd != null) {
                                       widget.model.previewSlantedDividerEnd(
@@ -2912,6 +2935,10 @@ class _WindowViewState extends State<WindowView> {
                                     _draggedFrameZoneId = null;
                                     _frameResizeHistorySaved = false;
                                     _propertyDragHistorySaved = false;
+                                    if (_draggedNotchCorner != null) {
+                                      _draggedNotchCorner = null;
+                                      _commitCornerNotchDrag();
+                                    }
                                   },
                                   child: Listener(
                                     onPointerSignal:
@@ -4879,7 +4906,7 @@ class WorkspaceSelectionPainter extends CustomPainter {
         // rectangle left the slanted part of the frame unselected.
         canvas.drawPath(model.frameSelectionPath(rect), outline);
       }
-      if (rect != null && !model.frameShapeMode) {
+      if (rect != null && !model.frameShapeMode && !model.cornerNotchMode) {
         final side = 18.0 / scale;
         final handleFill = Paint()
           ..color = Colors.green.shade600
@@ -5020,6 +5047,7 @@ class WorkspaceSelectionPainter extends CustomPainter {
       }
     }
 
+    _paintCornerNotchOverlay(canvas, model, scale);
     canvas.restore();
   }
 

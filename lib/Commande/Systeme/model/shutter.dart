@@ -1880,6 +1880,7 @@ extension WindowModelShutter on WindowModel {
 
   void toggleShutter(bool value) {
     if (value && hasArchOrSlant) return;
+    if (value && hasCornerNotches) return;
     if (hasShutter == value) return;
     _saveSnapshot();
     _applyShutterState(value);
@@ -2027,6 +2028,7 @@ extension WindowModelShutter on WindowModel {
     bottomSlantLeftY = 0.0;
     bottomSlantRightY = 0.0;
     archHeight = 0.0;
+    cornerNotches = CornerNotches.none;
     _frameColor = FrameColor.white;
     final whiteColor = _defaultFrameColor();
     _selectedDbColor = whiteColor == null

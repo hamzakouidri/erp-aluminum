@@ -80,6 +80,7 @@ extension WindowModelHistory on WindowModel {
       ),
     );
     _history.last.catalogSelection = _captureCatalogSelection();
+    _history.last.cornerNotches = cornerNotches;
     if (_history.length > 20) _history.removeAt(0);
     _redoHistory.clear();
     // Saving undo history does not change anything that is visible.  Notifying
@@ -170,6 +171,7 @@ extension WindowModelHistory on WindowModel {
     );
 
     _redoHistory.last.catalogSelection = _captureCatalogSelection();
+    _redoHistory.last.cornerNotches = cornerNotches;
     if (_redoHistory.length > 20) _redoHistory.removeAt(0);
 
     final snap = _history.removeLast();
@@ -194,6 +196,7 @@ extension WindowModelHistory on WindowModel {
     topSlantRightY = snap.topSlantRightY;
     bottomSlantLeftY = snap.bottomSlantLeftY;
     bottomSlantRightY = snap.bottomSlantRightY;
+    cornerNotches = snap.cornerNotches;
     shutterPosition = snap.shutterPosition;
     shutterMechanism = snap.shutterMechanism;
     hasShutter = snap.hasShutter;
@@ -339,6 +342,7 @@ extension WindowModelHistory on WindowModel {
       ),
     );
     _history.last.catalogSelection = _captureCatalogSelection();
+    _history.last.cornerNotches = cornerNotches;
     if (_history.length > 20) _history.removeAt(0);
 
     final snap = _redoHistory.removeLast();
@@ -363,6 +367,7 @@ extension WindowModelHistory on WindowModel {
     topSlantRightY = snap.topSlantRightY;
     bottomSlantLeftY = snap.bottomSlantLeftY;
     bottomSlantRightY = snap.bottomSlantRightY;
+    cornerNotches = snap.cornerNotches;
     shutterPosition = snap.shutterPosition;
     shutterMechanism = snap.shutterMechanism;
     hasShutter = snap.hasShutter;

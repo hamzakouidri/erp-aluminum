@@ -144,8 +144,10 @@ class WindowPainter extends CustomPainter {
       model.canUseStandaloneSideCover &&
       _drawableStandaloneSideCoverWidth > 0;
 
+  // Side covers follow a rectangular frame only (see cornerNotchBlocker).
   bool get _shouldDrawSideCovers =>
-      _hasDrawableIntegratedSideCover || _hasDrawableStandaloneSideCover;
+      !model.hasCornerNotches &&
+      (_hasDrawableIntegratedSideCover || _hasDrawableStandaloneSideCover);
 
   bool get _shouldDrawWindowHardware {
     final isInternal = overrideIsInternalView ?? model.isInternalView;
@@ -1792,6 +1794,9 @@ class WindowPainter extends CustomPainter {
   }
 
   Path _buildOuterShapePath(double w, double h, double topY) {
+    if (model.hasCornerNotches) {
+      return model.cornerNotches.outlinePath(w, h - topY, top: topY);
+    }
     if (model.archHeight == 0 &&
         model.topSlantLeftY == 0 &&
         model.topSlantRightY == 0 &&
@@ -1817,6 +1822,14 @@ class WindowPainter extends CustomPainter {
     double topY, {
     bool withFrameFloors = false,
   }) {
+    if (model.hasCornerNotches) {
+      return model.cornerNotches.outlinePath(
+        w,
+        h - topY,
+        inset: t,
+        top: topY,
+      );
+    }
     double bottomOffset = _hasEffectiveBottomFrame ? t : 0.0;
 
     if (model.archHeight == 0 &&
@@ -2555,7 +2568,8 @@ class WindowPainter extends CustomPainter {
       fallback: t,
     );
     final hasCustomSideProfiles = model.frameHasSideOverrides(frameForSides);
-    final innerPath = hasCustomSideProfiles && !_isSlantedOrArched
+    final innerPath =
+        hasCustomSideProfiles && !_isSlantedOrArched && !model.hasCornerNotches
         ? (Path()..addRect(
             Rect.fromLTRB(
               leftT,
@@ -2657,6 +2671,10 @@ class WindowPainter extends CustomPainter {
       }
     }
 
+    if (model.hasCornerNotches) {
+      _drawNotchedMiterCorners(canvas, w, h, t, topY);
+      return;
+    }
     _drawMiterCorners(
       canvas,
       outerRect,
@@ -2669,6 +2687,27 @@ class WindowPainter extends CustomPainter {
       t,
       headTopY: _isSlantedOrArched ? topY : null,
     );
+  }
+
+  /// The 45° joints of a frame with cut corners: from every outline corner,
+  /// outer or inner step corner, to the same corner of the inner edge.
+  void _drawNotchedMiterCorners(
+    Canvas canvas,
+    double w,
+    double h,
+    double t,
+    double topY,
+  ) {
+    final p = Paint()
+      ..color = _fb
+      ..strokeWidth = 1.55
+      ..style = PaintingStyle.stroke;
+    final notches = model.cornerNotches;
+    final outer = notches.outline(w, h - topY, top: topY);
+    final inner = notches.insetOutline(w, h - topY, inset: t, top: topY);
+    for (var i = 0; i < outer.length; i++) {
+      canvas.drawLine(outer[i], inner[i], p);
+    }
   }
 
   void _drawMiterCorners(

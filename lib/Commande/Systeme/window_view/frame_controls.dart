@@ -617,7 +617,8 @@ extension _WindowViewFrame on _WindowViewState {
     // The frame resizes only once it is selected (one tap), never from its
     // edge alone, and not while its slant/arch circles are shown.
     if (widget.model.selection.type != SelectionType.frame ||
-        widget.model.frameShapeMode) {
+        widget.model.frameShapeMode ||
+        widget.model.cornerNotchMode) {
       return null;
     }
     final frameKey = widget.model.selection.zoneId;

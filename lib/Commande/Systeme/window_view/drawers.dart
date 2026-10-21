@@ -6144,6 +6144,15 @@ extension _WindowViewDrawers on _WindowViewState {
               onPressed: () => _showFrameSideProfileDialog(context),
             ),
           );
+          children.add(const SizedBox(width: 8));
+          children.add(
+            _ContentButton(
+              label: Localization.translate('notch_button', lang),
+              icon: Icons.turn_slight_left,
+              selected: widget.model.cornerNotchMode,
+              onPressed: _toggleCornerNotchMode,
+            ),
+          );
         }
 
         // زر الغطاء الجانبي (Side Cover toggle)
@@ -6180,6 +6189,11 @@ extension _WindowViewDrawers on _WindowViewState {
               selected: widget.model.hasSideCovers,
               showWarning: false,
               onPressed: () async {
+                if (!widget.model.hasSideCovers &&
+                    widget.model.hasCornerNotches) {
+                  _showCornerNotchNotice('notch_no_side_covers');
+                  return;
+                }
                 await widget.model.toggleSideCovers(
                   !widget.model.hasSideCovers,
                 );
