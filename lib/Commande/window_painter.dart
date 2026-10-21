@@ -350,8 +350,11 @@ class WindowPainter extends CustomPainter {
         canvas.drawRect(pocket, _buildPaint(pocket));
       }
     }
-    for (final zone in model.zones) {
-      _drawZoneBackground(canvas, zone, h, t);
+    // Same for the zone backing: a shutter alone leaves the opening empty.
+    if (!model.isShutterOnly) {
+      for (final zone in model.zones) {
+        _drawZoneBackground(canvas, zone, h, t);
+      }
     }
     canvas.restore();
 
