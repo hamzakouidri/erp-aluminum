@@ -351,30 +351,32 @@ extension SqlDatabaseOrders on SqlDatabase {
   }
 
   Future<int> deleteClient(dynamic id) async {
-    final clientId = id is num ? id.toInt() : int.tryParse('$id'.trim());
-    String? name;
-    if (clientId != null) {
-      try {
-        final database = await db;
-        final rows = database == null
-            ? const <Map<String, Object?>>[]
-            : await database.query(
-                'Client',
-                columns: ['firstname', 'lastname'],
-                where: 'id = ?',
-                whereArgs: [clientId],
-                limit: 1,
-              );
-        if (rows.isNotEmpty) {
-          name = '${rows.first['firstname'] ?? ''} ${rows.first['lastname'] ?? ''}';
-        }
-      } catch (_) {}
-    }
-    final res = await _retryAfterDatabaseMove(() => _deleteClientOnce(id));
-    if (res > 0 && clientId != null) {
-      unawaited(_logClientAudit(clientId, 'DELETE', name: name));
-    }
-    return res;
+    return runUserDeletion<int>('deleteClient', () async {
+      final clientId = id is num ? id.toInt() : int.tryParse('$id'.trim());
+      String? name;
+      if (clientId != null) {
+        try {
+          final database = await db;
+          final rows = database == null
+              ? const <Map<String, Object?>>[]
+              : await database.query(
+                  'Client',
+                  columns: ['firstname', 'lastname'],
+                  where: 'id = ?',
+                  whereArgs: [clientId],
+                  limit: 1,
+                );
+          if (rows.isNotEmpty) {
+            name = '${rows.first['firstname'] ?? ''} ${rows.first['lastname'] ?? ''}';
+          }
+        } catch (_) {}
+      }
+      final res = await _retryAfterDatabaseMove(() => _deleteClientOnce(id));
+      if (res > 0 && clientId != null) {
+        unawaited(_logClientAudit(clientId, 'DELETE', name: name));
+      }
+      return res;
+    });
   }
 
   Future<int> _deleteClientOnce(dynamic id) async {
@@ -420,14 +422,16 @@ extension SqlDatabaseOrders on SqlDatabase {
   }
 
   Future<int> deleteMeasurement(int id) async {
-    Database? myDb = await db;
-    var res = await myDb!.delete(
-      'Measurements',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    CloudSyncService().notifyChange();
-    return res;
+    return runUserDeletion<int>('deleteMeasurement', () async {
+      Database? myDb = await db;
+      var res = await myDb!.delete(
+        'Measurements',
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      CloudSyncService().notifyChange();
+      return res;
+    });
   }
 
   Future<List<Map<String, dynamic>>> searchClient(String query) async {
@@ -534,14 +538,16 @@ extension SqlDatabaseOrders on SqlDatabase {
   }
 
   Future<int> deleteProject(int id) async {
-    Database? myDb = await db;
-    await myDb!.rawUpdate(
-      'UPDATE Commandes SET project_id = NULL WHERE project_id = ?',
-      [id],
-    );
-    var res = await myDb.rawDelete('DELETE FROM Projects WHERE id = ?', [id]);
-    CloudSyncService().notifyChangeImmediate();
-    return res;
+    return runUserDeletion<int>('deleteProject', () async {
+      Database? myDb = await db;
+      await myDb!.rawUpdate(
+        'UPDATE Commandes SET project_id = NULL WHERE project_id = ?',
+        [id],
+      );
+      var res = await myDb.rawDelete('DELETE FROM Projects WHERE id = ?', [id]);
+      CloudSyncService().notifyChangeImmediate();
+      return res;
+    });
   }
 
   Future<List<Map<String, dynamic>>> readProjects() async {
@@ -977,128 +983,97 @@ extension SqlDatabaseOrders on SqlDatabase {
     required List<Map<String, dynamic>> details,
     String? updatedBy,
   }) async {
-    final myDb = await db;
-    if (myDb == null) {
-      throw StateError('قاعدة البيانات غير متاحة.');
-    }
-    await _backfillOrderCodes(myDb);
-    if (details.isEmpty) {
-      throw StateError('لا يمكن حفظ طلبية بدون تفاصيل.');
-    }
-    if (!total.isFinite || !netPayable.isFinite) {
-      throw StateError('مجموع الطلبية غير صالح.');
-    }
-    // The main save path of an order: keep its previous version in the
-    // audit journal like every other order update.
-    if (idCommande != null) {
-      try {
-        await snapshotCommande(idCommande, actionType: 'UPDATE');
-      } catch (_) {}
-    }
-
-    int? previousClientId;
-    if (idCommande != null) {
-      final previousOrder = await myDb.query(
-        'Commandes',
-        columns: ['client_id'],
-        where: 'id = ? OR CAST(id AS TEXT) = ?',
-        whereArgs: [idCommande, idCommande.toString()],
-        limit: 1,
-      );
-      if (previousOrder.isNotEmpty) {
-        previousClientId = SqlDatabase._paymentRecordId(previousOrder.first['client_id']);
+    return runUserDeletion<int>('saveCommandeWithDetails', () async {
+      final myDb = await db;
+      if (myDb == null) {
+        throw StateError('قاعدة البيانات غير متاحة.');
       }
-    }
+      await _backfillOrderCodes(myDb);
+      if (details.isEmpty) {
+        throw StateError('لا يمكن حفظ طلبية بدون تفاصيل.');
+      }
+      if (!total.isFinite || !netPayable.isFinite) {
+        throw StateError('مجموع الطلبية غير صالح.');
+      }
+      // The main save path of an order: keep its previous version in the
+      // audit journal like every other order update.
+      if (idCommande != null) {
+        try {
+          await snapshotCommande(idCommande, actionType: 'UPDATE');
+        } catch (_) {}
+      }
 
-    // File access is intentionally completed before starting the transaction.
-    // The SQL transaction then stays short and cannot leave half an order.
-    int? detailIdFrom(dynamic rawId) {
-      if (rawId is int) return rawId;
-      if (rawId is num) return rawId.toInt();
-      return int.tryParse(rawId?.toString() ?? '');
-    }
-
-    final preparedDetails = await Future.wait(
-      details.asMap().entries.map((entry) async {
-        final rawDetail = entry.value;
-        // Keep the detail ID while editing.  It is the cloud-sync identity of
-        // this drawing; replacing it would allow an old copy (and its old
-        // colour) to be merged back into the order.
-        final detail = Map<String, dynamic>.from(rawDetail)
-          ..remove('id_commandes')
-          ..['sort_order'] = entry.key;
-        final drawingPath = detail['drawing_image_path']?.toString() ?? '';
-        if (drawingPath.isNotEmpty &&
-            (detail['drawing_image_base64']?.toString().isEmpty ?? true)) {
-          try {
-            final drawingFile = File(drawingPath);
-            if (await drawingFile.exists()) {
-              detail['drawing_image_base64'] = base64Encode(
-                await drawingFile.readAsBytes(),
-              );
-            }
-          } catch (_) {}
-        }
-        return detail;
-      }),
-    );
-
-    final editor = updatedBy?.trim().isNotEmpty == true
-        ? updatedBy!.trim()
-        : await _currentOrderEditor();
-    var createdNewOrder = idCommande == null;
-    final savedId = await myDb.transaction<int>((txn) async {
-      final now = DateTime.now().toUtc().toIso8601String();
-      late final int orderId;
-
-      if (idCommande == null) {
-        final newOrderId = SqlDatabase._nextDistributedId();
-        final orderCode = await _reserveNextOrderCode(txn);
-        final initialStatus =
-            (status.trim().isEmpty ||
-                status.trim().toLowerCase() == 'pending' ||
-                status.trim().toLowerCase() == 'en attente' ||
-                status.trim().toLowerCase() == 'en_attente' ||
-                status.trim().contains('انتظار'))
-            ? 'Nouveau'
-            : status;
-        await txn.insert('Commandes', {
-          'id': newOrderId,
-          'order_code': orderCode,
-          'client_id': clientId,
-          'status': initialStatus,
-          'description': description,
-          'remise': remise,
-          'tva': tva,
-          'total': total,
-          'net_payable': netPayable,
-          'advance_payment': 0.0,
-          'payment_status': 'Unpaid',
-          'created_at': createdAt,
-          'updated_at': now,
-          'updated_by': editor,
-          'project_id': projectId,
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
-        orderId = newOrderId;
-      } else {
-        orderId = idCommande;
-        final existing = await txn.query(
+      int? previousClientId;
+      if (idCommande != null) {
+        final previousOrder = await myDb.query(
           'Commandes',
-          columns: ['advance_payment', 'order_code'],
+          columns: ['client_id'],
           where: 'id = ? OR CAST(id AS TEXT) = ?',
-          whereArgs: [orderId, orderId.toString()],
+          whereArgs: [idCommande, idCommande.toString()],
           limit: 1,
         );
-        if (existing.isEmpty) {
-          createdNewOrder = true;
-          final orderCode = orderId > 0 && orderId < 100000
-              ? orderId
-              : await _reserveNextOrderCode(txn);
+        if (previousOrder.isNotEmpty) {
+          previousClientId = SqlDatabase._paymentRecordId(previousOrder.first['client_id']);
+        }
+      }
+
+      // File access is intentionally completed before starting the transaction.
+      // The SQL transaction then stays short and cannot leave half an order.
+      int? detailIdFrom(dynamic rawId) {
+        if (rawId is int) return rawId;
+        if (rawId is num) return rawId.toInt();
+        return int.tryParse(rawId?.toString() ?? '');
+      }
+
+      final preparedDetails = await Future.wait(
+        details.asMap().entries.map((entry) async {
+          final rawDetail = entry.value;
+          // Keep the detail ID while editing.  It is the cloud-sync identity of
+          // this drawing; replacing it would allow an old copy (and its old
+          // colour) to be merged back into the order.
+          final detail = Map<String, dynamic>.from(rawDetail)
+            ..remove('id_commandes')
+            ..['sort_order'] = entry.key;
+          final drawingPath = detail['drawing_image_path']?.toString() ?? '';
+          if (drawingPath.isNotEmpty &&
+              (detail['drawing_image_base64']?.toString().isEmpty ?? true)) {
+            try {
+              final drawingFile = File(drawingPath);
+              if (await drawingFile.exists()) {
+                detail['drawing_image_base64'] = base64Encode(
+                  await drawingFile.readAsBytes(),
+                );
+              }
+            } catch (_) {}
+          }
+          return detail;
+        }),
+      );
+
+      final editor = updatedBy?.trim().isNotEmpty == true
+          ? updatedBy!.trim()
+          : await _currentOrderEditor();
+      var createdNewOrder = idCommande == null;
+      final savedId = await myDb.transaction<int>((txn) async {
+        final now = DateTime.now().toUtc().toIso8601String();
+        late final int orderId;
+
+        if (idCommande == null) {
+          final newOrderId = SqlDatabase._nextDistributedId();
+          final orderCode = await _reserveNextOrderCode(txn);
+          final initialStatus =
+              (status.trim().isEmpty ||
+                  status.trim().toLowerCase() == 'pending' ||
+                  status.trim().toLowerCase() == 'en attente' ||
+                  status.trim().toLowerCase() == 'en_attente' ||
+                  status.trim().contains('انتظار'))
+              ? 'Nouveau'
+              : status;
           await txn.insert('Commandes', {
-            'id': orderId,
+            'id': newOrderId,
             'order_code': orderCode,
             'client_id': clientId,
-            'status': status,
+            'status': initialStatus,
             'description': description,
             'remise': remise,
             'tva': tva,
@@ -1111,163 +1086,196 @@ extension SqlDatabaseOrders on SqlDatabase {
             'updated_by': editor,
             'project_id': projectId,
           }, conflictAlgorithm: ConflictAlgorithm.replace);
+          orderId = newOrderId;
         } else {
-          final advance =
-              (existing.first['advance_payment'] as num?)?.toDouble() ?? 0.0;
-          final existingOrderCode = _positiveInt(existing.first['order_code']);
-          final orderCode = existingOrderCode > 0
-              ? existingOrderCode
-              : await _reserveNextOrderCode(txn);
-          final paymentStatus = advance >= netPayable
-              ? 'Paid'
-              : (advance > 0 ? 'Partial' : 'Unpaid');
-          await txn.update(
+          orderId = idCommande;
+          final existing = await txn.query(
             'Commandes',
-            {
+            columns: ['advance_payment', 'order_code'],
+            where: 'id = ? OR CAST(id AS TEXT) = ?',
+            whereArgs: [orderId, orderId.toString()],
+            limit: 1,
+          );
+          if (existing.isEmpty) {
+            createdNewOrder = true;
+            final orderCode = orderId > 0 && orderId < 100000
+                ? orderId
+                : await _reserveNextOrderCode(txn);
+            await txn.insert('Commandes', {
+              'id': orderId,
               'order_code': orderCode,
               'client_id': clientId,
+              'status': status,
               'description': description,
               'remise': remise,
               'tva': tva,
               'total': total,
               'net_payable': netPayable,
-              'payment_status': paymentStatus,
+              'advance_payment': 0.0,
+              'payment_status': 'Unpaid',
               'created_at': createdAt,
               'updated_at': now,
               'updated_by': editor,
               'project_id': projectId,
-            },
-            where: 'id = ? OR CAST(id AS TEXT) = ?',
-            whereArgs: [orderId, orderId.toString()],
-            conflictAlgorithm: ConflictAlgorithm.replace,
-          );
+            }, conflictAlgorithm: ConflictAlgorithm.replace);
+          } else {
+            final advance =
+                (existing.first['advance_payment'] as num?)?.toDouble() ?? 0.0;
+            final existingOrderCode = _positiveInt(existing.first['order_code']);
+            final orderCode = existingOrderCode > 0
+                ? existingOrderCode
+                : await _reserveNextOrderCode(txn);
+            final paymentStatus = advance >= netPayable
+                ? 'Paid'
+                : (advance > 0 ? 'Partial' : 'Unpaid');
+            await txn.update(
+              'Commandes',
+              {
+                'order_code': orderCode,
+                'client_id': clientId,
+                'description': description,
+                'remise': remise,
+                'tva': tva,
+                'total': total,
+                'net_payable': netPayable,
+                'payment_status': paymentStatus,
+                'created_at': createdAt,
+                'updated_at': now,
+                'updated_by': editor,
+                'project_id': projectId,
+              },
+              where: 'id = ? OR CAST(id AS TEXT) = ?',
+              whereArgs: [orderId, orderId.toString()],
+              conflictAlgorithm: ConflictAlgorithm.replace,
+            );
+          }
         }
-      }
 
-      final existingDetails = await txn.query(
-        'Commandes_details',
-        columns: ['id'],
-        where: 'id_commandes = ? OR CAST(id_commandes AS TEXT) = ?',
-        whereArgs: [orderId, orderId.toString()],
-      );
-      final existingDetailIds = <int>{
-        for (final row in existingDetails)
-          if (detailIdFrom(row['id']) != null) detailIdFrom(row['id'])!,
-      };
-      final retainedDetailIds = <int>{};
+        final existingDetails = await txn.query(
+          'Commandes_details',
+          columns: ['id'],
+          where: 'id_commandes = ? OR CAST(id_commandes AS TEXT) = ?',
+          whereArgs: [orderId, orderId.toString()],
+        );
+        final existingDetailIds = <int>{
+          for (final row in existingDetails)
+            if (detailIdFrom(row['id']) != null) detailIdFrom(row['id'])!,
+        };
+        final retainedDetailIds = <int>{};
 
-      for (final detail in preparedDetails) {
-        final existingDetailId = detailIdFrom(detail['id']);
-        final row = Map<String, dynamic>.from(detail)
-          ..remove('id')
-          ..remove('id_commandes')
-          ..['id_commandes'] = orderId
-          ..['updated_at'] = now;
+        for (final detail in preparedDetails) {
+          final existingDetailId = detailIdFrom(detail['id']);
+          final row = Map<String, dynamic>.from(detail)
+            ..remove('id')
+            ..remove('id_commandes')
+            ..['id_commandes'] = orderId
+            ..['updated_at'] = now;
 
-        if (existingDetailId != null &&
-            existingDetailIds.contains(existingDetailId)) {
-          await txn.update(
+          if (existingDetailId != null &&
+              existingDetailIds.contains(existingDetailId)) {
+            await txn.update(
+              'Commandes_details',
+              row,
+              where: 'id = ? OR CAST(id AS TEXT) = ?',
+              whereArgs: [existingDetailId, existingDetailId.toString()],
+            );
+            retainedDetailIds.add(existingDetailId);
+          } else {
+            final newDetailId = SqlDatabase._nextDistributedId();
+            await txn.insert('Commandes_details', {
+              ...row,
+              'id': newDetailId,
+            }, conflictAlgorithm: ConflictAlgorithm.replace);
+            retainedDetailIds.add(newDetailId);
+          }
+        }
+
+        // Delete only drawings that the user actually removed.  This keeps a
+        // stable identity for the remaining drawings and produces tombstones
+        // only for genuine removals.
+        for (final existingDetailId in existingDetailIds) {
+          if (retainedDetailIds.contains(existingDetailId)) continue;
+          await txn.delete(
+            'WorkerAllocations',
+            where:
+                'commande_detail_id = ? OR CAST(commande_detail_id AS TEXT) = ?',
+            whereArgs: [existingDetailId, existingDetailId.toString()],
+          );
+          await txn.delete(
             'Commandes_details',
-            row,
             where: 'id = ? OR CAST(id AS TEXT) = ?',
             whereArgs: [existingDetailId, existingDetailId.toString()],
           );
-          retainedDetailIds.add(existingDetailId);
-        } else {
-          final newDetailId = SqlDatabase._nextDistributedId();
-          await txn.insert('Commandes_details', {
-            ...row,
-            'id': newDetailId,
-          }, conflictAlgorithm: ConflictAlgorithm.replace);
-          retainedDetailIds.add(newDetailId);
         }
+
+        final countResult = await txn.rawQuery(
+          'SELECT COUNT(*) AS count FROM Commandes_details '
+          'WHERE id_commandes = ? OR CAST(id_commandes AS TEXT) = ?',
+          [orderId, orderId.toString()],
+        );
+        final savedDetails = (countResult.first['count'] as num?)?.toInt() ?? 0;
+        if (savedDetails != preparedDetails.length) {
+          throw StateError(
+            'لم تُحفظ كل تفاصيل الطلبية '
+            '(${preparedDetails.length} مطلوبة، $savedDetails محفوظة).',
+          );
+        }
+        return orderId;
+      });
+
+      // Apply any retained credit to this order without creating another cash
+      // receipt. Also rebuild the old client's ledger if an order was moved.
+      await reconcileClientPayments(clientId);
+      if (previousClientId != null && previousClientId != clientId) {
+        await reconcileClientPayments(previousClientId);
       }
 
-      // Delete only drawings that the user actually removed.  This keeps a
-      // stable identity for the remaining drawings and produces tombstones
-      // only for genuine removals.
-      for (final existingDetailId in existingDetailIds) {
-        if (retainedDetailIds.contains(existingDetailId)) continue;
-        await txn.delete(
-          'WorkerAllocations',
-          where:
-              'commande_detail_id = ? OR CAST(commande_detail_id AS TEXT) = ?',
-          whereArgs: [existingDetailId, existingDetailId.toString()],
+      // The order screen saves through here: record it before the refresh
+      // so the dashboard shows it at once.
+      try {
+        final (document, party) = await _orderLabelsForActivity(savedId);
+        await _recordDashboardActivity(
+          activityType: createdNewOrder ? 'order_added' : 'order_updated',
+          entityId: savedId,
+          document: document,
+          party: party,
+          userName: editor,
         );
-        await txn.delete(
-          'Commandes_details',
-          where: 'id = ? OR CAST(id AS TEXT) = ?',
-          whereArgs: [existingDetailId, existingDetailId.toString()],
-        );
-      }
+      } catch (_) {}
 
-      final countResult = await txn.rawQuery(
-        'SELECT COUNT(*) AS count FROM Commandes_details '
-        'WHERE id_commandes = ? OR CAST(id_commandes AS TEXT) = ?',
-        [orderId, orderId.toString()],
-      );
-      final savedDetails = (countResult.first['count'] as num?)?.toInt() ?? 0;
-      if (savedDetails != preparedDetails.length) {
-        throw StateError(
-          'لم تُحفظ كل تفاصيل الطلبية '
-          '(${preparedDetails.length} مطلوبة، $savedDetails محفوظة).',
+      // The order is committed locally at this point. Upload and notify in the
+      // background: waiting for the network and the push Edge Function (cold
+      // start + FCM) made the final "save" button feel slow.
+      unawaited(() async {
+      var uploaded = false;
+      try {
+        await CloudSyncService().notifyChangeImmediate();
+        uploaded = true;
+      } catch (error) {
+          debugPrint(
+            'Order $savedId saved locally; cloud upload deferred: $error',
+          );
+      }
+      if (uploaded) {
+        _notifyOrderEventSafe(
+          orderId: savedId,
+          isNew: createdNewOrder,
+          author: editor,
+        );
+        await _sendOrderPushEventSafe(
+          orderId: savedId,
+          action: createdNewOrder ? 'created' : 'updated',
+          author: editor,
         );
       }
-      return orderId;
+      }());
+      if (createdNewOrder) {
+        unawaited(
+          _logOrderAudit(savedId, actionType: 'CREATE', details: status),
+        );
+      }
+      return savedId;
     });
-
-    // Apply any retained credit to this order without creating another cash
-    // receipt. Also rebuild the old client's ledger if an order was moved.
-    await reconcileClientPayments(clientId);
-    if (previousClientId != null && previousClientId != clientId) {
-      await reconcileClientPayments(previousClientId);
-    }
-
-    // The order screen saves through here: record it before the refresh
-    // so the dashboard shows it at once.
-    try {
-      final (document, party) = await _orderLabelsForActivity(savedId);
-      await _recordDashboardActivity(
-        activityType: createdNewOrder ? 'order_added' : 'order_updated',
-        entityId: savedId,
-        document: document,
-        party: party,
-        userName: editor,
-      );
-    } catch (_) {}
-
-    // The order is committed locally at this point. Upload and notify in the
-    // background: waiting for the network and the push Edge Function (cold
-    // start + FCM) made the final "save" button feel slow.
-    unawaited(() async {
-    var uploaded = false;
-    try {
-      await CloudSyncService().notifyChangeImmediate();
-      uploaded = true;
-    } catch (error) {
-        debugPrint(
-          'Order $savedId saved locally; cloud upload deferred: $error',
-        );
-    }
-    if (uploaded) {
-      _notifyOrderEventSafe(
-        orderId: savedId,
-        isNew: createdNewOrder,
-        author: editor,
-      );
-      await _sendOrderPushEventSafe(
-        orderId: savedId,
-        action: createdNewOrder ? 'created' : 'updated',
-        author: editor,
-      );
-    }
-    }());
-    if (createdNewOrder) {
-      unawaited(
-        _logOrderAudit(savedId, actionType: 'CREATE', details: status),
-      );
-    }
-    return savedId;
   }
 
   /// Journal entry for an order, titled like the order snapshots.
@@ -1590,93 +1598,97 @@ extension SqlDatabaseOrders on SqlDatabase {
   }
 
   Future<int> _softDeleteCommandeOnce(int id) async {
-    Database? myDb = await db;
-    if (myDb == null) return 0;
-    await _ensureOrderTrashInfrastructure(myDb);
-    await _ensureRemnantInventorySchema(myDb);
-    await _ensureOrderStockReservationInfrastructure(myDb);
-    final notificationRow = await readCommandeWithClientById(id);
-    final order = await myDb.query(
-      'Commandes',
-      columns: ['client_id'],
-      where: 'id = ?',
-      whereArgs: [id],
-      limit: 1,
-    );
-    final nowIso = DateTime.now().toUtc().toIso8601String();
-    final deletedBy = await _currentOrderEditor();
-    await snapshotCommande(id, actionType: 'DELETE');
-    // A deleted order must not keep stock away from the others.
-    final res = await myDb.transaction<int>((txn) async {
-      await _releaseOrderStockHold(txn, id, nowIso);
-      return txn.update(
-        'Commandes',
-        {
-          'is_deleted': 1,
-          'deleted_at': nowIso,
-          'deleted_by': deletedBy,
-          'updated_at': nowIso,
-          'is_stock_reserved': 0,
-          'stock_reserved_at': null,
-        },
-        where: 'id = ?',
-        whereArgs: [id],
-      );
+    return runUserDeletion<int>('deleteCommandePermanently', () async {
+      return runUserDeletion<int>('deleteCommande', () async {
+        Database? myDb = await db;
+        if (myDb == null) return 0;
+        await _ensureOrderTrashInfrastructure(myDb);
+        await _ensureRemnantInventorySchema(myDb);
+        await _ensureOrderStockReservationInfrastructure(myDb);
+        final notificationRow = await readCommandeWithClientById(id);
+        final order = await myDb.query(
+          'Commandes',
+          columns: ['client_id'],
+          where: 'id = ?',
+          whereArgs: [id],
+          limit: 1,
+        );
+        final nowIso = DateTime.now().toUtc().toIso8601String();
+        final deletedBy = await _currentOrderEditor();
+        await snapshotCommande(id, actionType: 'DELETE');
+        // A deleted order must not keep stock away from the others.
+        final res = await myDb.transaction<int>((txn) async {
+          await _releaseOrderStockHold(txn, id, nowIso);
+          return txn.update(
+            'Commandes',
+            {
+              'is_deleted': 1,
+              'deleted_at': nowIso,
+              'deleted_by': deletedBy,
+              'updated_at': nowIso,
+              'is_stock_reserved': 0,
+              'stock_reserved_at': null,
+            },
+            where: 'id = ?',
+            whereArgs: [id],
+          );
+        });
+        if (res > 0) {
+          final clientId = SqlDatabase._paymentRecordId(
+            order.isEmpty ? null : order.first['client_id'],
+          );
+          if (clientId != null) await reconcileClientPayments(clientId);
+          try {
+            await CloudSyncService().notifyChangeImmediate();
+          } catch (_) {}
+          if (notificationRow != null) {
+            final orderCodeStr =
+                notificationRow['order_code']?.toString() ??
+                notificationRow['display_number']?.toString() ??
+                id.toString();
+            final clientNameStr =
+                '${notificationRow['firstname'] ?? ''} ${notificationRow['lastname'] ?? ''}'
+                    .trim();
+            final totalAmount =
+                notificationRow['net_payable'] ?? notificationRow['total'] ?? 0;
+            unawaited(
+              logAuditAction(
+                actionType: 'DELETE',
+                entityType: 'order',
+                entityId: id.toString(),
+                entityTitle: 'طلبية #$orderCodeStr للزبون $clientNameStr',
+                details: 'المبلغ: $totalAmount دج - تم نقلها إلى سلة المحذوفات',
+              ),
+            );
+            _notifyOrderDeletedSafe(notificationRow);
+            unawaited(
+              WorkerPushNotificationService.instance
+                  .sendOrderEvent(
+                action: 'deleted',
+                orderId: id,
+                orderCode: orderCodeStr,
+                clientName: clientNameStr,
+                author: deletedBy,
+                  )
+                  .catchError((Object error) {
+              debugPrint('Order deletion push notification skipped: $error');
+                  }),
+            );
+          } else {
+            unawaited(
+              logAuditAction(
+                actionType: 'DELETE',
+                entityType: 'order',
+                entityId: id.toString(),
+                entityTitle: 'طلبية #$id',
+                details: 'تم نقلها إلى سلة المحذوفات',
+              ),
+            );
+          }
+        }
+        return res;
+      });
     });
-    if (res > 0) {
-      final clientId = SqlDatabase._paymentRecordId(
-        order.isEmpty ? null : order.first['client_id'],
-      );
-      if (clientId != null) await reconcileClientPayments(clientId);
-      try {
-        await CloudSyncService().notifyChangeImmediate();
-      } catch (_) {}
-      if (notificationRow != null) {
-        final orderCodeStr =
-            notificationRow['order_code']?.toString() ??
-            notificationRow['display_number']?.toString() ??
-            id.toString();
-        final clientNameStr =
-            '${notificationRow['firstname'] ?? ''} ${notificationRow['lastname'] ?? ''}'
-                .trim();
-        final totalAmount =
-            notificationRow['net_payable'] ?? notificationRow['total'] ?? 0;
-        unawaited(
-          logAuditAction(
-            actionType: 'DELETE',
-            entityType: 'order',
-            entityId: id.toString(),
-            entityTitle: 'طلبية #$orderCodeStr للزبون $clientNameStr',
-            details: 'المبلغ: $totalAmount دج - تم نقلها إلى سلة المحذوفات',
-          ),
-        );
-        _notifyOrderDeletedSafe(notificationRow);
-        unawaited(
-          WorkerPushNotificationService.instance
-              .sendOrderEvent(
-            action: 'deleted',
-            orderId: id,
-            orderCode: orderCodeStr,
-            clientName: clientNameStr,
-            author: deletedBy,
-              )
-              .catchError((Object error) {
-          debugPrint('Order deletion push notification skipped: $error');
-              }),
-        );
-      } else {
-        unawaited(
-          logAuditAction(
-            actionType: 'DELETE',
-            entityType: 'order',
-            entityId: id.toString(),
-            entityTitle: 'طلبية #$id',
-            details: 'تم نقلها إلى سلة المحذوفات',
-          ),
-        );
-      }
-    }
-    return res;
   }
 
   void _notifyOrderDeletedSafe(Map<String, dynamic> row) {
@@ -1872,14 +1884,16 @@ extension SqlDatabaseOrders on SqlDatabase {
   }
 
   Future<int> deleteCommandeDetails(int commandeId) async {
-    Database? myDb = await db;
-    await snapshotCommande(commandeId, actionType: 'UPDATE');
-    var res = await myDb!.rawDelete(
-      'DELETE FROM Commandes_details WHERE id_commandes = ?',
-      [commandeId],
-    );
-    CloudSyncService().notifyChange();
-    return res;
+    return runUserDeletion<int>('deleteCommandeDetails', () async {
+      Database? myDb = await db;
+      await snapshotCommande(commandeId, actionType: 'UPDATE');
+      var res = await myDb!.rawDelete(
+        'DELETE FROM Commandes_details WHERE id_commandes = ?',
+        [commandeId],
+      );
+      CloudSyncService().notifyChange();
+      return res;
+    });
   }
 
   Future<int> insertCommandeDetail({
@@ -2049,23 +2063,25 @@ extension SqlDatabaseOrders on SqlDatabase {
   }
 
   Future<int> resetCommandeDeliveredQty(int idCommande) async {
-    Database? myDb = await db;
-    await snapshotCommande(
-      idCommande,
-      actionType: 'UPDATE',
-      afterHeader: {'reset_delivered_qty': true},
-    );
-    var res = await myDb!.update(
-      'Commandes_details',
-      {
-        'delivered_qty': 0,
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      },
-      where: 'id_commandes = ?',
-      whereArgs: [idCommande],
-    );
-    CloudSyncService().notifyChange();
-    return res;
+    return runUserDeletion<int>('resetCommandeDeliveredQty', () async {
+      Database? myDb = await db;
+      await snapshotCommande(
+        idCommande,
+        actionType: 'UPDATE',
+        afterHeader: {'reset_delivered_qty': true},
+      );
+      var res = await myDb!.update(
+        'Commandes_details',
+        {
+          'delivered_qty': 0,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        },
+        where: 'id_commandes = ?',
+        whereArgs: [idCommande],
+      );
+      CloudSyncService().notifyChange();
+      return res;
+    });
   }
 
   Future<int> insertCommandeDelivery(

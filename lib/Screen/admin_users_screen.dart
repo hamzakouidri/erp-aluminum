@@ -1426,6 +1426,9 @@ class _AdminUsersScreenState extends State<AdminUsersScreen>
     final name = _supabaseWorkshopName(rows);
     if (code.isEmpty) return;
     try {
+      // The local rows are the open workshop's: the full download below
+      // must clear them, not upload them into the selected workshop.
+      await SupabaseWorkshopSyncService().rememberLocalDataOwnerIfUnknown();
       final account = await SupabaseAccountService()
           .loadSelectedApplicationAdminWorkshop(code: code, name: name);
       if (account == null) {

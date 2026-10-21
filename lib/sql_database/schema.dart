@@ -4696,6 +4696,19 @@ extension SqlDatabaseSchema on SqlDatabase {
     return '${row['tables']}:${row['triggers']}:${row['definitions']}';
   }
 
+  /// Trigger condition of a recorded deletion: inside an explicit delete
+  /// action, and not while remote data is applied.
+  static const String _userDeletionRecorded = '''
+    COALESCE(
+      (SELECT suppress_tombstones FROM _sync_runtime_flags WHERE id = 1),
+      0
+    ) = 0
+    AND COALESCE(
+      (SELECT record_deletions FROM _sync_runtime_flags WHERE id = 1),
+      0
+    ) = 1
+  ''';
+
   Future<void> _ensureSyncTombstoneInfrastructure(DatabaseExecutor db) async {
     if (SqlDatabase._syncInfrastructureSignature != null &&
         await _syncSchemaSignature(db) == SqlDatabase._syncInfrastructureSignature) {
@@ -4719,6 +4732,27 @@ extension SqlDatabaseSchema on SqlDatabase {
       'id': 1,
       'suppress_tombstones': 0,
     }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    // A deletion is recorded for the other devices only inside an explicit
+    // delete action (see [runUserDeletion]); who deleted and from where is
+    // kept with it.
+    for (final statement in const [
+      'ALTER TABLE _sync_runtime_flags ADD COLUMN record_deletions INTEGER NOT NULL DEFAULT 0;',
+      'ALTER TABLE _sync_runtime_flags ADD COLUMN deletion_source TEXT;',
+      'ALTER TABLE SyncTombstones ADD COLUMN deleted_by TEXT;',
+      'ALTER TABLE SyncTombstones ADD COLUMN delete_source TEXT;',
+    ]) {
+      try {
+        await db.execute(statement);
+      } catch (_) {}
+    }
+    if (SqlDatabaseUserDeletion.activeScopes == 0) {
+      // A delete action interrupted by a crash must not leave every later
+      // deletion recorded.
+      await db.update('_sync_runtime_flags', {
+        'record_deletions': 0,
+        'deletion_source': null,
+      }, where: 'id = 1');
+    }
     await _ensureOrderEditorTracking(db);
     await db.execute('''
       CREATE TABLE IF NOT EXISTS _sync_change_log (
@@ -4759,24 +4793,26 @@ extension SqlDatabaseSchema on SqlDatabase {
       if (!columns.contains('id')) continue;
       final tombstoneTrigger = 'sync_tombstone_delete_$table';
       try {
+        // Older versions recorded every deletion, wipes included: replace
+        // those triggers.
+        await db.execute('DROP TRIGGER IF EXISTS "$tombstoneTrigger"');
         await db.execute('''
           CREATE TRIGGER IF NOT EXISTS "$tombstoneTrigger"
           AFTER DELETE ON "$table"
-          WHEN COALESCE(
-            (SELECT suppress_tombstones
-             FROM _sync_runtime_flags
-             WHERE id = 1),
-            0
-          ) = 0
+          WHEN $_userDeletionRecorded
           BEGIN
             INSERT OR REPLACE INTO SyncTombstones (
               table_name,
               row_id,
-              deleted_at
+              deleted_at,
+              deleted_by,
+              delete_source
             ) VALUES (
               '$table',
               CAST(OLD.id AS TEXT),
-              strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+              strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+              (SELECT local_editor_uid FROM _sync_runtime_flags WHERE id = 1),
+              (SELECT deletion_source FROM _sync_runtime_flags WHERE id = 1)
             );
           END
         ''');
@@ -4848,15 +4884,11 @@ extension SqlDatabaseSchema on SqlDatabase {
             );
           END
         ''');
+        await db.execute('DROP TRIGGER IF EXISTS "$deleteTrigger"');
         await db.execute('''
           CREATE TRIGGER IF NOT EXISTS "$deleteTrigger"
           AFTER DELETE ON "$table"
-          WHEN COALESCE(
-            (SELECT suppress_tombstones
-             FROM _sync_runtime_flags
-             WHERE id = 1),
-            0
-          ) = 0
+          WHEN $_userDeletionRecorded
           BEGIN
             INSERT OR REPLACE INTO _sync_change_log (
               table_name,

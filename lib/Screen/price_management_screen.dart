@@ -5403,11 +5403,14 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                                               ConflictAlgorithm.replace,
                                         );
                                       } else {
-                                        await dbInstance.delete(
-                                          'AccessoryColorPrices',
-                                          where:
-                                              'accessory_id = ? AND color_id = ?',
-                                          whereArgs: [selectedAccId, cId],
+                                        await SqlDatabase().runUserDeletion(
+                                          'removeAccessoryColorPrice',
+                                          () => dbInstance.delete(
+                                            'AccessoryColorPrices',
+                                            where:
+                                                'accessory_id = ? AND color_id = ?',
+                                            whereArgs: [selectedAccId, cId],
+                                          ),
                                         );
                                       }
                                       CloudSyncService().notifyChange();

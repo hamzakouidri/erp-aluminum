@@ -56,46 +56,48 @@ extension SqlDatabaseCatalog on SqlDatabase {
   }
 
   Future<int> deleteProfile(int id) async {
-    Database? myDb = await db;
-    if (myDb == null) return 0;
-    var res = await myDb.update(
-      'Profile',
-      {'is_active': 0},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    // Cascade archive to child series and sections
-    try {
-      final seriesList = await myDb.query(
-        'Series',
-        columns: ['id'],
-        where: 'profile_id = ?',
-        whereArgs: [id],
-      );
-      for (final s in seriesList) {
-        final sId = s['id'] as int?;
-        if (sId != null) {
-          await myDb.update(
-            'Sections',
-            {'is_active': 0},
-            where: 'series_id = ?',
-            whereArgs: [sId],
-          );
-        }
-      }
-      await myDb.update(
-        'Series',
+    return runUserDeletion<int>('deleteProfile', () async {
+      Database? myDb = await db;
+      if (myDb == null) return 0;
+      var res = await myDb.update(
+        'Profile',
         {'is_active': 0},
-        where: 'profile_id = ?',
+        where: 'id = ?',
         whereArgs: [id],
       );
-    } catch (e) {
-      debugPrint('Error cascading profile deactivation: $e');
-    }
-    try {
-      CloudSyncService().notifyChange();
-    } catch (_) {}
-    return res;
+      // Cascade archive to child series and sections
+      try {
+        final seriesList = await myDb.query(
+          'Series',
+          columns: ['id'],
+          where: 'profile_id = ?',
+          whereArgs: [id],
+        );
+        for (final s in seriesList) {
+          final sId = s['id'] as int?;
+          if (sId != null) {
+            await myDb.update(
+              'Sections',
+              {'is_active': 0},
+              where: 'series_id = ?',
+              whereArgs: [sId],
+            );
+          }
+        }
+        await myDb.update(
+          'Series',
+          {'is_active': 0},
+          where: 'profile_id = ?',
+          whereArgs: [id],
+        );
+      } catch (e) {
+        debugPrint('Error cascading profile deactivation: $e');
+      }
+      try {
+        CloudSyncService().notifyChange();
+      } catch (_) {}
+      return res;
+    });
   }
 
   //////////////////////////////////// Series //////////////////////////////////////
@@ -416,29 +418,31 @@ extension SqlDatabaseCatalog on SqlDatabase {
   }
 
   Future<int> deleteSeries(int id) async {
-    Database? myDb = await db;
-    if (myDb == null) return 0;
-    var res = await myDb.update(
-      'Series',
-      {'is_active': 0},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    // Cascade archive to child sections
-    try {
-      await myDb.update(
-        'Sections',
+    return runUserDeletion<int>('deleteSeries', () async {
+      Database? myDb = await db;
+      if (myDb == null) return 0;
+      var res = await myDb.update(
+        'Series',
         {'is_active': 0},
-        where: 'series_id = ?',
+        where: 'id = ?',
         whereArgs: [id],
       );
-    } catch (e) {
-      debugPrint('Error cascading series deactivation: $e');
-    }
-    try {
-      CloudSyncService().notifyChange();
-    } catch (_) {}
-    return res;
+      // Cascade archive to child sections
+      try {
+        await myDb.update(
+          'Sections',
+          {'is_active': 0},
+          where: 'series_id = ?',
+          whereArgs: [id],
+        );
+      } catch (e) {
+        debugPrint('Error cascading series deactivation: $e');
+      }
+      try {
+        CloudSyncService().notifyChange();
+      } catch (_) {}
+      return res;
+    });
   }
 
   /// Returns local sections plus sections explicitly shared with this series.
@@ -620,16 +624,18 @@ extension SqlDatabaseCatalog on SqlDatabase {
   }
 
   Future<void> deleteSectionSharingRule(int id) async {
-    final myDb = await db;
-    if (myDb == null) return;
-    await _ensureSectionSharingSchema(myDb);
-    await myDb.update(
-      'SectionSharingRules',
-      {'is_active': 0, 'updated_at': DateTime.now().toUtc().toIso8601String()},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+    return runUserDeletion<void>('deleteSectionSharingRule', () async {
+      final myDb = await db;
+      if (myDb == null) return;
+      await _ensureSectionSharingSchema(myDb);
+      await myDb.update(
+        'SectionSharingRules',
+        {'is_active': 0, 'updated_at': DateTime.now().toUtc().toIso8601String()},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+    });
   }
 
   Future<List<Map<String, dynamic>>> readFrameJoinRules() async {
@@ -797,16 +803,18 @@ extension SqlDatabaseCatalog on SqlDatabase {
   }
 
   Future<void> deleteProfileCompatibilityGroup(int id) async {
-    final myDb = await db;
-    if (myDb == null) return;
-    await _ensureSeriesDesignTables(myDb);
-    await myDb.update(
-      'ProfileCompatibilityGroups',
-      {'is_active': 0, 'updated_at': DateTime.now().toUtc().toIso8601String()},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+    return runUserDeletion<void>('deleteProfileCompatibilityGroup', () async {
+      final myDb = await db;
+      if (myDb == null) return;
+      await _ensureSeriesDesignTables(myDb);
+      await myDb.update(
+        'ProfileCompatibilityGroups',
+        {'is_active': 0, 'updated_at': DateTime.now().toUtc().toIso8601String()},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+    });
   }
 
   /// Every frame pairing (FramePairingRules), by frame section id.
@@ -863,22 +871,24 @@ extension SqlDatabaseCatalog on SqlDatabase {
   /// Takes [sectionId] out of its compatibility group: drops its links to
   /// every frame of [group].
   Future<void> removeFrameFromJoinGroup(int sectionId, Set<int> group) async {
-    final myDb = await db;
-    if (myDb == null) return;
-    await _ensureSeriesDesignTables(myDb);
-    final now = DateTime.now().toUtc().toIso8601String();
-    for (final other in group) {
-      if (other == sectionId) continue;
-      final lo = sectionId < other ? sectionId : other;
-      final hi = sectionId < other ? other : sectionId;
-      await myDb.update(
-        'FrameJoinRules',
-        {'is_active': 0, 'updated_at': now},
-        where: 'section_a_id = ? AND section_b_id = ?',
-        whereArgs: [lo, hi],
-      );
-    }
-    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+    return runUserDeletion<void>('removeFrameFromJoinGroup', () async {
+      final myDb = await db;
+      if (myDb == null) return;
+      await _ensureSeriesDesignTables(myDb);
+      final now = DateTime.now().toUtc().toIso8601String();
+      for (final other in group) {
+        if (other == sectionId) continue;
+        final lo = sectionId < other ? sectionId : other;
+        final hi = sectionId < other ? other : sectionId;
+        await myDb.update(
+          'FrameJoinRules',
+          {'is_active': 0, 'updated_at': now},
+          where: 'section_a_id = ? AND section_b_id = ?',
+          whereArgs: [lo, hi],
+        );
+      }
+      await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+    });
   }
 
   Future<int> saveFrameJoinRule(int sectionAId, int sectionBId) async {
@@ -906,35 +916,39 @@ extension SqlDatabaseCatalog on SqlDatabase {
   }
 
   Future<void> deleteFrameJoinRule(int id) async {
-    final myDb = await db;
-    if (myDb == null) return;
-    await _ensureSeriesDesignTables(myDb);
-    await myDb.update(
-      'FrameJoinRules',
-      {'is_active': 0, 'updated_at': DateTime.now().toUtc().toIso8601String()},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+    return runUserDeletion<void>('deleteFrameJoinRule', () async {
+      final myDb = await db;
+      if (myDb == null) return;
+      await _ensureSeriesDesignTables(myDb);
+      await myDb.update(
+        'FrameJoinRules',
+        {'is_active': 0, 'updated_at': DateTime.now().toUtc().toIso8601String()},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+    });
   }
 
   Future<void> deleteFrameJoinRuleBetween(
     int sectionAId,
     int sectionBId,
   ) async {
-    final myDb = await db;
-    if (myDb == null) return;
-    await _ensureSeriesDesignTables(myDb);
-    final lo = sectionAId < sectionBId ? sectionAId : sectionBId;
-    final hi = sectionAId < sectionBId ? sectionBId : sectionAId;
-    final now = DateTime.now().toUtc().toIso8601String();
-    await myDb.update(
-      'FrameJoinRules',
-      {'is_active': 0, 'updated_at': now},
-      where: 'section_a_id = ? AND section_b_id = ?',
-      whereArgs: [lo, hi],
-    );
-    await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+    return runUserDeletion<void>('deleteFrameJoinRuleBetween', () async {
+      final myDb = await db;
+      if (myDb == null) return;
+      await _ensureSeriesDesignTables(myDb);
+      final lo = sectionAId < sectionBId ? sectionAId : sectionBId;
+      final hi = sectionAId < sectionBId ? sectionBId : sectionAId;
+      final now = DateTime.now().toUtc().toIso8601String();
+      await myDb.update(
+        'FrameJoinRules',
+        {'is_active': 0, 'updated_at': now},
+        where: 'section_a_id = ? AND section_b_id = ?',
+        whereArgs: [lo, hi],
+      );
+      await CloudSyncService().notifyCatalogChange(uploadImmediately: true);
+    });
   }
 
   Future<List<Map<String, dynamic>>> searchSectionsWithProfile(
@@ -1031,18 +1045,20 @@ extension SqlDatabaseCatalog on SqlDatabase {
   }
 
   Future<int> deleteSection(int id) async {
-    Database? myDb = await db;
-    if (myDb == null) return 0;
-    var res = await myDb.update(
-      'Sections',
-      {'is_active': 0},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    try {
-      CloudSyncService().notifyChange();
-    } catch (_) {}
-    return res;
+    return runUserDeletion<int>('deleteSection', () async {
+      Database? myDb = await db;
+      if (myDb == null) return 0;
+      var res = await myDb.update(
+        'Sections',
+        {'is_active': 0},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      try {
+        CloudSyncService().notifyChange();
+      } catch (_) {}
+      return res;
+    });
   }
 
   int _positiveInt(Object? value) {
@@ -1176,15 +1192,17 @@ extension SqlDatabaseCatalog on SqlDatabase {
   }
 
   Future<int> deleteColor(int id) async {
-    Database? myDb = await db;
-    var res = await myDb!.update(
-      'Colors',
-      {'is_active': 0},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    CloudSyncService().notifyCatalogChange();
-    return res;
+    return runUserDeletion<int>('deleteColor', () async {
+      Database? myDb = await db;
+      var res = await myDb!.update(
+        'Colors',
+        {'is_active': 0},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      CloudSyncService().notifyCatalogChange();
+      return res;
+    });
   }
 
   Future<List<int>> getProfilesForColor(int colorId) async {
@@ -1423,83 +1441,85 @@ extension SqlDatabaseCatalog on SqlDatabase {
     required bool enabled,
     double price = 0.0,
   }) async {
-    final myDb = await db;
-    if (myDb == null) {
-      throw StateError('Shutter component database is not available.');
-    }
-
-    // Every component has a grey base-colour price.  Other colours are
-    // optional overrides.
-    await _ensureShutterColorTables(myDb);
-    final defaultColorId = await _ensureShutterDefaultPriceColor(myDb);
-    if (!enabled && colorId == defaultColorId) {
-      // The grey row is the base price and must remain available for the
-      // catalogue and required-goods calculations.
-      await ensureShutterComponentsUseGreyPrice();
-      return;
-    }
-    final component = await myDb.query(
-      'ShutterComponents',
-      columns: const ['id'],
-      where: 'id = ?',
-      whereArgs: [shutterComponentId],
-      limit: 1,
-    );
-    if (component.isEmpty) {
-      throw StateError('The selected shutter component no longer exists.');
-    }
-
-    await myDb.transaction((txn) async {
-      if (enabled) {
-        await txn.insert('ShutterColorPrices', {
-          'shutter_component_id': shutterComponentId,
-          'color_id': colorId,
-          'price': price,
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
-        await txn.insert('ShutterComponentColors', {
-          'shutter_component_id': shutterComponentId,
-          'color_id': colorId,
-        }, conflictAlgorithm: ConflictAlgorithm.ignore);
-        if (colorId == defaultColorId) {
-          await txn.update(
-            'ShutterComponents',
-            {'price': price},
-            where: 'id = ?',
-            whereArgs: [shutterComponentId],
-          );
-        }
-      } else {
-        await txn.delete(
-          'ShutterColorPrices',
-          where: 'shutter_component_id = ? AND color_id = ?',
-          whereArgs: [shutterComponentId, colorId],
-        );
-        await txn.delete(
-          'ShutterComponentColors',
-          where: 'shutter_component_id = ? AND color_id = ?',
-          whereArgs: [shutterComponentId, colorId],
-        );
+    return runUserDeletion<void>('setShutterColorForComponent', () async {
+      final myDb = await db;
+      if (myDb == null) {
+        throw StateError('Shutter component database is not available.');
       }
-    });
 
-    if (enabled) {
-      final stored = await myDb.query(
-        'ShutterColorPrices',
-        columns: const ['price'],
-        where: 'shutter_component_id = ? AND color_id = ?',
-        whereArgs: [shutterComponentId, colorId],
+      // Every component has a grey base-colour price.  Other colours are
+      // optional overrides.
+      await _ensureShutterColorTables(myDb);
+      final defaultColorId = await _ensureShutterDefaultPriceColor(myDb);
+      if (!enabled && colorId == defaultColorId) {
+        // The grey row is the base price and must remain available for the
+        // catalogue and required-goods calculations.
+        await ensureShutterComponentsUseGreyPrice();
+        return;
+      }
+      final component = await myDb.query(
+        'ShutterComponents',
+        columns: const ['id'],
+        where: 'id = ?',
+        whereArgs: [shutterComponentId],
         limit: 1,
       );
-      final savedPrice = stored.isEmpty
-          ? null
-          : SqlDatabase._readStoredNumber(stored.first['price']);
-      if (stored.isEmpty ||
-          savedPrice == null ||
-          (savedPrice - price).abs() > 0.000001) {
-        throw StateError('The shutter colour price was not persisted.');
+      if (component.isEmpty) {
+        throw StateError('The selected shutter component no longer exists.');
       }
-    }
-    CloudSyncService().notifyCatalogChange();
+
+      await myDb.transaction((txn) async {
+        if (enabled) {
+          await txn.insert('ShutterColorPrices', {
+            'shutter_component_id': shutterComponentId,
+            'color_id': colorId,
+            'price': price,
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+          await txn.insert('ShutterComponentColors', {
+            'shutter_component_id': shutterComponentId,
+            'color_id': colorId,
+          }, conflictAlgorithm: ConflictAlgorithm.ignore);
+          if (colorId == defaultColorId) {
+            await txn.update(
+              'ShutterComponents',
+              {'price': price},
+              where: 'id = ?',
+              whereArgs: [shutterComponentId],
+            );
+          }
+        } else {
+          await txn.delete(
+            'ShutterColorPrices',
+            where: 'shutter_component_id = ? AND color_id = ?',
+            whereArgs: [shutterComponentId, colorId],
+          );
+          await txn.delete(
+            'ShutterComponentColors',
+            where: 'shutter_component_id = ? AND color_id = ?',
+            whereArgs: [shutterComponentId, colorId],
+          );
+        }
+      });
+
+      if (enabled) {
+        final stored = await myDb.query(
+          'ShutterColorPrices',
+          columns: const ['price'],
+          where: 'shutter_component_id = ? AND color_id = ?',
+          whereArgs: [shutterComponentId, colorId],
+          limit: 1,
+        );
+        final savedPrice = stored.isEmpty
+            ? null
+            : SqlDatabase._readStoredNumber(stored.first['price']);
+        if (stored.isEmpty ||
+            savedPrice == null ||
+            (savedPrice - price).abs() > 0.000001) {
+          throw StateError('The shutter colour price was not persisted.');
+        }
+      }
+      CloudSyncService().notifyCatalogChange();
+    });
   }
 
   Future<List<Map<String, dynamic>>> getColorsForProfile(int profileId) async {
@@ -1647,15 +1667,17 @@ extension SqlDatabaseCatalog on SqlDatabase {
   }
 
   Future<int> deleteAccessory(int id) async {
-    Database? myDb = await db;
-    var res = await myDb!.update(
-      'Accessories',
-      {'is_active': 0},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    CloudSyncService().notifyCatalogChange();
-    return res;
+    return runUserDeletion<int>('deleteAccessory', () async {
+      Database? myDb = await db;
+      var res = await myDb!.update(
+        'Accessories',
+        {'is_active': 0},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      CloudSyncService().notifyCatalogChange();
+      return res;
+    });
   }
 
   //////////////////////////////////// Joints //////////////////////////////////////
@@ -1697,10 +1719,12 @@ extension SqlDatabaseCatalog on SqlDatabase {
   }
 
   Future<int> deleteJoint(int id) async {
-    Database? myDb = await db;
-    var res = await myDb!.delete('Joints', where: 'id = ?', whereArgs: [id]);
-    CloudSyncService().notifyChange();
-    return res;
+    return runUserDeletion<int>('deleteJoint', () async {
+      Database? myDb = await db;
+      var res = await myDb!.delete('Joints', where: 'id = ?', whereArgs: [id]);
+      CloudSyncService().notifyChange();
+      return res;
+    });
   }
 
   Future<int> insertGlass(
@@ -1779,34 +1803,36 @@ extension SqlDatabaseCatalog on SqlDatabase {
   }
 
   Future<int> deleteGlass(int id) async {
-    Database? myDb = await db;
-    var res = await myDb!.update(
-      'Glass',
-      {'is_active': 0},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    CloudSyncService().notifyChange();
+    return runUserDeletion<int>('deleteGlass', () async {
+      Database? myDb = await db;
+      var res = await myDb!.update(
+        'Glass',
+        {'is_active': 0},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      CloudSyncService().notifyChange();
 
-    // ??? tombstone ????? ??? ??? ?????? ???
-    if (CloudSyncService.supabaseWorkshopDataOnly) return res;
+      // ??? tombstone ????? ??? ??? ?????? ???
+      if (CloudSyncService.supabaseWorkshopDataOnly) return res;
 
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final workshopId = prefs.getString('workshop_code');
-      if (workshopId != null && workshopId.isNotEmpty) {
-        await FirebaseFirestore.instance
-            .collection('workshops')
-            .doc(workshopId)
-            .collection('deleted_glass_ids')
-            .doc('$id')
-            .set({'id': id, 'deleted_at': FieldValue.serverTimestamp()});
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final workshopId = prefs.getString('workshop_code');
+        if (workshopId != null && workshopId.isNotEmpty) {
+          await FirebaseFirestore.instance
+              .collection('workshops')
+              .doc(workshopId)
+              .collection('deleted_glass_ids')
+              .doc('$id')
+              .set({'id': id, 'deleted_at': FieldValue.serverTimestamp()});
+        }
+      } catch (e) {
+        debugPrint('Failed to write glass tombstone: $e');
       }
-    } catch (e) {
-      debugPrint('Failed to write glass tombstone: $e');
-    }
 
-    return res;
+      return res;
+    });
   }
 
   Future<void> setGlassColorPrice(
@@ -2084,26 +2110,30 @@ extension SqlDatabaseCatalog on SqlDatabase {
   }
 
   Future<int> deleteShutterComponent(int id) async {
-    Database? myDb = await db;
-    var res = await myDb!.update(
-      'ShutterComponents',
-      {'is_active': 0},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    CloudSyncService().notifyCatalogChange();
-    return res;
+    return runUserDeletion<int>('deleteShutterComponent', () async {
+      Database? myDb = await db;
+      var res = await myDb!.update(
+        'ShutterComponents',
+        {'is_active': 0},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      CloudSyncService().notifyCatalogChange();
+      return res;
+    });
   }
 
   Future<int> deleteShutterComponentPermanently(int id) async {
-    Database? myDb = await db;
-    var res = await myDb!.delete(
-      'ShutterComponents',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    CloudSyncService().notifyCatalogChange();
-    return res;
+    return runUserDeletion<int>('deleteShutterComponentPermanently', () async {
+      Database? myDb = await db;
+      var res = await myDb!.delete(
+        'ShutterComponents',
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      CloudSyncService().notifyCatalogChange();
+      return res;
+    });
   }
 
   Future<int> restoreShutterComponent(int id) async {
@@ -2199,15 +2229,17 @@ extension SqlDatabaseCatalog on SqlDatabase {
   }
 
   Future<int> deleteShutterSqmPrice(String bladeType, int colorId) async {
-    Database? myDb = await db;
-    if (myDb == null) return 0;
-    final res = await myDb.delete(
-      'ShutterSqmPrices',
-      where: 'blade_type = ? AND color_id = ?',
-      whereArgs: [bladeType, colorId],
-    );
-    CloudSyncService().notifyCatalogChange();
-    return res;
+    return runUserDeletion<int>('deleteShutterSqmPrice', () async {
+      Database? myDb = await db;
+      if (myDb == null) return 0;
+      final res = await myDb.delete(
+        'ShutterSqmPrices',
+        where: 'blade_type = ? AND color_id = ?',
+        whereArgs: [bladeType, colorId],
+      );
+      CloudSyncService().notifyCatalogChange();
+      return res;
+    });
   }
 
   Future<int?> _defaultWhiteProfileColorId(DatabaseExecutor executor) async {
@@ -2357,14 +2389,16 @@ extension SqlDatabaseCatalog on SqlDatabase {
 
   /// Ø­Ø°Ù  Kit (Ù†Ø§Ø¹Ù…)
   Future<void> deleteKitBundle(int id) async {
-    final database = await db;
-    if (database == null) return;
-    await database.update(
-      'KitBundles',
-      {'is_active': 0},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    return runUserDeletion<void>('deleteKitBundle', () async {
+      final database = await db;
+      if (database == null) return;
+      await database.update(
+        'KitBundles',
+        {'is_active': 0},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
   }
 
   /// تحديث سعر Kit الإجمالي
@@ -2513,26 +2547,28 @@ extension SqlDatabaseCatalog on SqlDatabase {
   }
 
   Future<void> deleteKitBundleFamily(int id) async {
-    final database = await db;
-    if (database == null) return;
-    await _ensureAdvancedKitCompatibilitySchema(database);
-    await database.transaction((txn) async {
-      // Keep the components usable: removing a family returns its children
-      // to the Kit root instead of deleting catalogue configuration.
-      await txn.update(
-        'KitBundleItems',
-        {'family_id': null},
-        where: 'family_id = ?',
-        whereArgs: [id],
-      );
-      await txn.update(
-        'KitBundleFamilies',
-        {'is_active': 0},
-        where: 'id = ?',
-        whereArgs: [id],
-      );
+    return runUserDeletion<void>('deleteKitBundleFamily', () async {
+      final database = await db;
+      if (database == null) return;
+      await _ensureAdvancedKitCompatibilitySchema(database);
+      await database.transaction((txn) async {
+        // Keep the components usable: removing a family returns its children
+        // to the Kit root instead of deleting catalogue configuration.
+        await txn.update(
+          'KitBundleItems',
+          {'family_id': null},
+          where: 'family_id = ?',
+          whereArgs: [id],
+        );
+        await txn.update(
+          'KitBundleFamilies',
+          {'is_active': 0},
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      });
+      CloudSyncService().notifyCatalogChange();
     });
-    CloudSyncService().notifyCatalogChange();
   }
 
   /// قراءة مركبات Kit محدد
@@ -2643,10 +2679,12 @@ extension SqlDatabaseCatalog on SqlDatabase {
 
   /// حذف مركب Kit
   Future<void> deleteKitBundleItem(int id) async {
-    final database = await db;
-    if (database == null) return;
-    await database.delete('KitBundleItems', where: 'id = ?', whereArgs: [id]);
-    // تُحذف النطاقات والمتغيرات تلقائياً بسبب ON DELETE CASCADE
+    return runUserDeletion<void>('deleteKitBundleItem', () async {
+      final database = await db;
+      if (database == null) return;
+      await database.delete('KitBundleItems', where: 'id = ?', whereArgs: [id]);
+      // تُحذف النطاقات والمتغيرات تلقائياً بسبب ON DELETE CASCADE
+    });
   }
 
   /// قراءة نطاقات مركب محدد
@@ -2887,9 +2925,11 @@ extension SqlDatabaseCatalog on SqlDatabase {
 
   /// حذف نطاق
   Future<void> deleteKitItemRange(int id) async {
-    final database = await db;
-    if (database == null) return;
-    await database.delete('KitItemRanges', where: 'id = ?', whereArgs: [id]);
+    return runUserDeletion<void>('deleteKitItemRange', () async {
+      final database = await db;
+      if (database == null) return;
+      await database.delete('KitItemRanges', where: 'id = ?', whereArgs: [id]);
+    });
   }
 
   /// البحث عن النطاق المناسب لقياس معين
@@ -2963,9 +3003,11 @@ extension SqlDatabaseCatalog on SqlDatabase {
 
   /// حذف متغير
   Future<void> deleteKitItemVariant(int id) async {
-    final database = await db;
-    if (database == null) return;
-    await database.delete('KitItemVariants', where: 'id = ?', whereArgs: [id]);
+    return runUserDeletion<void>('deleteKitItemVariant', () async {
+      final database = await db;
+      if (database == null) return;
+      await database.delete('KitItemVariants', where: 'id = ?', whereArgs: [id]);
+    });
   }
 
   /// قراءة كل مركبات Kit مع نطاقاتها ومتغيراتها — للحساب في BOM
@@ -3138,15 +3180,17 @@ extension SqlDatabaseCatalog on SqlDatabase {
   }
 
   Future<int> deleteShutterBoxLimit(int id) async {
-    final myDb = await db;
-    if (myDb == null) return -1;
-    final res = await myDb.delete(
-      'ShutterBoxLimits',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    CloudSyncService().notifyCatalogChange();
-    return res;
+    return runUserDeletion<int>('deleteShutterBoxLimit', () async {
+      final myDb = await db;
+      if (myDb == null) return -1;
+      final res = await myDb.delete(
+        'ShutterBoxLimits',
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      CloudSyncService().notifyCatalogChange();
+      return res;
+    });
   }
 
   Future<List<Map<String, dynamic>>> getCaissonTunnelPrices() async {
@@ -3202,15 +3246,17 @@ extension SqlDatabaseCatalog on SqlDatabase {
   }
 
   Future<int> deleteCaissonTunnelPrice(int id) async {
-    final myDb = await db;
-    if (myDb == null) return -1;
-    final res = await myDb.delete(
-      'CaissonTunnelPrices',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    CloudSyncService().notifyCatalogChange();
-    return res;
+    return runUserDeletion<int>('deleteCaissonTunnelPrice', () async {
+      final myDb = await db;
+      if (myDb == null) return -1;
+      final res = await myDb.delete(
+        'CaissonTunnelPrices',
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      CloudSyncService().notifyCatalogChange();
+      return res;
+    });
   }
 
   Future<Map<String, dynamic>?> getSeriesTableConfig(int seriesId) async {

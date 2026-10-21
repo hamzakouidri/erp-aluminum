@@ -841,11 +841,14 @@ class _ColorsScreenState extends State<ColorsScreen> {
                                               .add(cId);
                                         });
                                       } else {
-                                        await db.delete(
-                                          'AccessoryColorPrices',
-                                          where:
-                                              'accessory_id = ? AND color_id = ?',
-                                          whereArgs: [selectedAccId, cId],
+                                        await SqlDatabase().runUserDeletion(
+                                          'removeAccessoryColor',
+                                          () => db.delete(
+                                            'AccessoryColorPrices',
+                                            where:
+                                                'accessory_id = ? AND color_id = ?',
+                                            whereArgs: [selectedAccId, cId],
+                                          ),
                                         );
                                         setStateDialog(() {
                                           accColorMap[selectedAccId]?.remove(

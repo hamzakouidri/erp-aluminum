@@ -215,50 +215,52 @@ extension SqlDatabaseWorkers on SqlDatabase {
   }
 
   Future<int> deleteWorkerAllocation(int allocationId) async {
-    Database? myDb = await db;
-    if (myDb == null) return 0;
+    return runUserDeletion<int>('deleteWorkerAllocation', () async {
+      Database? myDb = await db;
+      if (myDb == null) return 0;
 
-    int orderId = 0;
-    try {
-      final allocRow = await myDb.query(
+      int orderId = 0;
+      try {
+        final allocRow = await myDb.query(
+          'WorkerAllocations',
+          where: 'id = ?',
+          whereArgs: [allocationId],
+        );
+        if (allocRow.isNotEmpty) {
+          final detailId =
+              (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
+          if (detailId > 0) {
+            final detailRow = await myDb.query(
+              'Commandes_details',
+              where: 'id = ?',
+              whereArgs: [detailId],
+            );
+            if (detailRow.isNotEmpty) {
+              orderId = (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
+            }
+          }
+        }
+      } catch (_) {}
+
+      // 1. حذف من SQLite أولاً (فوري)
+      final res = await myDb.delete(
         'WorkerAllocations',
         where: 'id = ?',
         whereArgs: [allocationId],
       );
-      if (allocRow.isNotEmpty) {
-        final detailId =
-            (allocRow.first['commande_detail_id'] as num?)?.toInt() ?? 0;
-        if (detailId > 0) {
-          final detailRow = await myDb.query(
-            'Commandes_details',
-            where: 'id = ?',
-            whereArgs: [detailId],
-          );
-          if (detailRow.isNotEmpty) {
-            orderId = (detailRow.first['id_commandes'] as num?)?.toInt() ?? 0;
-          }
-        }
+
+      // 2. حذف من السحابة وتسجيل علامة الحذف الدائمة
+      await _deleteAllocationFromCloud(allocationId);
+
+      if (orderId > 0) {
+        await syncOrderAndAllocationsStatus(orderId);
       }
-    } catch (_) {}
 
-    // 1. حذف من SQLite أولاً (فوري)
-    final res = await myDb.delete(
-      'WorkerAllocations',
-      where: 'id = ?',
-      whereArgs: [allocationId],
-    );
-
-    // 2. حذف من السحابة وتسجيل علامة الحذف الدائمة
-    await _deleteAllocationFromCloud(allocationId);
-
-    if (orderId > 0) {
-      await syncOrderAndAllocationsStatus(orderId);
-    }
-
-    // ملاحظة: لا نستدعي backupToCloud() هنا لتجنب التأخر 20+ ثانية.
-    // notifyChange() يعمل بـ debounce 1 ثانية ويطلق _silentBackup() تلقائياً.
-    CloudSyncService().notifyChange();
-    return res;
+      // ملاحظة: لا نستدعي backupToCloud() هنا لتجنب التأخر 20+ ثانية.
+      // notifyChange() يعمل بـ debounce 1 ثانية ويطلق _silentBackup() تلقائياً.
+      CloudSyncService().notifyChange();
+      return res;
+    });
   }
 
   /// حذف إسناد محلياً فقط (بدون أي اتصال سحابة) — يُستخدم عند تطبيق tombstones بعد الـ restore
@@ -1393,46 +1395,48 @@ extension SqlDatabaseWorkers on SqlDatabase {
     String? checkOut,
     String? note,
   }) async {
-    Database? myDb = await db;
-    if (myDb == null) return;
+    return runUserDeletion<void>('upsertWorkerAttendance', () async {
+      Database? myDb = await db;
+      if (myDb == null) return;
 
-    if (checkIn == null && checkOut == null && (note == null || note.isEmpty)) {
-      // 🗑️ إذا كانت البيانات فارغة، احذف السجل لتصفير خيار الحضور والغياب (فارغ ⚪)
-      await myDb.delete(
+      if (checkIn == null && checkOut == null && (note == null || note.isEmpty)) {
+        // 🗑️ إذا كانت البيانات فارغة، احذف السجل لتصفير خيار الحضور والغياب (فارغ ⚪)
+        await myDb.delete(
+          'WorkerAttendance',
+          where: 'worker_uid = ? AND attendance_date = ?',
+          whereArgs: [workerUid, date],
+        );
+        CloudSyncService().notifyChange();
+        return;
+      }
+
+      final existing = await myDb.query(
         'WorkerAttendance',
         where: 'worker_uid = ? AND attendance_date = ?',
         whereArgs: [workerUid, date],
       );
+
+      if (existing.isNotEmpty) {
+        await myDb.update(
+          'WorkerAttendance',
+          {'check_in': checkIn, 'check_out': checkOut, 'note': note},
+          where: 'worker_uid = ? AND attendance_date = ?',
+          whereArgs: [workerUid, date],
+        );
+      } else {
+        await myDb.insert(
+          'WorkerAttendance',
+          SqlDatabase._withDistributedId({
+            'worker_uid': workerUid,
+            'attendance_date': date,
+            'check_in': checkIn,
+            'check_out': checkOut,
+            'note': note,
+          }),
+        );
+      }
       CloudSyncService().notifyChange();
-      return;
-    }
-
-    final existing = await myDb.query(
-      'WorkerAttendance',
-      where: 'worker_uid = ? AND attendance_date = ?',
-      whereArgs: [workerUid, date],
-    );
-
-    if (existing.isNotEmpty) {
-      await myDb.update(
-        'WorkerAttendance',
-        {'check_in': checkIn, 'check_out': checkOut, 'note': note},
-        where: 'worker_uid = ? AND attendance_date = ?',
-        whereArgs: [workerUid, date],
-      );
-    } else {
-      await myDb.insert(
-        'WorkerAttendance',
-        SqlDatabase._withDistributedId({
-          'worker_uid': workerUid,
-          'attendance_date': date,
-          'check_in': checkIn,
-          'check_out': checkOut,
-          'note': note,
-        }),
-      );
-    }
-    CloudSyncService().notifyChange();
+    });
   }
 
   // ── الأعمال اليومية (WorkerDailyJobs - عمل يومي) ──────────────────────────
@@ -1495,10 +1499,12 @@ extension SqlDatabaseWorkers on SqlDatabase {
   }
 
   Future<void> deleteWorkerDailyJob(int jobId) async {
-    Database? myDb = await db;
-    if (myDb == null) return;
-    await myDb.delete('WorkerDailyJobs', where: 'id = ?', whereArgs: [jobId]);
-    CloudSyncService().notifyChange();
+    return runUserDeletion<void>('deleteWorkerDailyJob', () async {
+      Database? myDb = await db;
+      if (myDb == null) return;
+      await myDb.delete('WorkerDailyJobs', where: 'id = ?', whereArgs: [jobId]);
+      CloudSyncService().notifyChange();
+    });
   }
 
   Future<void> settleWorkerWeek(
@@ -1807,28 +1813,30 @@ extension SqlDatabaseWorkers on SqlDatabase {
     int workerId,
     double amount,
   ) async {
-    Database? myDb = await db;
-    if (myDb == null) return;
+    return runUserDeletion<void>('deleteWorkerTransaction', () async {
+      Database? myDb = await db;
+      if (myDb == null) return;
 
-    await myDb.delete(
-      'WorkerTransactions',
-      where: 'id = ?',
-      whereArgs: [transactionId],
-    );
+      await myDb.delete(
+        'WorkerTransactions',
+        where: 'id = ?',
+        whereArgs: [transactionId],
+      );
 
-    final List<Map<String, dynamic>> records = await myDb.query(
-      'Treasury',
-      where:
-          "transaction_type = 'Décaissement' AND entity_type = 'Worker' AND entity_id = ? AND amount = ?",
-      whereArgs: [workerId, amount],
-      limit: 1,
-    );
+      final List<Map<String, dynamic>> records = await myDb.query(
+        'Treasury',
+        where:
+            "transaction_type = 'Décaissement' AND entity_type = 'Worker' AND entity_id = ? AND amount = ?",
+        whereArgs: [workerId, amount],
+        limit: 1,
+      );
 
-    if (records.isNotEmpty) {
-      final treasuryId = records.first['id'] as int;
-      await myDb.delete('Treasury', where: 'id = ?', whereArgs: [treasuryId]);
-    }
-    CloudSyncService().notifyChange();
+      if (records.isNotEmpty) {
+        final treasuryId = records.first['id'] as int;
+        await myDb.delete('Treasury', where: 'id = ?', whereArgs: [treasuryId]);
+      }
+      CloudSyncService().notifyChange();
+    });
   }
 
   //////////////////////////////////// Employees //////////////////////////////////////
@@ -1983,14 +1991,16 @@ extension SqlDatabaseWorkers on SqlDatabase {
   }
 
   Future<int> deleteEmployee(String uid) async {
-    Database? myDb = await db;
-    var res = await myDb!.delete(
-      'Employees',
-      where: 'uid = ?',
-      whereArgs: [uid],
-    );
-    CloudSyncService().notifyChange();
-    return res;
+    return runUserDeletion<int>('deleteEmployee', () async {
+      Database? myDb = await db;
+      var res = await myDb!.delete(
+        'Employees',
+        where: 'uid = ?',
+        whereArgs: [uid],
+      );
+      CloudSyncService().notifyChange();
+      return res;
+    });
   }
 
   Future<Map<int, String>> getOrderAssignedWorkersMap() async {

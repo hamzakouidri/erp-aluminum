@@ -39,6 +39,18 @@ class WorkshopDataDiagnostics {
   final String profileName;
 }
 
+/// What a full download does with the local workshop rows first.
+enum FullDownloadPlan {
+  /// The local rows are this workshop's: the ones Supabase lacks are
+  /// uploaded, then the download is merged over them.
+  uploadLocalThenMerge,
+
+  /// The local rows belong to another workshop opened earlier on this
+  /// device: they are cleared (after the file copy), then the download is
+  /// merged into the empty tables.
+  clearOtherWorkshopThenMerge,
+}
+
 class SupabaseWorkshopSyncService {
   SupabaseWorkshopSyncService._internal();
 
@@ -53,6 +65,55 @@ class SupabaseWorkshopSyncService {
     required bool hasSyncCursor,
   }) {
     return !bootstrapComplete || !hasSyncCursor;
+  }
+
+  /// [localDataOwner] is the workshop whose rows the local tables hold
+  /// (empty on devices that predate the marker: their rows are taken as the
+  /// current workshop's, which the workshop-change check at sign-in already
+  /// guarantees).
+  @visibleForTesting
+  static FullDownloadPlan planFullDownload({
+    required String localDataOwner,
+    required String workshopUuid,
+  }) {
+    final owner = localDataOwner.trim();
+    return owner.isEmpty || owner == workshopUuid
+        ? FullDownloadPlan.uploadLocalThenMerge
+        : FullDownloadPlan.clearOtherWorkshopThenMerge;
+  }
+
+  /// A local row is uploaded before a full download when Supabase does not
+  /// hold it. A row Supabase holds as deleted stays deleted, unless the
+  /// manager kept it against that deletion ([reviveRows]).
+  @visibleForTesting
+  static bool shouldUploadMissingRow({
+    required String key,
+    required Set<String> remoteLive,
+    required Set<String> remoteDeleted,
+    Set<String> reviveRows = const {},
+  }) {
+    if (remoteLive.contains(key)) return false;
+    return !remoteDeleted.contains(key) || reviveRows.contains(key);
+  }
+
+  /// True when the deletions this device is about to send ([deleted], per
+  /// table) would remove too many of the workshop's clients, orders or
+  /// treasury rows; [remaining] is what this device still holds.
+  @visibleForTesting
+  static bool deletionUploadNeedsApproval({
+    required Map<String, int> deleted,
+    required Map<String, int> remaining,
+  }) {
+    for (final table in SqlDatabaseBusinessDataGuard.guardedTables) {
+      final lost = deleted[table] ?? 0;
+      if (SqlDatabaseBusinessDataGuard.losesTooMany(
+        localRows: (remaining[table] ?? 0) + lost,
+        lostRows: lost,
+      )) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @visibleForTesting
@@ -387,7 +448,13 @@ class SupabaseWorkshopSyncService {
         '${_countRows(data, 'Commandes_details')} تفاصيل.';
   }
 
-  Future<void> uploadLocalWorkshopDataMerge() async {
+  /// Uploads the local rows Supabase does not hold, without touching the
+  /// rows it already has. A row the workshop deleted on another device is not
+  /// uploaded again, unless its key is in [reviveRows] (`tablerow_id`):
+  /// the manager kept it against those deletions.
+  Future<void> uploadLocalWorkshopDataMerge({
+    Set<String> reviveRows = const {},
+  }) async {
     await _ensureReady();
     final workshopUuid = _workshopUuid!;
     final user = _client.auth.currentUser!;
@@ -404,14 +471,20 @@ class SupabaseWorkshopSyncService {
 
     if (rows.isEmpty) return;
 
-    final remoteKeys = await _fetchRemoteLiveRowKeys(workshopUuid);
+    final remote = await _fetchRemoteRowKeys(workshopUuid);
     final missingRows = rows
         .where((row) {
           final table = row['table_name']?.toString() ?? '';
           final rowId = row['row_id']?.toString() ?? '';
+          final key = _rowKey(table, rowId);
           return table.isNotEmpty &&
               rowId.isNotEmpty &&
-              !remoteKeys.contains(_rowKey(table, rowId));
+              shouldUploadMissingRow(
+                key: key,
+                remoteLive: remote.live,
+                remoteDeleted: remote.deleted,
+                reviveRows: reviveRows,
+              );
         })
         .toList(growable: false);
 
@@ -421,8 +494,38 @@ class SupabaseWorkshopSyncService {
       return;
     }
 
+    // A kept row must be newer than the deletion Supabase holds, or the
+    // keep-newer trigger skips it.
+    if (reviveRows.isNotEmpty) {
+      final now = DateTime.now().toUtc().toIso8601String();
+      for (final row in missingRows) {
+        final key = _rowKey(
+          row['table_name']?.toString() ?? '',
+          row['row_id']?.toString() ?? '',
+        );
+        if (reviveRows.contains(key)) row['updated_at'] = now;
+      }
+    }
     await _upsertRows(missingRows);
-    await _acknowledgeSyncedChanges(pendingBeforeUpload);
+    // Only the changes of rows uploaded here are done; an edit of a row the
+    // server already holds still waits for the normal upload.
+    final uploadedKeys = {
+      for (final row in missingRows)
+        _rowKey(
+          row['table_name']?.toString() ?? '',
+          row['row_id']?.toString() ?? '',
+        ),
+    };
+    await _acknowledgeSyncedChanges(
+      PendingCloudChanges(
+        data: const {},
+        acknowledgements: pendingBeforeUpload.acknowledgements
+            .where((ack) => uploadedKeys.contains(_rowKey(ack.table, ack.rowId)))
+            .toList(growable: false),
+        changedRows: 0,
+        deletedRows: 0,
+      ),
+    );
 
     lastUploadSummary =
         'تم رفع ${missingRows.length} سجل محلي ناقص إلى Supabase بدون تعديل السجلات الموجودة: '
@@ -1226,9 +1329,11 @@ class SupabaseWorkshopSyncService {
 
   Future<void> _performPendingUpload() async {
     await _ensureReady();
-    final pending = await _db.exportPendingCloudChanges(
+    var pending = await _db.exportPendingCloudChanges(
       allowedTables: SqlDatabase.workshopTables.toSet(),
     );
+    if (pending.isEmpty) return;
+    pending = await _withoutUnapprovedMassDeletions(pending);
     if (pending.isEmpty) return;
 
     final workshopUuid = _workshopUuid!;
@@ -1261,9 +1366,183 @@ class SupabaseWorkshopSyncService {
         '(${pending.changedRows} تعديل، ${pending.deletedRows} حذف).';
   }
 
+  static const String _localDataOwnerKey =
+      SqlDatabaseBusinessDataGuard.localDataOwnerKey;
+
+  /// Records the open workshop as the owner of the local rows when no owner
+  /// is known yet. Called before the application admin opens another
+  /// workshop, so the next full download knows the local rows are not that
+  /// workshop's.
+  Future<void> rememberLocalDataOwnerIfUnknown() async {
+    final workshopUuid = _workshopUuid;
+    if (workshopUuid == null || workshopUuid.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    if ((prefs.getString(_localDataOwnerKey) ?? '').trim().isEmpty) {
+      await prefs.setString(_localDataOwnerKey, workshopUuid);
+    }
+  }
+
+  /// Runs before every full download. The database file is copied first.
+  /// Then, when the local rows are this workshop's, the pending changes and
+  /// the rows Supabase lacks are uploaded, so that the download (a merge)
+  /// brings back a complete workshop. A failed upload stops nothing: the
+  /// merge keeps those rows locally and the pending changes stay queued.
+  Future<void> _prepareFullDownload(String workshopUuid) async {
+    final backup = await _db.backupDatabaseFile(reason: 'before_full_download');
+    debugPrint(
+      backup == null
+          ? 'Full download: no database copy could be written.'
+          : 'Full download: database copied to $backup',
+    );
+    final prefs = await SharedPreferences.getInstance();
+    final plan = planFullDownload(
+      localDataOwner: prefs.getString(_localDataOwnerKey) ?? '',
+      workshopUuid: workshopUuid,
+    );
+    if (plan == FullDownloadPlan.clearOtherWorkshopThenMerge) {
+      if (backup == null) {
+        throw Exception(
+          'تعذر أخذ نسخة من قاعدة البيانات؛ لم يتم مسح بيانات الورشة السابقة.',
+        );
+      }
+      await SqlDatabase.clearWorkshopDataOnly();
+    } else {
+      try {
+        await uploadPendingChanges();
+      } catch (error) {
+        debugPrint('Full download: pending upload deferred: $error');
+      }
+      final role = (prefs.getString('user_role') ?? '').trim().toLowerCase();
+      if ({'owner', 'manager', 'co_manager', 'admin'}.contains(role)) {
+        try {
+          await uploadLocalWorkshopDataMerge();
+        } catch (error) {
+          debugPrint('Full download: missing rows not uploaded: $error');
+        }
+      }
+    }
+    await prefs.setString(_localDataOwnerKey, workshopUuid);
+  }
+
+  /// The manager kept the local clients/orders/treasury rows against the
+  /// held-back remote deletions: they are uploaded again over them.
+  Future<void> keepLocalBusinessRows() async {
+    final keys = await _db.discardPendingBusinessDataLoss();
+    if (keys.isEmpty) return;
+    await uploadLocalWorkshopDataMerge(reviveRows: keys);
+  }
+
+  static const String _heldDeletionUploadKey = 'held_deletion_upload_summary';
+  static const String _deletionUploadApprovedUntilKey =
+      'deletion_upload_approved_until';
+
+  /// Bumped when this device holds back its own deletions for the manager.
+  static final ValueNotifier<int> deletionUploadSignal = ValueNotifier<int>(0);
+
+  /// Removes the deletions from [pending] when they would remove too many
+  /// clients, orders or treasury rows and no manager approved them. They stay
+  /// queued (not acknowledged) and the manager is asked.
+  Future<PendingCloudChanges> _withoutUnapprovedMassDeletions(
+    PendingCloudChanges pending,
+  ) async {
+    final tombstones = pending.data['SyncTombstones'];
+    if (tombstones is! List || tombstones.isEmpty) return pending;
+    final deleted = <String, int>{};
+    final deletionKeys = <String>{};
+    for (final raw in tombstones.whereType<Map>()) {
+      final table = raw['table_name']?.toString() ?? '';
+      final rowId = raw['row_id']?.toString() ?? '';
+      deleted[table] = (deleted[table] ?? 0) + 1;
+      deletionKeys.add(_rowKey(table, rowId));
+    }
+    final remaining = await _db.countGuardedBusinessRows();
+    final prefs = await SharedPreferences.getInstance();
+    if (!deletionUploadNeedsApproval(deleted: deleted, remaining: remaining)) {
+      await prefs.remove(_heldDeletionUploadKey);
+      return pending;
+    }
+    final approvedUntil = DateTime.tryParse(
+      prefs.getString(_deletionUploadApprovedUntilKey) ?? '',
+    );
+    if (approvedUntil != null && approvedUntil.isAfter(DateTime.now())) {
+      return pending;
+    }
+
+    await prefs.setString(
+      _heldDeletionUploadKey,
+      jsonEncode({'deleted': deleted, 'remaining': remaining}),
+    );
+    deletionUploadSignal.value++;
+    final data = Map<String, dynamic>.from(pending.data)
+      ..remove('SyncTombstones');
+    return PendingCloudChanges(
+      data: data,
+      acknowledgements: pending.acknowledgements
+          .where((ack) => !deletionKeys.contains(_rowKey(ack.table, ack.rowId)))
+          .toList(growable: false),
+      changedRows: pending.changedRows,
+      deletedRows: 0,
+    );
+  }
+
+  /// Deletions of this device waiting for the manager: per table, how many
+  /// would be sent and how many rows the device still holds. Null when none.
+  Future<({Map<String, int> deleted, Map<String, int> remaining})?>
+  readHeldDeletionUpload() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_heldDeletionUploadKey);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw) as Map;
+      Map<String, int> counts(Object? value) => {
+        if (value is Map)
+          for (final entry in value.entries)
+            entry.key.toString(): (entry.value as num?)?.toInt() ?? 0,
+      };
+      return (
+        deleted: counts(decoded['deleted']),
+        remaining: counts(decoded['remaining']),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The manager confirmed the deletions: they are sent now (Supabase is
+  /// told to accept a large deletion from this workshop for ten minutes).
+  Future<void> approveHeldDeletionUpload() async {
+    await _ensureReady();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _deletionUploadApprovedUntilKey,
+      DateTime.now().add(const Duration(minutes: 10)).toIso8601String(),
+    );
+    await prefs.remove(_heldDeletionUploadKey);
+    try {
+      await _client.rpc(
+        'allow_workshop_mass_deletion',
+        params: {'p_workshop_id': _workshopUuid, 'p_minutes': 10},
+      );
+    } catch (error) {
+      // The server guard may not be installed yet; the deletions still go.
+      debugPrint('Mass deletion allowance not set on Supabase: $error');
+    }
+    await uploadPendingChanges();
+  }
+
+  /// The manager refused the deletions: they are dropped without being sent
+  /// and the deleted rows are brought back from Supabase.
+  Future<void> cancelHeldDeletionUpload() async {
+    await _db.dropUnsentDeletions();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_heldDeletionUploadKey);
+    await downloadWorkshopData(full: true);
+  }
+
   Future<void> _downloadChanges({required bool full}) async {
     await _ensureReady();
     final workshopUuid = _workshopUuid!;
+    if (full) await _prepareFullDownload(workshopUuid);
     final since = full ? null : await _readLastSyncAt();
     final serverCursor = full ? null : await _readServerCursor();
     // Taken before reading anything, so rows written during this download
@@ -1589,8 +1868,13 @@ class SupabaseWorkshopSyncService {
       }
     }
 
-    if (tombstones.isNotEmpty) {
-      data['SyncTombstones'] = tombstones;
+    // Deletions that would remove many local clients, orders or treasury
+    // rows wait for the manager instead of being applied.
+    final allowedTombstones = await _db.holdBackLargeBusinessDeletions(
+      tombstones,
+    );
+    if (allowedTombstones.isNotEmpty) {
+      data['SyncTombstones'] = allowedTombstones;
     }
 
     final finalCatalogConfig = catalogConfiguration;
@@ -1604,27 +1888,14 @@ class SupabaseWorkshopSyncService {
       }
     }
 
-    // The profile row is metadata, not a business table. It must not make a
-    // full bootstrap clear a worker's local business data when the workshop
-    // has only a profile and no synced orders/clients yet.
-    final shouldReplaceLocalWorkshop =
-        full && (data.isNotEmpty || tombstones.isNotEmpty);
-    if (shouldReplaceLocalWorkshop) {
-      for (final table in SqlDatabase.workshopTables) {
-        data.putIfAbsent(table, () => <Map<String, dynamic>>[]);
-      }
-    }
-
+    // A full download is a merge, never a replacement: Supabase may hold
+    // only the rows this device uploaded so far. A local row is removed only
+    // by a deletion Supabase recorded, never because Supabase lacks it, and
+    // the pending changes stay queued until they are uploaded.
     if (data.isNotEmpty) {
       _isApplyingRemoteData = true;
       try {
-        await _db.importWorkshopData(
-          data,
-          replaceAllData: shouldReplaceLocalWorkshop,
-        );
-        if (shouldReplaceLocalWorkshop) {
-          await _db.clearPendingCloudChanges();
-        }
+        await _db.importWorkshopData(data);
       } finally {
         _isApplyingRemoteData = false;
       }
@@ -2029,8 +2300,11 @@ class SupabaseWorkshopSyncService {
     return result;
   }
 
-  Future<Set<String>> _fetchRemoteLiveRowKeys(String workshopUuid) async {
+  Future<({Set<String> live, Set<String> deleted})> _fetchRemoteRowKeys(
+    String workshopUuid,
+  ) async {
     final keys = <String>{};
+    final deletedKeys = <String>{};
     var start = 0;
     while (true) {
       final rows = await _client
@@ -2046,14 +2320,13 @@ class SupabaseWorkshopSyncService {
         final table = row['table_name']?.toString() ?? '';
         final rowId = row['row_id']?.toString() ?? '';
         final deletedAt = row['deleted_at']?.toString() ?? '';
-        if (table.isNotEmpty && rowId.isNotEmpty && deletedAt.isEmpty) {
-          keys.add(_rowKey(table, rowId));
-        }
+        if (table.isEmpty || rowId.isEmpty) continue;
+        (deletedAt.isEmpty ? keys : deletedKeys).add(_rowKey(table, rowId));
       }
       if (rows.length < _downloadPageSize) break;
       start += _downloadPageSize;
     }
-    return keys;
+    return (live: keys, deleted: deletedKeys);
   }
 
   String _rowKey(String table, String rowId) => '$table\x1f$rowId';
@@ -2082,7 +2355,14 @@ class SupabaseWorkshopSyncService {
             'workshop_id': workshopUuid,
             'table_name': deletedTable,
             'row_id': rowId,
-            'payload': {'id': rowId},
+            // Who deleted the row and from where. Supabase keeps the last
+            // copy of the row and stores this beside it
+            // (supabase/sync_deletion_guard.sql).
+            'payload': {
+              'id': rowId,
+              'deleted_by': tombstone['deleted_by']?.toString() ?? userId,
+              'delete_source': tombstone['delete_source']?.toString() ?? '',
+            },
             'updated_at': tombstone['deleted_at']?.toString() ?? now,
             'deleted_at': tombstone['deleted_at']?.toString() ?? now,
             'device_id': _deviceId,

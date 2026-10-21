@@ -784,15 +784,17 @@ extension SqlDatabaseInventory on SqlDatabase {
   }
 
   Future<int> deleteStandardSheet(int id) async {
-    final myDb = await db;
-    if (myDb == null) return 0;
-    final count = await myDb.delete(
-      'StandardSheets',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    if (count > 0) CloudSyncService().notifyChange();
-    return count;
+    return runUserDeletion<int>('deleteStandardSheet', () async {
+      final myDb = await db;
+      if (myDb == null) return 0;
+      final count = await myDb.delete(
+        'StandardSheets',
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      if (count > 0) CloudSyncService().notifyChange();
+      return count;
+    });
   }
 
   Future<List<Map<String, dynamic>>> readStandardSheets({
@@ -2827,49 +2829,51 @@ extension SqlDatabaseInventory on SqlDatabase {
   /// zero. Without an argument the whole inventory and its history are
   /// reset, which is the workshop reset, not a stock operation.
   Future<void> emptyInventory([dynamic idOrType]) async {
-    final database = await db;
-    if (database == null) return;
+    return runUserDeletion<void>('emptyInventory', () async {
+      final database = await db;
+      if (database == null) return;
 
-    if (idOrType == null) {
-      await database.delete('CurrentStock');
-      await database.delete('InventoryTransactions');
-      CloudSyncService().notifyChange();
-      return;
-    }
-    final String where;
-    if (idOrType is int) {
-      where = 'location_id = ?';
-    } else if (idOrType is String && idOrType.isNotEmpty) {
-      where = 'item_type = ?';
-    } else {
-      return;
-    }
-    await _ensureRemnantInventorySchema(database);
-    final actor = await _currentStockActor();
-    await database.transaction((txn) async {
-      final rows = await txn.query(
-        'CurrentStock',
-        where: '$where AND quantity > 0',
-        whereArgs: [idOrType],
-      );
-      final now = DateTime.now().toUtc().toIso8601String();
-      for (final row in rows) {
-        await _postStockMovement(
-          txn,
-          itemId: (row['item_id'] as num).toInt(),
-          itemType: row['item_type'].toString(),
-          colorId: (row['color_id'] as num?)?.toInt(),
-          locationId: (row['location_id'] as num).toInt(),
-          quantity: -(SqlDatabase._readStoredNumber(row['quantity']) ?? 0),
-          transactionType: 'Adjustment',
-          movementType: SqlDatabase.movementAdjustment,
-          actor: actor,
-          timestamp: now,
-          reason: 'تصفير المخزون',
-        );
+      if (idOrType == null) {
+        await database.delete('CurrentStock');
+        await database.delete('InventoryTransactions');
+        CloudSyncService().notifyChange();
+        return;
       }
+      final String where;
+      if (idOrType is int) {
+        where = 'location_id = ?';
+      } else if (idOrType is String && idOrType.isNotEmpty) {
+        where = 'item_type = ?';
+      } else {
+        return;
+      }
+      await _ensureRemnantInventorySchema(database);
+      final actor = await _currentStockActor();
+      await database.transaction((txn) async {
+        final rows = await txn.query(
+          'CurrentStock',
+          where: '$where AND quantity > 0',
+          whereArgs: [idOrType],
+        );
+        final now = DateTime.now().toUtc().toIso8601String();
+        for (final row in rows) {
+          await _postStockMovement(
+            txn,
+            itemId: (row['item_id'] as num).toInt(),
+            itemType: row['item_type'].toString(),
+            colorId: (row['color_id'] as num?)?.toInt(),
+            locationId: (row['location_id'] as num).toInt(),
+            quantity: -(SqlDatabase._readStoredNumber(row['quantity']) ?? 0),
+            transactionType: 'Adjustment',
+            movementType: SqlDatabase.movementAdjustment,
+            actor: actor,
+            timestamp: now,
+            reason: 'تصفير المخزون',
+          );
+        }
+      });
+      CloudSyncService().notifyChange();
     });
-    CloudSyncService().notifyChange();
   }
 
   /// Generate the next sequential sale code (e.g. VS-26-001)
@@ -3078,108 +3082,110 @@ extension SqlDatabaseInventory on SqlDatabase {
   /// Soft-deletes a store sale and reverses posted stock. ERP documents are
   /// never physically erased during normal operation.
   Future<void> deleteMaterialSale(int saleId) async {
-    final myDb = await db;
-    if (myDb == null) return;
-    await _ensureRemnantInventorySchema(myDb);
-    final rows = await myDb.query(
-      'MaterialSales',
-      where: 'id = ?',
-      whereArgs: [saleId],
-    );
-    if (rows.isEmpty) return;
-    final sale = rows.first;
-    if ((sale['is_deleted'] as num?)?.toInt() == 1) return;
-    // A customer return already put part of the goods back into stock.
-    // Reversing the whole sale as well would count those goods twice and
-    // leave the return attached to a deleted document.
-    final activeReturns = await myDb.rawQuery(
-      '''
-      SELECT 1 FROM MaterialSales
-      WHERE doc_type = 'retour' AND source_sale_id = ?
-        AND (is_deleted IS NULL OR is_deleted = 0)
-      LIMIT 1
-      ''',
-      [saleId],
-    );
-    if (activeReturns.isNotEmpty) {
-      throw StateError(
-        'لا يمكن حذف وثيقة لها مرتجعات. احذف وثيقة المرتجع أولاً.',
+    return runUserDeletion<void>('deleteMaterialSale', () async {
+      final myDb = await db;
+      if (myDb == null) return;
+      await _ensureRemnantInventorySchema(myDb);
+      final rows = await myDb.query(
+        'MaterialSales',
+        where: 'id = ?',
+        whereArgs: [saleId],
       );
-    }
-    await snapshotMaterialSale(saleId, actionType: 'before_delete');
-    final isInternal = (sale['is_internal'] as num?)?.toInt() == 1;
-    final deletedBy = await _currentOrderEditor();
-    final actor = await _currentStockActor();
-    // The stock reversal and the soft delete succeed or fail together, so a
-    // failed reversal never leaves a cancelled document with stock still out.
-    await myDb.transaction((txn) async {
-      if (isInternal && (sale['stock_deducted'] as num?)?.toInt() == 1) {
-        await _reverseInternalMaterialSaleTransfer(txn, saleId, actor);
-      } else if ((sale['stock_deducted'] as num?)?.toInt() == 1) {
-        final items = await txn.query(
-          'MaterialSaleItems',
-          where: 'sale_id = ?',
-          whereArgs: [saleId],
+      if (rows.isEmpty) return;
+      final sale = rows.first;
+      if ((sale['is_deleted'] as num?)?.toInt() == 1) return;
+      // A customer return already put part of the goods back into stock.
+      // Reversing the whole sale as well would count those goods twice and
+      // leave the return attached to a deleted document.
+      final activeReturns = await myDb.rawQuery(
+        '''
+        SELECT 1 FROM MaterialSales
+        WHERE doc_type = 'retour' AND source_sale_id = ?
+          AND (is_deleted IS NULL OR is_deleted = 0)
+        LIMIT 1
+        ''',
+        [saleId],
+      );
+      if (activeReturns.isNotEmpty) {
+        throw StateError(
+          'لا يمكن حذف وثيقة لها مرتجعات. احذف وثيقة المرتجع أولاً.',
         );
-        final locationId = (sale['location_id'] as num?)?.toInt() ?? 1;
-        final now = DateTime.now().toUtc().toIso8601String();
-        for (final item in items) {
-          final itemId = (item['item_id'] as num?)?.toInt() ?? 0;
-          final itemType = item['item_type']?.toString() ?? '';
-          final colorId = (item['color_id'] as num?)?.toInt();
-          final qty = (item['quantity'] as num?)?.toDouble() ?? 0.0;
-          if (itemId <= 0 || qty <= 0) continue;
-          await _postStockMovement(
-            txn,
-            itemId: itemId,
-            itemType: itemType,
-            colorId: colorId,
-            locationId: locationId,
-            quantity: qty,
-            transactionType: 'Material Sale Reversal',
-            movementType: SqlDatabase.movementReturn,
-            actor: actor,
-            timestamp: now,
-            unitCost: (item['unit_price'] as num?)?.toDouble(),
-            documentType: 'sale',
-            documentId: saleId,
-            reversesTransactionId: await _originalMovementId(
+      }
+      await snapshotMaterialSale(saleId, actionType: 'before_delete');
+      final isInternal = (sale['is_internal'] as num?)?.toInt() == 1;
+      final deletedBy = await _currentOrderEditor();
+      final actor = await _currentStockActor();
+      // The stock reversal and the soft delete succeed or fail together, so a
+      // failed reversal never leaves a cancelled document with stock still out.
+      await myDb.transaction((txn) async {
+        if (isInternal && (sale['stock_deducted'] as num?)?.toInt() == 1) {
+          await _reverseInternalMaterialSaleTransfer(txn, saleId, actor);
+        } else if ((sale['stock_deducted'] as num?)?.toInt() == 1) {
+          final items = await txn.query(
+            'MaterialSaleItems',
+            where: 'sale_id = ?',
+            whereArgs: [saleId],
+          );
+          final locationId = (sale['location_id'] as num?)?.toInt() ?? 1;
+          final now = DateTime.now().toUtc().toIso8601String();
+          for (final item in items) {
+            final itemId = (item['item_id'] as num?)?.toInt() ?? 0;
+            final itemType = item['item_type']?.toString() ?? '';
+            final colorId = (item['color_id'] as num?)?.toInt();
+            final qty = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+            if (itemId <= 0 || qty <= 0) continue;
+            await _postStockMovement(
               txn,
-              referenceId: saleId,
-              transactionType: 'Material Sale',
               itemId: itemId,
               itemType: itemType,
               colorId: colorId,
               locationId: locationId,
-            ),
-            reason: 'إلغاء وثيقة البيع',
-          );
+              quantity: qty,
+              transactionType: 'Material Sale Reversal',
+              movementType: SqlDatabase.movementReturn,
+              actor: actor,
+              timestamp: now,
+              unitCost: (item['unit_price'] as num?)?.toDouble(),
+              documentType: 'sale',
+              documentId: saleId,
+              reversesTransactionId: await _originalMovementId(
+                txn,
+                referenceId: saleId,
+                transactionType: 'Material Sale',
+                itemId: itemId,
+                itemType: itemType,
+                colorId: colorId,
+                locationId: locationId,
+              ),
+              reason: 'إلغاء وثيقة البيع',
+            );
+          }
         }
-      }
-      final now = DateTime.now().toUtc().toIso8601String();
-      await txn.update(
-        'MaterialSales',
-        {
-          'is_deleted': 1,
-          'deleted_at': now,
-          'deleted_by': deletedBy,
-          'status_before_delete': sale['status']?.toString() ?? 'draft',
-          'status': 'cancelled',
-          'stock_deducted': 0,
-          'updated_at': now,
-        },
-        where: 'id = ?',
-        whereArgs: [saleId],
+        final now = DateTime.now().toUtc().toIso8601String();
+        await txn.update(
+          'MaterialSales',
+          {
+            'is_deleted': 1,
+            'deleted_at': now,
+            'deleted_by': deletedBy,
+            'status_before_delete': sale['status']?.toString() ?? 'draft',
+            'status': 'cancelled',
+            'stock_deducted': 0,
+            'updated_at': now,
+          },
+          where: 'id = ?',
+          whereArgs: [saleId],
+        );
+      });
+      await logAuditAction(
+        actionType: 'delete',
+        entityType: 'MaterialSale',
+        entityId: saleId.toString(),
+        entityTitle: sale['sale_code']?.toString(),
+        details: 'Soft deleted; stock movement reversed and document retained.',
       );
+      CloudSyncService().notifyChange();
     });
-    await logAuditAction(
-      actionType: 'delete',
-      entityType: 'MaterialSale',
-      entityId: saleId.toString(),
-      entityTitle: sale['sale_code']?.toString(),
-      details: 'Soft deleted; stock movement reversed and document retained.',
-    );
-    CloudSyncService().notifyChange();
   }
 
   Future<List<Map<String, dynamic>>> readTrashMaterialSales() async {
@@ -3197,39 +3203,41 @@ extension SqlDatabaseInventory on SqlDatabase {
   /// returned at deletion) and their lines are removed for good. Returns how
   /// many sales were removed; one that fails never stops the others.
   Future<int> emptyMaterialSalesTrash() async {
-    final database = await db;
-    if (database == null) return 0;
-    await _ensureRemnantInventorySchema(database);
-    await _ensureSyncTombstoneInfrastructure(database);
-    final trashed = await database.query(
-      'MaterialSales',
-      columns: ['id'],
-      where: 'is_deleted = 1',
-    );
-    var removed = 0;
-    for (final row in trashed) {
-      final id = (row['id'] as num?)?.toInt();
-      if (id == null) continue;
-      try {
-        await database.transaction((txn) async {
-          await txn.delete(
-            'MaterialSaleItems',
-            where: 'sale_id = ?',
-            whereArgs: [id],
-          );
-          await txn.delete(
-            'MaterialSales',
-            where: 'id = ? AND is_deleted = 1',
-            whereArgs: [id],
-          );
-        });
-        removed++;
-      } catch (error) {
-        debugPrint('emptyMaterialSalesTrash: sale $id kept: $error');
+    return runUserDeletion<int>('emptyMaterialSalesTrash', () async {
+      final database = await db;
+      if (database == null) return 0;
+      await _ensureRemnantInventorySchema(database);
+      await _ensureSyncTombstoneInfrastructure(database);
+      final trashed = await database.query(
+        'MaterialSales',
+        columns: ['id'],
+        where: 'is_deleted = 1',
+      );
+      var removed = 0;
+      for (final row in trashed) {
+        final id = (row['id'] as num?)?.toInt();
+        if (id == null) continue;
+        try {
+          await database.transaction((txn) async {
+            await txn.delete(
+              'MaterialSaleItems',
+              where: 'sale_id = ?',
+              whereArgs: [id],
+            );
+            await txn.delete(
+              'MaterialSales',
+              where: 'id = ? AND is_deleted = 1',
+              whereArgs: [id],
+            );
+          });
+          removed++;
+        } catch (error) {
+          debugPrint('emptyMaterialSalesTrash: sale $id kept: $error');
+        }
       }
-    }
-    if (removed > 0) CloudSyncService().notifyChange();
-    return removed;
+      if (removed > 0) CloudSyncService().notifyChange();
+      return removed;
+    });
   }
 
   Future<void> restoreMaterialSale(int saleId) async {
@@ -3670,14 +3678,16 @@ extension SqlDatabaseInventory on SqlDatabase {
 
   /// Delete a single item from a sale.
   Future<void> deleteMaterialSaleItem(int itemId) async {
-    final myDb = await db;
-    if (myDb == null) return;
-    await myDb.delete(
-      'MaterialSaleItems',
-      where: 'id = ?',
-      whereArgs: [itemId],
-    );
-    CloudSyncService().notifyChange();
+    return runUserDeletion<void>('deleteMaterialSaleItem', () async {
+      final myDb = await db;
+      if (myDb == null) return;
+      await myDb.delete(
+        'MaterialSaleItems',
+        where: 'id = ?',
+        whereArgs: [itemId],
+      );
+      CloudSyncService().notifyChange();
+    });
   }
 
   /// Replace all items of a sale and recalculate totals.
@@ -3689,65 +3699,67 @@ extension SqlDatabaseInventory on SqlDatabase {
     required double netTotal,
     required double paidAmount,
   }) async {
-    final myDb = await db;
-    if (myDb == null) return;
-    final now = DateTime.now().toUtc().toIso8601String();
-    final editor = await _currentOrderEditor();
-    await myDb.transaction((txn) async {
-      await txn.delete(
-        'MaterialSaleItems',
-        where: 'sale_id = ?',
-        whereArgs: [saleId],
-      );
-      for (final item in items) {
-        await txn.insert('MaterialSaleItems', {
-          'sale_id': saleId,
-          'item_type': item['item_type'] ?? 'Other',
-          'item_id': item['item_id'] ?? 0,
-          'item_code': item['item_code'] ?? '',
-          'item_name': item['item_name'] ?? '',
-          'system_name': item['system_name'] ?? '',
-          'series_name': item['series_name'] ?? '',
-          'color_id': item['color_id'],
-          'color_name': item['color_name'] ?? '',
-          'unit': item['unit'] ?? 'pcs',
-          'length_mm': (item['length_mm'] as num?)?.toDouble() ?? 0.0,
-          'width_mm': (item['width_mm'] as num?)?.toDouble() ?? 0.0,
-          'quantity': (item['quantity'] as num?)?.toDouble() ?? 1.0,
-          'unit_price': (item['unit_price'] as num?)?.toDouble() ?? 0.0,
-          'tax_rate': (item['tax_rate'] as num?)?.toDouble() ?? 0.0,
-          'total_price': (item['total_price'] as num?)?.toDouble() ?? 0.0,
-          'notes': item['notes'] ?? '',
-        });
-      }
-      await txn.update(
-        'MaterialSales',
-        {
-          'subtotal': subtotal,
-          'discount_amount': discountAmount,
-          'net_total': netTotal,
-          'paid_amount': paidAmount,
-          'remaining_amount': (netTotal - paidAmount).clamp(
-            0.0,
-            double.infinity,
-          ),
-          'updated_at': now,
-          'updated_by': editor,
-        },
-        where: 'id = ?',
-        whereArgs: [saleId],
-      );
+    return runUserDeletion<void>('saveMaterialSaleWithItems', () async {
+      final myDb = await db;
+      if (myDb == null) return;
+      final now = DateTime.now().toUtc().toIso8601String();
+      final editor = await _currentOrderEditor();
+      await myDb.transaction((txn) async {
+        await txn.delete(
+          'MaterialSaleItems',
+          where: 'sale_id = ?',
+          whereArgs: [saleId],
+        );
+        for (final item in items) {
+          await txn.insert('MaterialSaleItems', {
+            'sale_id': saleId,
+            'item_type': item['item_type'] ?? 'Other',
+            'item_id': item['item_id'] ?? 0,
+            'item_code': item['item_code'] ?? '',
+            'item_name': item['item_name'] ?? '',
+            'system_name': item['system_name'] ?? '',
+            'series_name': item['series_name'] ?? '',
+            'color_id': item['color_id'],
+            'color_name': item['color_name'] ?? '',
+            'unit': item['unit'] ?? 'pcs',
+            'length_mm': (item['length_mm'] as num?)?.toDouble() ?? 0.0,
+            'width_mm': (item['width_mm'] as num?)?.toDouble() ?? 0.0,
+            'quantity': (item['quantity'] as num?)?.toDouble() ?? 1.0,
+            'unit_price': (item['unit_price'] as num?)?.toDouble() ?? 0.0,
+            'tax_rate': (item['tax_rate'] as num?)?.toDouble() ?? 0.0,
+            'total_price': (item['total_price'] as num?)?.toDouble() ?? 0.0,
+            'notes': item['notes'] ?? '',
+          });
+        }
+        await txn.update(
+          'MaterialSales',
+          {
+            'subtotal': subtotal,
+            'discount_amount': discountAmount,
+            'net_total': netTotal,
+            'paid_amount': paidAmount,
+            'remaining_amount': (netTotal - paidAmount).clamp(
+              0.0,
+              double.infinity,
+            ),
+            'updated_at': now,
+            'updated_by': editor,
+          },
+          where: 'id = ?',
+          whereArgs: [saleId],
+        );
+      });
+      try {
+        // A sale saved right after it was created stays one "sale added".
+        await _recordDashboardActivity(
+          activityType: 'sale_updated',
+          entityId: saleId,
+          userName: editor,
+          mergeInto: const {'sale_added'},
+        );
+      } catch (_) {}
+      CloudSyncService().notifyChange();
     });
-    try {
-      // A sale saved right after it was created stays one "sale added".
-      await _recordDashboardActivity(
-        activityType: 'sale_updated',
-        entityId: saleId,
-        userName: editor,
-        mergeInto: const {'sale_added'},
-      );
-    } catch (_) {}
-    CloudSyncService().notifyChange();
   }
 
   /// Saves a complete immutable before/after snapshot in the shared audit log.
