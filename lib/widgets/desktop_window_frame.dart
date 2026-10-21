@@ -31,6 +31,7 @@ import 'package:database_data/Screen/workshop_profile_screen.dart';
 import 'package:database_data/items_produits/products_menu_screen.dart';
 import 'package:database_data/services/auth_service.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
+import 'package:database_data/services/desktop_background_service.dart';
 import 'package:database_data/services/supabase_workshop_sync_service.dart';
 import 'package:database_data/sql_database.dart';
 import 'package:database_data/widgets/app_material.dart';
@@ -133,6 +134,8 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
 
   @override
   void onWindowClose() async {
+    // On Windows the tray service decides: hide in the tray or quit.
+    if (DesktopBackgroundService.instance.handlesClose) return;
     try {
       await windowManager.destroy();
     } catch (_) {}
@@ -141,6 +144,10 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
 
   Future<void> _closeApp() async {
     if (kIsWeb) return;
+    if (DesktopBackgroundService.instance.handlesClose) {
+      await DesktopBackgroundService.instance.closeWindow();
+      return;
+    }
     try {
       await windowManager.destroy();
     } catch (_) {}

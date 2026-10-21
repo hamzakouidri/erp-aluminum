@@ -36,9 +36,11 @@ import 'package:database_data/sql_database.dart';
 import 'package:database_data/Commande/Systeme/shutter_calc_rules.dart';
 
 import 'package:window_manager/window_manager.dart';
+import 'package:database_data/services/desktop_background_service.dart';
 
-void main() async {
+void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  _startedMinimized = DesktopBackgroundService.isMinimizedLaunch(args);
   // Register before runApp so Android/iOS can enter the background isolate
   // when the application process is suspended or was launched by a push.
   if (kIsWeb || Platform.isAndroid || Platform.isIOS || Platform.isMacOS) {
@@ -61,6 +63,9 @@ void main() async {
   // behind this lightweight bootstrap screen.
   runApp(const AppBootstrap());
 }
+
+/// Launched by the Windows startup entry: stay hidden in the tray.
+bool _startedMinimized = false;
 
 class AppBootstrap extends StatefulWidget {
   const AppBootstrap({super.key});
@@ -200,10 +205,17 @@ class _AppBootstrapState extends State<AppBootstrap> {
             )
           : const WindowOptions(backgroundColor: Color(0xFF0F2027));
       await windowManager.waitUntilReadyToShow(options, () async {
+        if (_startedMinimized) {
+          await windowManager.hide();
+          return;
+        }
         await windowManager.show();
         await windowManager.maximize();
         await windowManager.focus();
       });
+      await DesktopBackgroundService.instance.initialize(
+        startedMinimized: _startedMinimized,
+      );
     } catch (error) {
       debugPrint('Window Manager init warning: $error');
     }
@@ -422,10 +434,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       const Duration(minutes: 15),
       (_) => _checkPricePublications(),
     );
-    Future<void>.delayed(
-      const Duration(seconds: 12),
-      _checkPricePublications,
-    );
+    Future<void>.delayed(const Duration(seconds: 12), _checkPricePublications);
 
     // A remote rule copy that would remove many series roles or accessory
     // rules is held back; ask the manager as soon as it happens, and after

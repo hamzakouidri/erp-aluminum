@@ -123,4 +123,50 @@ const Map<String, Map<AppLanguage, String>> notificationKeys = {
     AppLanguage.french: 'Le plan de distribution a été confirmé',
     AppLanguage.english: 'The distribution plan was confirmed',
   },
+  'desktop.background.section': {
+    AppLanguage.arabic: 'التشغيل في الخلفية (ويندوز)',
+    AppLanguage.french: 'Fonctionnement en arrière-plan (Windows)',
+    AppLanguage.english: 'Background running (Windows)',
+  },
+  'desktop.background.keep_in_tray': {
+    AppLanguage.arabic: 'إبقاء التطبيق يعمل في شريط النظام عند إغلاق النافذة',
+    AppLanguage.french:
+        "Garder l'application dans la zone de notification à la fermeture de la fenêtre",
+    AppLanguage.english:
+        'Keep running in the system tray when the window is closed',
+  },
+  'desktop.background.keep_in_tray.hint': {
+    AppLanguage.arabic:
+        'تصلك إشعارات الطلبيات حتى بعد إغلاق النافذة. للخروج نهائياً استعمل «خروج» من أيقونة شريط النظام.',
+    AppLanguage.french:
+        "Les notifications de commandes arrivent même fenêtre fermée. Pour quitter, utilisez « Quitter » depuis l'icône de la zone de notification.",
+    AppLanguage.english:
+        'Order notifications keep arriving after the window is closed. To quit, use "Quit" from the tray icon.',
+  },
+  'desktop.background.launch_at_startup': {
+    AppLanguage.arabic: 'التشغيل مع بدء ويندوز (مصغّراً في شريط النظام)',
+    AppLanguage.french:
+        'Lancer au démarrage de Windows (réduit dans la zone de notification)',
+    AppLanguage.english: 'Start with Windows (minimised to the system tray)',
+  },
+  'desktop.background.save_failed': {
+    AppLanguage.arabic: 'تعذّر حفظ هذا الإعداد',
+    AppLanguage.french: "Impossible d'enregistrer ce réglage",
+    AppLanguage.english: 'This setting could not be saved',
+  },
+  'desktop.tray.tooltip': {
+    AppLanguage.arabic: 'ورشتي - يعمل في الخلفية',
+    AppLanguage.french: 'Warchati - en arrière-plan',
+    AppLanguage.english: 'Warchati - running in the background',
+  },
+  'desktop.tray.open': {
+    AppLanguage.arabic: 'فتح ورشتي',
+    AppLanguage.french: 'Ouvrir Warchati',
+    AppLanguage.english: 'Open Warchati',
+  },
+  'desktop.tray.quit': {
+    AppLanguage.arabic: 'خروج',
+    AppLanguage.french: 'Quitter',
+    AppLanguage.english: 'Quit',
+  },
 };

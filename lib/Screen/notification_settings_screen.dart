@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/desktop_background_service.dart';
 import '../services/worker_push_notification_service.dart';
 import '../settings/app_settings.dart';
 import '../settings/localization.dart';
@@ -19,6 +20,8 @@ class _NotificationSettingsScreenState
   bool _loading = true;
   bool _manager = false;
   Map<String, bool> _values = {};
+  bool _keepInTray = false;
+  bool _launchAtStartup = false;
 
   static const _workerTypes = <String, String>{
     'worker_assignment': 'إسناد مهمة جديدة',
@@ -48,11 +51,114 @@ class _NotificationSettingsScreenState
     final values = await WorkerPushNotificationService.instance.loadPreferences(
       types,
     );
+    final desktop = DesktopBackgroundService.instance;
+    final launchAtStartup = await desktop.isLaunchAtStartupEnabled();
     if (mounted)
       setState(() {
         _values = values;
+        _keepInTray = desktop.keepInTray;
+        _launchAtStartup = launchAtStartup;
         _loading = false;
       });
+  }
+
+  Future<void> _changeDesktop(
+    bool value,
+    Future<void> Function(bool) save,
+    void Function(bool) apply,
+  ) async {
+    setState(() => apply(value));
+    try {
+      await save(value);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => apply(!value));
+      final lang = context.read<AppSettingsProvider>().language;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            Localization.translate('desktop.background.save_failed', lang),
+          ),
+        ),
+      );
+    }
+  }
+
+  Widget _desktopSection(AppLanguage lang, bool isArabic) {
+    final desktop = DesktopBackgroundService.instance;
+    final textStyle = TextStyle(
+      fontFamily: isArabic ? 'Cairo' : null,
+      fontWeight: FontWeight.w600,
+    );
+    final cardShape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
+          child: Text(
+            Localization.translate('desktop.background.section', lang),
+            style: TextStyle(
+              fontFamily: isArabic ? 'Cairo' : null,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+        ),
+        Card(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          shape: cardShape,
+          child: SwitchListTile(
+            secondary: Icon(
+              Icons.notifications_paused_outlined,
+              color: Theme.of(context).primaryColor,
+            ),
+            title: Text(
+              Localization.translate('desktop.background.keep_in_tray', lang),
+              style: textStyle,
+            ),
+            subtitle: Text(
+              Localization.translate(
+                'desktop.background.keep_in_tray.hint',
+                lang,
+              ),
+              style: TextStyle(fontFamily: isArabic ? 'Cairo' : null),
+            ),
+            value: _keepInTray,
+            onChanged: (value) => _changeDesktop(
+              value,
+              desktop.setKeepInTray,
+              (v) => _keepInTray = v,
+            ),
+          ),
+        ),
+        Card(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          shape: cardShape,
+          child: SwitchListTile(
+            secondary: Icon(
+              Icons.power_settings_new,
+              color: Theme.of(context).primaryColor,
+            ),
+            title: Text(
+              Localization.translate(
+                'desktop.background.launch_at_startup',
+                lang,
+              ),
+              style: textStyle,
+            ),
+            value: _launchAtStartup,
+            onChanged: (value) => _changeDesktop(
+              value,
+              desktop.setLaunchAtStartup,
+              (v) => _launchAtStartup = v,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   Future<void> _change(String type, bool value) async {
@@ -85,31 +191,33 @@ class _NotificationSettingsScreenState
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.all(16),
-              children: entries.entries
-                  .map(
-                    (entry) => Card(
-                      margin: const EdgeInsets.symmetric(vertical: 4),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: SwitchListTile(
-                        secondary: Icon(
-                          Icons.notifications_active_outlined,
-                          color: Theme.of(context).primaryColor,
-                        ),
-                        title: Text(
-                          Localization.translate(entry.value, lang),
-                          style: TextStyle(
-                            fontFamily: isArabic ? 'Cairo' : null,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        value: _values[entry.key] ?? true,
-                        onChanged: (value) => _change(entry.key, value),
-                      ),
+              children: [
+                ...entries.entries.map(
+                  (entry) => Card(
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                  )
-                  .toList(),
+                    child: SwitchListTile(
+                      secondary: Icon(
+                        Icons.notifications_active_outlined,
+                        color: Theme.of(context).primaryColor,
+                      ),
+                      title: Text(
+                        Localization.translate(entry.value, lang),
+                        style: TextStyle(
+                          fontFamily: isArabic ? 'Cairo' : null,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      value: _values[entry.key] ?? true,
+                      onChanged: (value) => _change(entry.key, value),
+                    ),
+                  ),
+                ),
+                if (DesktopBackgroundService.isSupported)
+                  _desktopSection(lang, isArabic),
+              ],
             ),
     );
   }

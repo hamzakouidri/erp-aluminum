@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:database_data/services/supabase_workshop_sync_service.dart';
 
 import '../settings/app_settings.dart';
+import 'desktop_background_service.dart';
 import 'notification_texts.dart';
 
 /// Manages real-time order-event notifications within the workshop.
@@ -290,18 +291,29 @@ class OrderNotificationService {
     const linuxSettings = LinuxInitializationSettings(
       defaultActionName: 'open',
     );
+    // Windows toasts (FCM does not exist on Windows; order events arrive
+    // through Supabase Realtime). The GUID identifies the toast activator
+    // and must never change once released.
+    const windowsSettings = WindowsInitializationSettings(
+      appName: 'Warchati ERP',
+      appUserModelId: 'Warchati.ErpAluminium.Desktop',
+      guid: '6f1c2b9e-4d3a-4e8b-9a52-7c0d1e3f5a84',
+    );
 
     const initSettings = InitializationSettings(
       android: androidSettings,
       iOS: iosSettings,
       macOS: iosSettings,
       linux: linuxSettings,
+      windows: windowsSettings,
     );
 
     try {
       await _plugin.initialize(
-        initSettings,
+        settings: initSettings,
         onDidReceiveNotificationResponse: (response) {
+          // A click on a toast brings back a window hidden in the tray.
+          unawaited(DesktopBackgroundService.instance.showWindow());
           final payload = response.payload;
           if (payload == null || payload.isEmpty) return;
           try {
@@ -488,9 +500,16 @@ class OrderNotificationService {
         android: androidDetails,
         iOS: iosDetails,
         macOS: iosDetails,
+        windows: const WindowsNotificationDetails(),
       );
 
-      await _plugin.show(_notifId++, title, body, details, payload: payload);
+      await _plugin.show(
+        id: _notifId++,
+        title: title,
+        body: body,
+        notificationDetails: details,
+        payload: payload,
+      );
       debugPrint('OrderNotif: local notification shown – $title');
     } catch (e) {
       debugPrint('OrderNotif: show notification failed – $e');
