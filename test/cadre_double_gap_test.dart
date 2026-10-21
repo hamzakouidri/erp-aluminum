@@ -160,5 +160,32 @@ void main() {
 
       expect(model.zones.map((z) => z.boundary).toList(), before);
     });
+
+    // Catalogue rows can carry the width as text. The window must stay one
+    // frame with one wide divider, not split into two frames.
+    test('a width stored as text keeps the window one frame', () {
+      final model = verticalSplit();
+      final before = model.zones.map((z) => z.boundary).toList();
+
+      model.setMullionFrameSection(MullionProfileType.flat, {
+        'id': 'frame_70',
+        'visible_width': '70',
+      });
+
+      final left = zone(model, 'left');
+      final right = zone(model, 'right');
+      expect(right.left - left.right, closeTo(140.0, 0.01));
+      expect(model.frameProfileWidthAt(false, 700), 70.0);
+      expect(model.getFrameRects(), hasLength(1));
+
+      model.setMullionProfile(MullionProfileType.standard);
+
+      final after = model.zones.map((z) => z.boundary).toList();
+      for (var i = 0; i < before.length; i++) {
+        expect(after[i].left, closeTo(before[i].left, 0.01));
+        expect(after[i].right, closeTo(before[i].right, 0.01));
+      }
+      expect(model.getFrameRects(), hasLength(1));
+    });
   });
 }

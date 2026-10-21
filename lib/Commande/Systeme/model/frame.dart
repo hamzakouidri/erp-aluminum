@@ -1444,10 +1444,23 @@ extension WindowModelFrame on WindowModel {
       mullionProfiles[_mullionKey(isHorizontal, position)] ==
       MullionProfileType.grooved;
 
-  double frameProfileWidthAt(bool isHorizontal, double position) {
-    final section = effectiveMullionSectionAt(isHorizontal, position);
-    final width = _sectionVisibleWidth(section);
-    if (width > 0) return width;
+  /// Reads the width the same way as the painter: catalogue rows may carry
+  /// it as text ("70"). Ignoring that fell back to [profileThickness], so a
+  /// Cadre double was drawn 140 mm wide while frame grouping expected 90 mm
+  /// and split the window into two frames.
+  double frameProfileWidthAt(bool isHorizontal, double position) =>
+      _doubleFrameSectionWidth(
+        effectiveMullionSectionAt(isHorizontal, position),
+      );
+
+  double _doubleFrameSectionWidth(Map<String, dynamic>? section) {
+    for (final field in const ['visible_width', 'thickness']) {
+      final value = section?[field];
+      final width = value is num
+          ? value.toDouble()
+          : double.tryParse(value?.toString() ?? '');
+      if (width != null && width > 0) return width;
+    }
     return profileThickness;
   }
 
