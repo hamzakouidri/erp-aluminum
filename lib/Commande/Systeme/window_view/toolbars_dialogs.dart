@@ -2491,7 +2491,8 @@ extension _WindowViewToolbars on _WindowViewState {
     BuildContext context,
     MullionProfileType type,
   ) async {
-    final frames = _availableMullionFrameSections();
+    final frames = await _availableMullionFrameSections();
+    if (!context.mounted) return;
     final title = type == MullionProfileType.flat
         ? 'Cadre doublé - اختر إطار التقسيم'
         : 'Cadre مفرد / 140 - اختر إطار التقسيم';
