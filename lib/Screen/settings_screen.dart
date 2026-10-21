@@ -303,6 +303,127 @@ class SettingsScreen extends StatelessWidget {
     }
   }
 
+  /// Shows how many rows of this device Supabase holds as deleted and, once
+  /// the manager confirms, uploads them again for every device.
+  Future<void> _runReviveDeletedRows(BuildContext context) async {
+    final lang = Provider.of<AppSettingsProvider>(
+      context,
+      listen: false,
+    ).language;
+    String t(String key) => Localization.translate(key, lang);
+    final messenger = ScaffoldMessenger.of(context);
+    void report(String message, Color color) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(message, style: const TextStyle(fontFamily: 'Cairo')),
+          backgroundColor: color,
+          duration: const Duration(seconds: 8),
+        ),
+      );
+    }
+
+    showDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: Row(
+          children: [
+            const SizedBox(
+              width: 26,
+              height: 26,
+              child: CircularProgressIndicator(strokeWidth: 3),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                t('sync_revive_checking'),
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    final sync = SupabaseWorkshopSyncService();
+    Map<String, int> counts;
+    try {
+      counts = await sync.countLocalRowsDeletedOnServer();
+    } catch (error) {
+      if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+      report('${t('sync_revive_failed')}: $error', Colors.red);
+      return;
+    }
+    if (!context.mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+    if (counts.isEmpty) {
+      report(t('sync_revive_none'), Colors.green);
+      return;
+    }
+
+    String tableLabel(String table) {
+      final key = 'business_loss_table_$table';
+      final label = Localization.translate(key, lang);
+      return label == key ? table : label;
+    }
+
+    final tables = counts.keys.toList()..sort();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      useRootNavigator: true,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(t('sync_revive_title')),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(t('sync_revive_body')),
+              const SizedBox(height: 12),
+              for (final table in tables)
+                Text('${tableLabel(table)}: ${counts[table]}'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(t('sync_revive_cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(t('sync_revive_confirm')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    showDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: SizedBox(
+          height: 48,
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      ),
+    );
+    try {
+      final revived = await sync.reviveLocalRowsDeletedOnServer();
+      if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+      report('${t('sync_revive_done')}: $revived', Colors.green);
+    } catch (error) {
+      if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+      report(
+        '${t('sync_revive_failed')}: '
+        '${error.toString().replaceFirst('Exception: ', '')}',
+        Colors.red,
+      );
+    }
+  }
+
   Future<void> _runWorkshopUpload(BuildContext context) async {
     final lang = Provider.of<AppSettingsProvider>(
       context,
@@ -1071,6 +1192,24 @@ class SettingsScreen extends StatelessWidget {
                                     style: const TextStyle(fontFamily: 'Cairo'),
                                   ),
                                 ),
+                                if (settings.isManager)
+                                  OutlinedButton.icon(
+                                    onPressed: () =>
+                                        _runReviveDeletedRows(context),
+                                    icon: const Icon(
+                                      Icons.restore_rounded,
+                                      size: 18,
+                                    ),
+                                    label: Text(
+                                      Localization.translate(
+                                        'sync_revive_button',
+                                        lang,
+                                      ),
+                                      style: const TextStyle(
+                                        fontFamily: 'Cairo',
+                                      ),
+                                    ),
+                                  ),
                               ],
                             ),
                           ),

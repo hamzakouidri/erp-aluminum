@@ -1449,6 +1449,17 @@ class _SyncGatewayState extends State<SyncGateway> {
       'Workshop changed from "$previousWorkshop" to "$currentWorkshop". '
       'Clearing previous workshop business data while keeping aluminum catalog.',
     );
+    // The clear also drops the changes this device has not uploaded yet.
+    // Without a copy of the database file they could never be recovered,
+    // so the local rows are kept when no copy can be written.
+    final backup = await SqlDatabase().backupDatabaseFile(
+      reason: 'before_workshop_change',
+    );
+    if (backup == null) {
+      debugPrint('Workshop change: no database copy; local data kept.');
+      return false;
+    }
+    debugPrint('Workshop change: database copied to $backup');
     CloudSyncService().reset();
     await SqlDatabase.clearWorkshopDataOnly();
     await CloudSyncService().init();

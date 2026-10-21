@@ -2350,6 +2350,57 @@ extension SqlDatabaseSync on SqlDatabase {
     return CatalogConfigImportResult.applied;
   }
 
+  /// Removes the local deletions of rows that Supabase now holds live and
+  /// stored after that deletion ([supersedes] compares the two times), so
+  /// the import that follows brings those rows back. [liveRowTimes] maps a
+  /// table to its row ids and their Supabase update time. Returns the number
+  /// of deletions removed.
+  Future<int> dropDeletionsSupersededByLiveRows(
+    Map<String, Map<String, String>> liveRowTimes, {
+    required bool Function(String liveUpdatedAt, String deletedAt) supersedes,
+  }) async {
+    if (liveRowTimes.isEmpty) return 0;
+    final myDb = await db;
+    if (myDb == null) return 0;
+    var dropped = 0;
+    await myDb.transaction((txn) async {
+      await _ensureSyncTombstoneInfrastructure(txn);
+      for (final entry in liveRowTimes.entries) {
+        final table = entry.key;
+        final ids = entry.value.keys.toList(growable: false);
+        for (var start = 0; start < ids.length; start += 500) {
+          final chunk = ids.sublist(start, min(start + 500, ids.length));
+          final marks = List.filled(chunk.length, '?').join(',');
+          final deletions = await txn.query(
+            'SyncTombstones',
+            columns: ['row_id', 'deleted_at'],
+            where: 'table_name = ? AND row_id IN ($marks)',
+            whereArgs: [table, ...chunk],
+          );
+          for (final deletion in deletions) {
+            final rowId = deletion['row_id']?.toString() ?? '';
+            final liveUpdatedAt = entry.value[rowId] ?? '';
+            if (!supersedes(
+              liveUpdatedAt,
+              deletion['deleted_at']?.toString() ?? '',
+            )) {
+              continue;
+            }
+            dropped += await txn.delete(
+              'SyncTombstones',
+              where: 'table_name = ? AND row_id = ?',
+              whereArgs: [table, rowId],
+            );
+          }
+        }
+      }
+    });
+    if (dropped > 0) {
+      debugPrint('Sync: $dropped local deletions replaced by restored rows.');
+    }
+    return dropped;
+  }
+
   Future<void> importWorkshopData(
     Map<String, dynamic> data, {
     bool replaceAllData = false,
