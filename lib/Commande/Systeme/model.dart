@@ -647,6 +647,60 @@ class FrameAngleJunction {
   }
 }
 
+/// Which aluminium parclose cuts a catalogue parclose takes
+/// (`Sections.parclose_cut_support` and `Sections.parclose_default_cut`).
+/// The defaults keep the former behaviour: every cut, 45° first.
+class ParcloseCutRule {
+  static const List<String> modes = ['45', '90_length', '90_width'];
+
+  /// `both`, `45` (45° only) or `90` (90° only).
+  final String support;
+
+  /// The cut a new drawing starts with: one of [modes].
+  final String defaultMode;
+
+  const ParcloseCutRule({this.support = 'both', this.defaultMode = '45'});
+
+  factory ParcloseCutRule.fromMap(Map<dynamic, dynamic> map) {
+    final support = map['parclose_cut_support']?.toString().trim();
+    final defaultMode = map['parclose_default_cut']?.toString().trim();
+    return ParcloseCutRule(
+      support: const {'45', '90'}.contains(support) ? support! : 'both',
+      defaultMode: modes.contains(defaultMode) ? defaultMode! : '45',
+    );
+  }
+
+  List<String> get allowedModes => switch (support) {
+    '45' => const ['45'],
+    '90' => [defaultMode == '90_width' ? '90_width' : '90_length'],
+    _ => modes,
+  };
+
+  /// A single allowed cut: nothing to choose in the drawing.
+  bool get isFixed => allowedModes.length == 1;
+
+  String get initialMode =>
+      allowedModes.contains(defaultMode) ? defaultMode : allowedModes.first;
+
+  /// [mode] when this parclose takes it, otherwise [initialMode].
+  String resolve(String? mode) =>
+      allowedModes.contains(mode) ? mode! : initialMode;
+
+  Map<String, dynamic> toMap() => {
+    'parclose_cut_support': support,
+    'parclose_default_cut': defaultMode,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is ParcloseCutRule &&
+      other.support == support &&
+      other.defaultMode == defaultMode;
+
+  @override
+  int get hashCode => Object.hash(support, defaultMode);
+}
+
 class AluminumSection {
   final int id;
   final int seriesId;
@@ -668,6 +722,7 @@ class AluminumSection {
   final bool isMullion;
   final double maxGlassThickness;
   final int? linkedParcloseDoubleId;
+  final ParcloseCutRule parcloseCutRule;
   final int? linkedRenfortId;
   final double renfortDeduction;
   final String? imagePath;
@@ -696,6 +751,7 @@ class AluminumSection {
     this.isMullion = false,
     this.maxGlassThickness = 0.0,
     this.linkedParcloseDoubleId,
+    this.parcloseCutRule = const ParcloseCutRule(),
     this.linkedRenfortId,
     this.renfortDeduction = 140.0,
     this.imagePath,
@@ -760,6 +816,7 @@ class AluminumSection {
       maxGlassThickness:
           (map['max_glass_thickness'] as num?)?.toDouble() ?? 0.0,
       linkedParcloseDoubleId: map['linked_parclose_double_id'] as int?,
+      parcloseCutRule: ParcloseCutRule.fromMap(map),
       linkedRenfortId: map['linked_renfort_id'] is num
           ? (map['linked_renfort_id'] as num).toInt()
           : int.tryParse(map['linked_renfort_id']?.toString() ?? ''),
@@ -800,6 +857,7 @@ class AluminumSection {
       'is_mullion': isMullion ? 1 : 0,
       'max_glass_thickness': maxGlassThickness,
       'linked_parclose_double_id': linkedParcloseDoubleId,
+      ...parcloseCutRule.toMap(),
       'linked_renfort_id': linkedRenfortId,
       'renfort_deduction': renfortDeduction,
       'image_path': imagePath,
@@ -3839,16 +3897,30 @@ class WindowModel extends ChangeNotifier {
   /// glazing size (mitred, like PVC). `90_length` keeps the vertical pieces
   /// full and shortens the horizontal ones by 2 x the parclose glass
   /// deduction; `90_width` does the opposite.
-  String parcloseCutMode = '45';
+  ///
+  /// The selected parclose's [ParcloseCutRule] decides which cuts are
+  /// possible: a new drawing follows its default cut, a chosen or saved cut
+  /// is kept while that parclose takes it.
+  String get parcloseCutMode {
+    final rule = parcloseCutRule;
+    final chosen = _parcloseCutMode;
+    return chosen == null ? rule.initialMode : rule.resolve(chosen);
+  }
+
+  set parcloseCutMode(String mode) {
+    _parcloseCutMode = ParcloseCutRule.modes.contains(mode) ? mode : '45';
+  }
+
+  /// The cut the user chose or the drawing was saved with; null on a new
+  /// drawing.
+  String? _parcloseCutMode;
 
   bool get parcloseCutAt90 =>
       parcloseCutMode == '90_length' || parcloseCutMode == '90_width';
 
   void setParcloseCutMode(String mode) {
-    const allowed = {'45', '90_length', '90_width'};
-    final next = allowed.contains(mode) ? mode : '45';
-    if (parcloseCutMode == next) return;
-    parcloseCutMode = next;
+    if (_parcloseCutMode != null && parcloseCutMode == mode) return;
+    parcloseCutMode = mode;
     notifyListeners();
   }
 

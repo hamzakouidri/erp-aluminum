@@ -23,54 +23,49 @@ class ParcloseCutModeSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final lang = Provider.of<AppSettingsProvider>(context).language;
-    String t(String ar, String fr) => lang == AppLanguage.arabic ? ar : fr;
-
-    final options = <(String, String)>[
-      ('45', t('قطع 45°', 'Coupe 45°')),
-      ('90_length', t('90° الأولوية للطول', '90° priorité hauteur')),
-      ('90_width', t('90° الأولوية للعرض', '90° priorité largeur')),
-    ];
+    final rule = model.parcloseCutRule;
     final mode = model.parcloseCutMode;
-    final String hint = switch (mode) {
-      '90_length' => t(
-        'القطع الطولية = الفراغ الداخلي، والعرضية = الفراغ الداخلي − 2 × ركوب الزجاج للباركلوز',
-        'Montants = clair intérieur, traverses = clair − 2 × déduction vitrage de la parclose',
-      ),
-      '90_width' => t(
-        'القطع العرضية = الفراغ الداخلي، والطولية = الفراغ الداخلي − 2 × ركوب الزجاج للباركلوز',
-        'Traverses = clair intérieur, montants = clair − 2 × déduction vitrage de la parclose',
-      ),
-      _ => t(
-        'كل القطع بمقاس الفراغ الداخلي (مثل PVC)',
-        'Toutes les coupes au clair intérieur (comme le PVC)',
-      ),
-    };
+    final hint = Localization.translate('parclose_cut_hint_$mode', lang);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          t('قطع الباركلوز (Parclose)', 'Coupe parclose'),
+          Localization.translate('parclose_cut_title', lang),
           style: TextStyle(
             fontSize: dense ? 12 : 13,
             fontWeight: FontWeight.bold,
           ),
         ),
         const SizedBox(height: 6),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final (value, label) in options)
-              ChoiceChip(
-                label: Text(label, style: TextStyle(fontSize: dense ? 11 : 12)),
-                selected: mode == value,
-                visualDensity: dense ? VisualDensity.compact : null,
-                onSelected: (_) => model.setParcloseCutMode(value),
-              ),
-          ],
-        ),
+        // A parclose taking one cut only leaves nothing to choose.
+        if (rule.isFixed)
+          Text(
+            '${Localization.translate('parclose_cut_$mode', lang)} · '
+            '${Localization.translate('parclose_cut_fixed_by_profile', lang)}',
+            style: TextStyle(
+              fontSize: dense ? 11 : 12,
+              fontWeight: FontWeight.w600,
+            ),
+          )
+        else
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final value in rule.allowedModes)
+                ChoiceChip(
+                  label: Text(
+                    Localization.translate('parclose_cut_$value', lang),
+                    style: TextStyle(fontSize: dense ? 11 : 12),
+                  ),
+                  selected: mode == value,
+                  visualDensity: dense ? VisualDensity.compact : null,
+                  onSelected: (_) => model.setParcloseCutMode(value),
+                ),
+            ],
+          ),
         const SizedBox(height: 4),
         Text(
           hint,
@@ -91,6 +86,85 @@ class ParcloseCutModeSelector extends StatelessWidget {
               style: TextStyle(fontSize: dense ? 10 : 11),
             ),
           ),
+      ],
+    );
+  }
+}
+
+/// The parclose cut rule of a catalogue profile: the cuts it takes and the
+/// cut a new drawing starts with. See [ParcloseCutRule].
+class ParcloseCutRuleFields extends StatelessWidget {
+  final ParcloseCutRule rule;
+  final ValueChanged<ParcloseCutRule> onChanged;
+
+  const ParcloseCutRuleFields({
+    super.key,
+    required this.rule,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final lang = Provider.of<AppSettingsProvider>(context).language;
+    String tr(String key) => Localization.translate(key, lang);
+
+    DropdownMenuItem<String> item(String value, String key) =>
+        DropdownMenuItem(value: value, child: Text(tr(key)));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        DropdownButtonFormField<String>(
+          initialValue: rule.support,
+          decoration: InputDecoration(
+            labelText: tr('parclose_cut_support_label'),
+          ),
+          items: [
+            for (final support in const ['both', '45', '90'])
+              item(support, 'parclose_cut_support_$support'),
+          ],
+          onChanged: (support) {
+            if (support == null) return;
+            onChanged(
+              ParcloseCutRule(
+                support: support,
+                defaultMode: switch (support) {
+                  '45' => '45',
+                  '90' when rule.defaultMode == '45' => '90_length',
+                  _ => rule.defaultMode,
+                },
+              ),
+            );
+          },
+        ),
+        if (!rule.isFixed || rule.support == '90') ...[
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            // The key rebuilds the field when the support changes its
+            // possible values.
+            key: ValueKey('parclose_default_${rule.support}'),
+            initialValue: rule.initialMode,
+            decoration: InputDecoration(
+              labelText: tr(
+                rule.support == '90'
+                    ? 'parclose_cut_priority_label'
+                    : 'parclose_cut_default_label',
+              ),
+            ),
+            items: [
+              for (final mode in ParcloseCutRule.modes)
+                if (rule.support != '90' || mode != '45')
+                  item(mode, 'parclose_cut_$mode'),
+            ],
+            onChanged: (mode) {
+              if (mode == null) return;
+              onChanged(
+                ParcloseCutRule(support: rule.support, defaultMode: mode),
+              );
+            },
+          ),
+        ],
       ],
     );
   }

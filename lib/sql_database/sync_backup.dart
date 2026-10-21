@@ -2164,6 +2164,14 @@ extension SqlDatabaseSync on SqlDatabase {
               sanitized['visible_width_2'] ??= 0.0;
               sanitized['sash_overlap'] ??= 0.0;
               sanitized['max_glass_thickness'] ??= 0.0;
+              // Older catalogues lack the parclose cut rule: keep the local
+              // one rather than resetting it, but never insert a null.
+              for (final (key, fallback) in const [
+                ('parclose_cut_support', 'both'),
+                ('parclose_default_cut', '45'),
+              ]) {
+                if (sanitized.containsKey(key)) sanitized[key] ??= fallback;
+              }
               sanitized['allows_side_cover'] ??= 1;
               sanitized['is_frame'] ??= 0;
               sanitized['is_sash'] ??= 0;

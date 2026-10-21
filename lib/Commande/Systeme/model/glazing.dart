@@ -631,6 +631,30 @@ extension WindowModelGlazing on WindowModel {
         name.contains('باكيت');
   }
 
+  /// The cut rule of the opening parclose: the one the user chose, else the
+  /// rule every parclose of the series shares, else every cut is possible.
+  /// Read from the current catalogue so older saved selections without the
+  /// rule columns still follow it.
+  ParcloseCutRule get parcloseCutRule {
+    final series = activeSeries;
+    if (series == null) return const ParcloseCutRule();
+    var beads = getConfiguredSectionsForRole('glazing_bead');
+    if (beads.isEmpty && !seriesHasConfiguredRoles(series)) {
+      beads = series.sections.where(_isParcloseSection).toList();
+    }
+    final chosen = componentOverrides['باكيت الزجاج (Parclose)'];
+    final chosenId = chosen is Map
+        ? int.tryParse('${chosen['id'] ?? ''}')
+        : null;
+    if (chosenId != null) {
+      for (final section in [...beads, ...series.sections]) {
+        if (section.id == chosenId) return section.parcloseCutRule;
+      }
+    }
+    final rules = beads.map((bead) => bead.parcloseCutRule).toSet();
+    return rules.length == 1 ? rules.first : const ParcloseCutRule();
+  }
+
   /// Whether this catalogue actually retains glazing with a parclose.  A
   /// configured (but empty) glazing-bead role means that the sash itself is
   /// the glazing pocket; never fall back to an unrelated legacy parclose.

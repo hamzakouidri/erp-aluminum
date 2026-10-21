@@ -9,6 +9,9 @@ import 'package:database_data/widgets/section_image.dart';
 import 'package:database_data/services/supabase_catalog_sync_service.dart';
 import 'package:database_data/services/cloud_sync_service.dart';
 import 'package:provider/provider.dart';
+import 'package:database_data/Commande/Systeme/model.dart'
+    show ParcloseCutRule;
+import 'package:database_data/Commande/Systeme/parclose_cut_mode_selector.dart';
 
 class CatalogManagerScreen extends StatefulWidget {
   final SqlDatabase db; // نمرر قاعدة البيانات للشاشة
@@ -750,6 +753,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
     final sashOverlapCtrl = TextEditingController();
     final maxGlassThicknessCtrl = TextEditingController();
     int? selectedParcloseDoubleId;
+    var parcloseCutRule = const ParcloseCutRule();
     String selectedType = 'frame';
     String displayedType = 'frame';
     String sashSubtype = 'sash_lateral';
@@ -1200,7 +1204,15 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                           });
                         },
                       ),
-                    if (selectedType == 'parclose') const SizedBox(height: 12),
+                    if (selectedType == 'parclose') ...[
+                      const SizedBox(height: 12),
+                      ParcloseCutRuleFields(
+                        rule: parcloseCutRule,
+                        onChanged: (rule) =>
+                            setDialogState(() => parcloseCutRule = rule),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                   ],
                   SizedBox(height: 10),
                   ElevatedButton.icon(
@@ -1306,6 +1318,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                       maxGlassThickness:
                           double.tryParse(maxGlassThicknessCtrl.text) ?? 0.0,
                       linkedParcloseDoubleId: selectedParcloseDoubleId,
+                      parcloseCutRule: parcloseCutRule,
                       isFrame: isFrameRole ? 1 : 0,
                       isSash: isSashRole ? 1 : 0,
                       isMullion: isMullionRole ? 1 : 0,
@@ -1390,6 +1403,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
     bool allowsSideCoverVal = (section['allows_side_cover'] as int?) != 0;
     int? selectedParcloseDoubleId =
         section['linked_parclose_double_id'] as int?;
+    var parcloseCutRule = ParcloseCutRule.fromMap(section);
     String? selectedImagePath = section['image_path']?.toString();
     String selectedType = section['type']?.toString() ?? 'frame';
     // Migrate legacy catalogue labels when an old row is edited.
@@ -1921,6 +1935,14 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                           });
                         },
                       ),
+                    if (selectedType == 'parclose') ...[
+                      const SizedBox(height: 12),
+                      ParcloseCutRuleFields(
+                        rule: parcloseCutRule,
+                        onChanged: (rule) =>
+                            setDialogState(() => parcloseCutRule = rule),
+                      ),
+                    ],
                     const SizedBox(height: 12),
                   ],
                   // Every PVC profile may have its own reinforcement.  The
@@ -2086,6 +2108,7 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                         'max_glass_thickness':
                             double.tryParse(maxGlassThicknessCtrl.text) ?? 0.0,
                         'linked_parclose_double_id': selectedParcloseDoubleId,
+                        ...parcloseCutRule.toMap(),
                         'allows_side_cover': allowsSideCoverVal ? 1 : 0,
                       });
                       _loadSections(_selectedSeriesId!);

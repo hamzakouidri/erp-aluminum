@@ -74,6 +74,7 @@ extension SqlDatabaseSchema on SqlDatabase {
     try {
       await db.execute("ALTER TABLE Profile ADD COLUMN code TEXT DEFAULT '';");
     } catch (_) {}
+    await _ensureSectionParcloseCutColumns(db);
     try {
       await db.execute(
         "ALTER TABLE Glass ADD COLUMN height REAL NOT NULL DEFAULT 0.0;",
@@ -2012,6 +2013,24 @@ extension SqlDatabaseSchema on SqlDatabase {
         'ALTER TABLE Sections ADD COLUMN is_mullion INTEGER NOT NULL DEFAULT 0;',
       );
     } catch (_) {}
+    await _ensureSectionParcloseCutColumns(executor);
+  }
+
+  /// The parclose cuts a profile takes: `both`, `45` or `90`, and the cut a
+  /// new drawing starts with. The defaults keep every cut, 45° first.
+  Future<void> _ensureSectionParcloseCutColumns(
+    DatabaseExecutor executor,
+  ) async {
+    try {
+      await executor.execute(
+        "ALTER TABLE Sections ADD COLUMN parclose_cut_support TEXT NOT NULL DEFAULT 'both';",
+      );
+    } catch (_) {}
+    try {
+      await executor.execute(
+        "ALTER TABLE Sections ADD COLUMN parclose_default_cut TEXT NOT NULL DEFAULT '45';",
+      );
+    } catch (_) {}
   }
 
   Future<Database> initDb() async {
@@ -3110,6 +3129,8 @@ extension SqlDatabaseSchema on SqlDatabase {
       sash_overlap REAL NOT NULL DEFAULT 0.0,
       max_glass_thickness REAL NOT NULL DEFAULT 0.0,
       linked_parclose_double_id INTEGER,
+      parclose_cut_support TEXT NOT NULL DEFAULT 'both',
+      parclose_default_cut TEXT NOT NULL DEFAULT '45',
       allows_side_cover INTEGER NOT NULL DEFAULT 1,
       is_frame INTEGER NOT NULL DEFAULT 0,
       is_sash INTEGER NOT NULL DEFAULT 0,

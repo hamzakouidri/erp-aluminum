@@ -42,6 +42,7 @@ import 'locales/rule_snapshot_keys.dart';
 import 'locales/notification_keys.dart';
 import 'locales/required_goods_table_keys.dart';
 import 'locales/parclose_corner_cap_keys.dart';
+import 'locales/parclose_cut_rule_keys.dart';
 import 'locales/drawing_page_keys.dart';
 import 'locales/trash_keys.dart';
 import 'locales/client_ledger_keys.dart';
@@ -90,6 +91,7 @@ class Localization {
     ...notificationKeys,
     ...requiredGoodsTableKeys,
     ...parcloseCornerCapKeys,
+    ...parcloseCutRuleKeys,
     ...drawingPageKeys,
     ...trashKeys,
     ...clientLedgerKeys,
