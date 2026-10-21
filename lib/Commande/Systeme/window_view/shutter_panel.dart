@@ -1667,6 +1667,7 @@ extension _WindowViewShutter on _WindowViewState {
         selected: widget.model.hasSideCovers,
         color: Colors.teal,
         onTap: () async {
+          if (_refuseSideCoverOnNotch(!widget.model.hasSideCovers)) return;
           await widget.model.toggleSideCovers(!widget.model.hasSideCovers);
           if (mounted) _setViewState(() {});
         },

@@ -48,11 +48,46 @@ extension WindowModelCornerNotches on WindowModel {
   void _moveZonesWithNotch(NotchCorner c, CornerNotch from, CornerNotch to) {
     if (!from.isCut) return;
     final t = profileThickness;
-    final gap = maximumMullionThickness + 12.0;
     final removal = !to.isCut;
-    final x0 = from.width + t, y0 = from.height + t;
-    final x1 = removal ? t : to.width + t;
-    final y1 = removal ? t : to.height + t;
+    _moveStepEdges(
+      c,
+      from.width + t,
+      from.height + t,
+      removal ? t : to.width + t,
+      removal ? t : to.height + t,
+      removal: removal,
+    );
+  }
+
+  /// A new frame thickness (another series) moves the inner faces of every
+  /// step with it, as it moves the zone edges along the frame. The cut sizes
+  /// stay the same.
+  void _moveStepsWithThickness(double oldThickness) {
+    for (final c in NotchCorner.values) {
+      final n = cornerNotches.of(c);
+      if (!n.isCut) continue;
+      _moveStepEdges(
+        c,
+        n.width + oldThickness,
+        n.height + oldThickness,
+        n.width + profileThickness,
+        n.height + profileThickness,
+      );
+    }
+  }
+
+  /// Moves the zone edges on the step of [c] from its inner faces [x0] /
+  /// [y0] to [x1] / [y1] (corner space).
+  void _moveStepEdges(
+    NotchCorner c,
+    double x0,
+    double y0,
+    double x1,
+    double y1, {
+    bool removal = false,
+  }) {
+    final t = profileThickness;
+    final gap = maximumMullionThickness + 12.0;
     for (final zone in zones) {
       final r = _toCornerSpace(c, zone.boundary);
       var left = r.left, top = r.top, right = r.right, bottom = r.bottom;
@@ -255,9 +290,7 @@ extension WindowModelCornerNotches on WindowModel {
       final cutHeight = alongSide.isEmpty
           ? 0.0
           : alongSide.reduce(math.min) - t;
-      final cutWidth = alongHead.isEmpty
-          ? 0.0
-          : alongHead.reduce(math.min) - t;
+      final cutWidth = alongHead.isEmpty ? 0.0 : alongHead.reduce(math.min) - t;
       final notch = cutWidth > 0.5 && cutHeight > 0.5
           ? CornerNotch(width: cutWidth, height: cutHeight)
           : CornerNotch.none;

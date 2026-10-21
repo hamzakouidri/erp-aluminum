@@ -4757,6 +4757,7 @@
     "notch_needs_bottom_frame": "La découpe d’angle demande un cadre bas complet.",
     "notch_no_side_covers": "Le couvre-joint latéral ne se combine pas encore avec un angle découpé : retirez l’un des deux.",
     "notch_no_slanted_mullion": "Supprimez d’abord les montants inclinés.",
-    "notch_zones_conflict": "Cette découpe ne tient pas avec les divisions actuelles : réduisez-la ou modifiez les divisions."
+    "notch_zones_conflict": "Cette découpe ne tient pas avec les divisions actuelles : réduisez-la ou modifiez les divisions.",
+    "notch_right_drag_hint": "Sur ordinateur : glissez un angle du cadre sélectionné avec le bouton droit de la souris pour le découper."
   }
 }

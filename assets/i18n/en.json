@@ -4757,6 +4757,7 @@
     "notch_needs_bottom_frame": "A cut corner needs a full bottom frame.",
     "notch_no_side_covers": "A side cover does not combine with a cut corner yet: remove one of them first.",
     "notch_no_slanted_mullion": "Remove the slanted mullions first.",
-    "notch_zones_conflict": "This cut does not fit the current divisions: make it smaller or change the divisions."
+    "notch_zones_conflict": "This cut does not fit the current divisions: make it smaller or change the divisions.",
+    "notch_right_drag_hint": "On a computer: drag a corner of the selected frame with the right mouse button to cut it."
   }
 }

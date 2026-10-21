@@ -638,6 +638,7 @@ extension _WindowViewFrame on _WindowViewState {
     _FrameResizeHandle? closest;
     double closestDistance = 30.0;
     for (final entry in handles.entries) {
+      if (_isCutFrameCorner(widget.model, entry.value)) continue;
       final distance = (_modelToScreen(entry.value) - screenPosition).distance;
       if (distance <= closestDistance) {
         closest = entry.key;

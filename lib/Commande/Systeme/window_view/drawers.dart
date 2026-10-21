@@ -3741,7 +3741,7 @@ extension _WindowViewDrawers on _WindowViewState {
                   // couvre-joint. Catalogue capability rules control the
                   // default/profile choice, never the switch availability.
                   onChanged: (value) {
-                    if (value != null) {
+                    if (value != null && !_refuseSideCoverOnNotch(value)) {
                       widget.model.toggleSideCovers(value);
                     }
                   },
@@ -6145,14 +6145,7 @@ extension _WindowViewDrawers on _WindowViewState {
             ),
           );
           children.add(const SizedBox(width: 8));
-          children.add(
-            _ContentButton(
-              label: Localization.translate('notch_button', lang),
-              icon: Icons.turn_slight_left,
-              selected: widget.model.cornerNotchMode,
-              onPressed: _toggleCornerNotchMode,
-            ),
-          );
+          children.add(_buildCornerNotchButton());
         }
 
         // زر الغطاء الجانبي (Side Cover toggle)
@@ -6189,9 +6182,7 @@ extension _WindowViewDrawers on _WindowViewState {
               selected: widget.model.hasSideCovers,
               showWarning: false,
               onPressed: () async {
-                if (!widget.model.hasSideCovers &&
-                    widget.model.hasCornerNotches) {
-                  _showCornerNotchNotice('notch_no_side_covers');
+                if (_refuseSideCoverOnNotch(!widget.model.hasSideCovers)) {
                   return;
                 }
                 await widget.model.toggleSideCovers(
