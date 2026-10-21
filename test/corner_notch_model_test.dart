@@ -26,30 +26,6 @@ WindowModel _window() {
   return model;
 }
 
-/// No zone may enter a cut corner or its step bars.
-void _expectZonesOutsideCuts(WindowModel model) {
-  final t = model.profileThickness;
-  for (final c in NotchCorner.values) {
-    final cut = model.cornerNotches.cutRect(c, model.width, model.height);
-    if (cut == null) continue;
-    final keepOut = Rect.fromLTRB(
-      CornerNotches.isLeft(c) ? 0 : cut.left - t,
-      CornerNotches.isTop(c) ? 0 : cut.top - t,
-      CornerNotches.isLeft(c) ? cut.right + t : model.width,
-      CornerNotches.isTop(c) ? cut.bottom + t : model.height,
-    );
-    for (final z in model.zones) {
-      expect(
-        z.boundary.intersect(keepOut).isEmpty ||
-            z.boundary.intersect(keepOut).width < 0.5 ||
-            z.boundary.intersect(keepOut).height < 0.5,
-        isTrue,
-        reason: '$c ${z.boundary}',
-      );
-    }
-  }
-}
-
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -60,9 +36,9 @@ void main() {
     expect(model.cornerNotchBlocker, isNull);
   });
 
-  test('a wide shallow cut adds a transom in line with its step', () {
+  test('a cut changes the outline only: no mullion, the zone stays full', () {
     final model = _window();
-    final t = model.profileThickness;
+    final before = model.zones.single.boundary;
     final error = model.setCornerNotch(
       NotchCorner.topLeft,
       const CornerNotch(width: 800, height: 300),
@@ -72,35 +48,14 @@ void main() {
       model.cornerNotches.topLeft,
       const CornerNotch(width: 800, height: 300),
     );
-    expect(model.zones.length, 2);
-    // Strip right of the step, then the full-width zone under the transom.
-    final strip = model.zones.firstWhere((z) => z.boundary.top < 300);
-    expect(strip.boundary.left, closeTo(800 + t, 0.01));
-    final lower = model.zones.firstWhere((z) => z.boundary.top >= 300);
-    expect(lower.boundary.top, closeTo(300 + t, 0.01));
-    expect(lower.boundary.left, closeTo(t, 0.01));
-    _expectZonesOutsideCuts(model);
+    expect(model.zones.length, 1);
+    expect(model.zones.single.boundary, before);
+    expect(model.mullionCreationOrder, isEmpty);
   });
 
-  test('a narrow tall cut adds a mullion in line with its step', () {
+  test('changing and removing a cut leaves the zones alone', () {
     final model = _window();
-    final t = model.profileThickness;
-    model.setCornerNotch(
-      NotchCorner.bottomRight,
-      const CornerNotch(width: 300, height: 900),
-    );
-    expect(model.zones.length, 2);
-    final column = model.zones.firstWhere((z) => z.boundary.left > 1000);
-    expect(column.boundary.bottom, closeTo(1500 - 900 - t, 0.01));
-    expect(column.boundary.right, closeTo(2000 - t, 0.01));
-    final main = model.zones.firstWhere((z) => z.boundary.left < 1000);
-    expect(main.boundary.right, closeTo(2000 - 300 - t, 0.01));
-    _expectZonesOutsideCuts(model);
-  });
-
-  test('changing and removing a cut moves its zones with the step', () {
-    final model = _window();
-    final t = model.profileThickness;
+    final before = model.zones.single.boundary;
     model.setCornerNotch(
       NotchCorner.topLeft,
       const CornerNotch(width: 800, height: 300),
@@ -109,23 +64,16 @@ void main() {
       NotchCorner.topLeft,
       const CornerNotch(width: 600, height: 400),
     );
-    expect(model.zones.length, 2);
     expect(
       model.cornerNotches.topLeft,
       const CornerNotch(width: 600, height: 400),
     );
-    final strip = model.zones.firstWhere((z) => z.boundary.top < 400);
-    expect(strip.boundary.left, closeTo(600 + t, 0.01));
-    _expectZonesOutsideCuts(model);
-
     model.setCornerNotch(NotchCorner.topLeft, CornerNotch.none);
     expect(model.hasCornerNotches, isFalse);
-    // The transom stays; the strip runs again to the left frame.
-    final top = model.zones.firstWhere((z) => z.boundary.top < 400);
-    expect(top.boundary.left, closeTo(t, 0.01));
+    expect(model.zones.single.boundary, before);
   });
 
-  test('a thicker frame (another series) keeps the cuts and their zones', () {
+  test('a thicker frame (another series) keeps the cut sizes', () {
     final model = _window();
     for (final c in [NotchCorner.topLeft, NotchCorner.bottomRight]) {
       model.setCornerNotch(c, const CornerNotch(width: 600, height: 400));
@@ -136,21 +84,27 @@ void main() {
     model.notifyListeners();
     expect(model.profileThickness, 70.0);
     expect(model.cornerNotches, before);
-    _expectZonesOutsideCuts(model);
-    // Every zone side lies on the frame, a step or a mullion: none is left
-    // on the faces of the old, thinner frame.
-    for (final z in model.zones) {
-      for (final edge in [z.boundary.left, z.boundary.top]) {
-        expect(
-          [40.0, 640.0, 440.0].any((e) => (edge - e).abs() < 0.5),
-          isFalse,
-          reason: '${z.boundary}',
-        );
-      }
-    }
+    expect(
+      model.zones.single.boundary,
+      const Rect.fromLTRB(70, 70, 2000 - 70, 1500 - 70),
+    );
   });
 
-  test('four cut corners keep every zone outside the cuts', () {
+  test('a smaller frame shortens a cut that no longer fits', () {
+    final model = _window();
+    model.setCornerNotch(
+      NotchCorner.topLeft,
+      const CornerNotch(width: 800, height: 300),
+    );
+    model.width = 700;
+    model.notifyListeners();
+    final cut = model.cornerNotches.topLeft;
+    expect(cut.isCut, isTrue);
+    expect(cut.width, lessThanOrEqualTo(700 - CornerNotches.minSideMm));
+    expect(cut.height, 300);
+  });
+
+  test('four cut corners keep a single full zone', () {
     final model = _window();
     for (final c in NotchCorner.values) {
       expect(
@@ -162,7 +116,7 @@ void main() {
       NotchCorner.values.every((c) => model.cornerNotches.of(c).isCut),
       isTrue,
     );
-    _expectZonesOutsideCuts(model);
+    expect(model.zones.length, 1);
   });
 
   test('undo restores the window before the cut', () {
@@ -174,13 +128,12 @@ void main() {
     expect(model.hasCornerNotches, isTrue);
     model.undo();
     expect(model.hasCornerNotches, isFalse);
-    expect(model.zones.length, 1);
     model.redo();
     expect(
       model.cornerNotches.topRight,
       const CornerNotch(width: 500, height: 300),
     );
-    expect(model.zones.length, 2);
+    expect(model.zones.length, 1);
   });
 
   test('save and load keep the cut', () {

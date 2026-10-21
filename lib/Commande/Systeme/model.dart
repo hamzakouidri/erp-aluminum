@@ -3173,8 +3173,6 @@ class WindowModel extends ChangeNotifier {
 
   bool get hasCornerNotches => cornerNotches.hasAny;
 
-  /// Set while a corner cut is being applied (see [setCornerNotch]).
-  bool _suspendNotchSync = false;
 
   /// The selected frame shows its corner-cut handles instead of its resize
   /// squares (the "corner cut" button of the frame toolbar).
@@ -4573,7 +4571,7 @@ class WindowModel extends ChangeNotifier {
 
   @override
   void notifyListeners() {
-    if (hasCornerNotches) _syncCornerNotchesToZones();
+    if (hasCornerNotches) _fitCornerNotchesToFrame();
     _enforceMultiFramePlainFrameRule();
     _disableSlidingMontantReinforcementForPvc();
     validateAndSanitizeAllZonesHandles();
