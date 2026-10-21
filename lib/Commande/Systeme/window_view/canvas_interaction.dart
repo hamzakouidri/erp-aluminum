@@ -807,97 +807,11 @@ extension _WindowViewCanvas on _WindowViewState {
     return Offset(size.width / 2, size.height / 2);
   }
 
-  Rect? _dimensionTextBounds(
-    String text,
-    Rect bounds, {
-    bool vertical = false,
-  }) {
-    final crossAxis = vertical ? bounds.width : bounds.height;
-    final mainAxis = vertical ? bounds.height : bounds.width;
-    if (crossAxis < 12 || mainAxis < 35) return null;
-
-    double fontSize = math.min(34.0, math.max(15.0, crossAxis * 0.78));
-    late TextPainter painter;
-    while (true) {
-      painter = TextPainter(
-        text: TextSpan(
-          text: text,
-          style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w800),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      if (painter.width <= mainAxis - 8 || fontSize <= 10) break;
-      fontSize -= 1.0;
-    }
-    if (painter.width > mainAxis - 4) return null;
-
-    return vertical
-        ? Rect.fromCenter(
-            center: bounds.center,
-            width: painter.height + 6,
-            height: painter.width + 8,
-          )
-        : Rect.fromCenter(
-            center: bounds.center,
-            width: painter.width + 8,
-            height: painter.height + 6,
-          );
-  }
-
-  /// Hit-test only the visible number written in the selected frame profile.
-  /// The remaining profile area stays available for selecting the frame.
-  InnerDimensionHit? _frameProfileDimensionHit(Offset modelPosition) {
-    if (widget.model.zones.length < 2) return null;
-    final thickness = widget.model.profileThickness;
-    final showWidthInside = widget.model.getVerticalFrameJoints().isEmpty;
-    final showHeightInside = widget.model.getHorizontalFrameJoints().isEmpty;
-    final frameRects = widget.model.getFrameRects();
-    for (final outer in frameRects.reversed) {
-      WindowZone? representativeZone;
-      final inner = outer.deflate(thickness);
-      for (final zone in widget.model.zones) {
-        if (inner.overlaps(zone.boundary) ||
-            inner.contains(zone.boundary.center)) {
-          representativeZone = zone;
-          break;
-        }
-      }
-      if (representativeZone == null) continue;
-      if (showWidthInside) {
-        final widthBounds = Rect.fromLTWH(
-          outer.left + 2,
-          outer.top + 1,
-          math.max(0.0, outer.width - 4),
-          math.max(0.0, thickness - 2),
-        );
-        final widthText = _dimensionTextBounds(
-          '${outer.width.toInt()}',
-          widthBounds,
-        );
-        if (widthText?.contains(modelPosition) == true) {
-          return InnerDimensionHit(representativeZone.id, true);
-        }
-      }
-
-      if (showHeightInside) {
-        final heightBounds = Rect.fromLTWH(
-          outer.left + 1,
-          outer.top + 2,
-          math.max(0.0, thickness - 2),
-          math.max(0.0, outer.height - 4),
-        );
-        final heightText = _dimensionTextBounds(
-          '${outer.height.toInt()}',
-          heightBounds,
-          vertical: true,
-        );
-        if (heightText?.contains(modelPosition) == true) {
-          return InnerDimensionHit(representativeZone.id, false);
-        }
-      }
-    }
-    return null;
-  }
+  /// The numbers inside a frame bar are its cutting lengths, shown for
+  /// reading only. Editing them from inside the bar broke the drawing; a
+  /// frame is resized from its outer dimensions. A tap on the number now
+  /// selects the frame like the rest of the bar.
+  InnerDimensionHit? _frameProfileDimensionHit(Offset modelPosition) => null;
 
   void _toggleDrawingInteractionMode() {
     if (widget.model.isDrawingMode) {
