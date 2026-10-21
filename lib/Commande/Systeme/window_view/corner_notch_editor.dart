@@ -13,7 +13,11 @@ CornerNotches _shownCornerNotches(WindowModel model) {
 
 /// Handle of corner [c]: on the inner step corner of a cut, else on the
 /// outer corner of the frame.
-Offset _cornerNotchHandle(WindowModel model, CornerNotches notches, NotchCorner c) {
+Offset _cornerNotchHandle(
+  WindowModel model,
+  CornerNotches notches,
+  NotchCorner c,
+) {
   final corner = CornerNotches.cornerPoint(c, model.width, model.height);
   final n = notches.of(c);
   if (!n.isCut) return corner;
@@ -21,6 +25,21 @@ Offset _cornerNotchHandle(WindowModel model, CornerNotches notches, NotchCorner 
     corner.dx + (CornerNotches.isLeft(c) ? n.width : -n.width),
     corner.dy + (CornerNotches.isTop(c) ? n.height : -n.height),
   );
+}
+
+/// Whether [point] is the outer corner of a cut corner: the frame no longer
+/// reaches it, so no resize handle stands there.
+bool _isCutFrameCorner(WindowModel model, Offset point) {
+  if (!model.hasCornerNotches) return false;
+  for (final c in NotchCorner.values) {
+    if (model.cornerNotches.of(c).isCut &&
+        (CornerNotches.cornerPoint(c, model.width, model.height) - point)
+                .distance <
+            0.5) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /// Centre of the length label of every outline side, outside the frame.
@@ -37,10 +56,7 @@ List<({NotchedSide side, Offset anchor})> _cornerNotchLabels(
           side: side,
           anchor:
               (side.start + side.end) / 2 +
-              Offset(
-                    side.end.dy - side.start.dy,
-                    side.start.dx - side.end.dx,
-                  ) /
+              Offset(side.end.dy - side.start.dy, side.start.dx - side.end.dx) /
                   side.length *
                   gap,
         ),
@@ -50,8 +66,7 @@ List<({NotchedSide side, Offset anchor})> _cornerNotchLabels(
 /// Corner-cut handles, the dashed ghost of a dragged cut and the length of
 /// every side, drawn over the selected frame in corner-cut mode.
 void _paintCornerNotchOverlay(Canvas canvas, WindowModel model, double scale) {
-  if (!model.cornerNotchMode ||
-      model.selection.type != SelectionType.frame) {
+  if (!model.cornerNotchMode || model.selection.type != SelectionType.frame) {
     return;
   }
   final notches = _shownCornerNotches(model);
@@ -146,21 +161,27 @@ extension _CornerNotchEditor on _WindowViewState {
       );
   }
 
-  /// The "corner cut" button of the frame toolbar.
+  /// Side covers are refused on a cut frame: says so instead of letting the
+  /// switch look turned on. Returns whether [enable] was refused.
+  bool _refuseSideCoverOnNotch(bool enable) {
+    if (!enable || !widget.model.hasCornerNotches) return false;
+    _showCornerNotchNotice('notch_no_side_covers');
+    return true;
+  }
+
+  /// The "corner cut" button among the options of the selected frame, beside
+  /// the others; on desktop it also tells about the right-button drag.
   Widget _buildCornerNotchButton() {
-    final model = widget.model;
-    final active = model.cornerNotchMode;
-    return Padding(
-      padding: const EdgeInsetsDirectional.only(start: 8),
-      child: ElevatedButton.icon(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: active ? Colors.orange.shade800 : Colors.white,
-          foregroundColor: active ? Colors.white : Colors.indigo.shade900,
-        ),
-        icon: const Icon(Icons.turn_slight_left, size: 18),
-        label: Text(Localization.translate('notch_button', _notchLang)),
-        onPressed: _toggleCornerNotchMode,
-      ),
+    final button = _ContentButton(
+      label: Localization.translate('notch_button', _notchLang),
+      icon: Icons.turn_slight_left,
+      selected: widget.model.cornerNotchMode,
+      onPressed: _toggleCornerNotchMode,
+    );
+    if (!_isWindowsDesktop) return button;
+    return Tooltip(
+      message: Localization.translate('notch_right_drag_hint', _notchLang),
+      child: button,
     );
   }
 
@@ -185,13 +206,41 @@ extension _CornerNotchEditor on _WindowViewState {
     if (!active) _showCornerNotchNotice('notch_hint');
   }
 
+  /// Desktop: a right-button drag from a corner of the selected frame cuts
+  /// that corner, the button not needed. Returns whether it took the drag.
+  bool _startCornerNotchRightDrag(Offset screen) {
+    final model = widget.model;
+    if (!_rightMouseDown ||
+        model.cornerNotchMode ||
+        model.frameShapeMode ||
+        model.selection.type != SelectionType.frame) {
+      return false;
+    }
+    final corner = _closestCornerNotchHandle(screen);
+    if (corner == null) return false;
+    final blocker = model.cornerNotchBlocker;
+    if (blocker != null) {
+      _showCornerNotchNotice(blocker);
+      return true;
+    }
+    model.cornerNotchMode = true;
+    _notchModeFromRightDrag = true;
+    _draggedNotchCorner = corner;
+    model.refreshUI();
+    return true;
+  }
+
   /// Corner whose cut handle is under [screen], in corner-cut mode.
   NotchCorner? _cornerNotchHandleAt(Offset screen) {
     final model = widget.model;
-    if (!model.cornerNotchMode ||
-        model.selection.type != SelectionType.frame) {
+    if (!model.cornerNotchMode || model.selection.type != SelectionType.frame) {
       return null;
     }
+    return _closestCornerNotchHandle(screen);
+  }
+
+  NotchCorner? _closestCornerNotchHandle(Offset screen) {
+    final model = widget.model;
     NotchCorner? closest;
     var best = 30.0;
     for (final c in NotchCorner.values) {
@@ -238,8 +287,7 @@ extension _CornerNotchEditor on _WindowViewState {
   /// A tap on a side length opens its editor. Returns whether it was one.
   bool _handleCornerNotchLabelTap(Offset screen) {
     final model = widget.model;
-    if (!model.cornerNotchMode ||
-        model.selection.type != SelectionType.frame) {
+    if (!model.cornerNotchMode || model.selection.type != SelectionType.frame) {
       return false;
     }
     final scale = model.canvasScale * _userScale;
@@ -261,7 +309,11 @@ extension _CornerNotchEditor on _WindowViewState {
     final model = widget.model;
     final notches = model.cornerNotches;
     if (side.notchCorner != null) {
-      return (corner: side.notchCorner!, alongWidth: side.isHorizontal, grows: true);
+      return (
+        corner: side.notchCorner!,
+        alongWidth: side.isHorizontal,
+        grows: true,
+      );
     }
     for (final c in NotchCorner.values) {
       if (!notches.of(c).isCut) continue;

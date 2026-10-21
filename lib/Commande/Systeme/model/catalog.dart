@@ -3139,6 +3139,7 @@ extension WindowModelCatalog on WindowModel {
               : z.boundary.bottom,
         );
       }
+      if (hasCornerNotches) _moveStepsWithThickness(oldThickness);
     }
     _synchronizeSingleZoneWithOuterFrame();
   }

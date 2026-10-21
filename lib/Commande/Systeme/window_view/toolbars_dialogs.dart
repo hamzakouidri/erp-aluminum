@@ -76,6 +76,7 @@ extension _WindowViewToolbars on _WindowViewState {
       );
     } else {
       final newVal = !widget.model.hasSideCovers;
+      if (_refuseSideCoverOnNotch(newVal)) return;
       await widget.model.toggleSideCovers(newVal);
       final lang = Provider.of<AppSettingsProvider>(
         context,
@@ -2831,7 +2832,6 @@ extension _WindowViewToolbars on _WindowViewState {
             ),
           ),
           const Spacer(),
-          _buildCornerNotchButton(),
           if (widget.model.getFrameRects().length > 1)
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(

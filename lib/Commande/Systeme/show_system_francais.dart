@@ -207,6 +207,10 @@ class _WindowViewState extends State<WindowView> {
   String? _draggedDecorZoneId;
   _FrameResizeHandle? _draggedFrameResizeHandle;
   NotchCorner? _draggedNotchCorner;
+
+  /// Corner-cut mode was turned on by a right-button drag only, and ends
+  /// with it.
+  bool _notchModeFromRightDrag = false;
   String? _draggedFrameZoneId;
   bool _frameResizeHistorySaved = false;
   bool _propertyDragHistorySaved = false;
@@ -588,9 +592,9 @@ class _WindowViewState extends State<WindowView> {
         widget.model.selection.type == SelectionType.mullion;
     final isInnerDivisionSelected =
         widget.model.selection.type == SelectionType.innerDivision;
-    // A single frame shows the toolbar too: it holds the corner-cut button.
     final isFrameSelected =
-        widget.model.selection.type == SelectionType.frame;
+        widget.model.selection.type == SelectionType.frame &&
+        widget.model.getFrameRects().length > 1;
 
     Widget? activeTopToolbar;
     if (isInnerDivisionSelected) {
@@ -1953,6 +1957,11 @@ class _WindowViewState extends State<WindowView> {
                                           details.localFocalPoint;
                                       const double hitRadius = 35.0;
 
+                                      if (_startCornerNotchRightDrag(
+                                        touchScreen,
+                                      )) {
+                                        return;
+                                      }
                                       final notchHandle =
                                           _cornerNotchHandleAt(touchScreen);
                                       if (notchHandle != null) {
@@ -2963,6 +2972,11 @@ class _WindowViewState extends State<WindowView> {
                                     if (_draggedNotchCorner != null) {
                                       _draggedNotchCorner = null;
                                       _commitCornerNotchDrag();
+                                    }
+                                    if (_notchModeFromRightDrag) {
+                                      _notchModeFromRightDrag = false;
+                                      widget.model.cornerNotchMode = false;
+                                      widget.model.refreshUI();
                                     }
                                     // Refit and recentre after the drag.
                                     setState(
@@ -4958,6 +4972,7 @@ class WorkspaceSelectionPainter extends CustomPainter {
           rect.bottomLeft,
           Offset(rect.left, rect.center.dy),
         ]) {
+          if (_isCutFrameCorner(model, center)) continue;
           final handle = Rect.fromCenter(
             center: center,
             width: side,
