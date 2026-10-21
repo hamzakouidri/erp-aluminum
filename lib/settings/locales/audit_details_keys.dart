@@ -43,6 +43,39 @@ final Map<String, Map<AppLanguage, String>> auditDetailsKeys = {
     AppLanguage.french: '(vide)',
     AppLanguage.english: '(empty)',
   },
+  'audit_clear': {
+    AppLanguage.arabic: 'مسح الجورنال',
+    AppLanguage.french: 'Vider le journal',
+    AppLanguage.english: 'Clear the journal',
+  },
+  'audit_clear_confirm_title': {
+    AppLanguage.arabic: 'مسح محتوى الجورنال؟',
+    AppLanguage.french: 'Vider le journal ?',
+    AppLanguage.english: 'Clear the journal?',
+  },
+  'audit_clear_confirm_body': {
+    AppLanguage.arabic:
+        'سيتم حذف كل السجلات ({total}) من هذا الجهاز ومن كل أجهزة الورشة، ولا يمكن استرجاعها. يبقى سجل واحد يذكر من قام بالمسح.',
+    AppLanguage.french:
+        'Toutes les entrées ({total}) seront supprimées de cet appareil et de tous les appareils de l\'atelier, sans retour possible. Une entrée indiquera qui a vidé le journal.',
+    AppLanguage.english:
+        'All entries ({total}) will be deleted from this device and every device of the workshop, with no way back. One entry will record who cleared the journal.',
+  },
+  'audit_cleared': {
+    AppLanguage.arabic: 'تم مسح {count} سجل من الجورنال',
+    AppLanguage.french: '{count} entrées supprimées du journal',
+    AppLanguage.english: '{count} entries removed from the journal',
+  },
+  'audit_journal_cleared': {
+    AppLanguage.arabic: 'تم مسح الجورنال',
+    AppLanguage.french: 'Journal vidé',
+    AppLanguage.english: 'Journal cleared',
+  },
+  'audit_f_removed_entries': {
+    AppLanguage.arabic: 'عدد السجلات الممسوحة',
+    AppLanguage.french: 'Entrées supprimées',
+    AppLanguage.english: 'Entries removed',
+  },
   'audit_f_order_code': {
     AppLanguage.arabic: 'رقم الطلبية',
     AppLanguage.french: 'N° de commande',

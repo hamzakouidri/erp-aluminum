@@ -1705,6 +1705,25 @@ class SqlDatabase {
     }
   }
 
+  /// Empties the audit journal (the manager's choice) and leaves one entry
+  /// saying who emptied it and how many entries went. Each deleted row gets
+  /// a sync tombstone, so the other devices of the workshop empty it too.
+  Future<int> clearAuditLogs() async {
+    final database = await db;
+    if (database == null) return 0;
+    await _ensureAuditLogsInfrastructure(database);
+    final removed = await database.delete('AuditLogs');
+    await logAuditAction(
+      actionType: 'CLEAR',
+      entityType: 'audit',
+      entityId: '0',
+      entityTitle: 'audit_journal_cleared',
+      details: jsonEncode({'removed_entries': removed}),
+    );
+    CloudSyncService().notifyChange();
+    return removed;
+  }
+
   // ========================= KIT BUNDLES CRUD =========================
 
 

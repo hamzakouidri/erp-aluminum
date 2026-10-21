@@ -449,6 +449,42 @@ class _TrashScreenState extends State<TrashScreen>
     }
   }
 
+  Future<void> _confirmClearAudit(AppLanguage lang) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(_t('audit_clear_confirm_title', lang)),
+        content: Text(
+          _t('audit_clear_confirm_body', lang)
+              .replaceAll('{total}', '$_auditTotal'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(_t('audit_close', lang)),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(_t('audit_clear', lang)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final removed = await _db.clearAuditLogs();
+    if (!mounted) return;
+    await _loadAuditFirstPage();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          _t('audit_cleared', lang).replaceAll('{count}', '$removed'),
+        ),
+      ),
+    );
+  }
+
   Future<void> _showAuditDetails(int logId, AppLanguage lang) async {
     final raw = await _db.readAuditLogDetails(logId);
     // Snapshots can hold a whole order with all its lines: format them off
@@ -1617,14 +1653,27 @@ class _TrashScreenState extends State<TrashScreen>
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: Text(
-              _t('audit_showing_count', lang)
-                  .replaceAll('{shown}', '${_auditLogs.length}')
-                  .replaceAll('{total}', '$_auditTotal'),
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-            ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _t('audit_showing_count', lang)
+                      .replaceAll('{shown}', '${_auditLogs.length}')
+                      .replaceAll('{total}', '$_auditTotal'),
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ),
+              // Emptying the journal is the workshop manager's alone.
+              if (settings.isManager && !settings.isCoManager)
+                TextButton.icon(
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.red.shade700,
+                  ),
+                  icon: const Icon(Icons.delete_sweep_rounded, size: 18),
+                  label: Text(_t('audit_clear', lang)),
+                  onPressed: () => _confirmClearAudit(lang),
+                ),
+            ],
           ),
         ),
         Expanded(
@@ -1753,6 +1802,7 @@ class _TrashScreenState extends State<TrashScreen>
     final rawTitle = (log['entity_title'] ?? '').toString().trim();
     final entityType = (log['entity_type'] ?? '').toString();
     final entityId = (log['entity_id'] ?? '').toString().trim();
+    if (entityType == 'audit') return _t('audit_journal_cleared', lang);
     final entityLabel = _t(_auditEntityKey(entityType), lang);
     if (rawTitle.isEmpty) {
       return entityId.isEmpty ? entityLabel : '$entityLabel #$entityId';
