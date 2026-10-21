@@ -12,15 +12,7 @@ extension WindowModelDoubleFrameGap on WindowModel {
     if (!isDoubleFrameMullionAt(isHorizontal, position)) {
       return mullionThickness;
     }
-    final section = effectiveMullionSectionAt(isHorizontal, position);
-    for (final field in const ['visible_width', 'thickness']) {
-      final value = section?[field];
-      final width = value is num
-          ? value.toDouble()
-          : double.tryParse(value?.toString() ?? '');
-      if (width != null && width > 0) return width * 2.0;
-    }
-    return profileThickness * 2.0;
+    return frameProfileWidthAt(isHorizontal, position) * 2.0;
   }
 
   /// Whether two facing zone edges are separated by a divider: the ordinary

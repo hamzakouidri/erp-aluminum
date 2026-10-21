@@ -223,7 +223,9 @@ extension WindowModelZones on WindowModel {
           _isEnabledFlag(section['isDoubleFrame']) ||
           _isEnabledFlag(section['double_frame']) ||
           _isEnabledFlag(section['doubleFrame']);
-      final effectiveWidth = isDoubleFrame ? width * 2.0 : width;
+      final effectiveWidth = isDoubleFrame
+          ? _doubleFrameSectionWidth(section) * 2.0
+          : width;
       if (effectiveWidth > maximum) maximum = effectiveWidth;
     }
     for (final profileType in mullionProfiles.values) {
