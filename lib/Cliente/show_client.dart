@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:database_data/Screen/client_ledger_view.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:database_data/widgets/app_material.dart';
@@ -22,7 +23,11 @@ import 'package:database_data/widgets/context_menu_gate.dart';
 class ShowClient extends StatefulWidget {
   final int clientId;
 
-  const ShowClient({super.key, required this.clientId});
+  /// The side the client was opened from (store or workshop list): the
+  /// account statement starts there.
+  final ClientLedgerScope? ledgerScope;
+
+  const ShowClient({super.key, required this.clientId, this.ledgerScope});
 
   @override
   State<ShowClient> createState() => _ShowClientState();
@@ -516,7 +521,10 @@ class _ShowClientState extends State<ShowClient> {
                 context,
                 MaterialPageRoute(
                   builder: (context) =>
-                      ClientLedgerScreen(clientId: widget.clientId),
+                      ClientLedgerScreen(
+                                  clientId: widget.clientId,
+                                  initialScope: widget.ledgerScope,
+                                ),
                 ),
               ).then((_) => _refreshClientData());
             },
@@ -880,7 +888,10 @@ class _ShowClientState extends State<ShowClient> {
                           context,
                           MaterialPageRoute(
                             builder: (context) =>
-                                ClientLedgerScreen(clientId: widget.clientId),
+                                ClientLedgerScreen(
+                                  clientId: widget.clientId,
+                                  initialScope: widget.ledgerScope,
+                                ),
                           ),
                         ).then((_) => setState(() {}));
                       },

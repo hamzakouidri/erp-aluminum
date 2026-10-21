@@ -16,7 +16,16 @@ import 'receipt_pdf_service.dart';
 class ClientLedgerScreen extends StatefulWidget {
   final int clientId;
 
-  const ClientLedgerScreen({super.key, required this.clientId});
+  /// Where the statement was opened: the store shows the store side, the
+  /// workshop the workshop side. A client of both can still switch (or see
+  /// both together). Null (the client page): both.
+  final ClientLedgerScope? initialScope;
+
+  const ClientLedgerScreen({
+    super.key,
+    required this.clientId,
+    this.initialScope,
+  });
 
   @override
   State<ClientLedgerScreen> createState() => _ClientLedgerScreenState();
@@ -31,7 +40,8 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
   /// Every line of the client, workshop and store, each tagged with its
   /// 'scope'; [_ledgerItems] is the part shown for [_scope].
   List<Map<String, dynamic>> _allItems = [];
-  ClientLedgerScope _scope = ClientLedgerScope.both;
+  late ClientLedgerScope _scope =
+      widget.initialScope ?? ClientLedgerScope.both;
   bool _hasWorkshopActivity = false;
   bool _hasStoreActivity = false;
   List<Map<String, dynamic>> _ledgerItems = [];
