@@ -285,8 +285,11 @@ class _ClientLedgerScreenState extends State<ClientLedgerScreen> {
         where: 'client_id = ? AND COALESCE(is_deleted, 0) = 0',
         whereArgs: [widget.clientId],
       ) as List<Map<String, dynamic>>;
+      final salesById = {
+        for (final sale in sales) (sale['id'] as num).toInt(): sale,
+      };
       for (final sale in sales) {
-        if (!isClientStoreLedgerDocument(sale)) continue;
+        if (!isClientStoreLedgerDocument(sale, salesById)) continue;
         final amount = (sale['net_total'] as num?)?.toDouble() ?? 0.0;
         final isReturn = (sale['doc_type'] ?? '').toString() == 'retour';
         items.add({

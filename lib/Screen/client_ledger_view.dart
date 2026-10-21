@@ -5,9 +5,15 @@ enum ClientLedgerScope { workshop, store, both }
 
 /// Whether a store document is a sale the client owes (or a return that
 /// gives back): quotes and purchase orders are not sales yet, drafts and
-/// cancelled documents never counted, and a document made from another one
-/// (an invoice of a delivery note) would count the same goods twice.
-bool isClientStoreLedgerDocument(Map<String, dynamic> sale) {
+/// cancelled documents never counted, and of a chain of documents
+/// (commande -> delivery note -> invoice) only the last one that counts is
+/// kept, so the same goods are owed once. [salesById] holds the client's
+/// other documents, to see whether the one this was converted to counts.
+bool isClientStoreLedgerDocument(
+  Map<String, dynamic> sale, [
+  Map<int, Map<String, dynamic>> salesById = const {},
+  int depth = 0,
+]) {
   final status = (sale['status'] ?? '').toString().trim().toLowerCase();
   if (status == 'draft' || status == 'cancelled') return false;
   final type = (sale['doc_type'] ?? '').toString().trim().toLowerCase();
@@ -15,9 +21,9 @@ bool isClientStoreLedgerDocument(Map<String, dynamic> sale) {
     return false;
   }
   if (type == 'retour') return true;
-  final source = sale['source_sale_id'];
-  final hasSource = source is num ? source > 0 : '${source ?? ''}'.isNotEmpty;
-  return !hasSource;
+  final next = salesById[(sale['converted_to_sale_id'] as num?)?.toInt()];
+  if (next == null || depth > 10) return true;
+  return !isClientStoreLedgerDocument(next, salesById, depth + 1);
 }
 
 /// The statement lines of [scope], oldest first, each with its running

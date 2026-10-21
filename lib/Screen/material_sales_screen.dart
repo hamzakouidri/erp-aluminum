@@ -10,6 +10,7 @@ import '../settings/localization.dart';
 import '../settings/document_status_localization.dart';
 import 'material_sale_editor_screen.dart';
 import 'material_sale_return_screen.dart';
+import 'material_sales_stats.dart';
 import '../services/material_sale_pdf_service.dart';
 import 'inventory_screen.dart';
 import 'app_workspace_shell.dart';
@@ -196,15 +197,6 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
     }
     return rows.toList();
   }
-
-  double _sumField(
-    List<Map<String, dynamic>> rows,
-    String field, {
-    bool? externalOnly,
-  }) => rows.fold(0.0, (s, r) {
-    if (externalOnly == true && r['is_internal'] == 1) return s;
-    return s + ((r[field] as num?) ?? 0).toDouble();
-  });
 
   // ─── Actions ─────────────────────────────────────────────────────────────
   Future<void> _createNew() async {
@@ -810,20 +802,11 @@ class _MaterialSalesScreenState extends State<MaterialSalesScreen>
   // ─── Stats row ────────────────────────────────────────────────────────────
   Widget _buildStatsRow(List<Map<String, dynamic>> visibleSales) {
     final count = visibleSales.length;
-    final externalRevenue = _sumField(
-      visibleSales,
-      'net_total',
-      externalOnly: true,
-    );
-    final paid = _sumField(visibleSales, 'paid_amount', externalOnly: true);
-    final remaining = _sumField(
-      visibleSales,
-      'remaining_amount',
-      externalOnly: true,
-    );
-    final internalTransfers = visibleSales
-        .where((r) => r['is_internal'] == 1)
-        .fold(0.0, (s, r) => s + ((r['net_total'] as num?) ?? 0).toDouble());
+    final totals = materialSalesTotals(visibleSales, _sales);
+    final externalRevenue = totals.revenue;
+    final paid = totals.paid;
+    final remaining = totals.remaining;
+    final internalTransfers = totals.internal;
 
     return Container(
       color: Theme.of(context).colorScheme.surfaceContainerLow,

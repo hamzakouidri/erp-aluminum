@@ -70,11 +70,21 @@ void main() {
         isClientStoreLedgerDocument({'doc_type': 'facture', 'status': 'draft'}),
         isFalse,
       );
-      // An invoice made from a delivery note would count the goods twice.
-      expect(
-        isClientStoreLedgerDocument({'doc_type': 'facture', 'source_sale_id': 7}),
-        isFalse,
-      );
+    });
+
+    test('a commande -> delivery note -> invoice chain counts once', () {
+      final vs = {'id': 1, 'doc_type': 'bon_commande', 'status': 'confirmed', 'converted_to_sale_id': 2};
+      final bl = {'id': 2, 'doc_type': 'bon_livraison', 'status': 'delivered', 'source_sale_id': 1, 'converted_to_sale_id': 3};
+      final fv = {'id': 3, 'doc_type': 'facture', 'status': 'confirmed', 'source_sale_id': 2};
+      final byId = {1: vs, 2: bl, 3: fv};
+      expect(isClientStoreLedgerDocument(vs, byId), isFalse);
+      expect(isClientStoreLedgerDocument(bl, byId), isFalse);
+      expect(isClientStoreLedgerDocument(fv, byId), isTrue);
+      // While the invoice is still a draft, the delivery note is what is owed.
+      final draftFv = {...fv, 'status': 'draft'};
+      final draftById = {1: vs, 2: bl, 3: draftFv};
+      expect(isClientStoreLedgerDocument(bl, draftById), isTrue);
+      expect(isClientStoreLedgerDocument(draftFv, draftById), isFalse);
     });
   });
 
