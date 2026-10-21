@@ -3184,7 +3184,7 @@ class _OrderRequiredGoodsScreenState extends State<OrderRequiredGoodsScreen> {
         ? clientNameJoined
         : (widget.orderData['client_name']?.toString() ??
               widget.orderData['client_display']?.toString() ??
-              'عميل غير معروف');
+              Localization.translate('زبون غير معروف', _currentLang));
   }
 
   @override

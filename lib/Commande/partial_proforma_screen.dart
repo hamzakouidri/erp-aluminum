@@ -816,7 +816,7 @@ class _PartialProformaScreenState extends State<PartialProformaScreen> {
 
     final clientFirst = widget.order['firstname'] ?? '';
     final clientLast = widget.order['lastname'] ?? '';
-    final clientName = '$clientFirst $clientLast'.trim().isEmpty ? 'زبون غير معروف' : '$clientFirst $clientLast'.trim();
+    final clientName = '$clientFirst $clientLast'.trim().isEmpty ? _t('زبون غير معروف') : '$clientFirst $clientLast'.trim();
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;

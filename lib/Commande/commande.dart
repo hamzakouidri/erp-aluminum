@@ -1847,7 +1847,7 @@ class _CommandeState extends State<Commande> {
 
                           final clientName = '$clientFirst $clientLast'.trim();
                           final clientDisplay = clientName.isEmpty
-                              ? 'زبون غير معروف'
+                              ? Localization.translate('زبون غير معروف', lang)
                               : clientName;
 
                           final netPayable =
