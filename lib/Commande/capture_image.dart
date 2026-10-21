@@ -121,6 +121,36 @@ Future<Uint8List> captureWindowImage(
     return byteData!.buffer.asUint8List();
   }
 
+  final img = await renderWindowDrawing(
+    model,
+    maxSide: maxSide,
+    showDrawingDimensions: showDrawingDimensions,
+  );
+  try {
+    final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
+  } finally {
+    img.dispose();
+  }
+}
+
+/// Glass work, mosquito nets and custom products have their own picture in
+/// [captureWindowImage]; every other model is drawn by [renderWindowDrawing].
+bool hasSpecialCapture(WindowModel model) =>
+    model.isGlassWork ||
+    model.isMoustiquaire ||
+    (model.manualNameOverride?.contains('Moustiquaire') == true) ||
+    model.isCustomProduct;
+
+/// The window drawing on an opaque white background, before any PNG
+/// encoding. A caller that only needs the pixels (the cutting-sheet PDF)
+/// skips encoding a PNG and decoding it again for every item.
+Future<ui.Image> renderWindowDrawing(
+  WindowModel model, {
+  int maxSide = 1400,
+  bool showDrawingDimensions = false,
+}) async {
+  model.clearSelection();
   final windowW = model.width > 0 ? model.width : 1000.0;
   final windowH = model.height > 0 ? model.height : 1000.0;
   final padding = showDrawingDimensions ? 170.0 : 48.0;
@@ -162,9 +192,11 @@ Future<Uint8List> captureWindowImage(
   canvas.restore();
 
   final picture = recorder.endRecording();
-  final img = await picture.toImage(canvasW, canvasH);
-  final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
-  return byteData!.buffer.asUint8List();
+  try {
+    return await picture.toImage(canvasW, canvasH);
+  } finally {
+    picture.dispose();
+  }
 }
 
 var _drawingFileSequence = 0;

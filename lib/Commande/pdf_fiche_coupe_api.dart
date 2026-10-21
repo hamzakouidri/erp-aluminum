@@ -2,10 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:database_data/Commande/capture_image.dart';
 import 'package:database_data/Commande/devis_builder.dart';
+import 'package:database_data/Commande/pdf_pixel_image.dart';
 import 'package:database_data/Commande/Systeme/bom_engine_v2.dart';
 import 'package:database_data/Commande/Systeme/calculate_component.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
@@ -1330,14 +1330,18 @@ class PdfFicheCoupeApi {
           );
         } catch (_) {}
       } else {
-        try {
+        final provider = await pdfImageFromEncoded(
+          bytes,
+          maxSide: _thumbnailMaxSide,
+        );
+        if (provider != null) {
           loaded = pw.Image(
-            pw.MemoryImage(bytes),
+            provider,
             width: size,
             height: size,
             fit: pw.BoxFit.contain,
           );
-        } catch (_) {}
+        }
       }
     }
 
@@ -1345,26 +1349,38 @@ class PdfFicheCoupeApi {
     return loaded;
   }
 
-  /// The drawing as raw pixels. The PDF library decodes a PNG and packs it
-  /// again in Dart, seconds for each large drawing of a big order; the
-  /// engine decodes it at once and the pixels go into the PDF as they are.
-  static Future<pw.ImageProvider> _pdfImageFromPng(Uint8List png) async {
-    final codec = await ui.instantiateImageCodec(png);
-    final frame = await codec.getNextFrame();
-    final image = frame.image;
+  /// Longest side (px) of an item drawing. Its box on the A4 page is at
+  /// most 300 pt high, so this is still about 300 dpi there; 1800 px made
+  /// every drawing of a big order 1.65 times heavier for no visible gain.
+  static const int _drawingMaxSide = 1400;
+
+  /// Longest side (px) of a profile or accessory thumbnail, drawn 30 pt
+  /// wide. The catalogue PNGs are often 1000 px or more.
+  static const int _thumbnailMaxSide = 160;
+
+  /// The drawing as pixels straight from the engine: no PNG encoded and
+  /// decoded again, and no soft mask since the drawing is opaque. pw.RawImage
+  /// repacked each pixel in Dart, seconds per drawing of a big order.
+  static Future<pw.ImageProvider?> _drawingImage(WindowModel model) async {
+    if (hasSpecialCapture(model)) {
+      return pdfImageFromEncoded(
+        await captureWindowImage(
+          model,
+          maxSide: _drawingMaxSide,
+          showDrawingDimensions: true,
+        ),
+        maxSide: _drawingMaxSide,
+      );
+    }
+    final image = await renderWindowDrawing(
+      model,
+      maxSide: _drawingMaxSide,
+      showDrawingDimensions: true,
+    );
     try {
-      final data = await image.toByteData(
-        format: ui.ImageByteFormat.rawStraightRgba,
-      );
-      if (data == null) return pw.MemoryImage(png);
-      return pw.RawImage(
-        bytes: data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
-        width: image.width,
-        height: image.height,
-      );
+      return await pdfImageFromUiImage(image, opaque: true);
     } finally {
       image.dispose();
-      codec.dispose();
     }
   }
 
@@ -1621,15 +1637,7 @@ class PdfFicheCoupeApi {
         if (model.hasShutter && model.shutterPosition > 0.42) {
           model.shutterPosition = 0.42;
         }
-        drawing = await _pdfImageFromPng(
-          await captureWindowImage(
-            model,
-            // Still sharp in the drawing column of an A4 page, for half
-            // the pixels of 2400.
-            maxSide: 1800,
-            showDrawingDimensions: true,
-          ),
-        );
+        drawing = await _drawingImage(model);
       } catch (e, stackTrace) {
         // Keep the PDF usable with the dimension fallback, but retain the
         // actual capture error in logs instead of silently producing a blank

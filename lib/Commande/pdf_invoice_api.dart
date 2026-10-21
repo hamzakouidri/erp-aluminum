@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -14,6 +13,7 @@ import '../settings/app_settings.dart';
 import '../arabic_reshaper/arabic_reshaper.dart';
 import 'package:printing/printing.dart';
 import 'devis_builder.dart';
+import 'pdf_pixel_image.dart';
 import '../services/pdf_branding.dart';
 
 class PdfInvoiceApi {
@@ -52,43 +52,10 @@ class PdfInvoiceApi {
   /// by pixel in Dart on the UI thread, which took seconds per image on a
   /// phone (and ran out of time or memory with many items). The engine's
   /// native decoder scales the image down first and the raw pixels go into
-  /// the PDF as they are. A small JPEG is embedded directly.
-  static Future<pw.ImageProvider?> _pdfImage(Uint8List bytes) async {
-    final isJpeg = bytes[0] == 0xFF && bytes[1] == 0xD8;
-    ui.ImmutableBuffer? buffer;
-    ui.ImageDescriptor? descriptor;
-    ui.Codec? codec;
-    ui.Image? image;
-    try {
-      buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
-      descriptor = await ui.ImageDescriptor.encoded(buffer);
-      final w = descriptor.width;
-      final h = descriptor.height;
-      if (w <= 0 || h <= 0) return null;
-      final longest = math.max(w, h);
-      if (isJpeg && longest <= _maxImageSidePx * 1.5) {
-        return pw.MemoryImage(bytes);
-      }
-      final scale = math.min(1.0, _maxImageSidePx / longest);
-      codec = await descriptor.instantiateCodec(
-        targetWidth: math.max(1, (w * scale).round()),
-        targetHeight: math.max(1, (h * scale).round()),
-      );
-      image = (await codec.getNextFrame()).image;
-      final raw = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-      if (raw == null) return null;
-      return _RgbaImage(raw.buffer.asUint8List(), image.width, image.height);
-    } catch (e) {
-      debugPrint('PdfInvoiceApi: image conversion failed: $e');
-      // The previous path still works, only slower.
-      return pw.MemoryImage(bytes);
-    } finally {
-      image?.dispose();
-      codec?.dispose();
-      descriptor?.dispose();
-      buffer?.dispose();
-    }
-  }
+  /// the PDF as they are. A small JPEG is embedded directly. An image the
+  /// engine cannot decode is left out instead of aborting the whole quote.
+  static Future<pw.ImageProvider?> _pdfImage(Uint8List bytes) =>
+      pdfImageFromEncoded(bytes, maxSide: _maxImageSidePx);
 
   // ── Font cache (Amiri: full Arabic + Latin support) ──────────────────────
   // Cairo-Regular.ttf in this project is Latin-ONLY (0 Arabic glyphs).
@@ -937,10 +904,18 @@ class PdfInvoiceApi {
     required bool isProForma,
     int imageMode = 0,
     bool hasBorder = true,
+    List<String>? details,
+    bool continuation = false,
   }) {
     final PdfColor bg = index.isEven ? PdfColors.white : PdfColors.grey100;
     final PdfColor? txtColor = item.isReplaced ? PdfColors.red : null;
     final bool noLeftCol = imageMode != 0;
+    // A continuation row carries only the rest of the details: the price,
+    // quantity and total stay on the first row of the item.
+    final String title = continuation
+        ? '${item.title} ${_continuationLabel()}'
+        : item.title;
+    String priced(String value) => continuation ? '' : value;
 
     final List<String> displayDetails;
     if (isProForma) {
@@ -958,7 +933,7 @@ class PdfInvoiceApi {
         ];
       }
     } else {
-      displayDetails = item.details;
+      displayDetails = details ?? item.details;
     }
 
     final pw.Widget rowContent = pw.Row(
@@ -971,7 +946,7 @@ class PdfInvoiceApi {
             image != null
                 ? pw.Image(image, fit: pw.BoxFit.contain)
                 : pw.Text(
-                    '-',
+                    priced('-'),
                     style: const pw.TextStyle(color: PdfColors.grey500),
                   ),
             alignment: pw.Alignment.center,
@@ -990,8 +965,8 @@ class PdfInvoiceApi {
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Text(
-                _ar(item.title),
-                textDirection: _dir(item.title),
+                _ar(title),
+                textDirection: _dir(title),
                 style: pw.TextStyle(
                   fontWeight: pw.FontWeight.bold,
                   fontSize: 10,
@@ -1020,7 +995,7 @@ class PdfInvoiceApi {
           _cell(
             _col2w,
             pw.Text(
-              _formatMoney(item.unitPrice),
+              priced(_formatMoney(item.unitPrice)),
               style: pw.TextStyle(
                 fontSize: 9,
                 fontWeight: pw.FontWeight.bold,
@@ -1035,7 +1010,7 @@ class PdfInvoiceApi {
         _cell(
           _col3w,
           pw.Text(
-            '${item.quantity}',
+            priced('${item.quantity}'),
             style: pw.TextStyle(fontSize: 9, color: txtColor),
           ),
           alignment: pw.Alignment.centerRight,
@@ -1047,7 +1022,7 @@ class PdfInvoiceApi {
           _cell(
             _col4w,
             pw.Text(
-              _formatMoney(item.unitPrice * item.quantity),
+              priced(_formatMoney(item.unitPrice * item.quantity)),
               style: pw.TextStyle(
                 fontSize: 9,
                 fontWeight: pw.FontWeight.bold,
@@ -1117,6 +1092,43 @@ class PdfInvoiceApi {
     return rowWidget;
   }
 
+  /// Detail lines a single table row may hold, counted in printed lines.
+  /// MultiPage cannot break one row across pages and aborts the whole
+  /// document when a row is taller than a page, which a window with many
+  /// accessories reached. With room left for the full-width drawing of
+  /// image mode C, a row this size always fits on an A4 page.
+  static const int _maxDetailLinesPerRow = 22;
+
+  /// [details] split into groups that each fit in one row. A long detail
+  /// wraps, so it counts as several printed lines.
+  static List<List<String>> _detailChunks(
+    List<String> details, {
+    required bool twoColumns,
+  }) {
+    final budget = _maxDetailLinesPerRow * (twoColumns ? 2 : 1);
+    final chunks = <List<String>>[];
+    var current = <String>[];
+    var used = 0;
+    for (final detail in details) {
+      final lines = 1 + detail.length ~/ 60;
+      if (current.isNotEmpty && used + lines > budget) {
+        chunks.add(current);
+        current = <String>[];
+        used = 0;
+      }
+      current.add(detail);
+      used += lines;
+    }
+    chunks.add(current);
+    return chunks;
+  }
+
+  static String _continuationLabel() => _currentLang == AppLanguage.french
+      ? '(suite)'
+      : _currentLang == AppLanguage.english
+      ? '(continued)'
+      : '(تابع)';
+
   static bool _isCaissonOnly(DevisData data) {
     return data.items.isNotEmpty &&
         data.items.every(
@@ -1172,17 +1184,25 @@ class PdfInvoiceApi {
       final index = entry.key;
       final item = entry.value;
 
-      rows.add(
-        _dataRow(
-          item: item,
-          index: index,
-          image: imageWidgets[index],
-          hidePrices: hidePrices,
-          isProForma: isOfficial,
-          imageMode: effectiveMode,
-          hasBorder: hasBorder,
-        ),
-      );
+      // Official documents show a single dimensions line instead of details.
+      final chunks = isOfficial
+          ? const <List<String>?>[null]
+          : _detailChunks(item.details, twoColumns: hidePrices);
+      for (var c = 0; c < chunks.length; c++) {
+        rows.add(
+          _dataRow(
+            item: item,
+            index: index,
+            image: c == 0 ? imageWidgets[index] : null,
+            hidePrices: hidePrices,
+            isProForma: isOfficial,
+            imageMode: effectiveMode,
+            hasBorder: hasBorder,
+            details: chunks[c],
+            continuation: c > 0,
+          ),
+        );
+      }
 
       // صف سبب التعديل (يظهر أسفل الصف المشطوب)
       if (item.isReplaced && item.replacementReason.isNotEmpty) {
@@ -2152,23 +2172,4 @@ class PdfInvoiceApi {
       child: pw.Text(_ar(text), style: const pw.TextStyle(fontSize: 9)),
     );
   }
-}
-
-/// Engine-decoded RGBA pixels handed straight to the PDF. pw.RawImage first
-/// rebuilds an `image` package bitmap pixel by pixel in Dart, which cost
-/// several seconds per drawing on a phone.
-class _RgbaImage extends pw.ImageProvider {
-  _RgbaImage(this._rgba, int width, int height)
-    : super(width, height, PdfImageOrientation.topLeft, null);
-
-  final Uint8List _rgba;
-
-  @override
-  PdfImage buildImage(pw.Context context, {int? width, int? height}) =>
-      PdfImage(
-        context.document,
-        image: _rgba,
-        width: this.width!,
-        height: this.height!,
-      );
 }
