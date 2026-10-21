@@ -23,6 +23,21 @@ extension WindowModelDoubleFrameGap on WindowModel {
     return profileThickness * 2.0;
   }
 
+  /// Whether two facing zone edges are separated by a divider: the ordinary
+  /// mullion gap, or the wider gap of a Cadre double centred between them.
+  bool isMullionGapBetween(
+    bool isHorizontal,
+    double firstEdge,
+    double secondEdge, {
+    double slop = 2.0,
+  }) {
+    final gap = (secondEdge - firstEdge).abs();
+    if (gap <= mullionThickness + slop) return true;
+    final centre = (firstEdge + secondEdge) / 2.0;
+    if (!isDoubleFrameMullionAt(isHorizontal, centre)) return false;
+    return gap <= doubleFrameAwareMullionGapAt(isHorizontal, centre) + slop;
+  }
+
   /// Re-spaces the zones on both sides of the divider at [position] so the
   /// gap between them is [doubleFrameAwareMullionGapAt]. The divider keeps
   /// its centre and each side gives up half of the difference, so the outer
@@ -67,8 +82,18 @@ extension WindowModelDoubleFrameGap on WindowModel {
             ? Rect.fromLTRB(first.left, first.top, first.right, centre - half)
             : Rect.fromLTRB(first.left, first.top, centre - half, first.bottom);
         newBoundaries[j] = isHorizontal
-            ? Rect.fromLTRB(second.left, centre + half, second.right, second.bottom)
-            : Rect.fromLTRB(centre + half, second.top, second.right, second.bottom);
+            ? Rect.fromLTRB(
+                second.left,
+                centre + half,
+                second.right,
+                second.bottom,
+              )
+            : Rect.fromLTRB(
+                centre + half,
+                second.top,
+                second.right,
+                second.bottom,
+              );
       }
     }
 

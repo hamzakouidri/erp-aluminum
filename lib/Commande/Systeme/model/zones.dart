@@ -4090,8 +4090,8 @@ extension WindowModelZones on WindowModel {
         final a = zones[i].boundary;
         final b = zones[j].boundary;
         if (horizontal) {
-          final aBelowB = (a.bottom - b.top).abs() <= mullionThickness + 4.0;
-          final bBelowA = (b.bottom - a.top).abs() <= mullionThickness + 4.0;
+          final aBelowB = isMullionGapBetween(true, a.bottom, b.top, slop: 4.0);
+          final bBelowA = isMullionGapBetween(true, b.bottom, a.top, slop: 4.0);
           if (!aBelowB && !bBelowA) continue;
           final overlap = math.min(a.right, b.right) - math.max(a.left, b.left);
           if (overlap <= 5.0) continue;
@@ -4099,8 +4099,18 @@ extension WindowModelZones on WindowModel {
             aBelowB ? (a.bottom + b.top) / 2 : (b.bottom + a.top) / 2,
           );
         } else {
-          final aLeftOfB = (a.right - b.left).abs() <= mullionThickness + 4.0;
-          final bLeftOfA = (b.right - a.left).abs() <= mullionThickness + 4.0;
+          final aLeftOfB = isMullionGapBetween(
+            false,
+            a.right,
+            b.left,
+            slop: 4.0,
+          );
+          final bLeftOfA = isMullionGapBetween(
+            false,
+            b.right,
+            a.left,
+            slop: 4.0,
+          );
           if (!aLeftOfB && !bLeftOfA) continue;
           final overlap = math.min(a.bottom, b.bottom) - math.max(a.top, b.top);
           if (overlap <= 5.0) continue;
