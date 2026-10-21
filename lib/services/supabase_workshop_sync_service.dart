@@ -59,6 +59,29 @@ class SupabaseWorkshopSyncService {
 
   factory SupabaseWorkshopSyncService() => _instance;
 
+  /// Realtime echoes every Supabase upsert back to the device that sent it.
+  /// Those rows are already present locally and must not be treated as
+  /// incoming workshop activity (especially for order notifications).
+  @visibleForTesting
+  static bool isOwnDeviceSyncRow({
+    required Map<String, dynamic> row,
+    required String currentDeviceId,
+  }) {
+    final deviceId = currentDeviceId.trim();
+    if (deviceId.isEmpty) return false;
+    return (row['device_id']?.toString().trim() ?? '') == deviceId;
+  }
+
+  @visibleForTesting
+  static bool shouldApplyDownloadedSyncRow({
+    required bool fullDownload,
+    required Map<String, dynamic> row,
+    required String currentDeviceId,
+  }) {
+    return fullDownload ||
+        !isOwnDeviceSyncRow(row: row, currentDeviceId: currentDeviceId);
+  }
+
   @visibleForTesting
   static bool shouldDownloadFullOnStartup({
     required bool bootstrapComplete,
@@ -1108,7 +1131,17 @@ class SupabaseWorkshopSyncService {
             column: 'workshop_id',
             value: workshopUuid,
           ),
-          callback: (_) {
+          callback: (payload) {
+            // A full upload can write thousands of rows. Supabase Realtime
+            // sends an event for every one of them, including to the uploader.
+            // Ignore that local echo: downloading it again used to generate a
+            // Windows toast for every existing order and slowed the upload.
+            if (isOwnDeviceSyncRow(
+              row: payload.newRecord,
+              currentDeviceId: _deviceId,
+            )) {
+              return;
+            }
             unawaited(
               downloadWorkshopData()
                   .then((_) {
@@ -1575,8 +1608,22 @@ class SupabaseWorkshopSyncService {
         newestUpdate = updatedAt;
       }
 
-      final fromOtherDevice =
-          (row['device_id']?.toString() ?? '') != _deviceId;
+      final fromOtherDevice = !isOwnDeviceSyncRow(
+        row: row,
+        currentDeviceId: _deviceId,
+      );
+      // Incremental downloads can overlap the Realtime events emitted by this
+      // device's own upload. The row already exists locally, so importing it
+      // again only creates an upload/download echo and repeated order alerts.
+      // Full bootstrap downloads are still allowed: after reinstalling, the
+      // persisted device id may legitimately match older cloud rows.
+      if (!shouldApplyDownloadedSyncRow(
+        fullDownload: full,
+        row: row,
+        currentDeviceId: _deviceId,
+      )) {
+        return;
+      }
       if (!full && fromOtherDevice && priceTables.contains(table)) {
         incomingPriceRows++;
       }
