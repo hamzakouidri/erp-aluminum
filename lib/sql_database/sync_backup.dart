@@ -565,306 +565,312 @@ extension SqlDatabaseSync on SqlDatabase {
 
   /// 🧹 تصفير وحذف جميع المهام والإسنادات محلياً وفي السحابة للتطوير
   Future<void> clearAllWorkerAllocationsFromCloudAndLocal() async {
-    Database? myDb = await db;
-    if (myDb != null) {
-      await myDb.rawDelete('DELETE FROM WorkerAllocations');
-    }
+    return runUserDeletion<void>('clearAllWorkerAllocationsFromCloudAndLocal', () async {
+      Database? myDb = await db;
+      if (myDb != null) {
+        await myDb.rawDelete('DELETE FROM WorkerAllocations');
+      }
 
-    if (CloudSyncService.supabaseWorkshopDataOnly) {
-      CloudSyncService().notifyChangeImmediate();
-      return;
-    }
+      if (CloudSyncService.supabaseWorkshopDataOnly) {
+        CloudSyncService().notifyChangeImmediate();
+        return;
+      }
 
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final workshopId = prefs.getString('workshop_code');
-      final userRole = prefs.getString('user_role') ?? 'worker';
-      if (workshopId != null && workshopId.isNotEmpty) {
-        final workshopRef = FirebaseFirestore.instance
-            .collection('workshops')
-            .doc(workshopId);
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final workshopId = prefs.getString('workshop_code');
+        final userRole = prefs.getString('user_role') ?? 'worker';
+        if (workshopId != null && workshopId.isNotEmpty) {
+          final workshopRef = FirebaseFirestore.instance
+              .collection('workshops')
+              .doc(workshopId);
 
-        // 1. Delete all status docs
-        try {
-          final statusDocs = await workshopRef
-              .collection('worker_allocations_status')
-              .get()
-              .timeout(const Duration(seconds: 5));
-          for (var doc in statusDocs.docs) {
-            await doc.reference.delete().timeout(const Duration(seconds: 3));
-          }
-        } catch (e) {
-          debugPrint('Error clearing status docs: $e');
-        }
-
-        // 2. Delete all allocs docs
-        try {
-          final allocDocs = await workshopRef
-              .collection('allocations')
-              .get()
-              .timeout(const Duration(seconds: 5));
-          for (var doc in allocDocs.docs) {
-            await doc.reference.delete().timeout(const Duration(seconds: 3));
-          }
-        } catch (_) {}
-
-        // 3. Delete all WorkerAllocations chunks from backups/latest/chunks (only for manager)
-        if (userRole != 'worker') {
+          // 1. Delete all status docs
           try {
-            final chunksSnap = await workshopRef
-                .collection('backups')
-                .doc('latest')
-                .collection('chunks')
+            final statusDocs = await workshopRef
+                .collection('worker_allocations_status')
                 .get()
                 .timeout(const Duration(seconds: 5));
-
-            for (var doc in chunksSnap.docs) {
-              final data = doc.data();
-              String table = data['table']?.toString() ?? '';
-              if (table.isEmpty) {
-                table = doc.id.replaceAll(RegExp(r'_\d+$'), '');
-              }
-              if (table == 'WorkerAllocations') {
-                await doc.reference.delete().timeout(
-                  const Duration(seconds: 5),
-                );
-              }
+            for (var doc in statusDocs.docs) {
+              await doc.reference.delete().timeout(const Duration(seconds: 3));
             }
           } catch (e) {
-            debugPrint('Error deleting chunk docs: $e');
+            debugPrint('Error clearing status docs: $e');
           }
 
-          // 4. Update latest backup metadata
+          // 2. Delete all allocs docs
           try {
-            final latestRef = workshopRef.collection('backups').doc('latest');
-            final latestSnap = await latestRef.get().timeout(
-              const Duration(seconds: 5),
-            );
-            if (latestSnap.exists && latestSnap.data() != null) {
-              final map = latestSnap.data()!;
-              if (map.containsKey('data_json')) {
-                final rawJson = map['data_json']?.toString() ?? '{}';
-                try {
-                  final Map<String, dynamic> allData = jsonDecode(rawJson);
-                  allData['WorkerAllocations'] = [];
-                  await latestRef
-                      .set({
-                        'data_json': jsonEncode(allData),
-                        'updated_at': FieldValue.serverTimestamp(),
-                      }, SetOptions(merge: true))
-                      .timeout(const Duration(seconds: 5));
-                } catch (e) {
-                  debugPrint('Error updating cloud backup json: $e');
+            final allocDocs = await workshopRef
+                .collection('allocations')
+                .get()
+                .timeout(const Duration(seconds: 5));
+            for (var doc in allocDocs.docs) {
+              await doc.reference.delete().timeout(const Duration(seconds: 3));
+            }
+          } catch (_) {}
+
+          // 3. Delete all WorkerAllocations chunks from backups/latest/chunks (only for manager)
+          if (userRole != 'worker') {
+            try {
+              final chunksSnap = await workshopRef
+                  .collection('backups')
+                  .doc('latest')
+                  .collection('chunks')
+                  .get()
+                  .timeout(const Duration(seconds: 5));
+
+              for (var doc in chunksSnap.docs) {
+                final data = doc.data();
+                String table = data['table']?.toString() ?? '';
+                if (table.isEmpty) {
+                  table = doc.id.replaceAll(RegExp(r'_\d+$'), '');
+                }
+                if (table == 'WorkerAllocations') {
+                  await doc.reference.delete().timeout(
+                    const Duration(seconds: 5),
+                  );
                 }
               }
+            } catch (e) {
+              debugPrint('Error deleting chunk docs: $e');
             }
-          } catch (e) {
-            debugPrint('Error updating latest backup doc: $e');
+
+            // 4. Update latest backup metadata
+            try {
+              final latestRef = workshopRef.collection('backups').doc('latest');
+              final latestSnap = await latestRef.get().timeout(
+                const Duration(seconds: 5),
+              );
+              if (latestSnap.exists && latestSnap.data() != null) {
+                final map = latestSnap.data()!;
+                if (map.containsKey('data_json')) {
+                  final rawJson = map['data_json']?.toString() ?? '{}';
+                  try {
+                    final Map<String, dynamic> allData = jsonDecode(rawJson);
+                    allData['WorkerAllocations'] = [];
+                    await latestRef
+                        .set({
+                          'data_json': jsonEncode(allData),
+                          'updated_at': FieldValue.serverTimestamp(),
+                        }, SetOptions(merge: true))
+                        .timeout(const Duration(seconds: 5));
+                  } catch (e) {
+                    debugPrint('Error updating cloud backup json: $e');
+                  }
+                }
+              }
+            } catch (e) {
+              debugPrint('Error updating latest backup doc: $e');
+            }
           }
         }
+      } catch (e) {
+        debugPrint('Error clearing cloud allocations: $e');
       }
-    } catch (e) {
-      debugPrint('Error clearing cloud allocations: $e');
-    }
 
-    CloudSyncService().notifyChange();
+      CloudSyncService().notifyChange();
+    });
   }
 
   /// 🧹 تصفير بيانات التركيبات والعمليات الخارجية محلياً وفي السحابة للتطوير
   Future<void> clearAllInstallationDataFromCloudAndLocal() async {
-    Database? myDb = await db;
-    if (myDb != null) {
-      // 1. تصفير حالات التركيب والتحفظ والزجاج بالكامل في WorkerAllocations
-      await myDb.rawUpdate('''
-        UPDATE WorkerAllocations 
-        SET is_transferred_to_dist = 0, transferred_at = NULL,
-            is_distributed = 0, distributed_at = NULL,
-            is_installed = 0, installed_at = NULL,
-            is_glass_installed = 0, glass_installed_at = NULL,
-            is_completed = 0, completed_at = NULL,
-            has_reserve = 0, reserve_notes = NULL, reserve_at = NULL
-      ''');
-
-      // 2. تصفير بيانات استلام الزجاج والمشتريات والنواقص في Commandes_details
-      try {
+    return runUserDeletion<void>('clearAllInstallationDataFromCloudAndLocal', () async {
+      Database? myDb = await db;
+      if (myDb != null) {
+        // 1. تصفير حالات التركيب والتحفظ والزجاج بالكامل في WorkerAllocations
         await myDb.rawUpdate('''
-          UPDATE Commandes_details 
-          SET glass_status = NULL, glass_received_qty = 0, glass_received_at = NULL,
-              glass_supplier = NULL, is_purchased = 0, purchase_status = NULL
+          UPDATE WorkerAllocations 
+          SET is_transferred_to_dist = 0, transferred_at = NULL,
+              is_distributed = 0, distributed_at = NULL,
+              is_installed = 0, installed_at = NULL,
+              is_glass_installed = 0, glass_installed_at = NULL,
+              is_completed = 0, completed_at = NULL,
+              has_reserve = 0, reserve_notes = NULL, reserve_at = NULL
         ''');
-      } catch (_) {}
 
-      // 3. حذف أي سجلات مستقلة للزجاج والمشتريات
+        // 2. تصفير بيانات استلام الزجاج والمشتريات والنواقص في Commandes_details
+        try {
+          await myDb.rawUpdate('''
+            UPDATE Commandes_details 
+            SET glass_status = NULL, glass_received_qty = 0, glass_received_at = NULL,
+                glass_supplier = NULL, is_purchased = 0, purchase_status = NULL
+          ''');
+        } catch (_) {}
+
+        // 3. حذف أي سجلات مستقلة للزجاج والمشتريات
+        try {
+          await myDb.rawDelete('DELETE FROM GlassOrders');
+        } catch (_) {}
+        try {
+          await myDb.rawDelete('DELETE FROM Achats');
+        } catch (_) {}
+        try {
+          await myDb.rawDelete('DELETE FROM Commandes_achat');
+        } catch (_) {}
+      }
+
+      if (CloudSyncService.supabaseWorkshopDataOnly) {
+        CloudSyncService().notifyChangeImmediate();
+        return;
+      }
+
       try {
-        await myDb.rawDelete('DELETE FROM GlassOrders');
-      } catch (_) {}
-      try {
-        await myDb.rawDelete('DELETE FROM Achats');
-      } catch (_) {}
-      try {
-        await myDb.rawDelete('DELETE FROM Commandes_achat');
-      } catch (_) {}
-    }
+        final prefs = await SharedPreferences.getInstance();
+        final workshopId = prefs.getString('workshop_code');
+        if (workshopId != null && workshopId.isNotEmpty) {
+          final latestRef = FirebaseFirestore.instance
+              .collection('workshops')
+              .doc(workshopId)
+              .collection('backups')
+              .doc('latest');
 
-    if (CloudSyncService.supabaseWorkshopDataOnly) {
-      CloudSyncService().notifyChangeImmediate();
-      return;
-    }
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final workshopId = prefs.getString('workshop_code');
-      if (workshopId != null && workshopId.isNotEmpty) {
-        final latestRef = FirebaseFirestore.instance
-            .collection('workshops')
-            .doc(workshopId)
-            .collection('backups')
-            .doc('latest');
-
-        final latestSnap = await latestRef.get().timeout(
-          const Duration(seconds: 5),
-        );
-        if (latestSnap.exists && latestSnap.data() != null) {
-          final map = latestSnap.data()!;
-          if (map.containsKey('data_json')) {
-            final rawJson = map['data_json']?.toString() ?? '{}';
-            try {
-              final Map<String, dynamic> allData = jsonDecode(rawJson);
-              if (allData.containsKey('WorkerAllocations') &&
-                  allData['WorkerAllocations'] is List) {
-                final List allocs = allData['WorkerAllocations'];
-                for (var a in allocs) {
-                  if (a is Map) {
-                    a['is_transferred_to_dist'] = 0;
-                    a['transferred_at'] = null;
-                    a['is_distributed'] = 0;
-                    a['distributed_at'] = null;
-                    a['is_installed'] = 0;
-                    a['installed_at'] = null;
-                    a['is_glass_installed'] = 0;
-                    a['glass_installed_at'] = null;
-                    a['is_completed'] = 0;
-                    a['completed_at'] = null;
-                    a['has_reserve'] = 0;
-                    a['reserve_notes'] = null;
-                    a['reserve_at'] = null;
+          final latestSnap = await latestRef.get().timeout(
+            const Duration(seconds: 5),
+          );
+          if (latestSnap.exists && latestSnap.data() != null) {
+            final map = latestSnap.data()!;
+            if (map.containsKey('data_json')) {
+              final rawJson = map['data_json']?.toString() ?? '{}';
+              try {
+                final Map<String, dynamic> allData = jsonDecode(rawJson);
+                if (allData.containsKey('WorkerAllocations') &&
+                    allData['WorkerAllocations'] is List) {
+                  final List allocs = allData['WorkerAllocations'];
+                  for (var a in allocs) {
+                    if (a is Map) {
+                      a['is_transferred_to_dist'] = 0;
+                      a['transferred_at'] = null;
+                      a['is_distributed'] = 0;
+                      a['distributed_at'] = null;
+                      a['is_installed'] = 0;
+                      a['installed_at'] = null;
+                      a['is_glass_installed'] = 0;
+                      a['glass_installed_at'] = null;
+                      a['is_completed'] = 0;
+                      a['completed_at'] = null;
+                      a['has_reserve'] = 0;
+                      a['reserve_notes'] = null;
+                      a['reserve_at'] = null;
+                    }
                   }
+                  allData['WorkerAllocations'] = allocs;
                 }
-                allData['WorkerAllocations'] = allocs;
-              }
-              if (allData.containsKey('Commandes_details') &&
-                  allData['Commandes_details'] is List) {
-                final List details = allData['Commandes_details'];
-                for (var d in details) {
-                  if (d is Map) {
-                    d['glass_status'] = null;
-                    d['glass_received_qty'] = 0;
-                    d['glass_received_at'] = null;
-                    d['glass_supplier'] = null;
-                    d['is_purchased'] = 0;
-                    d['purchase_status'] = null;
+                if (allData.containsKey('Commandes_details') &&
+                    allData['Commandes_details'] is List) {
+                  final List details = allData['Commandes_details'];
+                  for (var d in details) {
+                    if (d is Map) {
+                      d['glass_status'] = null;
+                      d['glass_received_qty'] = 0;
+                      d['glass_received_at'] = null;
+                      d['glass_supplier'] = null;
+                      d['is_purchased'] = 0;
+                      d['purchase_status'] = null;
+                    }
                   }
+                  allData['Commandes_details'] = details;
                 }
-                allData['Commandes_details'] = details;
-              }
-              allData['GlassOrders'] = [];
-              allData['Achats'] = [];
-              allData['Commandes_achat'] = [];
+                allData['GlassOrders'] = [];
+                allData['Achats'] = [];
+                allData['Commandes_achat'] = [];
 
-              await latestRef
-                  .set({
-                    'data_json': jsonEncode(allData),
-                    'updated_at': FieldValue.serverTimestamp(),
-                  }, SetOptions(merge: true))
-                  .timeout(const Duration(seconds: 5));
-            } catch (e) {
-              debugPrint('Error updating cloud backup json: $e');
+                await latestRef
+                    .set({
+                      'data_json': jsonEncode(allData),
+                      'updated_at': FieldValue.serverTimestamp(),
+                    }, SetOptions(merge: true))
+                    .timeout(const Duration(seconds: 5));
+              } catch (e) {
+                debugPrint('Error updating cloud backup json: $e');
+              }
             }
           }
         }
+      } catch (e) {
+        debugPrint('Error clearing cloud installation data: $e');
       }
-    } catch (e) {
-      debugPrint('Error clearing cloud installation data: $e');
-    }
 
-    CloudSyncService().notifyChange();
+      CloudSyncService().notifyChange();
+    });
   }
 
   /// 🧹 تصفير سجلات المحاسبة محلياً وفي السحابة للتطوير
   Future<void> clearAllWeeklySettlementsFromCloudAndLocal() async {
-    Database? myDb = await db;
-    if (myDb != null) {
-      await myDb.rawUpdate(
-        'UPDATE WorkerAllocations SET is_settled = 0, settlement_id = NULL',
-      );
-      await myDb.rawUpdate(
-        'UPDATE WorkerTransactions SET is_settled = 0, settlement_id = NULL',
-      );
+    return runUserDeletion<void>('clearAllWeeklySettlementsFromCloudAndLocal', () async {
+      Database? myDb = await db;
+      if (myDb != null) {
+        await myDb.rawUpdate(
+          'UPDATE WorkerAllocations SET is_settled = 0, settlement_id = NULL',
+        );
+        await myDb.rawUpdate(
+          'UPDATE WorkerTransactions SET is_settled = 0, settlement_id = NULL',
+        );
+        try {
+          await myDb.rawDelete('DELETE FROM WorkerSettlements');
+        } catch (_) {}
+      }
+
+      if (CloudSyncService.supabaseWorkshopDataOnly) {
+        CloudSyncService().notifyChangeImmediate();
+        return;
+      }
+
       try {
-        await myDb.rawDelete('DELETE FROM WorkerSettlements');
-      } catch (_) {}
-    }
+        final prefs = await SharedPreferences.getInstance();
+        final workshopId = prefs.getString('workshop_code');
+        if (workshopId != null && workshopId.isNotEmpty) {
+          final latestRef = FirebaseFirestore.instance
+              .collection('workshops')
+              .doc(workshopId)
+              .collection('backups')
+              .doc('latest');
 
-    if (CloudSyncService.supabaseWorkshopDataOnly) {
-      CloudSyncService().notifyChangeImmediate();
-      return;
-    }
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final workshopId = prefs.getString('workshop_code');
-      if (workshopId != null && workshopId.isNotEmpty) {
-        final latestRef = FirebaseFirestore.instance
-            .collection('workshops')
-            .doc(workshopId)
-            .collection('backups')
-            .doc('latest');
-
-        final latestSnap = await latestRef.get();
-        if (latestSnap.exists && latestSnap.data() != null) {
-          final map = latestSnap.data()!;
-          if (map.containsKey('data_json')) {
-            final rawJson = map['data_json']?.toString() ?? '{}';
-            try {
-              final Map<String, dynamic> allData = jsonDecode(rawJson);
-              if (allData.containsKey('WorkerAllocations') &&
-                  allData['WorkerAllocations'] is List) {
-                final List allocs = allData['WorkerAllocations'];
-                for (var a in allocs) {
-                  if (a is Map) {
-                    a['is_settled'] = 0;
-                    a['settlement_id'] = null;
+          final latestSnap = await latestRef.get();
+          if (latestSnap.exists && latestSnap.data() != null) {
+            final map = latestSnap.data()!;
+            if (map.containsKey('data_json')) {
+              final rawJson = map['data_json']?.toString() ?? '{}';
+              try {
+                final Map<String, dynamic> allData = jsonDecode(rawJson);
+                if (allData.containsKey('WorkerAllocations') &&
+                    allData['WorkerAllocations'] is List) {
+                  final List allocs = allData['WorkerAllocations'];
+                  for (var a in allocs) {
+                    if (a is Map) {
+                      a['is_settled'] = 0;
+                      a['settlement_id'] = null;
+                    }
                   }
+                  allData['WorkerAllocations'] = allocs;
                 }
-                allData['WorkerAllocations'] = allocs;
-              }
-              if (allData.containsKey('WorkerTransactions') &&
-                  allData['WorkerTransactions'] is List) {
-                final List txs = allData['WorkerTransactions'];
-                for (var t in txs) {
-                  if (t is Map) {
-                    t['is_settled'] = 0;
-                    t['settlement_id'] = null;
+                if (allData.containsKey('WorkerTransactions') &&
+                    allData['WorkerTransactions'] is List) {
+                  final List txs = allData['WorkerTransactions'];
+                  for (var t in txs) {
+                    if (t is Map) {
+                      t['is_settled'] = 0;
+                      t['settlement_id'] = null;
+                    }
                   }
+                  allData['WorkerTransactions'] = txs;
                 }
-                allData['WorkerTransactions'] = txs;
+                allData['WorkerSettlements'] = [];
+                await latestRef.set({
+                  'data_json': jsonEncode(allData),
+                  'updated_at': FieldValue.serverTimestamp(),
+                }, SetOptions(merge: true));
+              } catch (e) {
+                debugPrint('Error updating cloud backup json: $e');
               }
-              allData['WorkerSettlements'] = [];
-              await latestRef.set({
-                'data_json': jsonEncode(allData),
-                'updated_at': FieldValue.serverTimestamp(),
-              }, SetOptions(merge: true));
-            } catch (e) {
-              debugPrint('Error updating cloud backup json: $e');
             }
           }
         }
+      } catch (e) {
+        debugPrint('Error clearing cloud settlements: $e');
       }
-    } catch (e) {
-      debugPrint('Error clearing cloud settlements: $e');
-    }
 
-    CloudSyncService().notifyChange();
+      CloudSyncService().notifyChange();
+    });
   }
 
   Future<void> _uploadAllocationStatusToCloud(int allocationId) async {
@@ -1309,6 +1315,13 @@ extension SqlDatabaseSync on SqlDatabase {
           await txn.delete(table);
         } catch (_) {}
       }
+      // Their unsent changes would otherwise reach the server later.
+      final marks = List.filled(tablesToClear.length, '?').join(',');
+      await txn.delete(
+        '_sync_change_log',
+        where: 'table_name IN ($marks)',
+        whereArgs: tablesToClear,
+      );
       await txn.update('_sync_runtime_flags', {
         'suppress_tombstones': 0,
       }, where: 'id = 1');
@@ -1463,53 +1476,27 @@ extension SqlDatabaseSync on SqlDatabase {
         ),
       );
 
-      if (operation == 'delete') {
-        await rememberOrderBundleForRow(table, rowId);
-        final matching = await myDb.query(
-          'SyncTombstones',
-          where: 'table_name = ? AND row_id = ?',
-          whereArgs: [table, rowId],
-          limit: 1,
-        );
-        tombstones.add(
-          matching.isNotEmpty
-              ? Map<String, dynamic>.from(matching.first)
-              : <String, dynamic>{
-                  'table_name': table,
-                  'row_id': rowId,
-                  'deleted_at':
-                      logRow['changed_at']?.toString() ??
-                      DateTime.now().toUtc().toIso8601String(),
-                },
-        );
-        deletedRows++;
-        continue;
-      }
-
-      final rows = await myDb.query(
-        table,
-        where: 'id = ?',
-        whereArgs: [rowId],
-        limit: 1,
-      );
+      final rows = operation == 'delete'
+          ? const <Map<String, Object?>>[]
+          : await myDb.query(
+              table,
+              where: 'id = ?',
+              whereArgs: [rowId],
+              limit: 1,
+            );
       if (rows.isEmpty) {
+        // Only a recorded deletion is sent. A row that disappeared without
+        // one (a wipe, a restore, a clean-up) stays on the server; its change
+        // is acknowledged and dropped.
         final matching = await myDb.query(
           'SyncTombstones',
           where: 'table_name = ? AND row_id = ?',
           whereArgs: [table, rowId],
           limit: 1,
         );
-        tombstones.add(
-          matching.isNotEmpty
-              ? Map<String, dynamic>.from(matching.first)
-              : <String, dynamic>{
-                  'table_name': table,
-                  'row_id': rowId,
-                  'deleted_at':
-                      logRow['changed_at']?.toString() ??
-                      DateTime.now().toUtc().toIso8601String(),
-                },
-        );
+        if (matching.isEmpty) continue;
+        await rememberOrderBundleForRow(table, rowId);
+        tombstones.add(Map<String, dynamic>.from(matching.first));
         deletedRows++;
         continue;
       }

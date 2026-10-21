@@ -109,7 +109,10 @@ class ParcloseCutRuleFields extends StatelessWidget {
     String tr(String key) => Localization.translate(key, lang);
 
     DropdownMenuItem<String> item(String value, String key) =>
-        DropdownMenuItem(value: value, child: Text(tr(key)));
+        DropdownMenuItem(
+          value: value,
+          child: Text(tr(key), overflow: TextOverflow.ellipsis),
+        );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -117,6 +120,7 @@ class ParcloseCutRuleFields extends StatelessWidget {
       children: [
         DropdownButtonFormField<String>(
           initialValue: rule.support,
+          isExpanded: true,
           decoration: InputDecoration(
             labelText: tr('parclose_cut_support_label'),
           ),
@@ -145,6 +149,7 @@ class ParcloseCutRuleFields extends StatelessWidget {
             // possible values.
             key: ValueKey('parclose_default_${rule.support}'),
             initialValue: rule.initialMode,
+            isExpanded: true,
             decoration: InputDecoration(
               labelText: tr(
                 rule.support == '90'

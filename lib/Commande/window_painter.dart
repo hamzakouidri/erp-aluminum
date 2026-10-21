@@ -3832,11 +3832,14 @@ class WindowPainter extends CustomPainter {
       if ((bottom - (h - t)).abs() > math.max(15.0, mullionT + 4.0)) {
         return false;
       }
+      final reach = model.isDoubleFrameMullionAt(false, x)
+          ? math.max(mullionT, model.doubleFrameAwareMullionGapAt(false, x))
+          : mullionT;
       return model.zones.any((z) {
         final r = z.boundary;
         final isAdjacent =
-            (r.right - x).abs() <= mullionT + 4.0 ||
-            (r.left - x).abs() <= mullionT + 4.0;
+            (r.right - x).abs() <= reach + 4.0 ||
+            (r.left - x).abs() <= reach + 4.0;
         return isAdjacent && r.bottom >= h - t - 2.0;
       });
     }
@@ -3854,7 +3857,11 @@ class WindowPainter extends CustomPainter {
         double overlapLeft = math.max(z1.boundary.left, z2.boundary.left);
         double overlapRight = math.min(z1.boundary.right, z2.boundary.right);
         if (overlapLeft < overlapRight - 5.0) {
-          if ((z1.boundary.bottom - z2.boundary.top).abs() <= mullionT + 2.0) {
+          if (model.isMullionGapBetween(
+            true,
+            z1.boundary.bottom,
+            z2.boundary.top,
+          )) {
             double yCenter = (z1.boundary.bottom + z2.boundary.top) / 2;
             horizontalSegments.add(
               _MullionSegment(
@@ -3863,8 +3870,11 @@ class WindowPainter extends CustomPainter {
                 end: overlapRight,
               ),
             );
-          } else if ((z2.boundary.bottom - z1.boundary.top).abs() <=
-              mullionT + 2.0) {
+          } else if (model.isMullionGapBetween(
+            true,
+            z2.boundary.bottom,
+            z1.boundary.top,
+          )) {
             double yCenter = (z2.boundary.bottom + z1.boundary.top) / 2;
             horizontalSegments.add(
               _MullionSegment(
@@ -3880,7 +3890,11 @@ class WindowPainter extends CustomPainter {
         double overlapTop = math.max(z1.boundary.top, z2.boundary.top);
         double overlapBottom = math.min(z1.boundary.bottom, z2.boundary.bottom);
         if (overlapTop < overlapBottom - 5.0) {
-          if ((z1.boundary.right - z2.boundary.left).abs() <= mullionT + 2.0) {
+          if (model.isMullionGapBetween(
+            false,
+            z1.boundary.right,
+            z2.boundary.left,
+          )) {
             double xCenter = (z1.boundary.right + z2.boundary.left) / 2;
             verticalSegments.add(
               _MullionSegment(
@@ -3889,8 +3903,11 @@ class WindowPainter extends CustomPainter {
                 end: overlapBottom,
               ),
             );
-          } else if ((z2.boundary.right - z1.boundary.left).abs() <=
-              mullionT + 2.0) {
+          } else if (model.isMullionGapBetween(
+            false,
+            z2.boundary.right,
+            z1.boundary.left,
+          )) {
             double xCenter = (z2.boundary.right + z1.boundary.left) / 2;
             verticalSegments.add(
               _MullionSegment(
@@ -4292,10 +4309,11 @@ class WindowPainter extends CustomPainter {
           ..strokeWidth = 1.0;
         canvas.drawRect(stripRect, borderPaint);
       } else {
+        // A thin black joint shows the two frames coupled back-to-back.
         final separatorPaint = Paint()
-          ..color = border.color.withValues(alpha: 0.75)
+          ..color = Colors.black
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 0.9;
+          ..strokeWidth = 1.2;
         if (mullion.isHorizontal) {
           canvas.drawLine(
             Offset(mullion.rect.left, center),

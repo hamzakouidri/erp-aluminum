@@ -57,14 +57,16 @@ extension SqlDatabaseTemperedGlass on SqlDatabase {
   }
 
   Future<int> deleteTemperedGlassItem(int id) async {
-    final myDb = await db;
-    if (myDb == null) return 0;
-    return await myDb.update(
-      'TemperedGlassItems',
-      {'is_active': 0},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    return runUserDeletion<int>('deleteTemperedGlassItem', () async {
+      final myDb = await db;
+      if (myDb == null) return 0;
+      return await myDb.update(
+        'TemperedGlassItems',
+        {'is_active': 0},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
   }
 
   Future<int> updateTemperedGlassItemPrice(int id, double price) async {
@@ -123,14 +125,16 @@ extension SqlDatabaseTemperedGlass on SqlDatabase {
   }
 
   Future<int> deleteTemperedGlassSystem(int id) async {
-    final myDb = await db;
-    if (myDb == null) return 0;
-    return await myDb.update(
-      'TemperedGlassSystems',
-      {'is_active': 0},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    return runUserDeletion<int>('deleteTemperedGlassSystem', () async {
+      final myDb = await db;
+      if (myDb == null) return 0;
+      return await myDb.update(
+        'TemperedGlassSystems',
+        {'is_active': 0},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
   }
 
   Future<List<Map<String, dynamic>>> getTemperedGlassKits({
@@ -183,28 +187,30 @@ extension SqlDatabaseTemperedGlass on SqlDatabase {
   }
 
   Future<int> deleteTemperedGlassKit(int id) async {
-    final myDb = await db;
-    if (myDb == null) return 0;
-    await myDb.delete(
-      'TemperedGlassKitHoles',
-      where: 'kit_id = ?',
-      whereArgs: [id],
-    );
-    await myDb.delete(
-      'TemperedGlassSystemRules',
-      where: 'kit_id = ?',
-      whereArgs: [id],
-    );
-    await myDb.delete(
-      'TemperedGlassKitComponents',
-      where: 'kit_id = ?',
-      whereArgs: [id],
-    );
-    return await myDb.delete(
-      'TemperedGlassKits',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    return runUserDeletion<int>('deleteTemperedGlassKit', () async {
+      final myDb = await db;
+      if (myDb == null) return 0;
+      await myDb.delete(
+        'TemperedGlassKitHoles',
+        where: 'kit_id = ?',
+        whereArgs: [id],
+      );
+      await myDb.delete(
+        'TemperedGlassSystemRules',
+        where: 'kit_id = ?',
+        whereArgs: [id],
+      );
+      await myDb.delete(
+        'TemperedGlassKitComponents',
+        where: 'kit_id = ?',
+        whereArgs: [id],
+      );
+      return await myDb.delete(
+        'TemperedGlassKits',
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
   }
 
   Future<List<Map<String, dynamic>>> getTemperedGlassKitHoles(int kitId) async {
@@ -339,13 +345,15 @@ extension SqlDatabaseTemperedGlass on SqlDatabase {
   }
 
   Future<int> deleteTemperedGlassSystemRule(int id) async {
-    final myDb = await db;
-    if (myDb == null) return 0;
-    return await myDb.delete(
-      'TemperedGlassSystemRules',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    return runUserDeletion<int>('deleteTemperedGlassSystemRule', () async {
+      final myDb = await db;
+      if (myDb == null) return 0;
+      return await myDb.delete(
+        'TemperedGlassSystemRules',
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
   }
 
   Future<void> toggleTemperedGlassSystemRule({

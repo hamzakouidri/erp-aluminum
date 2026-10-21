@@ -15,7 +15,6 @@ import 'joint.dart';
 import 'kit_bundles_screen.dart';
 import 'catalogue_manager.dart';
 import 'catalog_rules_screen.dart';
-import 'series_accessories_screen.dart';
 import 'series_table_config_screen.dart';
 import 'tempered_glass_items_screen.dart';
 import 'glass_systems_rules_screen.dart';
@@ -435,27 +434,6 @@ class _ProductsMenuScreenState extends State<ProductsMenuScreen> {
                         MaterialPageRoute(
                           builder: (context) =>
                               AccessoriesScreen(db: widget.db),
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                if (settings.canViewSeriesAccessories()) ...[
-                  _buildMenuCard(
-                    context,
-                    title: Localization.translate(
-                      "\u0625\u0643\u0633\u0633\u0648\u0627\u0631\u0627\u062a \u0627\u0644\u0633\u0644\u0627\u0633\u0644",
-                      lang,
-                    ),
-                    icon: Icons.account_tree_rounded,
-                    color: Colors.deepOrange,
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              SeriesAccessoriesScreen(db: widget.db),
                         ),
                       );
                     },

@@ -1280,8 +1280,6 @@ class _WindowViewState extends State<WindowView> {
                                     double nearestMullionDistance =
                                         double.infinity;
                                     double hitSlop = 40.0;
-                                    final mullionT =
-                                        widget.model.mullionThickness;
                                     for (
                                       int i = 0;
                                       i < widget.model.zones.length;
@@ -1296,14 +1294,11 @@ class _WindowViewState extends State<WindowView> {
                                             widget.model.zones[i].boundary;
                                         final z2 =
                                             widget.model.zones[j].boundary;
-                                        if ((z1.bottom - z2.top).abs() <=
-                                                mullionT + 2 ||
-                                            (z2.bottom - z1.top).abs() <=
-                                                mullionT + 2) {
+                                        if (widget.model.isMullionGapBetween(true, z1.bottom, z2.top) ||
+                                            widget.model.isMullionGapBetween(true, z2.bottom, z1.top)) {
                                           double yCenter =
                                               (z1.bottom + z2.top) / 2;
-                                          if ((z2.bottom - z1.top).abs() <=
-                                              mullionT + 2) {
+                                          if (widget.model.isMullionGapBetween(true, z2.bottom, z1.top)) {
                                             yCenter = (z2.bottom + z1.top) / 2;
                                           }
                                           double overlapLeft = math.max(
@@ -1330,14 +1325,11 @@ class _WindowViewState extends State<WindowView> {
                                             }
                                           }
                                         }
-                                        if ((z1.right - z2.left).abs() <=
-                                                mullionT + 2 ||
-                                            (z2.right - z1.left).abs() <=
-                                                mullionT + 2) {
+                                        if (widget.model.isMullionGapBetween(false, z1.right, z2.left) ||
+                                            widget.model.isMullionGapBetween(false, z2.right, z1.left)) {
                                           double xCenter =
                                               (z1.right + z2.left) / 2;
-                                          if ((z2.right - z1.left).abs() <=
-                                              mullionT + 2) {
+                                          if (widget.model.isMullionGapBetween(false, z2.right, z1.left)) {
                                             xCenter = (z2.right + z1.left) / 2;
                                           }
                                           double overlapTop = math.max(

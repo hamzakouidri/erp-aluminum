@@ -1189,12 +1189,17 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                           ),
                         ),
                         value: selectedParcloseDoubleId,
+                        // Long code + name labels must not overflow on phones.
+                        isExpanded: true,
                         items: _currentSections
                             .where((s) => s['type'] == 'parclose')
                             .map(
                               (s) => DropdownMenuItem<int>(
                                 value: s['id'] as int,
-                                child: Text('${s['code']} - ${s['name']}'),
+                                child: Text(
+                                  '${s['code']} - ${s['name']}',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                             )
                             .toList(),
@@ -1916,6 +1921,8 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                           ),
                         ),
                         value: selectedParcloseDoubleId,
+                        // Long code + name labels must not overflow on phones.
+                        isExpanded: true,
                         items: _currentSections
                             .where(
                               (s) =>
@@ -1925,7 +1932,10 @@ class _CatalogManagerScreenState extends State<CatalogManagerScreen> {
                             .map(
                               (s) => DropdownMenuItem<int>(
                                 value: s['id'] as int,
-                                child: Text('${s['code']} - ${s['name']}'),
+                                child: Text(
+                                  '${s['code']} - ${s['name']}',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                             )
                             .toList(),
