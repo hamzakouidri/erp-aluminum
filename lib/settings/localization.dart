@@ -1,4 +1,7 @@
+import 'dart:async' show unawaited;
 import 'dart:convert';
+
+import 'package:flutter/foundation.dart' show compute;
 
 import 'package:flutter/services.dart' show AssetBundle, rootBundle;
 
@@ -17,24 +20,54 @@ class Localization {
     AppLanguage.english: 'en',
   };
 
-  static bool _loaded = false;
+  static final Map<AppLanguage, Future<void>> _languageLoads = {};
 
   /// Loads the built-in languages from the asset bundle. Safe to call again.
-  static Future<void> load({AssetBundle? bundle}) async {
-    if (_loaded) return;
-    for (final entry in _assetCodes.entries) {
-      final source = await (bundle ?? rootBundle).loadString(
-        'assets/i18n/${entry.value}.json',
+  ///
+  /// With [first], only that language is awaited: the three files weigh more
+  /// than 1 MB and decoding all of them before `runApp` kept a cold-started
+  /// phone on the launch icon. The other languages are then decoded on a
+  /// separate isolate, so the UI thread stays free.
+  static Future<void> load({AssetBundle? bundle, AppLanguage? first}) async {
+    if (first == null) {
+      await Future.wait(
+        _assetCodes.keys.map((l) => ensureLanguage(l, bundle: bundle)),
       );
-      loadJson(entry.key, source);
+      return;
     }
-    _loaded = true;
+    await ensureLanguage(first, bundle: bundle, inBackground: false);
+    for (final lang in _assetCodes.keys) {
+      unawaited(ensureLanguage(lang, bundle: bundle));
+    }
   }
 
+  /// Loads [lang] once; later calls return the same pending load.
+  static Future<void> ensureLanguage(
+    AppLanguage lang, {
+    AssetBundle? bundle,
+    bool inBackground = true,
+  }) {
+    return _languageLoads[lang] ??= () async {
+      final source = await (bundle ?? rootBundle).loadString(
+        'assets/i18n/${_assetCodes[lang]}.json',
+      );
+      if (inBackground) {
+        _addStrings(lang, await compute(_decodeStrings, source));
+      } else {
+        loadJson(lang, source);
+      }
+    }();
+  }
+
+  static Map<String, dynamic> _decodeStrings(String source) =>
+      (jsonDecode(source) as Map<String, dynamic>)['strings']
+          as Map<String, dynamic>;
+
   /// Adds the `strings` of a language file (`{"meta": …, "strings": …}`).
-  static void loadJson(AppLanguage lang, String source) {
-    final decoded = jsonDecode(source) as Map<String, dynamic>;
-    final strings = decoded['strings'] as Map<String, dynamic>;
+  static void loadJson(AppLanguage lang, String source) =>
+      _addStrings(lang, _decodeStrings(source));
+
+  static void _addStrings(AppLanguage lang, Map<String, dynamic> strings) {
     for (final entry in strings.entries) {
       (_dictionary[entry.key] ??= {})[lang] = entry.value as String;
     }

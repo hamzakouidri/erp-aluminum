@@ -60,7 +60,9 @@ void main(List<String> args) async {
   };
 
   // Every screen, the bootstrap one included, reads its texts from here.
-  await Localization.load();
+  // Only the saved language is decoded before the first frame; the other two
+  // follow on a background isolate.
+  await Localization.load(first: await AppSettingsProvider.loadSavedLanguage());
 
   // Paint the first Flutter frame immediately. Platform services, Supabase,
   // preferences, synchronization, and image decoding are intentionally moved
@@ -373,6 +375,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   /// عند تبديل التطبيقات للثوانٍ.
   static const Duration _resumeSyncCooldown = Duration(minutes: 3);
 
+  /// مهلة بعد ظهور أول إطار عند الرجوع قبل بدء المزامنة، حتى تستجيب
+  /// الواجهة أولاً.
+  static const Duration _resumeSyncDelay = Duration(seconds: 3);
+  Timer? _resumeSyncTimer;
+
   @override
   void initState() {
     super.initState();
@@ -498,6 +505,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
     WidgetsBinding.instance.removeObserver(this);
     _pricePublicationTimer?.cancel();
+    _resumeSyncTimer?.cancel();
     SqlDatabaseCatalogConfigGuard.conflictSignal.removeListener(
       _checkRuleConflict,
     );
@@ -752,6 +760,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      // أعد تشغيل مؤقتات المزامنة الدورية في كل رجوع، حتى بعد غياب قصير؛
+      // كانت تبقى متوقفة إلى الأبد إذا عاد المستخدم قبل انتهاء المهلة.
+      SupabaseWorkshopSyncService().resumeBackgroundSync();
+
       // حساب مدة الغياب في الخلفية.
       // إذا لم يكن في الخلفية مدةً كافية، نتجاهل الـ sync لأن
       // المستمعين في الوقت الحقيقي (Realtime) ما زالوا نشطين.
@@ -780,29 +792,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
       debugPrint(
         'App resumed after ${timeInBackground.inSeconds}s — '
-        'triggering resume sync.',
+        'scheduling resume sync.',
       );
-
-      // أعد تشغيل الـ background sync timer الذي تم إيقافه عند الدخول للخلفية.
-      SupabaseWorkshopSyncService().resumeBackgroundSync();
-
-      // Re-check the server after a device returns from the background. This
-      // covers operating systems that suspend Firestore listeners.
-      CloudSyncService().refreshFromCloudIfChanged();
-      unawaited(
-        SupabaseWorkshopSyncService()
-            .ensureStarted(timeout: const Duration(seconds: 20))
-            .then((ready) async {
-              if (ready) {
-                await SupabaseWorkshopSyncService().downloadWorkshopData();
-              }
-            })
-            .catchError((error) {
-              debugPrint('Workshop sync resume failed: $error');
-            }),
-      );
+      _scheduleResumeSync();
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
+      _resumeSyncTimer?.cancel();
+      _resumeSyncTimer = null;
       // سجّل الوقت الذي دخل فيه التطبيق إلى الخلفية.
       // inactive يحدث بشكل عابر (نافذة تنبيه، مكالمة...) لذا نتجاهله
       // ونبدأ العد فقط عند paused/detached الحقيقي.
@@ -820,6 +816,37 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         DesktopScrollCoordinator.resetStaleState();
       }
       debugPrint('App inactive (transient) — no sync change.');
+    }
+  }
+
+  /// Starts the catch-up sync only once the first frame after resume is on
+  /// screen, plus [_resumeSyncDelay]. Running three overlapping downloads in
+  /// the resume frame itself kept the UI thread busy while Android waited for
+  /// that frame, which froze the app (and the phone's task switcher with it).
+  void _scheduleResumeSync() {
+    _resumeSyncTimer?.cancel();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _resumeSyncTimer?.cancel();
+      _resumeSyncTimer = Timer(_resumeSyncDelay, () {
+        _resumeSyncTimer = null;
+        if (WidgetsBinding.instance.lifecycleState !=
+            AppLifecycleState.resumed) {
+          return;
+        }
+        unawaited(_runResumeSync());
+      });
+    });
+  }
+
+  /// One sequential pass: the workshop download (which the cloud check below
+  /// then joins instead of repeating), then the catalog and Firestore checks.
+  Future<void> _runResumeSync() async {
+    try {
+      await SupabaseWorkshopSyncService().runResumeSync();
+      // Covers operating systems that suspend Firestore listeners.
+      await CloudSyncService().refreshFromCloudIfChanged();
+    } catch (error) {
+      debugPrint('Resume sync failed: $error');
     }
   }
 

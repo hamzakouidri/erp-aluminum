@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:database_data/services/supabase_workshop_sync_service.dart';
 import 'package:database_data/services/auth_service.dart';
+import 'package:database_data/settings/localization.dart';
 
 bool get isAdmin {
   final user = AppAuthService().currentUser;
@@ -878,6 +879,8 @@ class AppSettingsProvider extends ChangeNotifier {
 
   // Setters with save functionality
   Future<void> setLanguage(AppLanguage lang) async {
+    // Usually already loaded in the background after startup.
+    await Localization.ensureLanguage(lang);
     _language = lang;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();

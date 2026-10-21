@@ -557,7 +557,9 @@ class SupabaseWorkshopSyncService {
       PendingCloudChanges(
         data: const {},
         acknowledgements: pendingBeforeUpload.acknowledgements
-            .where((ack) => uploadedKeys.contains(_rowKey(ack.table, ack.rowId)))
+            .where(
+              (ack) => uploadedKeys.contains(_rowKey(ack.table, ack.rowId)),
+            )
             .toList(growable: false),
         changedRows: 0,
         deletedRows: 0,
@@ -956,16 +958,28 @@ class SupabaseWorkshopSyncService {
     debugPrint('SupabaseWorkshopSyncService: background sync paused.');
   }
 
-  /// يُستدعى من main.dart عند رجوع التطبيق للمقدمة (resumed).
-  /// يعيد تشغيل الـ timer إذا كانت الخدمة جاهزة.
+  /// يُستدعى من main.dart عند كل رجوع للمقدمة (resumed)، حتى بعد غياب قصير.
+  /// يعيد تشغيل الـ timers فقط دون أي عمل فوري، حتى لا يثقل الإطار الأول.
   void resumeBackgroundSync() {
     _isInBackground = false;
     if (isReady && _backgroundSyncTimer == null) {
       _startBackgroundSync();
       _startPermissionsRefreshFallback();
-      unawaited(_runBackgroundSyncCycle());
-      unawaited(refreshCurrentPermissions());
       debugPrint('SupabaseWorkshopSyncService: background sync resumed.');
+    }
+  }
+
+  /// دفعة اللحاق الوحيدة بعد غياب طويل في الخلفية: تنزيل التغييرات، ثم
+  /// إعدادات الكتالوج والرفع المعلّق، ثم الصلاحيات — بالتتابع لا بالتوازي.
+  Future<void> runResumeSync() async {
+    if (!await ensureStarted(timeout: const Duration(seconds: 20))) return;
+    // The service may only now be ready, so start its timers too.
+    resumeBackgroundSync();
+    await _runBackgroundSyncCycle();
+    try {
+      await refreshCurrentPermissions();
+    } catch (error) {
+      debugPrint('Resume permission refresh skipped: $error');
     }
   }
 
@@ -2012,7 +2026,6 @@ class SupabaseWorkshopSyncService {
       );
     }
 
-
     if (incomingPriceRows > 0) {
       unawaited(_showIncomingPriceNotification(incomingPriceRows));
     }
@@ -2737,7 +2750,10 @@ class SupabaseWorkshopSyncService {
       if (dbInstance != null) {
         await SystemPublicationService.instance.applyToProfiles(dbInstance);
       }
-      await prefs.setString('last_applied_remote_workshop_systems', systemsJson);
+      await prefs.setString(
+        'last_applied_remote_workshop_systems',
+        systemsJson,
+      );
       return;
     }
 
@@ -2780,7 +2796,9 @@ class SupabaseWorkshopSyncService {
       await txn.update('Series', {'is_active': 0});
 
       final profileCols = await txn.rawQuery('PRAGMA table_info(Profile)');
-      final profileColNames = profileCols.map((c) => c['name'].toString().toLowerCase()).toSet();
+      final profileColNames = profileCols
+          .map((c) => c['name'].toString().toLowerCase())
+          .toSet();
       final hasCodeCol = profileColNames.contains('code');
 
       final allProfiles = await txn.query(
