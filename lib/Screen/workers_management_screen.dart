@@ -1147,7 +1147,6 @@ class _WorkerCardState extends State<WorkerCard> {
       'view_shutters': false,
       'view_colors': false,
       'view_accessories': false,
-      'view_series_accessories': false,
       'view_series_requirements_report': false,
       'view_joints': false,
       'view_kit_bundles': false,
@@ -1954,7 +1953,6 @@ class _WorkerCardState extends State<WorkerCard> {
           'view_shutters',
           'view_colors',
           'view_accessories',
-          'view_series_accessories',
           'view_series_requirements_report',
           'view_joints',
           'view_kit_bundles',
@@ -3125,7 +3123,6 @@ class _WorkerCardState extends State<WorkerCard> {
                     'view_shutters',
                     'view_colors',
                     'view_accessories',
-                    'view_series_accessories',
                     'view_series_requirements_report',
                     'view_joints',
                     'view_kit_bundles',
@@ -3139,7 +3136,6 @@ class _WorkerCardState extends State<WorkerCard> {
                     'view_shutters',
                     'view_colors',
                     'view_accessories',
-                    'view_series_accessories',
                     'view_series_requirements_report',
                     'view_joints',
                     'view_kit_bundles',
@@ -3251,21 +3247,6 @@ class _WorkerCardState extends State<WorkerCard> {
                           value: perms['view_accessories'] ?? false,
                           onChanged: (val) =>
                               _updatePermission('view_accessories', val),
-                        ),
-                        SwitchListTile(
-                          title: Text(
-                            _tr(
-                              '• إكسسوارات السلاسل',
-                              '• Accessoires de séries',
-                              '• Series accessories',
-                              lang,
-                            ),
-                            style: switchTitleStyle,
-                          ),
-                          dense: true,
-                          value: perms['view_series_accessories'] ?? false,
-                          onChanged: (val) =>
-                              _updatePermission('view_series_accessories', val),
                         ),
                         SwitchListTile(
                           title: Text(
