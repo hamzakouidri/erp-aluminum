@@ -4743,6 +4743,18 @@
     "client_ledger_tab_payments": "Payments",
     "client_ledger_store_sale": "Store sale",
     "client_ledger_store_return": "Store return",
-    "client_ledger_total_purchases": "Total purchases"
+    "client_ledger_total_purchases": "Total purchases",
+    "notch_button": "Cut corner",
+    "notch_hint": "Drag a corner square inward to cut it; tap a length to edit it. Drag it back to the corner to remove the cut.",
+    "notch_side_length": "Side length",
+    "notch_min_hint": "No side under 80 mm",
+    "notch_full_side_hint": "A full side: change it with the overall width or height.",
+    "notch_single_frame_only": "A cut corner needs a drawing with a single frame.",
+    "notch_no_shutter": "Remove the shutter (box) first: it does not combine with a cut corner.",
+    "notch_no_shaped_head": "A cut corner does not combine with a slanted or arched frame.",
+    "notch_needs_bottom_frame": "A cut corner needs a full bottom frame.",
+    "notch_no_side_covers": "A side cover does not combine with a cut corner yet: remove one of them first.",
+    "notch_no_slanted_mullion": "Remove the slanted mullions first.",
+    "notch_zones_conflict": "This cut does not fit the current divisions: make it smaller or change the divisions."
   }
 }

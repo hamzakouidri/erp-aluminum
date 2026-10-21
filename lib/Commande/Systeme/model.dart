@@ -13,6 +13,7 @@ import 'package:database_data/settings/app_settings.dart' show AppLanguage;
 import '../../sql_database.dart';
 import 'package:database_data/utils/real_color_resolver.dart';
 import 'slanted_division.dart';
+import 'corner_notch.dart';
 import 'sash_hinges.dart';
 
 export 'slanted_division.dart';
@@ -25,6 +26,7 @@ part 'model/sliding.dart';
 part 'model/frame.dart';
 part 'model/zones.dart';
 part 'model/catalog.dart';
+part 'model/corner_notches.dart';
 part 'model/double_frame_gap.dart';
 
 enum DimensionTap { none, width, height }
@@ -2146,6 +2148,9 @@ class WindowSnapshot {
 
   /// Set right after construction by every snapshot site.
   DrawingCatalogSelection? catalogSelection;
+
+  /// Corner cuts of the frame, set with [catalogSelection].
+  CornerNotches cornerNotches = CornerNotches.none;
 }
 
 /// The catalogue choices of one drawing. Undo/redo restores them together
@@ -3162,6 +3167,30 @@ class WindowModel extends ChangeNotifier {
   double bottomSlantLeftY = 0.0;
   double bottomSlantRightY = 0.0;
 
+  /// Corners of the frame cut inward as a 90° step. None by default: every
+  /// drawing without a cut keeps the rectangular code paths unchanged.
+  CornerNotches cornerNotches = CornerNotches.none;
+
+  bool get hasCornerNotches => cornerNotches.hasAny;
+
+  /// Set while a corner cut is being applied (see [setCornerNotch]).
+  bool _suspendNotchSync = false;
+
+  /// The selected frame shows its corner-cut handles instead of its resize
+  /// squares (the "corner cut" button of the frame toolbar).
+  bool cornerNotchMode = false;
+
+  /// Cut shown as a ghost while a corner-cut handle is dragged; the frame
+  /// only changes when the drag is released.
+  ({NotchCorner corner, CornerNotch notch})? cornerNotchPreview;
+
+  void setCornerNotchPreview(
+    ({NotchCorner corner, CornerNotch notch})? value,
+  ) {
+    cornerNotchPreview = value;
+    drawingRepaint.notifyListeners();
+  }
+
   bool get hasArchOrSlant =>
       archHeight > 0 ||
       topSlantLeftY != 0 ||
@@ -3202,6 +3231,7 @@ class WindowModel extends ChangeNotifier {
     bool saveHistory = true,
   }) {
     if (!canBeArchedOrSlanted) return;
+    if (hasCornerNotches) return;
     final wantsShapedHead =
         (arch ?? archHeight) > 0 ||
         (leftSlant ?? topSlantLeftY) != 0 ||
@@ -4167,6 +4197,8 @@ class WindowModel extends ChangeNotifier {
     if (selection.type != SelectionType.frame || !canBeArchedOrSlanted) {
       return false;
     }
+    // A cut corner and a slanted or arched head are not combined.
+    if (hasCornerNotches) return false;
     final key = selection.zoneId;
     return key == null || key == 'frame:0' || getFrameRects().length <= 1;
   }
@@ -4182,10 +4214,12 @@ class WindowModel extends ChangeNotifier {
   }) {
     if (selection.type != SelectionType.frame) {
       frameShapeMode = false;
+      cornerNotchMode = false;
       return;
     }
     final key = selection.zoneId ?? 'frame:0';
     frameShapeMode = isDoubleTap && frameKeyBeforeTap == key;
+    if (frameShapeMode) cornerNotchMode = false;
     _notifySelectionChanged();
   }
 
@@ -4539,6 +4573,7 @@ class WindowModel extends ChangeNotifier {
 
   @override
   void notifyListeners() {
+    if (hasCornerNotches) _syncCornerNotchesToZones();
     _enforceMultiFramePlainFrameRule();
     _disableSlidingMontantReinforcementForPvc();
     validateAndSanitizeAllZonesHandles();
@@ -5688,6 +5723,7 @@ class WindowModel extends ChangeNotifier {
         bottomSlantLeftY = 0.0;
         bottomSlantRightY = 0.0;
         archHeight = 0.0;
+        cornerNotches = CornerNotches.none;
         updateShutterDefaultsIfNeeded();
       }
       drawingStart = null;
@@ -6672,6 +6708,7 @@ class WindowModel extends ChangeNotifier {
     bottomSlantLeftY = 0.0;
     bottomSlantRightY = 0.0;
     archHeight = 0.0;
+    cornerNotches = CornerNotches.none;
     hasSideCovers = false;
     useCustomSideCoverLayout = false;
     sideCoverSegments = [];

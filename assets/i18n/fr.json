@@ -4743,6 +4743,18 @@
     "client_ledger_tab_payments": "Paiements",
     "client_ledger_store_sale": "Vente magasin",
     "client_ledger_store_return": "Retour magasin",
-    "client_ledger_total_purchases": "Total des achats"
+    "client_ledger_total_purchases": "Total des achats",
+    "notch_button": "Angle découpé",
+    "notch_hint": "Glissez le carré d’un angle vers l’intérieur pour le découper ; touchez une cote pour la modifier. Ramenez-le à l’angle pour annuler la découpe.",
+    "notch_side_length": "Longueur du côté",
+    "notch_min_hint": "Aucun côté sous 80 mm",
+    "notch_full_side_hint": "Côté complet : modifiez-le par la largeur ou la hauteur totale.",
+    "notch_single_frame_only": "La découpe d’angle est réservée à un seul cadre.",
+    "notch_no_shutter": "Retirez d’abord le volet (caisson) : il ne se combine pas avec un angle découpé.",
+    "notch_no_shaped_head": "Un angle découpé ne se combine pas avec un cadre incliné ou cintré.",
+    "notch_needs_bottom_frame": "La découpe d’angle demande un cadre bas complet.",
+    "notch_no_side_covers": "Le couvre-joint latéral ne se combine pas encore avec un angle découpé : retirez l’un des deux.",
+    "notch_no_slanted_mullion": "Supprimez d’abord les montants inclinés.",
+    "notch_zones_conflict": "Cette découpe ne tient pas avec les divisions actuelles : réduisez-la ou modifiez les divisions."
   }
 }

@@ -4743,6 +4743,18 @@
     "client_ledger_tab_payments": "الدفعات",
     "client_ledger_store_sale": "بيع من المحل",
     "client_ledger_store_return": "مرتجع إلى المحل",
-    "client_ledger_total_purchases": "إجمالي المشتريات"
+    "client_ledger_total_purchases": "إجمالي المشتريات",
+    "notch_button": "زاوية مقطوعة",
+    "notch_hint": "اسحب مربع الزاوية نحو الداخل لقطعها، وانقر على أي قياس لتعديله. أعده إلى الزاوية لإلغاء القطع.",
+    "notch_side_length": "طول الضلع",
+    "notch_min_hint": "لا يقل أي ضلع عن 80 مم",
+    "notch_full_side_hint": "هذا ضلع كامل: عدّله من العرض أو الارتفاع العام.",
+    "notch_single_frame_only": "قطع الزاوية متاح لنافذة بإطار واحد فقط.",
+    "notch_no_shutter": "احذف الستار (الصندوق) أولاً: لا يجتمع مع زاوية مقطوعة.",
+    "notch_no_shaped_head": "لا تجتمع الزاوية المقطوعة مع الإطار المائل أو المقوس.",
+    "notch_needs_bottom_frame": "قطع الزاوية يحتاج إطاراً سفلياً كاملاً.",
+    "notch_no_side_covers": "الغطاء الجانبي لا يجتمع مع زاوية مقطوعة حالياً: احذف أحدهما أولاً.",
+    "notch_no_slanted_mullion": "احذف القواطع المائلة أولاً.",
+    "notch_zones_conflict": "لا يتسع هذا القطع مع التقسيمات الحالية: صغّر القطع أو عدّل التقسيمات."
   }
 }

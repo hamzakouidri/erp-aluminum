@@ -2173,6 +2173,9 @@ extension WindowModelFrame on WindowModel {
   /// arch can rise above y = 0).
   Path windowOutlinePath({double inset = 0}) {
     final right = width - inset;
+    if (hasCornerNotches && !hasShapedOutline) {
+      return cornerNotches.outlinePath(width, height, inset: inset);
+    }
     if (!hasShapedOutline) {
       return Path()..addRect(Rect.fromLTRB(inset, inset, right, height - inset));
     }
@@ -2216,6 +2219,13 @@ extension WindowModelFrame on WindowModel {
   /// Outline of the selected frame [rect] (see [frameRectForSelection]),
   /// following a slanted or arched head and a slanted bottom.
   Path frameSelectionPath(Rect rect) {
+    if (hasCornerNotches && !hasShapedOutline) {
+      return Path.combine(
+        PathOperation.intersect,
+        windowOutlinePath(),
+        Path()..addRect(rect),
+      );
+    }
     if (!hasShapedOutline) return Path()..addRect(rect);
     final frames = getFrameRects();
     final edges = frames.isEmpty
@@ -4505,6 +4515,8 @@ extension WindowModelFrame on WindowModel {
   }
 
   Future<void> toggleSideCovers(bool value) async {
+    // Side covers follow a rectangular frame only.
+    if (value && hasCornerNotches) return;
     final revision = ++_sideCoverSelectionRevision;
     final isMultiFrame = getFrameRects().length > 1;
     _saveSnapshot();
