@@ -104,6 +104,7 @@ class PdfFicheCoupeApi {
     required String workshopName,
     required SqlDatabase db,
     AppLanguage? language,
+    void Function(int done, int total)? onProgress,
   }) async {
     final fonts = await PdfFontCache.load();
     final font = fonts.regular;
@@ -144,6 +145,7 @@ class PdfFicheCoupeApi {
 
     // تحميل بيانات كل منتج مع دمج القطع وصور المقاطع
     final articles = <_ArticleData>[];
+    onProgress?.call(0, activeItems.length);
     for (final item in activeItems) {
       articles.add(
         await _loadArticle(
@@ -157,6 +159,7 @@ class PdfFicheCoupeApi {
           kitBundlePrices: kitBundles.prices,
         ),
       );
+      onProgress?.call(articles.length, activeItems.length);
     }
     // شعار الورشة
     pw.Widget? logoWidget;

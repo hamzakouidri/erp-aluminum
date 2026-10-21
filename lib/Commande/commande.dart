@@ -724,6 +724,61 @@ class _CommandeState extends State<Commande> {
     }
   }
 
+  /// Builds the cutting sheet while a snack bar stays at the bottom with the
+  /// number of products done, so a big order does not look stuck and the
+  /// rest of the app stays usable meanwhile.
+  Future<Uint8List> _generateFicheCoupeWithProgress(
+    Map<String, dynamic> orderData,
+    AppLanguage lang,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final progress = ValueNotifier<String>('');
+    messenger.hideCurrentSnackBar();
+    final snackBar = messenger.showSnackBar(
+      SnackBar(
+        duration: const Duration(days: 1),
+        content: Row(
+          children: [
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ValueListenableBuilder<String>(
+                valueListenable: progress,
+                builder: (_, value, _) => Text(
+                  '${Localization.translate('جاري تجهيز ملف ورقة التقطيع، يمكنك متابعة العمل...', lang)}$value',
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    try {
+      final items = await db.readCommandeDetails(orderData['id']);
+      final workshop = await DevisBuilder.loadWorkshopInfo();
+      return await PdfFicheCoupeApi.generateFicheCoupe(
+        order: orderData,
+        items: items,
+        workshopName: workshop.name,
+        db: db,
+        language: lang,
+        onProgress: (done, total) {
+          if (total > 1) progress.value = '  ($done/$total)';
+        },
+      );
+    } finally {
+      snackBar.close();
+      progress.dispose();
+    }
+  }
+
   Future<void> _shareCuttingSheetPdf(
     Uint8List bytes,
     String filename,
@@ -3572,31 +3627,12 @@ class _CommandeState extends State<Commande> {
                     ),
                     onTap: () async {
                       Navigator.pop(ctx);
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              Localization.translate(
-                                'جاري تجهيز جدول التقطيع...',
-                                lang,
-                              ),
-                            ),
-                          ),
-                        );
-                      }
+                      if (!mounted) return;
                       try {
-                        final items = await db.readCommandeDetails(
-                          orderData['id'],
+                        final pdfBytes = await _generateFicheCoupeWithProgress(
+                          orderData,
+                          lang,
                         );
-                        final workshop = await DevisBuilder.loadWorkshopInfo();
-                        final pdfBytes =
-                            await PdfFicheCoupeApi.generateFicheCoupe(
-                              order: orderData,
-                              items: items,
-                              workshopName: workshop.name,
-                              db: db,
-                              language: lang,
-                            );
                         if (!mounted) return;
                         final orderId2 = orderData['id']?.toString() ?? '';
                         final num = _displayOrderNumber(orderData);
@@ -5459,24 +5495,11 @@ class _CommandeState extends State<Commande> {
           ),
         );
       case 'fiche_coupe':
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                Localization.translate('جاري تجهيز جدول التقطيع...', lang),
-              ),
-            ),
-          );
-        }
+        if (!mounted) return;
         try {
-          final itemsList = await db.readCommandeDetails(orderData['id']);
-          final workshop = await DevisBuilder.loadWorkshopInfo();
-          final pdfBytes = await PdfFicheCoupeApi.generateFicheCoupe(
-            order: orderData,
-            items: itemsList,
-            workshopName: workshop.name,
-            db: db,
-            language: lang,
+          final pdfBytes = await _generateFicheCoupeWithProgress(
+            orderData,
+            lang,
           );
           if (!mounted) return;
           final oId = orderData['id']?.toString() ?? '';
