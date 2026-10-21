@@ -4796,6 +4796,11 @@ extension WindowModelFrame on WindowModel {
     selected['mullion_profile_type'] = type.name;
     selected['is_double_frame'] = type == MullionProfileType.flat;
 
+    final previousGap = maximumMullionThickness;
+    final wasDoubleFrame = {
+      for (final pos in collinearPositions)
+        pos: isDoubleFrameMullionAt(isHorizontal, pos),
+    };
     for (final pos in collinearPositions) {
       final key = _mullionKey(isHorizontal, pos);
       mullionProfiles[key] = type;
@@ -4805,6 +4810,15 @@ extension WindowModelFrame on WindowModel {
         _restoreGlassOnBothSidesOfMullion(isHorizontal, pos);
       } else {
         _enforceGroovedMullionGlassSide(isHorizontal, pos);
+      }
+    }
+    for (final pos in collinearPositions) {
+      if (type == MullionProfileType.flat || wasDoubleFrame[pos]!) {
+        _respaceZonesAroundMullion(
+          isHorizontal,
+          pos,
+          previousGap: previousGap,
+        );
       }
     }
     _notifyModelListeners();

@@ -25,6 +25,7 @@ part 'model/sliding.dart';
 part 'model/frame.dart';
 part 'model/zones.dart';
 part 'model/catalog.dart';
+part 'model/double_frame_gap.dart';
 
 enum DimensionTap { none, width, height }
 
