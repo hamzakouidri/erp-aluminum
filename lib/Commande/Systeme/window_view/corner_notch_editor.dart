@@ -156,7 +156,7 @@ extension _CornerNotchEditor on _WindowViewState {
       ..showSnackBar(
         SnackBar(
           content: Text(Localization.translate(key, _notchLang)),
-          duration: const Duration(seconds: 3),
+          duration: const Duration(seconds: 5),
         ),
       );
   }
@@ -280,8 +280,14 @@ extension _CornerNotchEditor on _WindowViewState {
     final preview = model.cornerNotchPreview;
     if (preview == null) return;
     model.setCornerNotchPreview(null);
+    final wasCut = model.hasCornerNotches;
     final error = model.setCornerNotch(preview.corner, preview.notch);
-    if (error != null) _showCornerNotchNotice(error);
+    if (error != null) {
+      _showCornerNotchNotice(error);
+    } else if (!wasCut && model.hasCornerNotches) {
+      // The first cut: quantities and costs still count a full rectangle.
+      _showCornerNotchNotice('notch_full_piece_notice');
+    }
   }
 
   /// A tap on a side length opens its editor. Returns whether it was one.

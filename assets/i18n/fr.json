@@ -4758,6 +4758,7 @@
     "notch_no_side_covers": "Le couvre-joint latéral ne se combine pas encore avec un angle découpé : retirez l’un des deux.",
     "notch_no_slanted_mullion": "Supprimez d’abord les montants inclinés.",
     "notch_zones_conflict": "Cette découpe ne tient pas avec les divisions actuelles : réduisez-la ou modifiez les divisions.",
-    "notch_right_drag_hint": "Sur ordinateur : glissez un angle du cadre sélectionné avec le bouton droit de la souris pour le découper."
+    "notch_right_drag_hint": "Sur ordinateur : glissez un angle du cadre sélectionné avec le bouton droit de la souris pour le découper.",
+    "notch_full_piece_notice": "Attention : l'application ne calcule pas l'angle découpé. Quantités, coûts et vitrages sont comptés comme pour un rectangle complet."
   }
 }
