@@ -96,17 +96,6 @@ class SupabaseWorkshopSyncService {
     return !remoteDeleted.contains(key) || reviveRows.contains(key);
   }
 
-  /// The local rows Supabase holds as deleted: after a device restored its
-  /// database from a file, these rows exist here but every other device
-  /// treats them as deleted.
-  @visibleForTesting
-  static Set<String> localRowsDeletedOnServer({
-    required Iterable<String> localKeys,
-    required Set<String> remoteDeleted,
-  }) {
-    return localKeys.where(remoteDeleted.contains).toSet();
-  }
-
   /// A live row downloaded from Supabase replaces a local deletion of the
   /// same row only when Supabase stored it after that deletion. An unknown
   /// time keeps the deletion.
@@ -1447,58 +1436,6 @@ class SupabaseWorkshopSyncService {
       }
     }
     await prefs.setString(_localDataOwnerKey, workshopUuid);
-  }
-
-  /// Per table, the rows of this device that Supabase holds as deleted.
-  Future<Map<String, int>> countLocalRowsDeletedOnServer() async {
-    final keys = await _readLocalRowsDeletedOnServer();
-    final counts = <String, int>{};
-    for (final key in keys) {
-      final table = key.substring(0, key.indexOf('\x1f'));
-      counts[table] = (counts[table] ?? 0) + 1;
-    }
-    return counts;
-  }
-
-  /// The manager confirmed that this device's rows are the workshop's copy:
-  /// the rows Supabase holds as deleted are uploaded again, newer than their
-  /// deletion, so every device gets them back. The database file is copied
-  /// first. Returns the number of rows revived.
-  Future<int> reviveLocalRowsDeletedOnServer() async {
-    await _ensureReady();
-    final prefs = await SharedPreferences.getInstance();
-    final role = (prefs.getString('user_role') ?? '').trim().toLowerCase();
-    if (!{'owner', 'manager', 'co_manager', 'admin'}.contains(role)) {
-      throw Exception('هذه العملية متاحة لمدير الورشة فقط.');
-    }
-    final keys = await _readLocalRowsDeletedOnServer();
-    if (keys.isEmpty) return 0;
-    final backup = await _db.backupDatabaseFile(reason: 'before_revive_rows');
-    if (backup == null) {
-      throw Exception('تعذر أخذ نسخة من قاعدة البيانات؛ لم يُرفع أي سجل.');
-    }
-    await uploadLocalWorkshopDataMerge(reviveRows: keys);
-    return keys.length;
-  }
-
-  Future<Set<String>> _readLocalRowsDeletedOnServer() async {
-    await _ensureReady();
-    final data = await _db.exportWorkshopData();
-    final localKeys = <String>[];
-    for (final entry in data.entries) {
-      final rows = entry.value;
-      if (!_isWorkshopTable(entry.key) || rows is! List) continue;
-      for (final row in rows) {
-        final rowId = row is Map ? row['id']?.toString() ?? '' : '';
-        if (rowId.isNotEmpty) localKeys.add(_rowKey(entry.key, rowId));
-      }
-    }
-    if (localKeys.isEmpty) return const {};
-    final remote = await _fetchRemoteRowKeys(_workshopUuid!);
-    return localRowsDeletedOnServer(
-      localKeys: localKeys,
-      remoteDeleted: remote.deleted,
-    );
   }
 
   /// The manager kept the local clients/orders/treasury rows against the

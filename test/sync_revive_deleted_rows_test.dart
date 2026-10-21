@@ -36,15 +36,6 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('rows Supabase holds as deleted', () {
-    test('only local rows deleted on the server are revived', () {
-      final keys = SupabaseWorkshopSyncService.localRowsDeletedOnServer(
-        localKeys: ['Client\x1f1', 'Client\x1f2', 'Commandes\x1f7'],
-        remoteDeleted: {'Client\x1f2', 'Commandes\x1f7', 'Commandes\x1f9'},
-      );
-      // Commandes 9 is not on this device: it stays deleted.
-      expect(keys, {'Client\x1f2', 'Commandes\x1f7'});
-    });
-
     test('a live row replaces only an older deletion', () {
       expect(
         _supersedes('2026-10-21T13:00:00.000+00:00', '2026-10-20T06:07:07Z'),
