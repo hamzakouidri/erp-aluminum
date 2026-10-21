@@ -13,6 +13,7 @@ import 'package:database_data/Screen/inventory_screen.dart';
 import 'package:database_data/Screen/material_remnants_screen.dart';
 import 'package:database_data/Screen/material_sales_screen.dart';
 import 'package:database_data/Screen/price_management_screen.dart';
+import 'package:database_data/Screen/projects_screen.dart';
 import 'package:database_data/Screen/sales_screen.dart';
 import 'package:database_data/Screen/selected_systems_screen.dart';
 import 'package:database_data/Screen/settings_screen.dart';
@@ -310,6 +311,16 @@ class _DesktopWindowFrameState extends State<DesktopWindowFrame>
             Localization.translate('كشف حساب الزبائن', lang),
             Icons.history_edu_rounded,
             const ClientChronoSearchScreen(),
+          ),
+        ),
+      if (allowWorkshop && settings.hasWorkshop && settings.canViewProjects())
+        _DesktopMenuItem(
+          label: Localization.translate('المشاريع', lang),
+          icon: Icons.folder_shared_rounded,
+          onSelected: () => _open(
+            'projects',
+            Icons.folder_shared_rounded,
+            ProjectsScreen(db: db),
           ),
         ),
       if (allowWorkshop && settings.canAccessDistributionTracking())
