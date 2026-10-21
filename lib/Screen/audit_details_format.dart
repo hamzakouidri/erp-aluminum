@@ -31,12 +31,18 @@ const Set<String> _hiddenColumns = {
   'tax_rate',
   'system_name',
   'series_name',
+  'last_editor_uid',
+  'last_editor_version',
+  'is_pinned',
+  'pinned_at',
+  'is_stock_reserved',
+  'stock_reserved_at',
 };
 
 /// Readable lines of an audit entry's details, in [lang]. A before/after
-/// snapshot becomes the list of changed fields and lines, then the document
-/// as it was; any other JSON becomes "label: value" lines; plain text stays.
-/// Pure and synchronous, so it can run in a background isolate.
+/// snapshot reads in order: the document as it was, what changed, then the
+/// document as it became; any other JSON becomes "label: value" lines; plain
+/// text stays. Pure and synchronous.
 List<String> formatAuditDetails(String raw, AppLanguage lang) {
   String t(String key) => Localization.translate(key, lang);
   Object? decoded;
@@ -55,34 +61,58 @@ List<String> formatAuditDetails(String raw, AppLanguage lang) {
   final after = map['after'];
   if (before is! Map) return _fieldLines(map, lang, indent: '');
 
-  final lines = <String>[];
   final beforeHeader = _asMap(before['header']);
   final beforeItems = _asList(before['items']);
+  final lines = <String>['— ${t('audit_d_before')} —'];
+  lines.addAll(_documentLines(beforeHeader, beforeItems, lang));
   if (after is Map) {
-    lines.add('— ${t('audit_d_changes')} —');
-    final changes = <String>[];
     final afterHeader = after.containsKey('header')
         ? _asMap(after['header'])
         : null;
-    if (afterHeader != null) {
-      changes.addAll(_fieldChanges(beforeHeader, afterHeader, lang, '  '));
-    }
-    if (after.containsKey('items')) {
-      changes.addAll(_lineChanges(beforeItems, _asList(after['items']), lang));
-    }
+    final afterItems = after.containsKey('items')
+        ? _asList(after['items'])
+        : null;
+    lines
+      ..add('')
+      ..add('— ${t('audit_d_changes')} —');
+    final changes = <String>[
+      if (afterHeader != null)
+        ..._fieldChanges(beforeHeader, afterHeader, lang, '  '),
+      if (afterItems != null) ..._lineChanges(beforeItems, afterItems, lang),
+    ];
     lines.addAll(changes.isEmpty ? ['  ${t('audit_d_no_changes')}'] : changes);
-    lines.add('');
-  }
-  lines.add('— ${t('audit_d_before')} —');
-  lines.addAll(_fieldLines(beforeHeader, lang, indent: '  '));
-  if (beforeItems.isNotEmpty) {
-    lines.add('  ${t('audit_d_lines')} (${beforeItems.length}):');
-    for (final item in beforeItems) {
-      lines.add('    • ${_lineSummary(item, lang)}');
-    }
+    // An edit form sends only the fields it changes: the rest of the
+    // document stays as it was.
+    lines
+      ..add('')
+      ..add('— ${t('audit_d_after')} —')
+      ..addAll(
+        _documentLines(
+          {...beforeHeader, ...?afterHeader},
+          afterItems ?? beforeItems,
+          lang,
+        ),
+      );
   }
   return lines;
 }
+
+/// The fields of a document, then its lines.
+List<String> _documentLines(
+  Map<String, dynamic> header,
+  List<Map<String, dynamic>> items,
+  AppLanguage lang,
+) => [
+  for (final entry in header.entries)
+    if (_shown(entry.key, entry.value) && !_isEmpty(entry.value))
+      '  ${_label(entry.key, lang)}: ${_value(entry.value, lang)}',
+  if (items.isNotEmpty) ...[
+    '  ${Localization.translate('audit_d_lines', lang)} (${items.length}):',
+    for (final item in items) '    • ${_lineSummary(item, lang)}',
+  ],
+];
+
+bool _isEmpty(Object? v) => v == null || (v is String && v.trim().isEmpty);
 
 Map<String, dynamic> _asMap(Object? v) =>
     v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{};

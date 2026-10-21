@@ -4465,6 +4465,8 @@
     "audit_d_changes": "التغييرات",
     "audit_d_no_changes": "لا يوجد فرق في الحقول المعروضة",
     "audit_d_before": "الوثيقة قبل العملية",
+    "audit_d_after": "الوثيقة بعد العملية",
+    "audit_f_deleted_by": "حذف بواسطة",
     "audit_d_lines": "الأسطر",
     "audit_d_line_added": "سطر مضاف",
     "audit_d_line_removed": "سطر محذوف",

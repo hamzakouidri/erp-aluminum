@@ -4465,6 +4465,8 @@
     "audit_d_changes": "Modifications",
     "audit_d_no_changes": "Aucune différence dans les champs affichés",
     "audit_d_before": "Document avant l'opération",
+    "audit_d_after": "Document après l'opération",
+    "audit_f_deleted_by": "Supprimé par",
     "audit_d_lines": "Lignes",
     "audit_d_line_added": "Ligne ajoutée",
     "audit_d_line_removed": "Ligne supprimée",
