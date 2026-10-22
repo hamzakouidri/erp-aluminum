@@ -6141,6 +6141,19 @@ class AppWorkspacePainter extends CustomPainter {
       // --- Single Frame Height (Existing behavior) ---
       if (model.hasShutter) {
         double boxSize = model.shutterBoxHeight;
+        // Witness lines from the frame to the height and box dimensions, at
+        // every level they measure (like the overall width).
+        final double heightDimX = pos.dx - offsetDistLeft;
+        final levels = model.isCaissonTunnel
+            ? [pos.dy - boxSize, pos.dy, pos.dy + model.height]
+            : [pos.dy, pos.dy + boxSize, pos.dy + model.height];
+        for (final y in levels) {
+          _drawWitnessLine(
+            canvas,
+            Offset(pos.dx, y),
+            Offset(heightDimX - px(6.0), y),
+          );
+        }
         if (model.isCaissonTunnel) {
           _drawDimension(
             canvas,
@@ -6212,18 +6225,17 @@ class AppWorkspacePainter extends CustomPainter {
           dragKey: 'left',
           normal: const Offset(-1, 0),
         );
-        if (isSlantedOrArched) {
-          _drawWitnessLine(
-            canvas,
-            Offset(pos.dx, startY),
-            Offset(leftDimX - px(6.0), startY),
-          );
-          _drawWitnessLine(
-            canvas,
-            Offset(pos.dx, endY),
-            Offset(leftDimX - px(6.0), endY),
+        // Witness lines from the frame edge it measures, like the width.
+        _drawWitnessLine(
+          canvas,
+          Offset(pos.dx, startY),
+          Offset(leftDimX - px(6.0), startY),
         );
-        }
+        _drawWitnessLine(
+          canvas,
+          Offset(pos.dx, endY),
+          Offset(leftDimX - px(6.0), endY),
+        );
 
         // Right jamb whenever it differs from the left one.
         if (isSlanted) {
