@@ -12,7 +12,7 @@ String localizeDocumentStatus(dynamic value, AppLanguage language) {
     return switch (language) {
       AppLanguage.arabic => arabic,
       AppLanguage.french => french,
-      AppLanguage.english => english,
+      _ => english,
     };
   }
 

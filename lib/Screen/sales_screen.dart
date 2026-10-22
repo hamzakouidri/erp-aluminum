@@ -44,10 +44,10 @@ class _SalesScreenState extends State<SalesScreen> {
     switch (lang) {
       case AppLanguage.french:
         return fr;
-      case AppLanguage.english:
-        return en;
       case AppLanguage.arabic:
         return ar;
+      default:
+        return en;
     }
   }
 

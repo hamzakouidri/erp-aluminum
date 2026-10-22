@@ -1545,10 +1545,10 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                     final unitLabel = unit == 'meter'
                         ? (lang == AppLanguage.french
                               ? '/m'
-                              : (lang == AppLanguage.english ? '/m' : 'للمتر'))
+                              : (lang.fallback == AppLanguage.english ? '/m' : 'للمتر'))
                         : (lang == AppLanguage.french
                               ? '/pièce'
-                              : (lang == AppLanguage.english
+                              : (lang.fallback == AppLanguage.english
                                     ? '/pc'
                                     : 'للقطعة'));
                     return Card(
@@ -2921,12 +2921,12 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
         ? switch (lang) {
             AppLanguage.arabic => 'سعر خام',
             AppLanguage.french => 'Prix brut',
-            AppLanguage.english => 'Base price',
+            _ => 'Base price',
           }
         : switch (lang) {
             AppLanguage.arabic => '$colorCount أسعار حسب اللون',
             AppLanguage.french => '$colorCount prix selon la couleur',
-            AppLanguage.english => '$colorCount color prices',
+            _ => '$colorCount color prices',
           };
     return Card(
       color: isDark ? const Color(0xFF1E1E1E) : null,
@@ -3875,7 +3875,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
     String statusTitle(bool active) => switch (lang) {
       AppLanguage.arabic => active ? 'القواعد النشطة' : 'القواعد غير النشطة',
       AppLanguage.french => active ? 'Règles actives' : 'Règles inactives',
-      AppLanguage.english => active ? 'Active rules' : 'Inactive rules',
+      _ => active ? 'Active rules' : 'Inactive rules',
     };
 
     Widget statusDivider(bool active, int count) {
@@ -5145,7 +5145,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                           switch (lang) {
                             AppLanguage.arabic => 'أسعار ومقاسات الألواح الكاملة',
                             AppLanguage.french => 'Prix et formats des panneaux',
-                            AppLanguage.english => 'Full sheet sizes and prices',
+                            _ => 'Full sheet sizes and prices',
                           },
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
@@ -5153,7 +5153,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen>
                           switch (lang) {
                             AppLanguage.arabic => 'الزجاج، الريزين، الأليكوبوند، البانو ساندويتش والبيكسي جلاس',
                             AppLanguage.french => 'Verre, résine, Alucobond, panneau sandwich et Plexiglas',
-                            AppLanguage.english => 'Glass, resin, Alucobond, sandwich panels and Plexiglas',
+                            _ => 'Glass, resin, Alucobond, sandwich panels and Plexiglas',
                           },
                         ),
                         trailing: const Icon(Icons.chevron_right),

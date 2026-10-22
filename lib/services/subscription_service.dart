@@ -111,7 +111,7 @@ class SubscriptionDetails {
   String formatRemainingDuration({AppLanguage lang = AppLanguage.arabic}) {
     if (isLifetime) {
       if (lang == AppLanguage.french) return 'Illimité (À vie)';
-      if (lang == AppLanguage.english) return 'Unlimited (Lifetime)';
+      if (lang.fallback == AppLanguage.english) return 'Unlimited (Lifetime)';
       return 'غير محدود (مدى الحياة)';
     }
 
@@ -121,7 +121,7 @@ class SubscriptionDetails {
         return daysAgo == 0
             ? 'Expiré aujourd\'hui'
             : 'Expiré depuis $daysAgo jour(s)';
-      } else if (lang == AppLanguage.english) {
+      } else if (lang.fallback == AppLanguage.english) {
         return daysAgo == 0 ? 'Expired today' : 'Expired $daysAgo day(s) ago';
       }
       return daysAgo == 0
@@ -131,7 +131,7 @@ class SubscriptionDetails {
 
     if (daysRemaining == 0) {
       if (lang == AppLanguage.french) return 'Dernier jour aujourd\'hui';
-      if (lang == AppLanguage.english) return 'Last day today';
+      if (lang.fallback == AppLanguage.english) return 'Last day today';
       return 'اليوم هو اليوم الأخير';
     }
 
@@ -146,7 +146,7 @@ class SubscriptionDetails {
       } else {
         return '$daysRemaining jour(s)';
       }
-    } else if (lang == AppLanguage.english) {
+    } else if (lang.fallback == AppLanguage.english) {
       if (months > 0 && days > 0) {
         return '$months month(s) and $days day(s)';
       } else if (months > 0) {

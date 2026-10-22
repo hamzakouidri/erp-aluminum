@@ -56,10 +56,10 @@ class _SupplierDetailsScreenState extends State<SupplierDetailsScreen> {
     switch (lang) {
       case AppLanguage.french:
         return fr;
-      case AppLanguage.english:
-        return en;
       case AppLanguage.arabic:
         return ar;
+      default:
+        return en;
     }
   }
 

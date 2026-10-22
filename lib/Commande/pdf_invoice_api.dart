@@ -140,10 +140,7 @@ class PdfInvoiceApi {
       _currentLang = overrideLang;
     } else {
       final prefs = await SharedPreferences.getInstance();
-      final langIndex = prefs.getInt('app_language') ?? 0;
-      _currentLang = langIndex >= 0 && langIndex < AppLanguage.values.length
-          ? AppLanguage.values[langIndex]
-          : AppLanguage.arabic;
+      _currentLang = AppSettingsProvider.languageFromPreferences(prefs);
     }
 
     await preloadFonts();
@@ -317,14 +314,14 @@ class PdfInvoiceApi {
               _ar(
                 _currentLang == AppLanguage.french
                     ? 'RIB: ${data.workshop.rib}'
-                    : _currentLang == AppLanguage.english
+                    : _currentLang.fallback == AppLanguage.english
                     ? 'RIB: ${data.workshop.rib}'
                     : 'الحساب البنكي (RIB): ${data.workshop.rib}',
               ),
               textDirection: _dir(
                 _currentLang == AppLanguage.french
                     ? 'RIB: ${data.workshop.rib}'
-                    : _currentLang == AppLanguage.english
+                    : _currentLang.fallback == AppLanguage.english
                     ? 'RIB: ${data.workshop.rib}'
                     : 'الحساب البنكي (RIB): ${data.workshop.rib}',
               ),
@@ -398,7 +395,7 @@ class PdfInvoiceApi {
     final num = data.orderDisplayNumber;
     if (_currentLang == AppLanguage.french) {
       return 'Pour la commande N° $num';
-    } else if (_currentLang == AppLanguage.english) {
+    } else if (_currentLang.fallback == AppLanguage.english) {
       return 'For order #$num';
     } else {
       return 'للطلبية رقم $num';
@@ -408,7 +405,7 @@ class PdfInvoiceApi {
   static String _orderMetaLabel() {
     if (_currentLang == AppLanguage.french) {
       return 'Commande N°:';
-    } else if (_currentLang == AppLanguage.english) {
+    } else if (_currentLang.fallback == AppLanguage.english) {
       return 'Order N°:';
     } else {
       return 'الطلبية رقم:';
@@ -420,7 +417,7 @@ class PdfInvoiceApi {
     if (data.isProForma) {
       if (_currentLang == AppLanguage.french) {
         titleText = 'Facture Proforma';
-      } else if (_currentLang == AppLanguage.english) {
+      } else if (_currentLang.fallback == AppLanguage.english) {
         titleText = 'Proforma Invoice';
       } else {
         titleText = 'فاتورة تقديرية / أولية';
@@ -434,7 +431,7 @@ class PdfInvoiceApi {
       if (titleKey == 'BON_CHARGE') {
         if (_currentLang == AppLanguage.french) {
           titleText = 'Bon d\'expédition / Charge';
-        } else if (_currentLang == AppLanguage.english) {
+        } else if (_currentLang.fallback == AppLanguage.english) {
           titleText = 'Shipping & Delivery Note';
         } else {
           titleText = 'فاتورة / وصل شحن كلي';
@@ -444,7 +441,7 @@ class PdfInvoiceApi {
           titleKey == 'doc_bon_livraison_partiel_sans_prix') {
         if (_currentLang == AppLanguage.french) {
           titleText = 'Bon de livraison';
-        } else if (_currentLang == AppLanguage.english) {
+        } else if (_currentLang.fallback == AppLanguage.english) {
           titleText = 'Delivery Note';
         } else {
           titleText = 'وصل تسليم';
@@ -567,17 +564,17 @@ class PdfInvoiceApi {
   static pw.Widget _buildParties(DevisData data) {
     final phonePrefix = _currentLang == AppLanguage.french
         ? 'Tél: '
-        : _currentLang == AppLanguage.english
+        : _currentLang.fallback == AppLanguage.english
         ? 'Phone: '
         : 'الهاتف: ';
     final clientIdPrefix = _currentLang == AppLanguage.french
         ? 'N° Client: '
-        : _currentLang == AppLanguage.english
+        : _currentLang.fallback == AppLanguage.english
         ? 'Client ID: '
         : 'رقم الزبون: ';
     final addressPrefix = _currentLang == AppLanguage.french
         ? 'Adresse: '
-        : _currentLang == AppLanguage.english
+        : _currentLang.fallback == AppLanguage.english
         ? 'Address: '
         : 'العنوان: ';
 
@@ -923,7 +920,7 @@ class PdfInvoiceApi {
         displayDetails = [
           'Largeur: ${item.width} mm | Hauteur: ${item.height} mm',
         ];
-      } else if (_currentLang == AppLanguage.english) {
+      } else if (_currentLang.fallback == AppLanguage.english) {
         displayDetails = [
           'Width: ${item.width} mm | Height: ${item.height} mm',
         ];
@@ -1125,7 +1122,7 @@ class PdfInvoiceApi {
 
   static String _continuationLabel() => _currentLang == AppLanguage.french
       ? '(suite)'
-      : _currentLang == AppLanguage.english
+      : _currentLang.fallback == AppLanguage.english
       ? '(continued)'
       : '(تابع)';
 
@@ -1630,7 +1627,7 @@ class PdfInvoiceApi {
     String label;
     if (_currentLang == AppLanguage.french) {
       label = 'Remarque';
-    } else if (_currentLang == AppLanguage.english) {
+    } else if (_currentLang.fallback == AppLanguage.english) {
       label = 'Note';
     } else {
       label = 'ملاحظة';
@@ -2017,7 +2014,7 @@ class PdfInvoiceApi {
                   pw.Text(
                     _currentLang == AppLanguage.french
                         ? 'Bon de charge / Livraison'
-                        : _currentLang == AppLanguage.english
+                        : _currentLang.fallback == AppLanguage.english
                         ? 'Loading & Delivery Note'
                         : _ar('وصل الشحن والتسليم (الفاتورة التقديرية)'),
                     style: pw.TextStyle(
@@ -2049,7 +2046,7 @@ class PdfInvoiceApi {
                 pw.Text(
                   _currentLang == AppLanguage.french
                       ? 'Client: '
-                      : _currentLang == AppLanguage.english
+                      : _currentLang.fallback == AppLanguage.english
                       ? 'Client: '
                       : _ar('الزبون: '),
                   style: pw.TextStyle(
@@ -2082,35 +2079,35 @@ class PdfInvoiceApi {
                   _headerCell(
                     _currentLang == AppLanguage.french
                         ? 'N°'
-                        : _currentLang == AppLanguage.english
+                        : _currentLang.fallback == AppLanguage.english
                         ? 'No'
                         : 'رقم',
                   ),
                   _headerCell(
                     _currentLang == AppLanguage.french
                         ? 'Désignation'
-                        : _currentLang == AppLanguage.english
+                        : _currentLang.fallback == AppLanguage.english
                         ? 'Item Designation'
                         : 'البيان / النافذة',
                   ),
                   _headerCell(
                     _currentLang == AppLanguage.french
                         ? 'Dimensions (mm)'
-                        : _currentLang == AppLanguage.english
+                        : _currentLang.fallback == AppLanguage.english
                         ? 'Dimensions (mm)'
                         : 'المقاسات (ملم)',
                   ),
                   _headerCell(
                     _currentLang == AppLanguage.french
                         ? 'Couleur'
-                        : _currentLang == AppLanguage.english
+                        : _currentLang.fallback == AppLanguage.english
                         ? 'Color'
                         : 'اللون',
                   ),
                   _headerCell(
                     _currentLang == AppLanguage.french
                         ? 'Code à barres'
-                        : _currentLang == AppLanguage.english
+                        : _currentLang.fallback == AppLanguage.english
                         ? 'Barcode'
                         : 'الكود بار',
                   ),

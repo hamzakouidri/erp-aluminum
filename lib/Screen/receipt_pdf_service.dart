@@ -41,13 +41,8 @@ class ReceiptPdfService {
     final prefs = await SharedPreferences.getInstance();
     final workshopName = prefs.getString('workshop_name') ?? 'نورالور';
     final logoBase64 = prefs.getString('workshop_logo_base64') ?? '';
-    final savedLang = prefs.getString('app_language') ?? 'arabic';
-    final currency = savedLang == 'arabic' ? 'د.ج' : 'DA';
-    final pdfLang = savedLang == 'french'
-        ? AppLanguage.french
-        : savedLang == 'english'
-        ? AppLanguage.english
-        : AppLanguage.arabic;
+    final pdfLang = AppSettingsProvider.languageFromPreferences(prefs);
+    final currency = pdfLang == AppLanguage.arabic ? 'د.ج' : 'DA';
     String tr(String key) => Localization.translate(key, pdfLang);
 
     pw.Widget? logoWidget;

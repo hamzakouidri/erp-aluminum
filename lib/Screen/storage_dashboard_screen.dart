@@ -944,10 +944,10 @@ class _CategoryMeta {
     switch (lang) {
       case AppLanguage.french:
         return nameFr;
-      case AppLanguage.english:
-        return nameEn;
       case AppLanguage.arabic:
         return nameAr;
+      default:
+        return nameEn;
     }
   }
 }

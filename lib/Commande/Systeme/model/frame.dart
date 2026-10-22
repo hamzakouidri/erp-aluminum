@@ -3550,7 +3550,7 @@ extension WindowModelFrame on WindowModel {
         if (lang == AppLanguage.french) {
           return 'Toutes les jonctions ($count) (90°)';
         }
-        if (lang == AppLanguage.english) {
+        if (lang.fallback == AppLanguage.english) {
           return 'All junctions ($count) (90°)';
         }
         return 'جميع الفواصل ($count) (90°)';
@@ -3563,26 +3563,26 @@ extension WindowModelFrame on WindowModel {
       } else {
         final count = activeJunctions.length;
         if (lang == AppLanguage.french) return '$count jonctions (90°)';
-        if (lang == AppLanguage.english) return '$count junctions (90°)';
+        if (lang.fallback == AppLanguage.english) return '$count junctions (90°)';
         return '$count فواصل (90°)';
       }
     }
     switch (profileAngleMode) {
       case 1:
         if (lang == AppLanguage.french) return 'Droite (90°)';
-        if (lang == AppLanguage.english) return 'Right (90°)';
+        if (lang.fallback == AppLanguage.english) return 'Right (90°)';
         return 'يمين (90°)';
       case 2:
         if (lang == AppLanguage.french) return 'Gauche (90°)';
-        if (lang == AppLanguage.english) return 'Left (90°)';
+        if (lang.fallback == AppLanguage.english) return 'Left (90°)';
         return 'يسار (90°)';
       case 3:
         if (lang == AppLanguage.french) return 'Deux côtés (90°)';
-        if (lang == AppLanguage.english) return 'Both sides (90°)';
+        if (lang.fallback == AppLanguage.english) return 'Both sides (90°)';
         return 'الجهتين (90°)';
       default:
         if (lang == AppLanguage.french) return 'Désactivé';
-        if (lang == AppLanguage.english) return 'Disabled';
+        if (lang.fallback == AppLanguage.english) return 'Disabled';
         return 'إيقاف';
     }
   }

@@ -178,7 +178,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     if (data.isProForma) {
       if (_invoiceLanguage == AppLanguage.french) {
         return 'Facture Proforma';
-      } else if (_invoiceLanguage == AppLanguage.english) {
+      } else if (_invoiceLanguage.fallback == AppLanguage.english) {
         return 'Proforma Invoice';
       } else {
         return 'فاتورة تقديرية / أولية';
@@ -191,7 +191,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       if (titleKey == 'BON_CHARGE') {
         if (_invoiceLanguage == AppLanguage.french) {
           return 'Bon d\'expédition / Charge';
-        } else if (_invoiceLanguage == AppLanguage.english) {
+        } else if (_invoiceLanguage.fallback == AppLanguage.english) {
           return 'Shipping & Delivery Note';
         } else {
           return 'فاتورة / وصل شحن كلي';
@@ -202,7 +202,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
           titleKey == 'doc_bon_livraison_partiel_sans_prix') {
         if (_invoiceLanguage == AppLanguage.french) {
           return 'Bon de livraison';
-        } else if (_invoiceLanguage == AppLanguage.english) {
+        } else if (_invoiceLanguage.fallback == AppLanguage.english) {
           return 'Delivery Note';
         } else {
           return 'وصل تسليم';
@@ -1110,7 +1110,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                 child: Text(
                   isFr
                       ? 'N°'
-                      : _invoiceLanguage == AppLanguage.english
+                      : _invoiceLanguage.fallback == AppLanguage.english
                       ? 'No'
                       : 'رقم',
                   style: TextStyle(
@@ -1126,7 +1126,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                 child: Text(
                   isFr
                       ? 'Désignation'
-                      : _invoiceLanguage == AppLanguage.english
+                      : _invoiceLanguage.fallback == AppLanguage.english
                       ? 'Item Designation'
                       : 'البيان / النافذة',
                   style: TextStyle(
@@ -1142,7 +1142,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                 child: Text(
                   isFr
                       ? 'Dimensions'
-                      : _invoiceLanguage == AppLanguage.english
+                      : _invoiceLanguage.fallback == AppLanguage.english
                       ? 'Dimensions'
                       : 'المقاسات',
                   style: TextStyle(
@@ -1158,7 +1158,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                 child: Text(
                   isFr
                       ? 'Couleur'
-                      : _invoiceLanguage == AppLanguage.english
+                      : _invoiceLanguage.fallback == AppLanguage.english
                       ? 'Color'
                       : 'اللون',
                   style: TextStyle(
@@ -1174,7 +1174,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                 child: Text(
                   isFr
                       ? 'Code à barres'
-                      : _invoiceLanguage == AppLanguage.english
+                      : _invoiceLanguage.fallback == AppLanguage.english
                       ? 'Barcode'
                       : 'الكود بار',
                   style: TextStyle(
@@ -1443,7 +1443,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
                               child: Text(
                                 _invoiceLanguage == AppLanguage.french
                                     ? 'RIB: ${data.workshop.rib}'
-                                    : _invoiceLanguage == AppLanguage.english
+                                    : _invoiceLanguage.fallback == AppLanguage.english
                                     ? 'RIB: ${data.workshop.rib}'
                                     : 'الحساب البنكي (RIB): ${data.workshop.rib}',
                                 style: const TextStyle(
@@ -1536,7 +1536,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
     final num = data.orderDisplayNumber;
     if (_invoiceLanguage == AppLanguage.french) {
       return 'Pour la commande N° $num';
-    } else if (_invoiceLanguage == AppLanguage.english) {
+    } else if (_invoiceLanguage.fallback == AppLanguage.english) {
       return 'For order #$num';
     } else {
       return 'للطلبية رقم $num';
@@ -1546,7 +1546,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   String get _orderMetaLabel {
     if (_invoiceLanguage == AppLanguage.french) {
       return 'Commande N°:';
-    } else if (_invoiceLanguage == AppLanguage.english) {
+    } else if (_invoiceLanguage.fallback == AppLanguage.english) {
       return 'Order N°:';
     } else {
       return 'الطلبية رقم:';
@@ -1659,17 +1659,17 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
   Widget _buildParties() {
     final phonePrefix = _invoiceLanguage == AppLanguage.french
         ? 'Tél: '
-        : _invoiceLanguage == AppLanguage.english
+        : _invoiceLanguage.fallback == AppLanguage.english
         ? 'Phone: '
         : 'الهاتف: ';
     final clientIdPrefix = _invoiceLanguage == AppLanguage.french
         ? 'N° Client: '
-        : _invoiceLanguage == AppLanguage.english
+        : _invoiceLanguage.fallback == AppLanguage.english
         ? 'Client ID: '
         : 'رقم الزبون: ';
     final addressPrefix = _invoiceLanguage == AppLanguage.french
         ? 'Adresse: '
-        : _invoiceLanguage == AppLanguage.english
+        : _invoiceLanguage.fallback == AppLanguage.english
         ? 'Address: '
         : 'العنوان: ';
 
@@ -2035,7 +2035,7 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         ? [
             if (_invoiceLanguage == AppLanguage.french)
               'Largeur: ${item.width} mm | Hauteur: ${item.height} mm'
-            else if (_invoiceLanguage == AppLanguage.english)
+            else if (_invoiceLanguage.fallback == AppLanguage.english)
               'Width: ${item.width} mm | Height: ${item.height} mm'
             else
               'العرض: ${item.width} مم | الارتفاع: ${item.height} مم',

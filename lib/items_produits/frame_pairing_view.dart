@@ -37,8 +37,8 @@ class _FramePairingViewState extends State<FramePairingView> {
   String _tr(String ar, String fr, String en) =>
       switch (context.read<AppSettingsProvider>().language) {
         AppLanguage.french => fr,
-        AppLanguage.english => en,
         AppLanguage.arabic => ar,
+        _ => en,
       };
 
   @override

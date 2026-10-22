@@ -1301,7 +1301,7 @@ class _WelcomScreenState extends State<WelcomScreen> {
           label: Text(
             lang == AppLanguage.french
                 ? 'Assistant IA'
-                : (lang == AppLanguage.english
+                : (lang.fallback == AppLanguage.english
                       ? 'AI Assistant'
                       : 'المساعد الذكي'),
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),

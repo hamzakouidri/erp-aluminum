@@ -2513,7 +2513,7 @@ class _SeriesTableConfigScreenState extends State<SeriesTableConfigScreen> {
           return ar;
         case AppLanguage.french:
           return fr;
-        case AppLanguage.english:
+        default:
           return en;
       }
     }

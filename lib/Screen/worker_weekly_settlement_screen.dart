@@ -10,7 +10,7 @@ import '../services/cloud_sync_service.dart';
 
 String _tr(String ar, String fr, String en, AppLanguage lang) {
   if (lang == AppLanguage.french) return fr;
-  if (lang == AppLanguage.english) return en;
+  if (lang.fallback == AppLanguage.english) return en;
   return ar;
 }
 

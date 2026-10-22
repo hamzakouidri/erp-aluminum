@@ -51,10 +51,10 @@ class SubscriptionPlan {
     switch (lang) {
       case AppLanguage.french:
         return titleFr;
-      case AppLanguage.english:
-        return titleEn;
       case AppLanguage.arabic:
         return titleAr;
+      default:
+        return titleEn;
     }
   }
 
@@ -62,10 +62,10 @@ class SubscriptionPlan {
     switch (lang) {
       case AppLanguage.french:
         return durationLabelFr;
-      case AppLanguage.english:
-        return durationLabelEn;
       case AppLanguage.arabic:
         return durationLabelAr;
+      default:
+        return durationLabelEn;
     }
   }
 

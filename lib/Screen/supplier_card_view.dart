@@ -30,8 +30,8 @@ class _SupplierCardViewState extends State<SupplierCardView> {
 
   String _tr(String ar, String fr, String en) => switch (_lang) {
     AppLanguage.french => fr,
-    AppLanguage.english => en,
     AppLanguage.arabic => ar,
+    _ => en,
   };
 
   int get _supplierId => (widget.supplier['id'] as num).toInt();

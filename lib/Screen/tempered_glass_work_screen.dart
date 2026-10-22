@@ -543,7 +543,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
             (sys['name_fr'] ?? '').toString().isNotEmpty) {
           return sys['name_fr'];
         }
-        if (lang == AppLanguage.english &&
+        if (lang.fallback == AppLanguage.english &&
             (sys['name_en'] ?? '').toString().isNotEmpty) {
           return sys['name_en'];
         }
@@ -1479,7 +1479,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
     return switch (language) {
       AppLanguage.arabic => ar,
       AppLanguage.french => fr,
-      AppLanguage.english => en,
+      _ => en,
     };
   }
 
@@ -6414,7 +6414,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                 lang == AppLanguage.french &&
                     (sys['name_fr'] ?? '').toString().isNotEmpty
                 ? sys['name_fr']
-                : (lang == AppLanguage.english &&
+                : (lang.fallback == AppLanguage.english &&
                           (sys['name_en'] ?? '').toString().isNotEmpty
                       ? sys['name_en']
                       : sys['name_ar'] ?? sys['code']);
@@ -6552,7 +6552,7 @@ class _TemperedGlassWorkScreenState extends State<TemperedGlassWorkScreen> {
                         lang == AppLanguage.french &&
                             (sys['name_fr'] ?? '').toString().isNotEmpty
                         ? sys['name_fr']
-                        : (lang == AppLanguage.english &&
+                        : (lang.fallback == AppLanguage.english &&
                                   (sys['name_en'] ?? '').toString().isNotEmpty
                               ? sys['name_en']
                               : sys['name_ar'] ?? sys['code']);
@@ -10794,10 +10794,10 @@ class _GlassManufacturingSheet extends StatelessWidget {
     switch (Provider.of<AppSettingsProvider>(context, listen: false).language) {
       case AppLanguage.french:
         return fr;
-      case AppLanguage.english:
-        return en;
       case AppLanguage.arabic:
         return ar;
+      default:
+        return en;
     }
   }
 

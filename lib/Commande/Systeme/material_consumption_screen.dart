@@ -123,7 +123,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
         return 'ar';
       case AppLanguage.french:
         return 'fr';
-      case AppLanguage.english:
+      default:
         return 'en';
     }
   }
@@ -757,7 +757,7 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
                           label: Text(
                             lang == AppLanguage.french
                                 ? 'Appliquer la lame recommandée'
-                                : (lang == AppLanguage.english
+                                : (lang.fallback == AppLanguage.english
                                       ? 'Apply recommended blade'
                                       : 'تطبيق الشفرة المقترحة'),
                             style: const TextStyle(

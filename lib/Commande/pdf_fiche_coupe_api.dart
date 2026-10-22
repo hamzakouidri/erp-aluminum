@@ -115,20 +115,7 @@ class PdfFicheCoupeApi {
     final phone = prefs.getString('workshop_phone') ?? '';
 
     final resolvedLanguage =
-        language ??
-        () {
-          final langIndex = prefs.getInt('app_language');
-          if (langIndex != null &&
-              langIndex >= 0 &&
-              langIndex < AppLanguage.values.length) {
-            return AppLanguage.values[langIndex];
-          }
-          final savedLanguage = prefs.getString('app_language');
-          if (savedLanguage == 'french') return AppLanguage.french;
-          if (savedLanguage == 'english') return AppLanguage.english;
-          if (savedLanguage == 'arabic') return AppLanguage.arabic;
-          return AppLanguage.french;
-        }();
+        language ?? AppSettingsProvider.languageFromPreferences(prefs);
 
     final tr = _Tr(resolvedLanguage);
 
@@ -939,23 +926,23 @@ class PdfFicheCoupeApi {
   }) {
     final title = switch (tr.lang) {
       AppLanguage.french => 'MESURES CONFIRMÉES',
-      AppLanguage.english => 'CONFIRMED MEASUREMENTS',
       AppLanguage.arabic => 'القياسات المؤكدة',
+      _ => 'CONFIRMED MEASUREMENTS',
     };
     final widthLabel = switch (tr.lang) {
       AppLanguage.french => 'Largeur',
-      AppLanguage.english => 'Width',
       AppLanguage.arabic => 'العرض',
+      _ => 'Width',
     };
     final heightLabel = switch (tr.lang) {
       AppLanguage.french => 'Hauteur',
-      AppLanguage.english => 'Height',
       AppLanguage.arabic => 'الارتفاع',
+      _ => 'Height',
     };
     final quantityLabel = switch (tr.lang) {
       AppLanguage.french => 'Quantité',
-      AppLanguage.english => 'Quantity',
       AppLanguage.arabic => 'الكمية',
+      _ => 'Quantity',
     };
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
@@ -1010,7 +997,7 @@ class PdfFicheCoupeApi {
   }) {
     final langCode = tr.lang == AppLanguage.french
         ? 'fr'
-        : (tr.lang == AppLanguage.english ? 'en' : 'ar');
+        : (tr.lang.fallback == AppLanguage.english ? 'en' : 'ar');
     final tableRows = <pw.TableRow>[
       pw.TableRow(
         decoration: const pw.BoxDecoration(color: _kBlue),
@@ -1096,7 +1083,7 @@ class PdfFicheCoupeApi {
   ) {
     final langCode = tr.lang == AppLanguage.french
         ? 'fr'
-        : (tr.lang == AppLanguage.english ? 'en' : 'ar');
+        : (tr.lang.fallback == AppLanguage.english ? 'en' : 'ar');
     final tableRows = <pw.TableRow>[
       pw.TableRow(
         decoration: const pw.BoxDecoration(color: _kBlue),
@@ -1968,7 +1955,7 @@ class PdfFicheCoupeApi {
   }) async {
     final langCode = lang == AppLanguage.french
         ? 'fr'
-        : (lang == AppLanguage.english ? 'en' : 'ar');
+        : (lang.fallback == AppLanguage.english ? 'en' : 'ar');
 
     // تجميع القطع حسب القطاع: (المرجع + الاسم)
     final profileMap =
@@ -2187,20 +2174,20 @@ class PdfFicheCoupeApi {
     final mechLabel = isMotor
         ? (lang == AppLanguage.french
               ? 'Moteur'
-              : (lang == AppLanguage.english ? 'Motor' : 'محرك'))
+              : (lang.fallback == AppLanguage.english ? 'Motor' : 'محرك'))
         : (isCrank
               ? (lang == AppLanguage.french
                     ? 'Manivelle'
-                    : (lang == AppLanguage.english ? 'Crank' : 'منايفال'))
+                    : (lang.fallback == AppLanguage.english ? 'Crank' : 'منايفال'))
               : (lang == AppLanguage.french
                     ? 'Sangle'
-                    : (lang == AppLanguage.english ? 'Belt' : 'حزام')));
+                    : (lang.fallback == AppLanguage.english ? 'Belt' : 'حزام')));
 
     final hasShutter = model.hasShutter || isShutterOnly;
     final shutterInfo = hasShutter
         ? (lang == AppLanguage.french
               ? 'Volet : $mechLabel'
-              : (lang == AppLanguage.english
+              : (lang.fallback == AppLanguage.english
                     ? 'Shutter: $mechLabel'
                     : 'مركب الستار : $mechLabel'))
         : '';
@@ -2209,7 +2196,7 @@ class PdfFicheCoupeApi {
       return (
         type: lang == AppLanguage.french
             ? 'Volet roulant'
-            : (lang == AppLanguage.english ? 'Roller shutter' : 'ستار دوار'),
+            : (lang.fallback == AppLanguage.english ? 'Roller shutter' : 'ستار دوار'),
         config: '',
         shutterInfo: shutterInfo,
       );
@@ -2240,7 +2227,7 @@ class PdfFicheCoupeApi {
     } else if (hasSlidingSash) {
       typeStr = lang == AppLanguage.french
           ? 'Coulissant'
-          : (lang == AppLanguage.english ? 'Sliding' : 'منزلق');
+          : (lang.fallback == AppLanguage.english ? 'Sliding' : 'منزلق');
       final sashesCount = zonesList
           .where((z) => z is Map && z['content']?.toString() == 'slidingSash')
           .map((z) => (z as Map)['slidingSashesCount'] as num?)
@@ -2255,31 +2242,31 @@ class PdfFicheCoupeApi {
           effectiveSlidingSashes == 1
               ? '1 vantail'
               : '$effectiveSlidingSashes vantaux',
-        AppLanguage.english =>
-          effectiveSlidingSashes == 1
-              ? '1 sash'
-              : '$effectiveSlidingSashes sashes',
         AppLanguage.arabic =>
           effectiveSlidingSashes == 1
               ? 'ضلفة واحدة'
               : effectiveSlidingSashes == 2
               ? 'ضلفتين'
               : '$effectiveSlidingSashes درفات',
+        _ =>
+          effectiveSlidingSashes == 1
+              ? '1 sash'
+              : '$effectiveSlidingSashes sashes',
       };
     } else if (hasDoubleSash) {
       typeStr = lang == AppLanguage.french
           ? 'Battant'
-          : (lang == AppLanguage.english ? 'Casement' : 'مفصلي');
+          : (lang.fallback == AppLanguage.english ? 'Casement' : 'مفصلي');
       configStr = lang == AppLanguage.french
           ? '2 vantaux'
-          : (lang == AppLanguage.english ? 'Double sashes' : 'ضلفتين');
+          : (lang.fallback == AppLanguage.english ? 'Double sashes' : 'ضلفتين');
     } else if (hasSingleSash) {
       typeStr = lang == AppLanguage.french
           ? 'Battant'
-          : (lang == AppLanguage.english ? 'Casement' : 'مفصلي');
+          : (lang.fallback == AppLanguage.english ? 'Casement' : 'مفصلي');
       configStr = lang == AppLanguage.french
           ? '1 vantail'
-          : (lang == AppLanguage.english ? 'Single sash' : 'ضلفة واحدة');
+          : (lang.fallback == AppLanguage.english ? 'Single sash' : 'ضلفة واحدة');
     } else {
       if (rawType.isNotEmpty) {
         if (lang == AppLanguage.french) {
@@ -2295,7 +2282,7 @@ class PdfFicheCoupeApi {
           } else {
             typeStr = 'Fenêtre';
           }
-        } else if (lang == AppLanguage.english) {
+        } else if (lang.fallback == AppLanguage.english) {
           final translated = Localization.translate(rawType, lang);
           if (!_hasArabic(translated)) {
             typeStr = translated;
@@ -2314,7 +2301,7 @@ class PdfFicheCoupeApi {
       } else {
         typeStr = lang == AppLanguage.french
             ? 'Fenêtre'
-            : (lang == AppLanguage.english ? 'Window' : 'نافذة');
+            : (lang.fallback == AppLanguage.english ? 'Window' : 'نافذة');
       }
     }
 
@@ -2556,7 +2543,7 @@ class PdfFicheCoupeApi {
       if (u == 'لتر' || u == 'l' || u == 'litre') return 'L';
       if (_hasArabic(unit)) return 'U';
       return unit;
-    } else if (lang == AppLanguage.english) {
+    } else if (lang.fallback == AppLanguage.english) {
       if (u == 'قطعة' || u == 'حبة' || u == 'piece' || u == 'pièce' || u == 'u')
         return 'Pcs';
       if (u == 'قطاع' ||
@@ -2673,7 +2660,7 @@ class PdfFicheCoupeApi {
           );
       final glassPrefix = lang == AppLanguage.french
           ? 'Vitrage'
-          : (lang == AppLanguage.english ? 'Glazing' : 'الزجاج');
+          : (lang.fallback == AppLanguage.english ? 'Glazing' : 'الزجاج');
       return glassName.isEmpty ? glassPrefix : '$glassPrefix - $glassName';
     }
 
@@ -2683,8 +2670,8 @@ class PdfFicheCoupeApi {
   static String _colorDetailLabel(String color, AppLanguage lang) {
     return switch (lang) {
       AppLanguage.french => 'Couleur : ${Localization.colorName(color, lang)}',
-      AppLanguage.english => 'Color: ${Localization.colorName(color, lang)}',
       AppLanguage.arabic => 'اللون: $color',
+      _ => 'Color: ${Localization.colorName(color, lang)}',
     };
   }
 
@@ -2784,7 +2771,7 @@ class PdfFicheCoupeApi {
                   .replaceAll('Batmo Screws', 'Vis Meneau')
                   .replaceAll('batmo screw', 'Vis Meneau')
             : 'Vis Meneau 3.9×50';
-      } else if (targetLang == AppLanguage.english) {
+      } else if (targetLang.fallback == AppLanguage.english) {
         return clean.contains('3.9')
             ? clean
                   .replaceAll('براغي الباتمو', 'Batmo Screws')
@@ -2799,7 +2786,7 @@ class PdfFicheCoupeApi {
         clean.contains('براغي التجميع') ||
         lowerClean.contains('assembly screw')) {
       if (targetLang == AppLanguage.french) return "Vis d'assemblage";
-      if (targetLang == AppLanguage.english) return 'Assembly screws';
+      if (targetLang.fallback == AppLanguage.english) return 'Assembly screws';
       return 'براغي التجميع';
     }
 
@@ -2807,21 +2794,21 @@ class PdfFicheCoupeApi {
         clean.contains('براغي التدعيم') ||
         lowerClean.contains('vis renfort')) {
       if (targetLang == AppLanguage.french) return 'Vis Renfort 3.9×38';
-      if (targetLang == AppLanguage.english)
+      if (targetLang.fallback == AppLanguage.english)
         return 'Reinforcement Screws 3.9×38';
       return 'براغي تدعيم 3.9×38';
     }
 
     if (clean.contains('براغي الصندوق') || lowerClean.contains('vis caisson')) {
       if (targetLang == AppLanguage.french) return 'Vis Caisson';
-      if (targetLang == AppLanguage.english) return 'Box Screws';
+      if (targetLang.fallback == AppLanguage.english) return 'Box Screws';
       return 'براغي الصندوق';
     }
 
     if (clean.contains('براغي الإكسسوارات') ||
         lowerClean.contains('vis accessoire')) {
       if (targetLang == AppLanguage.french) return 'Vis Accessoires';
-      if (targetLang == AppLanguage.english) return 'Accessory Screws';
+      if (targetLang.fallback == AppLanguage.english) return 'Accessory Screws';
       return 'براغي الإكسسوارات';
     }
 
@@ -2831,7 +2818,7 @@ class PdfFicheCoupeApi {
         clean.contains('كيسون')) {
       return targetLang == AppLanguage.french
           ? 'Caisson'
-          : (targetLang == AppLanguage.english
+          : (targetLang.fallback == AppLanguage.english
                 ? 'Box / Caisson'
                 : 'الكيسون (الصندوق)');
     }
@@ -2840,7 +2827,7 @@ class PdfFicheCoupeApi {
         clean.contains('لام فينال')) {
       return targetLang == AppLanguage.french
           ? 'Lame finale'
-          : (targetLang == AppLanguage.english
+          : (targetLang.fallback == AppLanguage.english
                 ? 'Bottom slat'
                 : 'اللام فينال (الشريحة النهائية)');
     }
@@ -2850,14 +2837,14 @@ class PdfFicheCoupeApi {
         clean.contains('اللام')) {
       return targetLang == AppLanguage.french
           ? 'Lames'
-          : (targetLang == AppLanguage.english ? 'Slats' : 'اللام (الشرائح)');
+          : (targetLang.fallback == AppLanguage.english ? 'Slats' : 'اللام (الشرائح)');
     }
     if (lowerClean.contains('axe') ||
         clean.contains('المحور') ||
         clean.contains('لاكس')) {
       return targetLang == AppLanguage.french
           ? 'Axe'
-          : (targetLang == AppLanguage.english
+          : (targetLang.fallback == AppLanguage.english
                 ? 'Tube / Axle'
                 : 'اللاكس (المحور)');
     }
@@ -2868,32 +2855,32 @@ class PdfFicheCoupeApi {
         clean.contains('غليسير')) {
       return targetLang == AppLanguage.french
           ? 'Coulisses / Glissières'
-          : (targetLang == AppLanguage.english
+          : (targetLang.fallback == AppLanguage.english
                 ? 'Guide rails'
                 : 'الڭليسيرات (السكك)');
     }
     if (lowerClean.contains('attache') || clean.contains('أطاش')) {
       return targetLang == AppLanguage.french
           ? 'Attache tablier'
-          : (targetLang == AppLanguage.english
+          : (targetLang.fallback == AppLanguage.english
                 ? 'Shutter clip'
                 : 'أطاش (Attache)');
     }
     if (lowerClean.contains('embout') || clean.contains('الامبو')) {
       return targetLang == AppLanguage.french
           ? 'Embout'
-          : (targetLang == AppLanguage.english ? 'End cap' : 'الامبو (Embout)');
+          : (targetLang.fallback == AppLanguage.english ? 'End cap' : 'الامبو (Embout)');
     }
     if (lowerClean.contains('tandem') || clean.contains('طانديم')) {
       return targetLang == AppLanguage.french
           ? 'Tandem'
-          : (targetLang == AppLanguage.english ? 'Tandem' : 'طانديم (Tandem)');
+          : (targetLang.fallback == AppLanguage.english ? 'Tandem' : 'طانديم (Tandem)');
     }
     if (lowerClean.contains('support moteur') ||
         clean.contains('سيبور موتور')) {
       return targetLang == AppLanguage.french
           ? 'Support Moteur'
-          : (targetLang == AppLanguage.english
+          : (targetLang.fallback == AppLanguage.english
                 ? 'Motor Support'
                 : 'سيبور موتور');
     }
@@ -2901,7 +2888,7 @@ class PdfFicheCoupeApi {
         clean.contains('سيبور رولمو')) {
       return targetLang == AppLanguage.french
           ? 'Support Roulement'
-          : (targetLang == AppLanguage.english
+          : (targetLang.fallback == AppLanguage.english
                 ? 'Bearing Support'
                 : 'سيبور رولمو');
     }
@@ -2909,7 +2896,7 @@ class PdfFicheCoupeApi {
         clean.contains('أغطية الشفرات')) {
       return targetLang == AppLanguage.french
           ? 'Bouchons Lames'
-          : (targetLang == AppLanguage.english
+          : (targetLang.fallback == AppLanguage.english
                 ? 'Slat End Caps'
                 : 'أغطية الشفرات');
     }
@@ -2917,7 +2904,7 @@ class PdfFicheCoupeApi {
         clean.contains('كيت فولي موتور')) {
       return targetLang == AppLanguage.french
           ? 'Kit Volet Moteur'
-          : (targetLang == AppLanguage.english
+          : (targetLang.fallback == AppLanguage.english
                 ? 'Motorized Shutter Kit'
                 : 'كيت فولي موتور');
     }
@@ -2926,19 +2913,19 @@ class PdfFicheCoupeApi {
         clean.contains('كيت مانيفر')) {
       return targetLang == AppLanguage.french
           ? 'Kit Volet Manivelle'
-          : (targetLang == AppLanguage.english
+          : (targetLang.fallback == AppLanguage.english
                 ? 'Crank Shutter Kit'
                 : 'كيت فولي مانيفر');
     }
     if (lowerClean.contains('kit volet') || clean.contains('كيت فولي')) {
       return targetLang == AppLanguage.french
           ? 'Kit Volet'
-          : (targetLang == AppLanguage.english ? 'Shutter Kit' : 'كيت فولي');
+          : (targetLang.fallback == AppLanguage.english ? 'Shutter Kit' : 'كيت فولي');
     }
     if (lowerClean.contains('kit sangle') || clean.contains('كيت حزام')) {
       return targetLang == AppLanguage.french
           ? 'Kit Sangle'
-          : (targetLang == AppLanguage.english ? 'Belt Kit' : 'كيت حزام');
+          : (targetLang.fallback == AppLanguage.english ? 'Belt Kit' : 'كيت حزام');
     }
 
     // ── 3. قطاعات النوافذ والأبواب ──
@@ -2947,34 +2934,34 @@ class PdfFicheCoupeApi {
         clean.contains('كاش الإطار')) {
       return targetLang == AppLanguage.french
           ? 'Cache dormant'
-          : (targetLang == AppLanguage.english ? 'Frame Cover' : 'كاش دورمو');
+          : (targetLang.fallback == AppLanguage.english ? 'Frame Cover' : 'كاش دورمو');
     }
     if (lowerClean.contains('seuil') ||
         clean.contains('سوي') ||
         clean.contains('عتبة')) {
       return targetLang == AppLanguage.french
           ? 'Seuil'
-          : (targetLang == AppLanguage.english ? 'Threshold' : 'سوي');
+          : (targetLang.fallback == AppLanguage.english ? 'Threshold' : 'سوي');
     }
     if (lowerClean.contains('cache-rail') ||
         lowerClean.contains('cache rail') ||
         clean.contains('كاش راي')) {
       return targetLang == AppLanguage.french
           ? 'Cache-rail'
-          : (targetLang == AppLanguage.english ? 'Rail Cover' : 'كاش راي');
+          : (targetLang.fallback == AppLanguage.english ? 'Rail Cover' : 'كاش راي');
     }
     if (lowerClean.contains('chicane') || clean.contains('شيكان')) {
       final isReinf = lowerClean.contains('renforc') || clean.contains('معزز');
       if (isReinf) {
         return targetLang == AppLanguage.french
             ? 'Chicane Renforcée'
-            : (targetLang == AppLanguage.english
+            : (targetLang.fallback == AppLanguage.english
                   ? 'Reinforced Chicane'
                   : 'شيكان معزز');
       }
       return targetLang == AppLanguage.french
           ? 'Chicane'
-          : (targetLang == AppLanguage.english ? 'Chicane' : 'شيكان');
+          : (targetLang.fallback == AppLanguage.english ? 'Chicane' : 'شيكان');
     }
     // Gâche names frequently contain "ouvrant" as a qualifier (for example
     // "Gache double ouvrant"). Classify the accessory before the generic
@@ -2985,31 +2972,31 @@ class PdfFicheCoupeApi {
         clean.contains('كاش')) {
       return targetLang == AppLanguage.french
           ? 'Gâche'
-          : (targetLang == AppLanguage.english ? 'Strike plate' : 'قاش');
+          : (targetLang.fallback == AppLanguage.english ? 'Strike plate' : 'قاش');
     }
     if (lowerClean.contains('dormant') || clean.contains('إطار')) {
       return targetLang == AppLanguage.french
           ? 'Dormant'
-          : (targetLang == AppLanguage.english ? 'Frame' : 'إطار');
+          : (targetLang.fallback == AppLanguage.english ? 'Frame' : 'إطار');
     }
     if (lowerClean.contains('ouvrant') ||
         clean.contains('ضلفة') ||
         clean.contains('ظلفة')) {
       return targetLang == AppLanguage.french
           ? 'Ouvrant'
-          : (targetLang == AppLanguage.english ? 'Sash' : 'ضلفة');
+          : (targetLang.fallback == AppLanguage.english ? 'Sash' : 'ضلفة');
     }
     if (lowerClean.contains('parclose') ||
         clean.contains('باركلوز') ||
         clean.contains('بارك لوز')) {
       return targetLang == AppLanguage.french
           ? 'Parclose'
-          : (targetLang == AppLanguage.english ? 'Glazing bead' : 'باركلوز');
+          : (targetLang.fallback == AppLanguage.english ? 'Glazing bead' : 'باركلوز');
     }
     if (lowerClean.contains('battement') || clean.contains('باتمو')) {
       return targetLang == AppLanguage.french
           ? 'Battement'
-          : (targetLang == AppLanguage.english ? 'Meeting stile' : 'باتمو');
+          : (targetLang.fallback == AppLanguage.english ? 'Meeting stile' : 'باتمو');
     }
 
     // ── 4. الإكسسوارات والمفاصل ──
@@ -3019,45 +3006,45 @@ class PdfFicheCoupeApi {
       if (lowerClean.contains('couliss') || clean.contains('منزلق')) {
         return targetLang == AppLanguage.french
             ? 'Poignée Coulissante'
-            : (targetLang == AppLanguage.english
+            : (targetLang.fallback == AppLanguage.english
                   ? 'Sliding Handle'
                   : 'مقبض منزلق');
       }
       if (lowerClean.contains('porte') || clean.contains('باب')) {
         return targetLang == AppLanguage.french
             ? 'Poignée Porte'
-            : (targetLang == AppLanguage.english ? 'Door Handle' : 'مقبض باب');
+            : (targetLang.fallback == AppLanguage.english ? 'Door Handle' : 'مقبض باب');
       }
       return targetLang == AppLanguage.french
           ? 'Poignée Fenêtre'
-          : (targetLang == AppLanguage.english ? 'Window Handle' : 'مقبض');
+          : (targetLang.fallback == AppLanguage.english ? 'Window Handle' : 'مقبض');
     }
     if (lowerClean.contains('serrure') || clean.contains('قفل')) {
       return targetLang == AppLanguage.french
           ? 'Serrure'
-          : (targetLang == AppLanguage.english ? 'Lock' : 'قفل');
+          : (targetLang.fallback == AppLanguage.english ? 'Lock' : 'قفل');
     }
     if (lowerClean.contains('canon') || clean.contains('أسطوانة')) {
       return targetLang == AppLanguage.french
           ? 'Canon'
-          : (targetLang == AppLanguage.english ? 'Cylinder' : 'الأسطوانة');
+          : (targetLang.fallback == AppLanguage.english ? 'Cylinder' : 'الأسطوانة');
     }
     if (lowerClean.contains('paumelle') ||
         lowerClean.contains('hinge') ||
         clean.contains('مفصل')) {
       return targetLang == AppLanguage.french
           ? 'Paumelles'
-          : (targetLang == AppLanguage.english ? 'Hinges' : 'مفصلات');
+          : (targetLang.fallback == AppLanguage.english ? 'Hinges' : 'مفصلات');
     }
     if (lowerClean.contains('roulette') || clean.contains('عجلات')) {
       return targetLang == AppLanguage.french
           ? 'Roulettes'
-          : (targetLang == AppLanguage.english ? 'Rollers' : 'عجلات');
+          : (targetLang.fallback == AppLanguage.english ? 'Rollers' : 'عجلات');
     }
     if (lowerClean.contains('verrou') || clean.contains('فيرو')) {
       return targetLang == AppLanguage.french
           ? 'Verrou'
-          : (targetLang == AppLanguage.english ? 'Flush bolt' : 'فيرو');
+          : (targetLang.fallback == AppLanguage.english ? 'Flush bolt' : 'فيرو');
     }
     // Check Triangle before Crémone because legacy Triangle names often contain
     // both words (for example "تراينغل الكريمون").  The cutting sheet must
@@ -3073,17 +3060,17 @@ class PdfFicheCoupeApi {
         clean.contains('كريمون')) {
       return targetLang == AppLanguage.french
           ? 'Crémone'
-          : (targetLang == AppLanguage.english ? 'Cremone' : 'كريمون');
+          : (targetLang.fallback == AppLanguage.english ? 'Cremone' : 'كريمون');
     }
     if (lowerClean.contains('joint brosse') || clean.contains('جوان بروس')) {
       return targetLang == AppLanguage.french
           ? 'Joint brosse'
-          : (targetLang == AppLanguage.english ? 'Brush gasket' : 'جوان بروس');
+          : (targetLang.fallback == AppLanguage.english ? 'Brush gasket' : 'جوان بروس');
     }
     if (lowerClean.contains('joint') || clean.contains('جوان')) {
       return targetLang == AppLanguage.french
           ? 'Joint'
-          : (targetLang == AppLanguage.english ? 'Gasket' : 'جوان');
+          : (targetLang.fallback == AppLanguage.english ? 'Gasket' : 'جوان');
     }
 
     final translated = Localization.translate(clean, targetLang);
@@ -3154,158 +3141,158 @@ class _Tr {
 
   String get ficheDeCoupe => switch (lang) {
     AppLanguage.french => 'FICHE DE COUPE',
-    AppLanguage.english => 'CUTTING SHEET',
     AppLanguage.arabic => 'ورقة التقطيع',
+    _ => 'CUTTING SHEET',
   };
 
   String get date => switch (lang) {
     AppLanguage.french => 'Date :',
-    AppLanguage.english => 'Date:',
     AppLanguage.arabic => 'التاريخ :',
+    _ => 'Date:',
   };
 
   String get client => switch (lang) {
     AppLanguage.french => 'Client :',
-    AppLanguage.english => 'Customer:',
     AppLanguage.arabic => 'العميل :',
+    _ => 'Customer:',
   };
 
   String get commande => switch (lang) {
     AppLanguage.french => 'Commande : #',
-    AppLanguage.english => 'Order: #',
     AppLanguage.arabic => 'رقم الطلبية : #',
+    _ => 'Order: #',
   };
 
   String get saisiPar => switch (lang) {
     AppLanguage.french => 'Saisi par :',
-    AppLanguage.english => 'Entered by:',
     AppLanguage.arabic => 'حرر من طرف :',
+    _ => 'Entered by:',
   };
 
   String article(int n) => switch (lang) {
     AppLanguage.french => 'ARTICLE $n',
-    AppLanguage.english => 'ITEM $n',
     AppLanguage.arabic => 'عنصر $n',
+    _ => 'ITEM $n',
   };
 
   String get gamme => switch (lang) {
     AppLanguage.french => 'Gamme :',
-    AppLanguage.english => 'Series:',
     AppLanguage.arabic => 'السلسلة :',
+    _ => 'Series:',
   };
 
   String get couleur => switch (lang) {
     AppLanguage.french => 'Couleur :',
-    AppLanguage.english => 'Color:',
     AppLanguage.arabic => 'اللون :',
+    _ => 'Color:',
   };
 
   String get qte => switch (lang) {
     AppLanguage.french => 'Qté :',
-    AppLanguage.english => 'Qty:',
     AppLanguage.arabic => 'العدد :',
+    _ => 'Qty:',
   };
 
   String get profils => switch (lang) {
     AppLanguage.french => 'PROFILS',
-    AppLanguage.english => 'PROFILES',
     AppLanguage.arabic => 'القطاعات',
+    _ => 'PROFILES',
   };
 
   String get accessoires => switch (lang) {
     AppLanguage.french => 'ACCESSOIRES',
-    AppLanguage.english => 'ACCESSORIES',
     AppLanguage.arabic => 'الإكسسوارات',
+    _ => 'ACCESSORIES',
   };
 
   String get joints => switch (lang) {
     AppLanguage.french => 'JOINTS',
-    AppLanguage.english => 'GASKETS',
     AppLanguage.arabic => 'الجوانات',
+    _ => 'GASKETS',
   };
 
   String get hinges => switch (lang) {
     AppLanguage.french => 'paumelles',
-    AppLanguage.english => 'hinges',
     AppLanguage.arabic => 'مفاصل',
+    _ => 'hinges',
   };
 
   String sash(int n) => switch (lang) {
     AppLanguage.french => 'Ouvrant $n',
-    AppLanguage.english => 'Sash $n',
     AppLanguage.arabic => 'الضلفة $n',
+    _ => 'Sash $n',
   };
 
   String get fromBottom => switch (lang) {
     AppLanguage.french => 'axes depuis le bas',
-    AppLanguage.english => 'centres from the bottom',
     AppLanguage.arabic => 'المحاور من الأسفل',
+    _ => 'centres from the bottom',
   };
 
   String get fromLeft => switch (lang) {
     AppLanguage.french => 'axes depuis la gauche',
-    AppLanguage.english => 'centres from the left',
     AppLanguage.arabic => 'المحاور من اليسار',
+    _ => 'centres from the left',
   };
 
   String get image => switch (lang) {
     AppLanguage.french => 'Image',
-    AppLanguage.english => 'Image',
     AppLanguage.arabic => 'الصورة',
+    _ => 'Image',
   };
 
   String get reference => switch (lang) {
     AppLanguage.french => 'Référence',
-    AppLanguage.english => 'Reference',
     AppLanguage.arabic => 'المرجع',
+    _ => 'Reference',
   };
 
   String get designation => switch (lang) {
     AppLanguage.french => 'Désignation',
-    AppLanguage.english => 'Description',
     AppLanguage.arabic => 'الوصف / التعيين',
+    _ => 'Description',
   };
 
   String get quantite => switch (lang) {
     AppLanguage.french => 'Qté',
-    AppLanguage.english => 'Qty',
     AppLanguage.arabic => 'الكمية',
+    _ => 'Qty',
   };
 
   String get longueur => switch (lang) {
     AppLanguage.french => 'Longueur',
-    AppLanguage.english => 'Length',
     AppLanguage.arabic => 'الطول',
+    _ => 'Length',
   };
 
   String get coupe => switch (lang) {
     AppLanguage.french => 'Coupe',
-    AppLanguage.english => 'Cut Angle',
     AppLanguage.arabic => 'زاوية القطع',
+    _ => 'Cut Angle',
   };
 
   String get unite => switch (lang) {
     AppLanguage.french => 'Unité',
-    AppLanguage.english => 'Unit',
     AppLanguage.arabic => 'الوحدة',
+    _ => 'Unit',
   };
 
   String get longueurTotale => switch (lang) {
     AppLanguage.french => 'Longueur totale',
-    AppLanguage.english => 'Total length',
     AppLanguage.arabic => 'الطول الإجمالي',
+    _ => 'Total length',
   };
 
   String get voletRoulant => switch (lang) {
     AppLanguage.french => 'VOLET ROULANT',
-    AppLanguage.english => 'ROLLER SHUTTER',
     AppLanguage.arabic => 'مركبات الستار',
+    _ => 'ROLLER SHUTTER',
   };
 
   String page(int p, int t) => switch (lang) {
     AppLanguage.french => 'Page $p / $t',
-    AppLanguage.english => 'Page $p of $t',
     AppLanguage.arabic => 'صفحة $p من $t',
+    _ => 'Page $p of $t',
   };
 }
 

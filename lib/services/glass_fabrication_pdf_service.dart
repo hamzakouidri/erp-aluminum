@@ -169,12 +169,12 @@ class GlassFabricationPdfService {
                       ? switch (lang) {
                           AppLanguage.arabic => 'من مركز الثقب',
                           AppLanguage.french => "À l'axe du trou",
-                          AppLanguage.english => 'To the hole centre',
+                          _ => 'To the hole centre',
                         }
                       : switch (lang) {
                           AppLanguage.arabic => 'من حافة الثقب',
                           AppLanguage.french => 'Au bord du trou',
-                          AppLanguage.english => 'To the hole edge',
+                          _ => 'To the hole edge',
                         },
                   lang: lang,
                   fonts: fonts,
