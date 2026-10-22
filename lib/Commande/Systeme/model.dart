@@ -1101,6 +1101,44 @@ class InnerDimensionHit {
   });
 }
 
+/// One glass cell of a divided zone as drawn: [key] is its top-left grid
+/// cell ('main_cell_0_1', 'left_cell_1_0'...), spanning [hSpan] rows and
+/// [wSpan] columns when divisions are removed between grid cells.
+class DrawnGlassCell {
+  final String key;
+  final int row;
+  final int col;
+  final int hSpan;
+  final int wSpan;
+  final Rect rect;
+
+  const DrawnGlassCell({
+    required this.key,
+    required this.row,
+    required this.col,
+    required this.hSpan,
+    required this.wSpan,
+    required this.rect,
+  });
+
+  /// Whether [subZone] (a tapped cell key) falls inside this cell.
+  bool covers(String subZone) {
+    if (subZone == key) return true;
+    final prefix = key.substring(0, key.indexOf('_cell_') + '_cell_'.length);
+    if (!subZone.startsWith(prefix)) return false;
+    final parts = subZone.substring(prefix.length).split('_');
+    if (parts.length != 2) return false;
+    final r = int.tryParse(parts[0]);
+    final c = int.tryParse(parts[1]);
+    return r != null &&
+        c != null &&
+        r >= row &&
+        r < row + hSpan &&
+        c >= col &&
+        c < col + wSpan;
+  }
+}
+
 class GlassSpecification {
   final GlassStructure structure;
   final GlassFinish finishOuter;
@@ -4154,6 +4192,22 @@ class WindowModel extends ChangeNotifier {
   /// The leaves of each sliding zone as last drawn (zone id → rects), so the
   /// selection overlay highlights exactly the leaf picked.
   final Map<String, List<Rect>> drawnSlidingLeafRects = {};
+
+  /// The bars of each inner division as last drawn (see
+  /// [innerDivisionKey]), so the selection overlay outlines exactly the
+  /// division picked, inside a sash as inside a fixed glass.
+  final Map<String, List<Rect>> drawnInnerDivisionRects = {};
+
+  /// The glass cells of each divided zone as last drawn (zone id → cells),
+  /// so the selection overlay highlights the cell tapped inside a sash.
+  final Map<String, List<DrawnGlassCell>> drawnGlassCells = {};
+
+  static String innerDivisionKey(
+    String zoneId, {
+    required bool isRightSash,
+    required bool isHorizontal,
+    required int index,
+  }) => '$zoneId|${isRightSash ? 'r' : 'l'}|${isHorizontal ? 'h' : 'v'}|$index';
 
   /// Where the handle-height number of each opening sash was last drawn
   /// (zone id → the number's rect and the sash span it measures), so a tap

@@ -4938,6 +4938,34 @@ class WorkspaceSelectionPainter extends CustomPainter {
     return [zone.boundary];
   }
 
+  /// The drawn bars of the selected inner division.
+  List<Rect> _selectedDivisionBars() {
+    final selection = model.selection;
+    final zoneId = selection.zoneId;
+    final index = selection.innerDivisionIndex;
+    if (zoneId == null || index == null) return const [];
+    return model.drawnInnerDivisionRects[WindowModel.innerDivisionKey(
+          zoneId,
+          isRightSash: selection.isRightSashInnerDivision ?? false,
+          isHorizontal: selection.isHorizontalInnerDivision ?? false,
+          index: index,
+        )] ??
+        const [];
+  }
+
+  /// The drawn glass cell holding the cell tapped in a divided zone.
+  DrawnGlassCell? _selectedGlassCell() {
+    final zoneId = model.selection.zoneId;
+    final sub = model.activeSubZone;
+    if (zoneId == null || sub == null || !sub.contains('_cell_')) return null;
+    // Sliding leaves share their cell keys: they keep the leaf highlight.
+    if (model.selectedZone?.content == ZoneContent.slidingSash) return null;
+    for (final cell in model.drawnGlassCells[zoneId] ?? const []) {
+      if (cell.covers(sub)) return cell;
+    }
+    return null;
+  }
+
   WorkspaceSelectionPainter({
     required this.model,
     this.userScale = 1.0,
@@ -5047,6 +5075,19 @@ class WorkspaceSelectionPainter extends CustomPainter {
           ),
         );
       }
+    } else if (selection.type == SelectionType.innerDivision &&
+        _selectedDivisionBars().isNotEmpty) {
+      // Only the division picked, inside a sash as inside a fixed glass.
+      for (final rect in _selectedDivisionBars()) {
+        canvas.drawRect(rect, fill);
+        canvas.drawRect(rect, outline);
+      }
+    } else if (selection.type == SelectionType.zone &&
+        _selectedGlassCell() != null) {
+      // The cell tapped inside a divided sash, like a fixed glass zone.
+      final shape = model.zoneSelectionPath(_selectedGlassCell()!.rect);
+      canvas.drawPath(shape, fill);
+      canvas.drawPath(shape, outline);
     } else if (selection.type == SelectionType.zone ||
         selection.type == SelectionType.innerDivision) {
       final zoneId = selection.zoneId;

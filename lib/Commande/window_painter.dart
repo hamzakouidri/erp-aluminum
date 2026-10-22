@@ -182,6 +182,8 @@ class WindowPainter extends CustomPainter {
     if (recordHitTargets) {
       model.drawnHandleHeightLabels.clear();
       model.drawnAngleBadges.clear();
+      model.drawnInnerDivisionRects.clear();
+      model.drawnGlassCells.clear();
     }
 
     // The selected frame owns its visible drawing width. PVC frame roles can
@@ -6618,6 +6620,19 @@ class WindowPainter extends CustomPainter {
         vPositions.add(stepX * i);
       }
     }
+      if (recordHitTargets) {
+        model.drawnInnerDivisionRects
+            .putIfAbsent(
+              WindowModel.innerDivisionKey(
+                zone.id,
+                isRightSash: isRightSash,
+                isHorizontal: isHorizontal,
+                index: index,
+              ),
+              () => [],
+            )
+            .add(rect);
+      }
 
     String getVKey(int r, int v) {
       if (zone.content == ZoneContent.doubleSash && isRightSash) {
@@ -6924,6 +6939,20 @@ class WindowPainter extends CustomPainter {
 
           for (int col = c; col < c + w - 1; col++) {
             if (zone.disabledVerticalDivisions[getVKey(r + h, col)] != true) {
+        if (recordHitTargets) {
+          model.drawnGlassCells
+              .putIfAbsent(zone.id, () => [])
+              .add(
+                DrawnGlassCell(
+                  key: cellKey,
+                  row: r,
+                  col: c,
+                  hSpan: h,
+                  wSpan: w,
+                  rect: cellRect,
+                ),
+              );
+        }
               canMergeRow = false;
               break;
             }
@@ -7232,6 +7261,55 @@ class WindowPainter extends CustomPainter {
 
     for (var cell in mergedCells) {
       final isCellSash =
+
+    // Inside a divided opening sash the editor shows each column width at
+    // the top of the glass and each row height on its left, where a tap
+    // opens their edit dialog (WindowModel._checkSashDivisionHit).
+    final bool isOpeningSash =
+        zone.content == ZoneContent.singleSash ||
+        zone.content == ZoneContent.doubleSash;
+    if (!showDrawingDimensions || !isOpeningSash) return;
+    const sashCellStyle = TextStyle(
+      color: Color(0xFF1565C0),
+      fontSize: 36,
+      fontWeight: FontWeight.bold,
+    );
+    TextPainter sizeText(double value) => TextPainter(
+      text: TextSpan(text: '${value.round()}', style: sashCellStyle),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    if (cols > 1) {
+      for (int c = 0; c < cols; c++) {
+        double left = glassR.left + glassR.width * (c == 0 ? 0.0 : vPositions[c - 1]);
+        if (c > 0) left += dividerT / 2;
+        double right =
+            glassR.left + glassR.width * (c == cols - 1 ? 1.0 : vPositions[c]);
+        if (c < cols - 1) right -= dividerT / 2;
+        final text = sizeText(right - left);
+        if (text.width > right - left - 8) continue;
+        text.paint(
+          canvas,
+          Offset((left + right - text.width) / 2, glassR.top + 6),
+        );
+      }
+    }
+    if (rows > 1) {
+      for (int r = 0; r < rows; r++) {
+        double top = glassR.top + glassR.height * (r == 0 ? 0.0 : hPositions[r - 1]);
+        if (r > 0) top += dividerT / 2;
+        double bottom =
+            glassR.top + glassR.height * (r == rows - 1 ? 1.0 : hPositions[r]);
+        if (r < rows - 1) bottom -= dividerT / 2;
+        final text = sizeText(bottom - top);
+        if (text.width > bottom - top - 8) continue;
+        canvas.save();
+        canvas.translate(glassR.left + 6, (top + bottom + text.width) / 2);
+        canvas.rotate(-math.pi / 2);
+        text.paint(canvas, Offset.zero);
+        canvas.restore();
+      }
+    }
           (zone.cellIsSash[cell.key] ?? false) ||
           (zone.cellIsDoubleSash[cell.key] ?? false) ||
           zone.content == ZoneContent.singleSash ||
