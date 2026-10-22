@@ -114,6 +114,20 @@ void main() {
       expect(frame(m, 'f0').width, closeTo(2703, 1));
     });
 
+    test('transom drawn after the door: its own height changes', () {
+      final m = build(const [
+        Rect.fromLTRB(0, 429, 935, 2469), // the door, drawn first
+        Rect.fromLTRB(0, 0, 935, 429), // the transom over it
+      ]);
+      expect(frame(m, 'f1').height, closeTo(429, 1));
+      m.resizeFrameOuterDimensionForZone('f1', isWidth: false, outerSize: 590);
+      expect(frame(m, 'f1').top, closeTo(0, 1));
+      expect(frame(m, 'f1').height, closeTo(590, 1));
+      expect(frame(m, 'f0').top, closeTo(590, 1));
+      expect(frame(m, 'f0').height, closeTo(2040, 1)); // the door keeps its size
+      expect(m.height, closeTo(2630, 1));
+    });
+
     test('one undo restores the whole change', () {
       final m = transom();
       m.resizeFrameOuterDimensionForZone('f1', isWidth: true, outerSize: 2352);

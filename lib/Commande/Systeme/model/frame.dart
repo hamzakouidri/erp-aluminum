@@ -5133,12 +5133,18 @@ extension WindowModelFrame on WindowModel {
     if (coupleFrames && rects.length > 1) {
       // إزالة أي فراغ بين الكوادر المقترنة بجعلها ملتصقة تماماً
       // أو ترك فاصل يعادل عرض بروفيل الزاوية (تيبيكاري) إن كانت هناك وصلة زاوية مفعّلة
-      rects.sort((a, b) {
-        final cmp = a.left.compareTo(b.left);
-        return cmp != 0 ? cmp : a.top.compareTo(b.top);
-      });
-      for (int i = 0; i < rects.length; i++) {
-        for (int j = i + 1; j < rects.length; j++) {
+      // Pairs are visited left to right, top to bottom, but each rect stays
+      // at the index of its zone group: frame index i is always
+      // _frameZoneGroups()[i], whatever order the frames were drawn in.
+      final order = List<int>.generate(rects.length, (k) => k)
+        ..sort((a, b) {
+          final cmp = rects[a].left.compareTo(rects[b].left);
+          return cmp != 0 ? cmp : rects[a].top.compareTo(rects[b].top);
+        });
+      for (int oi = 0; oi < order.length; oi++) {
+        for (int oj = oi + 1; oj < order.length; oj++) {
+          final i = order[oi];
+          final j = order[oj];
           final r1 = rects[i];
           final r2 = rects[j];
           final vOverlap =
