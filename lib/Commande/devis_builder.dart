@@ -262,8 +262,8 @@ class DevisBuilder {
     // French is the application default. Do not fall back to Arabic merely
     // because the language preference has not been written yet (for example
     // when a document is opened immediately after changing language).
-    final langIndex = prefs.getInt('app_language') ?? AppLanguage.french.index;
-    _currentLang = overrideLang ?? AppLanguage.values[langIndex];
+    _currentLang =
+        overrideLang ?? AppSettingsProvider.languageFromPreferences(prefs);
     _showInstallation =
         prefs.getBool(InstallationFees.showOnDevisPreference) ?? true;
     final candidate = workshop ?? await loadWorkshopInfo();
@@ -486,7 +486,7 @@ class DevisBuilder {
 
     if (lang == AppLanguage.french) {
       return 'Prix: $formattedTotal D.A | Remise: $formattedRemise D.A | Taux TVA: $formattedTaux';
-    } else if (lang == AppLanguage.english) {
+    } else if (lang.fallback == AppLanguage.english) {
       return 'Price: $formattedTotal DZD | Discount: $formattedRemise DZD | Tax Rate: $formattedTaux';
     } else {
       return 'السعر: $formattedTotal دج | الخصم: $formattedRemise دج | نسبة الضريبة: $formattedTaux';
@@ -614,7 +614,7 @@ class DevisBuilder {
         res += 'Trempé ';
       else if (processing == 'lowE')
         res += 'Low-E ';
-    } else if (_currentLang == AppLanguage.english) {
+    } else if (_currentLang.fallback == AppLanguage.english) {
       if (finish == 'stopSol')
         res += 'Stop Sol ';
       else if (finish == 'sable')
@@ -926,14 +926,14 @@ class DevisBuilder {
           if (isDoor) {
             systemType = switch (_currentLang) {
               AppLanguage.french => 'Porte double sash',
-              AppLanguage.english => 'Double sash door',
               AppLanguage.arabic => 'باب بضلفتين',
+              _ => 'Double sash door',
             };
           } else {
             systemType = switch (_currentLang) {
               AppLanguage.french => 'Fenêtre double ouvrant',
-              AppLanguage.english => 'Double sash window',
               AppLanguage.arabic => 'نافذة بضلفتين',
+              _ => 'Double sash window',
             };
           }
         } else {
@@ -943,8 +943,8 @@ class DevisBuilder {
           if (hasSlidingSash) {
             systemType = switch (_currentLang) {
               AppLanguage.french => 'Fenêtre coulissante',
-              AppLanguage.english => 'Sliding window',
               AppLanguage.arabic => 'نافذة منزلقة',
+              _ => 'Sliding window',
             };
           } else {
             final hasSingleSash = zonesList.any(
@@ -954,14 +954,14 @@ class DevisBuilder {
               if (isDoor) {
                 systemType = switch (_currentLang) {
                   AppLanguage.french => 'Porte simple sash',
-                  AppLanguage.english => 'Single sash door',
                   AppLanguage.arabic => 'باب بضلفة واحدة',
+                  _ => 'Single sash door',
                 };
               } else {
                 systemType = switch (_currentLang) {
                   AppLanguage.french => 'Fenêtre simple ouvrant',
-                  AppLanguage.english => 'Single sash window',
                   AppLanguage.arabic => 'نافذة بضلفة واحدة',
+                  _ => 'Single sash window',
                 };
               }
             }
@@ -1510,7 +1510,7 @@ class DevisBuilder {
     if (isShutterOnly) {
       if (_currentLang == AppLanguage.french) {
         details.add('Volet roulant');
-      } else if (_currentLang == AppLanguage.english) {
+      } else if (_currentLang.fallback == AppLanguage.english) {
         details.add('Rolling shutter');
       } else {
         details.add('ستار رولان (Volet roulant)');
@@ -1526,7 +1526,7 @@ class DevisBuilder {
     );
     if (_currentLang == AppLanguage.french) {
       details.add('Gamme: $translatedSeries');
-    } else if (_currentLang == AppLanguage.english) {
+    } else if (_currentLang.fallback == AppLanguage.english) {
       details.add('Series: $translatedSeries');
     } else {
       details.add('السلسلة: $translatedSeries');
@@ -1536,7 +1536,7 @@ class DevisBuilder {
     if (width > 0 || height > 0) {
       if (_currentLang == AppLanguage.french) {
         details.add('Largeur: $width mm | Hauteur: $height mm');
-      } else if (_currentLang == AppLanguage.english) {
+      } else if (_currentLang.fallback == AppLanguage.english) {
         details.add('Width: $width mm | Height: $height mm');
       } else {
         details.add('العرض: $width مم | الارتفاع: $height مم');
@@ -1582,7 +1582,7 @@ class DevisBuilder {
 
           if (_currentLang == AppLanguage.french) {
             details.add('Hauteur Poignée: $handleH mm');
-          } else if (_currentLang == AppLanguage.english) {
+          } else if (_currentLang.fallback == AppLanguage.english) {
             details.add('Handle Height: $handleH mm');
           } else {
             details.add('ارتفاع المقبض: $handleH مم');
@@ -1657,7 +1657,7 @@ class DevisBuilder {
           glassLines.add('Vitrage: Double ${totalT}mm ($tStr)');
           glassLines.add('  - Face Extérieure: $outF');
           glassLines.add('  - Face Intérieure: $inF');
-        } else if (_currentLang == AppLanguage.english) {
+        } else if (_currentLang.fallback == AppLanguage.english) {
           glassLines.add('Glass: Double ${totalT}mm ($tStr)');
           glassLines.add('  - Outer Face: $outF');
           glassLines.add('  - Inner Face: $inF');
@@ -1679,7 +1679,7 @@ class DevisBuilder {
         );
         if (_currentLang == AppLanguage.french) {
           glassLines.add('Vitrage: Panneau $pThickStr ($outF)');
-        } else if (_currentLang == AppLanguage.english) {
+        } else if (_currentLang.fallback == AppLanguage.english) {
           glassLines.add('Glass: Panel $pThickStr ($outF)');
         } else {
           glassLines.add('الزجاج: بانو ${pThick.toStringAsFixed(0)}مم ($outF)');
@@ -1695,7 +1695,7 @@ class DevisBuilder {
         );
         if (_currentLang == AppLanguage.french) {
           glassLines.add('Vitrage: Simple $tStr ($outF)');
-        } else if (_currentLang == AppLanguage.english) {
+        } else if (_currentLang.fallback == AppLanguage.english) {
           glassLines.add('Glass: Simple $tStr ($outF)');
         } else {
           glassLines.add('الزجاج: مفرد ${tOut.toStringAsFixed(0)}مم ($outF)');
@@ -1715,7 +1715,7 @@ class DevisBuilder {
         if (glass != null && glass.isNotEmpty) {
           final glassStr = _currentLang == AppLanguage.french
               ? 'Vitrage: ${_glassLabel(glass)}'
-              : _currentLang == AppLanguage.english
+              : _currentLang.fallback == AppLanguage.english
               ? 'Glass: ${_glassLabel(glass)}'
               : 'الزجاج: ${_glassLabel(glass)}';
           if (!details.contains(glassStr)) {
@@ -1783,7 +1783,7 @@ class DevisBuilder {
         if (c == 'gold' || c == 'doré' || c == 'ذهبي') return 'doré';
         if (c == 'white' || c == 'blanc' || c == 'أبيض') return 'blanc';
         return c;
-      } else if (_currentLang == AppLanguage.english) {
+      } else if (_currentLang.fallback == AppLanguage.english) {
         if (c == 'gold' || c == 'doré' || c == 'ذهبي') return 'gold';
         if (c == 'white' || c == 'blanc' || c == 'أبيض') return 'white';
         return c;
@@ -1799,7 +1799,7 @@ class DevisBuilder {
         details.add(
           'Décor vitrage: ${formatDecorColor(decorColorName)} ($totalRosettes rosettes par fenêtre)',
         );
-      } else if (_currentLang == AppLanguage.english) {
+      } else if (_currentLang.fallback == AppLanguage.english) {
         details.add(
           'Glass decor: ${formatDecorColor(decorColorName)} ($totalRosettes rosettes per window)',
         );
@@ -1811,7 +1811,7 @@ class DevisBuilder {
     } else if (hasBaguetteDecor) {
       if (_currentLang == AppLanguage.french) {
         details.add('Décor vitrage: ${formatDecorColor(decorColorName)}');
-      } else if (_currentLang == AppLanguage.english) {
+      } else if (_currentLang.fallback == AppLanguage.english) {
         details.add('Glass decor: ${formatDecorColor(decorColorName)}');
       } else {
         details.add('ديكور الزجاج: ${formatDecorColor(decorColorName)}');
@@ -1835,7 +1835,7 @@ class DevisBuilder {
       if (isShutterOnly || map['hasShutter'] == true) {
         details.add('Couleur Volet: $profColor');
       }
-    } else if (_currentLang == AppLanguage.english) {
+    } else if (_currentLang.fallback == AppLanguage.english) {
       details.add('Profile Color: $profColor');
       details.add('Accessory Color: $accColor');
       if (isShutterOnly || map['hasShutter'] == true) {
@@ -1875,7 +1875,7 @@ class DevisBuilder {
         if (hasT) activeSides.add('Haut');
         if (hasB) activeSides.add('Bas');
         details.add('Couvre-joint: ${activeSides.join(', ')}');
-      } else if (_currentLang == AppLanguage.english) {
+      } else if (_currentLang.fallback == AppLanguage.english) {
         if (hasL) activeSides.add('Left');
         if (hasR) activeSides.add('Right');
         if (hasT) activeSides.add('Top');
@@ -1971,7 +1971,7 @@ class DevisBuilder {
 
       if (_currentLang == AppLanguage.french) {
         details.add('Fermeture: $fermetureVal');
-      } else if (_currentLang == AppLanguage.english) {
+      } else if (_currentLang.fallback == AppLanguage.english) {
         details.add('Closure: $fermetureVal');
       } else {
         details.add('الإغلاق (Fermeture): $fermetureVal');
@@ -1994,28 +1994,28 @@ class DevisBuilder {
             details.add(switch (_currentLang) {
               AppLanguage.french =>
                 'Montant central: $centralReinforcedCount renforcé(s), $centralNormalCount simple(s)',
-              AppLanguage.english =>
-                'Central montant: $centralReinforcedCount reinforced, $centralNormalCount standard',
               AppLanguage.arabic =>
                 'القائم الوسطي: $centralReinforcedCount مدعم، $centralNormalCount غير مدعم',
+              _ =>
+                'Central montant: $centralReinforcedCount reinforced, $centralNormalCount standard',
             });
           } else if (centralReinforcedCount > 0) {
             details.add(switch (_currentLang) {
               AppLanguage.french =>
                 'Montant central: $centralReinforcedCount renforcé(s)',
-              AppLanguage.english =>
-                'Central montant: $centralReinforcedCount reinforced',
               AppLanguage.arabic =>
                 'القائم الوسطي: $centralReinforcedCount مدعم',
+              _ =>
+                'Central montant: $centralReinforcedCount reinforced',
             });
           } else {
             details.add(switch (_currentLang) {
               AppLanguage.french =>
                 'Montant central: $centralNormalCount simple(s)',
-              AppLanguage.english =>
-                'Central montant: $centralNormalCount standard',
               AppLanguage.arabic =>
                 'القائم الوسطي: $centralNormalCount غير مدعم',
+              _ =>
+                'Central montant: $centralNormalCount standard',
             });
           }
         }
@@ -2025,28 +2025,28 @@ class DevisBuilder {
             details.add(switch (_currentLang) {
               AppLanguage.french =>
                 'Montant latéral: $lateralReinforcedCount renforcé(s), $lateralNormalCount simple(s)',
-              AppLanguage.english =>
-                'Lateral montant: $lateralReinforcedCount reinforced, $lateralNormalCount standard',
               AppLanguage.arabic =>
                 'القائم الجانبي: $lateralReinforcedCount مدعم، $lateralNormalCount غير مدعم',
+              _ =>
+                'Lateral montant: $lateralReinforcedCount reinforced, $lateralNormalCount standard',
             });
           } else if (lateralReinforcedCount > 0) {
             details.add(switch (_currentLang) {
               AppLanguage.french =>
                 'Montant latéral: $lateralReinforcedCount renforcé(s)',
-              AppLanguage.english =>
-                'Lateral montant: $lateralReinforcedCount reinforced',
               AppLanguage.arabic =>
                 'القائم الجانبي: $lateralReinforcedCount مدعم',
+              _ =>
+                'Lateral montant: $lateralReinforcedCount reinforced',
             });
           } else {
             details.add(switch (_currentLang) {
               AppLanguage.french =>
                 'Montant latéral: $lateralNormalCount simple(s)',
-              AppLanguage.english =>
-                'Lateral montant: $lateralNormalCount standard',
               AppLanguage.arabic =>
                 'القائم الجانبي: $lateralNormalCount غير مدعم',
+              _ =>
+                'Lateral montant: $lateralNormalCount standard',
             });
           }
         }
@@ -2069,7 +2069,7 @@ class DevisBuilder {
 
       if (_currentLang == AppLanguage.french) {
         details.add('Volet: $mechLabel');
-      } else if (_currentLang == AppLanguage.english) {
+      } else if (_currentLang.fallback == AppLanguage.english) {
         details.add('Shutter: $mechLabel');
       } else {
         details.add('الستار (Volet): $mechLabel');
@@ -2083,7 +2083,7 @@ class DevisBuilder {
         if (lameFullName.isNotEmpty) {
           if (_currentLang == AppLanguage.french) {
             details.add('Lame: $lameFullName');
-          } else if (_currentLang == AppLanguage.english) {
+          } else if (_currentLang.fallback == AppLanguage.english) {
             details.add('Lame: $lameFullName');
           } else {
             details.add('الشفرة: $lameFullName');
@@ -2096,7 +2096,7 @@ class DevisBuilder {
       final bool isRight = driveSide == 'right';
       if (_currentLang == AppLanguage.french) {
         details.add('Sens: ${isRight ? "Droite" : "Gauche"}');
-      } else if (_currentLang == AppLanguage.english) {
+      } else if (_currentLang.fallback == AppLanguage.english) {
         details.add('Direction: ${isRight ? "Right" : "Left"}');
       } else {
         details.add('الاتجاه: ${isRight ? "يمين" : "يسار"}');
@@ -2109,7 +2109,7 @@ class DevisBuilder {
         details.add(
           'Coffre: ${isTunnel ? "Tunnel" : (isIntView ? "Intérieur" : "Extérieur")}',
         );
-      } else if (_currentLang == AppLanguage.english) {
+      } else if (_currentLang.fallback == AppLanguage.english) {
         details.add(
           'Box: ${isTunnel ? "Tunnel" : (isIntView ? "Interior" : "Exterior")}',
         );
@@ -2131,7 +2131,7 @@ class DevisBuilder {
 
         if (_currentLang == AppLanguage.french) {
           details.add('Coulisse: $rawGlis');
-        } else if (_currentLang == AppLanguage.english) {
+        } else if (_currentLang.fallback == AppLanguage.english) {
           details.add('Coulisse: $rawGlis');
         } else {
           details.add('كوليس (Coulisse): $rawGlis');
@@ -2140,7 +2140,7 @@ class DevisBuilder {
     } else if (item['volet']?.toString() == 'Yes') {
       if (_currentLang == AppLanguage.french) {
         details.add('Volet: Oui');
-      } else if (_currentLang == AppLanguage.english) {
+      } else if (_currentLang.fallback == AppLanguage.english) {
         details.add('Shutter: Yes');
       } else {
         details.add('الستار (Volet): موجود');
@@ -2226,23 +2226,23 @@ class DevisBuilder {
       final value = gammeParts.join(' / ');
       details.add(switch (_currentLang) {
         AppLanguage.french => 'Gamme: $value',
-        AppLanguage.english => 'Series: $value',
         AppLanguage.arabic => 'السلسلة: $value',
+        _ => 'Series: $value',
       });
     }
 
     if (width > 0) {
       details.add(switch (_currentLang) {
         AppLanguage.french => 'Largeur: $width mm',
-        AppLanguage.english => 'Width: $width mm',
         AppLanguage.arabic => 'العرض: $width مم',
+        _ => 'Width: $width mm',
       });
     }
     if (height > 0) {
       details.add(switch (_currentLang) {
         AppLanguage.french => 'Hauteur: $height mm',
-        AppLanguage.english => 'Height: $height mm',
         AppLanguage.arabic => 'الارتفاع: $height مم',
+        _ => 'Height: $height mm',
       });
     }
 
@@ -2254,9 +2254,9 @@ class DevisBuilder {
       details.add(switch (_currentLang) {
         AppLanguage.french =>
           'Hauteur volet: +$overrunCm cm par rapport à la fenêtre',
-        AppLanguage.english =>
-          'Shutter height: +$overrunCm cm beyond the window',
         AppLanguage.arabic => 'ارتفاع الستار: أطول من النافذة بـ $overrunCm سم',
+        _ =>
+          'Shutter height: +$overrunCm cm beyond the window',
       });
     }
 
@@ -2274,21 +2274,21 @@ class DevisBuilder {
     final accColor = _localizedColorLabel(rawAccColor);
     details.add(switch (_currentLang) {
       AppLanguage.french => 'Couleur profil: $profColor',
-      AppLanguage.english => 'Profile color: $profColor',
       AppLanguage.arabic => 'لون البروفيل: $profColor',
+      _ => 'Profile color: $profColor',
     });
     if (!fixedOnlyWindow) {
       details.add(switch (_currentLang) {
         AppLanguage.french => 'Couleur accessoire: $accColor',
-        AppLanguage.english => 'Accessory color: $accColor',
         AppLanguage.arabic => 'لون الإكسسوار: $accColor',
+        _ => 'Accessory color: $accColor',
       });
     }
     if (isShutterOnly || map['hasShutter'] == true) {
       details.add(switch (_currentLang) {
         AppLanguage.french => 'Couleur volet: $profColor',
-        AppLanguage.english => 'Shutter color: $profColor',
         AppLanguage.arabic => 'لون الستار: $profColor',
+        _ => 'Shutter color: $profColor',
       });
     }
 
@@ -2312,10 +2312,10 @@ class DevisBuilder {
         details.add(switch (_currentLang) {
           AppLanguage.french =>
             'Cadre de base: ${map['hasBottomFrame'] == false ? "absent" : "présent"}',
-          AppLanguage.english =>
-            'Base frame: ${map['hasBottomFrame'] == false ? "absent" : "present"}',
           AppLanguage.arabic =>
             'الإطار السفلي: ${map['hasBottomFrame'] == false ? "غير موجود" : "موجود"}',
+          _ =>
+            'Base frame: ${map['hasBottomFrame'] == false ? "absent" : "present"}',
         });
         details.add(
           _closureDetail(
@@ -2343,8 +2343,8 @@ class DevisBuilder {
     } else if (item['volet']?.toString() == 'Yes') {
       details.add(switch (_currentLang) {
         AppLanguage.french => 'Mécanisme volet: Oui',
-        AppLanguage.english => 'Shutter mechanism: Yes',
         AppLanguage.arabic => 'ميكانيزم الستار: موجود',
+        _ => 'Shutter mechanism: Yes',
       });
     }
 
@@ -2565,7 +2565,7 @@ class DevisBuilder {
                   : sashes == 2
                   ? 'نافذة منزلقة بضلفتين'
                   : 'نافذة منزلقة $sashes درفات'),
-      AppLanguage.english =>
+      _ =>
         isDoor
             ? (sashes == 1
                   ? '1-sash sliding door'
@@ -2606,7 +2606,7 @@ class DevisBuilder {
                   : sashes == 2
                   ? 'نافذة بضلفتين'
                   : 'نافذة بـ $sashes درفات'),
-      AppLanguage.english =>
+      _ =>
         isDoor
             ? (sashes == 1
                   ? 'Single sash door'
@@ -2638,7 +2638,7 @@ class DevisBuilder {
             : (count >= 3 && count <= 10)
             ? ' مع $count أجزاء ثابتة'
             : ' مع $count جزء ثابت',
-      AppLanguage.english =>
+      _ =>
         count == 1 ? ' with fixed pane' : ' with $count fixed panes',
     };
   }
@@ -2659,7 +2659,7 @@ class DevisBuilder {
             : (count >= 3 && count <= 10)
             ? 'إطار ثابت ($count أجزاء ثابتة)'
             : 'إطار ثابت ($count جزء ثابت)',
-      AppLanguage.english =>
+      _ =>
         count <= 1 ? 'Fixed frame' : 'Fixed frame ($count fixed panes)',
     };
   }
@@ -2736,7 +2736,7 @@ class DevisBuilder {
       final conj = switch (lang) {
         AppLanguage.french => ' et ',
         AppLanguage.arabic => ' و ',
-        AppLanguage.english => ' and ',
+        _ => ' and ',
       };
       return '${_slidingFrameTitle(sashes: slidingSashes, isDoor: isDoor, lang: lang)}$conj${_openingFrameTitle(sashes: openingSashes, isDoor: isDoor, lang: lang)}${_fixedSuffixForFrame(fixedCount, lang)}';
     } else {
@@ -2757,7 +2757,7 @@ class DevisBuilder {
     final conj = switch (lang) {
       AppLanguage.french => ' et ',
       AppLanguage.arabic => ' و ',
-      AppLanguage.english => ' and ',
+      _ => ' and ',
     };
 
     final frameDescriptions = frameGroups
@@ -2785,8 +2785,8 @@ class DevisBuilder {
     if (isShutterOnly) {
       return switch (_currentLang) {
         AppLanguage.french => 'Volet roulant',
-        AppLanguage.english => 'Rolling shutter',
         AppLanguage.arabic => 'ستار رولان',
+        _ => 'Rolling shutter',
       };
     }
 
@@ -2801,8 +2801,8 @@ class DevisBuilder {
     if (smartComposition.isNotEmpty) {
       final glassStr = switch (_currentLang) {
         AppLanguage.french => isDouble ? 'double vitrage' : 'simple vitrage',
-        AppLanguage.english => isDouble ? 'double glazing' : 'single glazing',
         AppLanguage.arabic => isDouble ? 'بزجاج مزدوج' : 'بزجاج مفرد',
+        _ => isDouble ? 'double glazing' : 'single glazing',
       };
       return '$smartComposition $glassStr$gasStr'.trim();
     }
@@ -2822,10 +2822,10 @@ class DevisBuilder {
       return switch (_currentLang) {
         AppLanguage.french =>
           'Fixe ${isDouble ? "double vitrage" : "simple vitrage"}$gasStr',
-        AppLanguage.english =>
-          'Fixed frame ${isDouble ? "double glazing" : "single glazing"}$gasStr',
         AppLanguage.arabic =>
           'إطار ثابت ${isDouble ? "بزجاج مزدوج" : "بزجاج مفرد"}$gasStr',
+        _ =>
+          'Fixed frame ${isDouble ? "double glazing" : "single glazing"}$gasStr',
       };
     }
     final fixedCount = zones
@@ -2837,13 +2837,13 @@ class DevisBuilder {
         '${isDoor ? "Porte" : (isSliding ? "Fenêtre coulissante" : "Fenêtre")} '
             '${isDouble ? "double vitrage" : "simple vitrage"}'
             '${_fixedSuffix(fixedCount)}$gasStr',
-      AppLanguage.english =>
-        '${isDoor ? "Door" : (isSliding ? "Sliding window" : "Window")} '
-            '${isDouble ? "double glazing" : "single glazing"}'
-            '${_fixedSuffix(fixedCount)}$gasStr',
       AppLanguage.arabic =>
         '${isDoor ? "باب" : (isSliding ? "نافذة منزلقة" : "نافذة")} '
             '${isDouble ? "بزجاج مزدوج" : "بزجاج مفرد"}'
+            '${_fixedSuffix(fixedCount)}$gasStr',
+      _ =>
+        '${isDoor ? "Door" : (isSliding ? "Sliding window" : "Window")} '
+            '${isDouble ? "double glazing" : "single glazing"}'
             '${_fixedSuffix(fixedCount)}$gasStr',
     };
   }
@@ -2872,26 +2872,26 @@ class DevisBuilder {
             : count == 2
             ? ' avec deux fixes'
             : ' avec $count fixes',
-      AppLanguage.english =>
-        count == 1
-            ? ' with fixed'
-            : count == 2
-            ? ' with two fixed'
-            : ' with $count fixed',
       AppLanguage.arabic =>
         count == 1
             ? ' مع ثابت'
             : count == 2
             ? ' مع ثابتين'
             : ' مع $count ثوابت',
+      _ =>
+        count == 1
+            ? ' with fixed'
+            : count == 2
+            ? ' with two fixed'
+            : ' with $count fixed',
     };
   }
 
   static String _gasSuffix() {
     return switch (_currentLang) {
       AppLanguage.french => ' avec gaz',
-      AppLanguage.english => ' with gas',
       AppLanguage.arabic => ' مع غاز',
+      _ => ' with gas',
     };
   }
 
@@ -2987,8 +2987,8 @@ class DevisBuilder {
     final handleH = (height - handleY).toInt();
     return switch (_currentLang) {
       AppLanguage.french => 'Hauteur poignée: $handleH mm',
-      AppLanguage.english => 'Handle height: $handleH mm',
       AppLanguage.arabic => 'ارتفاع المقبض: $handleH مم',
+      _ => 'Handle height: $handleH mm',
     };
   }
 
@@ -3077,19 +3077,19 @@ class DevisBuilder {
         lines.add(switch (_currentLang) {
           AppLanguage.french =>
             '${useFillingLabel ? "Remplissage" : "Vitrage"}: Vitrage double ($tStr)$gas',
-          AppLanguage.english => 'Glass: Double glazing ($tStr)$gas',
           AppLanguage.arabic =>
             '${useFillingLabel ? "التعبئة" : "الزجاج"}: زجاج مزدوج ($tStr)$gas',
+          _ => 'Glass: Double glazing ($tStr)$gas',
         });
         lines.add(switch (_currentLang) {
           AppLanguage.french => 'Intérieur: $inF',
-          AppLanguage.english => 'Interior: $inF',
           AppLanguage.arabic => 'الوجه الداخلي: $inF',
+          _ => 'Interior: $inF',
         });
         lines.add(switch (_currentLang) {
           AppLanguage.french => 'Extérieur: $outF',
-          AppLanguage.english => 'Exterior: $outF',
           AppLanguage.arabic => 'الوجه الخارجي: $outF',
+          _ => 'Exterior: $outF',
         });
       } else if (structure == 'closed') {
         lines.add(
@@ -3104,10 +3104,10 @@ class DevisBuilder {
         lines.add(switch (_currentLang) {
           AppLanguage.french =>
             '${useFillingLabel ? "Remplissage" : "Vitrage"}: Vitrage simple ${tOut.toStringAsFixed(0)} mm - $outF',
-          AppLanguage.english =>
-            'Glass: Simple glazing ${tOut.toStringAsFixed(0)} mm - $outF',
           AppLanguage.arabic =>
             '${useFillingLabel ? "التعبئة" : "الزجاج"}: زجاج مفرد ${tOut.toStringAsFixed(0)} مم - $outF',
+          _ =>
+            'Glass: Simple glazing ${tOut.toStringAsFixed(0)} mm - $outF',
         });
       }
     }
@@ -3118,9 +3118,9 @@ class DevisBuilder {
         lines.add(switch (_currentLang) {
           AppLanguage.french =>
             '${useFillingLabel ? "Remplissage" : "Vitrage"}: ${_glassLabel(glass)}',
-          AppLanguage.english => 'Glass: ${_glassLabel(glass)}',
           AppLanguage.arabic =>
             '${useFillingLabel ? "التعبئة" : "الزجاج"}: ${_glassLabel(glass)}',
+          _ => 'Glass: ${_glassLabel(glass)}',
         });
       }
     }
@@ -3168,10 +3168,10 @@ class DevisBuilder {
     return switch (_currentLang) {
       AppLanguage.french =>
         '${useFillingLabel ? "Remplissage panneau" : "Panneau vitrage"}: $panelName - $panelColor - $thicknessText',
-      AppLanguage.english =>
-        'Panel replacement: $panelName - $panelColor - $thicknessText',
       AppLanguage.arabic =>
         '${useFillingLabel ? "التعبئة" : "الزجاج"}: بانو $panelName - $panelColor - ${thickness.toStringAsFixed(0)} مم',
+      _ =>
+        'Panel replacement: $panelName - $panelColor - $thicknessText',
     };
   }
 
@@ -3183,7 +3183,7 @@ class DevisBuilder {
 
     final finish = g['finishOuter']?.toString().trim() ?? '';
     final isFr = _currentLang == AppLanguage.french;
-    final isEn = _currentLang == AppLanguage.english;
+    final isEn = _currentLang.fallback == AppLanguage.english;
     switch (finish) {
       case 'resine':
         return isEn
@@ -3303,7 +3303,7 @@ class DevisBuilder {
         'Couvre-joint: ${activeSides.isEmpty ? "Aucun" : activeSides.join(", ")}',
       ];
     }
-    if (_currentLang == AppLanguage.english) {
+    if (_currentLang.fallback == AppLanguage.english) {
       if (hasTop) activeSides.add('Top');
       if (hasBottom) activeSides.add('Bottom');
       if (hasRight) activeSides.add('Right');
@@ -3360,8 +3360,8 @@ class DevisBuilder {
     }
     return switch (_currentLang) {
       AppLanguage.french => 'Fermeture: $value',
-      AppLanguage.english => 'Closure: $value',
       AppLanguage.arabic => 'نوعية الغلق: $value',
+      _ => 'Closure: $value',
     };
   }
 
@@ -3448,24 +3448,24 @@ class DevisBuilder {
         lines.add(switch (_currentLang) {
           AppLanguage.french =>
             'Montant central: $centralReinforced renforcé(s), $regular simple(s)',
-          AppLanguage.english =>
-            'Central montant: $centralReinforced reinforced, $regular standard',
           AppLanguage.arabic =>
             'القائم الوسطي: $centralReinforced مدعم، $regular غير مدعم',
+          _ =>
+            'Central montant: $centralReinforced reinforced, $regular standard',
         });
       } else if (centralReinforced > 0) {
         lines.add(switch (_currentLang) {
           AppLanguage.french =>
             'Montant central: $centralReinforced renforcé(s)',
-          AppLanguage.english =>
-            'Central montant: $centralReinforced reinforced',
           AppLanguage.arabic => 'القائم الوسطي: $centralReinforced مدعم',
+          _ =>
+            'Central montant: $centralReinforced reinforced',
         });
       } else {
         lines.add(switch (_currentLang) {
           AppLanguage.french => 'Montant central: $regular simple(s)',
-          AppLanguage.english => 'Central montant: $regular standard',
           AppLanguage.arabic => 'القائم الوسطي: $regular غير مدعم',
+          _ => 'Central montant: $regular standard',
         });
       }
     }
@@ -3476,24 +3476,24 @@ class DevisBuilder {
         lines.add(switch (_currentLang) {
           AppLanguage.french =>
             'Montant latéral: $lateralReinforced renforcé(s), $regular simple(s)',
-          AppLanguage.english =>
-            'Lateral montant: $lateralReinforced reinforced, $regular standard',
           AppLanguage.arabic =>
             'القائم الجانبي: $lateralReinforced مدعم، $regular غير مدعم',
+          _ =>
+            'Lateral montant: $lateralReinforced reinforced, $regular standard',
         });
       } else if (lateralReinforced > 0) {
         lines.add(switch (_currentLang) {
           AppLanguage.french =>
             'Montant latéral: $lateralReinforced renforcé(s)',
-          AppLanguage.english =>
-            'Lateral montant: $lateralReinforced reinforced',
           AppLanguage.arabic => 'القائم الجانبي: $lateralReinforced مدعم',
+          _ =>
+            'Lateral montant: $lateralReinforced reinforced',
         });
       } else {
         lines.add(switch (_currentLang) {
           AppLanguage.french => 'Montant latéral: $regular simple(s)',
-          AppLanguage.english => 'Lateral montant: $regular standard',
           AppLanguage.arabic => 'القائم الجانبي: $regular غير مدعم',
+          _ => 'Lateral montant: $regular standard',
         });
       }
     }
@@ -3517,8 +3517,8 @@ class DevisBuilder {
     if (mechLabel.trim().isNotEmpty) {
       lines.add(switch (_currentLang) {
         AppLanguage.french => 'Mécanisme volet: $mechLabel',
-        AppLanguage.english => 'Shutter mechanism: $mechLabel',
         AppLanguage.arabic => 'ميكانيزم الستار: $mechLabel',
+        _ => 'Shutter mechanism: $mechLabel',
       });
     }
 
@@ -3529,8 +3529,8 @@ class DevisBuilder {
     if (lame.isNotEmpty) {
       lines.add(switch (_currentLang) {
         AppLanguage.french => 'Lame volet: $lame',
-        AppLanguage.english => 'Shutter blade: $lame',
         AppLanguage.arabic => 'لام الستار: $lame',
+        _ => 'Shutter blade: $lame',
       });
     }
 
@@ -3545,8 +3545,8 @@ class DevisBuilder {
       final value = cleaned.isEmpty ? glissiere : cleaned;
       lines.add(switch (_currentLang) {
         AppLanguage.french => 'Coulisse: $value',
-        AppLanguage.english => 'Coulisse: $value',
         AppLanguage.arabic => 'كوليس: $value',
+        _ => 'Coulisse: $value',
       });
     }
     return lines;
@@ -3672,7 +3672,7 @@ class DevisBuilder {
         value.contains('منزلق') ||
         value.contains('جرار')) {
       if (_currentLang == AppLanguage.french) return 'Fenêtre coulissante';
-      if (_currentLang == AppLanguage.english) return 'Sliding window';
+      if (_currentLang.fallback == AppLanguage.english) return 'Sliding window';
       return 'نافذة منزلقة';
     }
     if (value.contains('rolling') ||
@@ -3681,11 +3681,11 @@ class DevisBuilder {
         value.contains('shutter') ||
         value.contains('ستار')) {
       if (_currentLang == AppLanguage.french) return 'Volet roulant';
-      if (_currentLang == AppLanguage.english) return 'Rolling shutter';
+      if (_currentLang.fallback == AppLanguage.english) return 'Rolling shutter';
       return 'ستار رولان (Volet roulant)';
     }
     if (_currentLang == AppLanguage.french) return 'Système battant';
-    if (_currentLang == AppLanguage.english) return 'Battant system';
+    if (_currentLang.fallback == AppLanguage.english) return 'Battant system';
     return 'نظام مفصلي';
   }
 
@@ -3718,11 +3718,11 @@ class DevisBuilder {
     switch (glass.toLowerCase()) {
       case 'double':
         if (_currentLang == AppLanguage.french) return 'Double Vitrage';
-        if (_currentLang == AppLanguage.english) return 'Double Glazing';
+        if (_currentLang.fallback == AppLanguage.english) return 'Double Glazing';
         return 'مزدوج';
       case 'single':
         if (_currentLang == AppLanguage.french) return 'Simple Vitrage';
-        if (_currentLang == AppLanguage.english) return 'Single Glazing';
+        if (_currentLang.fallback == AppLanguage.english) return 'Single Glazing';
         return 'مفرد';
       default:
         return glass;
@@ -3766,7 +3766,7 @@ class DevisBuilder {
         default:
           return color;
       }
-    } else if (_currentLang == AppLanguage.english) {
+    } else if (_currentLang.fallback == AppLanguage.english) {
       switch (lower) {
         case 'white':
         case 'blanc':
@@ -3891,7 +3891,7 @@ class DevisBuilder {
       return switch (_currentLang) {
         AppLanguage.arabic => labels[0],
         AppLanguage.french => labels[1],
-        AppLanguage.english => labels[2],
+        _ => labels[2],
       };
     }
 

@@ -741,7 +741,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
         return arabic;
       case AppLanguage.french:
         return french;
-      case AppLanguage.english:
+      default:
         return english;
     }
   }

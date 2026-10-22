@@ -94,7 +94,7 @@ class NotificationTexts {
         final category = switch (lang) {
           AppLanguage.arabic => field('category_title_ar'),
           AppLanguage.french => field('category_title_fr'),
-          AppLanguage.english => field('category_title_en'),
+          _ => field('category_title_en'),
         };
         final fallback = field('category_title_fr').isNotEmpty
             ? field('category_title_fr')
@@ -137,9 +137,7 @@ class NotificationTexts {
   }
 
   /// Short code stored with the push token so the server can pick the text.
-  static String languageCode(AppLanguage lang) => switch (lang) {
-    AppLanguage.arabic => 'ar',
-    AppLanguage.french => 'fr',
-    AppLanguage.english => 'en',
-  };
+  /// The server writes Arabic, French and English only: a pack language
+  /// receives its fallback's text.
+  static String languageCode(AppLanguage lang) => lang.fallback.code;
 }

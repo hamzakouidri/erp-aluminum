@@ -672,7 +672,7 @@ class _WindowViewState extends State<WindowView> {
                                   label: Text(
                                     lang == AppLanguage.french
                                         ? 'Appliquer la lame recommandée'
-                                        : (lang == AppLanguage.english
+                                        : (lang.fallback == AppLanguage.english
                                               ? 'Apply recommended blade'
                                               : 'تطبيق الشفرة المقترحة'),
                                     style: const TextStyle(

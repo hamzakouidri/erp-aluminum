@@ -439,7 +439,7 @@ Future<void> showPriceSyncSettingsDialog(
                         ? switch (lang) {
                             AppLanguage.arabic => 'نشر الأسعار',
                             AppLanguage.french => 'Publier les prix',
-                            AppLanguage.english => 'Publish prices',
+                            _ => 'Publish prices',
                           }
                         : Localization.translate(
                             'نشر وتحديث الأسعار لجميع الورشات',
@@ -456,7 +456,7 @@ Future<void> showPriceSyncSettingsDialog(
                         ? switch (lang) {
                             AppLanguage.arabic => 'تحديث الأسعار',
                             AppLanguage.french => 'Actualiser les prix',
-                            AppLanguage.english => 'Update prices',
+                            _ => 'Update prices',
                           }
                         : Localization.translate(
                             'تحديث الأسعار الآن من السحابة',

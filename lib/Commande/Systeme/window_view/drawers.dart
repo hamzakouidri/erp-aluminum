@@ -282,30 +282,30 @@ extension _WindowViewDrawers on _WindowViewState {
             final openingPrefix = hasOpeningSystem && hasSlidingSystem
                 ? (lang == AppLanguage.french
                     ? 'Système ouvrant ($seriesName) : '
-                    : lang == AppLanguage.english
+                    : lang.fallback == AppLanguage.english
                     ? 'Opening system ($seriesName): '
                     : 'نظام الفتح ($seriesName): ')
                 : '';
             final capacityLabel = usesParclose
                 ? (lang == AppLanguage.french
                     ? 'la capacité parclose'
-                    : lang == AppLanguage.english
+                    : lang.fallback == AppLanguage.english
                     ? 'glazing bead capacity'
                     : 'سعة البيركلوز')
                 : (lang == AppLanguage.french
                     ? 'la capacité ouvrant'
-                    : lang == AppLanguage.english
+                    : lang.fallback == AppLanguage.english
                     ? 'sash capacity'
                     : 'سعة الضلفة');
             final capacityLabelPlain = usesParclose
                 ? (lang == AppLanguage.french
                     ? 'Capacité parclose'
-                    : lang == AppLanguage.english
+                    : lang.fallback == AppLanguage.english
                     ? 'Glazing bead capacity'
                     : 'سعة البيركلوز')
                 : (lang == AppLanguage.french
                     ? 'Capacité ouvrant'
-                    : lang == AppLanguage.english
+                    : lang.fallback == AppLanguage.english
                     ? 'Sash capacity'
                     : 'سعة الضلفة');
 
@@ -315,19 +315,19 @@ extension _WindowViewDrawers on _WindowViewState {
               if (isExact) {
                 message = lang == AppLanguage.french
                     ? '${openingPrefix}Épaisseur du vitrage conforme à $capacityLabel : ${glassTotal.toStringAsFixed(0)} $unit'
-                    : lang == AppLanguage.english
+                    : lang.fallback == AppLanguage.english
                     ? '${openingPrefix}Glass thickness matches $capacityLabel: ${glassTotal.toStringAsFixed(0)} $unit'
                     : '${openingPrefix}سُمك الزجاج مطابق لـ $capacityLabel: ${glassTotal.toStringAsFixed(0)} $unit';
               } else if (isAbove) {
                 message = lang == AppLanguage.french
                     ? '${openingPrefix}Attention : Épaisseur du vitrage ${glassTotal.toStringAsFixed(0)} $unit supérieure à $capacityLabel ${maximum.toStringAsFixed(0)} $unit'
-                    : lang == AppLanguage.english
+                    : lang.fallback == AppLanguage.english
                     ? '${openingPrefix}Warning: Glass thickness ${glassTotal.toStringAsFixed(0)} $unit exceeds $capacityLabel ${maximum.toStringAsFixed(0)} $unit'
                     : '${openingPrefix}تنبيه: سُمك الزجاج ${glassTotal.toStringAsFixed(0)} $unit أكبر من $capacityLabel ${maximum.toStringAsFixed(0)} $unit';
               } else {
                 message = lang == AppLanguage.french
                     ? '${openingPrefix}Attention : Épaisseur du vitrage ${glassTotal.toStringAsFixed(0)} $unit inférieure à $capacityLabel ${maximum.toStringAsFixed(0)} $unit'
-                    : lang == AppLanguage.english
+                    : lang.fallback == AppLanguage.english
                     ? '${openingPrefix}Warning: Glass thickness ${glassTotal.toStringAsFixed(0)} $unit is less than $capacityLabel ${maximum.toStringAsFixed(0)} $unit'
                     : '${openingPrefix}تنبيه: سُمك الزجاج ${glassTotal.toStringAsFixed(0)} $unit أصغر من $capacityLabel ${maximum.toStringAsFixed(0)} $unit';
               }
@@ -341,27 +341,27 @@ extension _WindowViewDrawers on _WindowViewState {
               if (isAbove) {
                 message = lang == AppLanguage.french
                     ? '${openingPrefix}Attention : Épaisseur ($glassStr $unit) + joints ($jointStr $unit) = $packStr $unit dépasse $capacityLabel ($maxStr $unit) de $gapStr $unit.'
-                    : lang == AppLanguage.english
+                    : lang.fallback == AppLanguage.english
                     ? '${openingPrefix}Warning: Thickness ($glassStr $unit) + gaskets ($jointStr $unit) = $packStr $unit exceeds $capacityLabel ($maxStr $unit) by $gapStr $unit.'
                     : '${openingPrefix}تنبيه: السُمك ($glassStr $unit) + الجوانات ($jointStr $unit) = $packStr $unit يتجاوز $capacityLabel ($maxStr $unit) بـ $gapStr $unit.';
               } else if (remainingGap < 2.0) {
                 if (spec.fittedJoints.isNotEmpty && isExact) {
                   message = lang == AppLanguage.french
                       ? '${openingPrefix}Épaisseur ($glassStr $unit) + joints sélectionnés ($jointStr $unit) = $packStr $unit, conforme à $capacityLabel ($maxStr $unit).'
-                      : lang == AppLanguage.english
+                      : lang.fallback == AppLanguage.english
                       ? '${openingPrefix}Thickness ($glassStr $unit) + selected gaskets ($jointStr $unit) = $packStr $unit, matches $capacityLabel ($maxStr $unit).'
                       : '${openingPrefix}السُمك ($glassStr $unit) + الجوانات المختارة ($jointStr $unit) = $packStr $unit، مطابق لـ $capacityLabel ($maxStr $unit).';
                 } else {
                   message = lang == AppLanguage.french
                       ? '${openingPrefix}Épaisseur ($glassStr $unit) + joints ($jointStr $unit) = $packStr $unit ($capacityLabelPlain : $maxStr $unit). Espace restant très réduit ($gapStr $unit).'
-                      : lang == AppLanguage.english
+                      : lang.fallback == AppLanguage.english
                       ? '${openingPrefix}Thickness ($glassStr $unit) + gaskets ($jointStr $unit) = $packStr $unit ($capacityLabelPlain: $maxStr $unit). Remaining gap is very tight ($gapStr $unit).'
                       : '${openingPrefix}السُمك ($glassStr $unit) + الجوانات ($jointStr $unit) = $packStr $unit ($capacityLabelPlain: $maxStr $unit). الفراغ المتبقي ضيق جداً ($gapStr $unit).';
                 }
               } else {
                 message = lang == AppLanguage.french
                     ? '${openingPrefix}Épaisseur vitrage ($glassStr $unit) + joint vitrage ($jointStr $unit) = $packStr $unit | $capacityLabelPlain : $maxStr $unit. Le joint de bourrage recommandé doit être de $gapStr $unit.'
-                    : lang == AppLanguage.english
+                    : lang.fallback == AppLanguage.english
                     ? '${openingPrefix}Glass thickness ($glassStr $unit) + glass gasket ($jointStr $unit) = $packStr $unit | $capacityLabelPlain: $maxStr $unit. Recommended wedge gasket (Joint Bourrage) should be $gapStr $unit.'
                     : '${openingPrefix}سُمك الزجاج ($glassStr $unit) + جوان الزجاج ($jointStr $unit) = $packStr $unit | $capacityLabelPlain: $maxStr $unit. إذاً الجوان المختار (Joint Bourrage) يجب أن يكون سُمكه $gapStr $unit.';
               }
@@ -437,41 +437,41 @@ extension _WindowViewDrawers on _WindowViewState {
             final sideText = sides == 2
                 ? (lang == AppLanguage.french
                     ? 'des deux côtés'
-                    : lang == AppLanguage.english
+                    : lang.fallback == AppLanguage.english
                     ? 'on both sides'
                     : 'من جهتين')
                 : (lang == AppLanguage.french
                     ? 'd\'un seul côté'
-                    : lang == AppLanguage.english
+                    : lang.fallback == AppLanguage.english
                     ? 'on one side'
                     : 'من جهة واحدة');
             final seriesName = widget.model.activeSlidingSeries?.name ?? '';
             final capacityLabel = usesParclose
                 ? (lang == AppLanguage.french
                     ? 'la capacité parclose'
-                    : lang == AppLanguage.english
+                    : lang.fallback == AppLanguage.english
                     ? 'glazing bead capacity'
                     : 'سعة البيركلوز')
                 : (lang == AppLanguage.french
                     ? 'la capacité ouvrant'
-                    : lang == AppLanguage.english
+                    : lang.fallback == AppLanguage.english
                     ? 'sash capacity'
                     : 'سعة الضلفة');
             final slidingPrefix = lang == AppLanguage.french
                 ? 'Système coulissant ($seriesName) : '
-                : lang == AppLanguage.english
+                : lang.fallback == AppLanguage.english
                 ? 'Sliding system ($seriesName): '
                 : 'نظام المنزلق ($seriesName): ';
             final unit = lang == AppLanguage.arabic ? 'مم' : 'mm';
             final message = isAbove
                 ? (lang == AppLanguage.french
                     ? '${slidingPrefix}Épaisseur vitrage $glassStr $unit dépasse $capacityLabel $maxStr $unit de $jointStr $unit.'
-                    : lang == AppLanguage.english
+                    : lang.fallback == AppLanguage.english
                     ? '${slidingPrefix}Glass thickness $glassStr $unit exceeds $capacityLabel $maxStr $unit by $jointStr $unit.'
                     : '${slidingPrefix}سُمك الزجاج $glassStr مم يتجاوز $capacityLabel $maxStr مم بـ $jointStr مم.')
                 : (lang == AppLanguage.french
                     ? '${slidingPrefix}Épaisseur vitrage $glassStr $unit, joint requis $jointStr $unit $sideText, et $capacityLabel $maxStr $unit.'
-                    : lang == AppLanguage.english
+                    : lang.fallback == AppLanguage.english
                     ? '${slidingPrefix}Glass thickness $glassStr $unit, required gasket $jointStr $unit $sideText, and $capacityLabel $maxStr $unit.'
                     : '${slidingPrefix}سُمك الزجاج $glassStr مم، الجوان المطلوب $jointStr مم $sideText، و$capacityLabel $maxStr مم.');
 
@@ -4001,7 +4001,7 @@ extension _WindowViewDrawers on _WindowViewState {
                               label: Text(
                                 lang == AppLanguage.french
                                     ? 'Appliquer la recommandation'
-                                    : (lang == AppLanguage.english
+                                    : (lang.fallback == AppLanguage.english
                                           ? 'Apply recommendation'
                                           : 'تطبيق المقترح'),
                                 style: const TextStyle(
@@ -4746,7 +4746,7 @@ extension _WindowViewDrawers on _WindowViewState {
                                         AppLanguage.arabic =>
                                           'القائم الوسطي للضلفة',
                                         AppLanguage.french => 'Ouvrant central',
-                                        AppLanguage.english => 'Central sash',
+                                        _ => 'Central sash',
                                       }
                                     : rawProfile;
                                 return Padding(
@@ -7884,7 +7884,7 @@ extension _WindowViewDrawers on _WindowViewState {
           final twoHandlesLabel = switch (lang) {
             AppLanguage.arabic => 'إضافة مقبضين',
             AppLanguage.french => 'Ajouter deux poignées',
-            AppLanguage.english => 'Add two handles',
+            _ => 'Add two handles',
           };
           children.add(
             _ContentButton(

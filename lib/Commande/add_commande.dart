@@ -693,18 +693,18 @@ class _CommandePageState extends State<CommandePage> {
     ).language;
     final glassBaseName = switch (lang) {
       AppLanguage.french => 'Verre trempé',
-      AppLanguage.english => 'Tempered glass',
       AppLanguage.arabic => 'زجاج مقسّى',
+      _ => 'Tempered glass',
     };
     final panelsPrefix = switch (lang) {
       AppLanguage.french => 'Panneaux',
-      AppLanguage.english => 'Panels',
       AppLanguage.arabic => 'الألواح',
+      _ => 'Panels',
     };
     final overallPrefix = switch (lang) {
       AppLanguage.french => 'Dimensions totales',
-      AppLanguage.english => 'Overall dimensions',
       AppLanguage.arabic => 'القياس الإجمالي',
+      _ => 'Overall dimensions',
     };
     final mmUnit = switch (lang) {
       AppLanguage.arabic => 'مم',
@@ -722,28 +722,28 @@ class _CommandePageState extends State<CommandePage> {
         final roleLabel = switch (role) {
           'door' => switch (lang) {
             AppLanguage.french => 'Porte',
-            AppLanguage.english => 'Door',
             AppLanguage.arabic => 'باب',
+            _ => 'Door',
           },
           'fixed' => switch (lang) {
             AppLanguage.french => 'Fixe',
-            AppLanguage.english => 'Fixed',
             AppLanguage.arabic => 'ثابت',
+            _ => 'Fixed',
           },
           'vitrine_left' => switch (lang) {
             AppLanguage.french => 'Vantail gauche',
-            AppLanguage.english => 'Left leaf',
             AppLanguage.arabic => 'درفة يسرى',
+            _ => 'Left leaf',
           },
           'vitrine_right' => switch (lang) {
             AppLanguage.french => 'Vantail droit',
-            AppLanguage.english => 'Right leaf',
             AppLanguage.arabic => 'درفة يمنى',
+            _ => 'Right leaf',
           },
           _ => switch (lang) {
             AppLanguage.french => 'Panneau ${i + 1}',
-            AppLanguage.english => 'Panel ${i + 1}',
             AppLanguage.arabic => 'لوح ${i + 1}',
+            _ => 'Panel ${i + 1}',
           },
         };
         final area =
@@ -761,13 +761,13 @@ class _CommandePageState extends State<CommandePage> {
         payload['workTypeLabel']?.toString() ??
         (lang == AppLanguage.french
             ? 'Cabine de douche'
-            : (lang == AppLanguage.english ? 'Shower cabin' : 'كابين دوش'));
+            : (lang.fallback == AppLanguage.english ? 'Shower cabin' : 'كابين دوش'));
     final finishLabel =
         payload['glassTypeLabel']?.toString() ??
         payload['glassFinishLabel']?.toString() ??
         (lang == AppLanguage.french
             ? 'Transparent'
-            : (lang == AppLanguage.english ? 'Clear' : 'شفاف'));
+            : (lang.fallback == AppLanguage.english ? 'Clear' : 'شفاف'));
     final thickness =
         (payload['glassThicknessMm'] ?? payload['thicknessMm'] as num?)
             ?.toDouble() ??
@@ -776,18 +776,18 @@ class _CommandePageState extends State<CommandePage> {
     final sablageLabel = switch (sablageMode) {
       'full' => switch (lang) {
         AppLanguage.french => 'Sablage complet',
-        AppLanguage.english => 'Full frosting',
         AppLanguage.arabic => 'سابلاج كامل',
+        _ => 'Full frosting',
       },
       'decorative' => switch (lang) {
         AppLanguage.french => 'Sablage décoratif',
-        AppLanguage.english => 'Decorative frosting',
         AppLanguage.arabic => 'سابلاج ديكور',
+        _ => 'Decorative frosting',
       },
       _ => switch (lang) {
         AppLanguage.french => 'Sans sablage',
-        AppLanguage.english => 'No frosting',
         AppLanguage.arabic => 'بدون سابلاج',
+        _ => 'No frosting',
       },
     };
 

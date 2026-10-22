@@ -14,12 +14,6 @@ class Localization {
   /// has no entry for that language.
   static final Map<String, Map<AppLanguage, String>> _dictionary = {};
 
-  static const _assetCodes = {
-    AppLanguage.arabic: 'ar',
-    AppLanguage.french: 'fr',
-    AppLanguage.english: 'en',
-  };
-
   static final Map<AppLanguage, Future<void>> _languageLoads = {};
 
   /// Loads the built-in languages from the asset bundle. Safe to call again.
@@ -31,25 +25,37 @@ class Localization {
   static Future<void> load({AssetBundle? bundle, AppLanguage? first}) async {
     if (first == null) {
       await Future.wait(
-        _assetCodes.keys.map((l) => ensureLanguage(l, bundle: bundle)),
+        AppLanguage.builtIn.map((l) => ensureLanguage(l, bundle: bundle)),
       );
       return;
     }
     await ensureLanguage(first, bundle: bundle, inBackground: false);
-    for (final lang in _assetCodes.keys) {
+    for (final lang in AppLanguage.builtIn) {
       unawaited(ensureLanguage(lang, bundle: bundle));
     }
   }
 
-  /// Loads [lang] once; later calls return the same pending load.
+  /// Loads [lang] once; later calls return the same pending load. A pack
+  /// language is loaded with its pack ([loadJson]); only its fallback comes
+  /// from the assets.
   static Future<void> ensureLanguage(
     AppLanguage lang, {
     AssetBundle? bundle,
     bool inBackground = true,
   }) {
+    if (!lang.isBuiltIn) {
+      return ensureLanguage(
+        lang.fallback,
+        bundle: bundle,
+        inBackground: inBackground,
+      );
+    }
+    // A new completed future each time: one made in another zone (such as
+    // a test's fake clock) would never complete in the caller's zone.
+    if (_loadedLanguages.contains(lang)) return Future.value();
     return _languageLoads[lang] ??= () async {
       final source = await (bundle ?? rootBundle).loadString(
-        'assets/i18n/${_assetCodes[lang]}.json',
+        'assets/i18n/${lang.code}.json',
       );
       if (inBackground) {
         _addStrings(lang, await compute(_decodeStrings, source));
@@ -64,8 +70,14 @@ class Localization {
           as Map<String, dynamic>;
 
   /// Adds the `strings` of a language file (`{"meta": …, "strings": …}`).
-  static void loadJson(AppLanguage lang, String source) =>
-      _addStrings(lang, _decodeStrings(source));
+  /// A built-in language loaded this way is not read again from the assets.
+  static void loadJson(AppLanguage lang, String source) {
+    _addStrings(lang, _decodeStrings(source));
+    _loadedLanguages.add(lang);
+  }
+
+  /// Languages already given their texts by [loadJson].
+  static final Set<AppLanguage> _loadedLanguages = {};
 
   static void _addStrings(AppLanguage lang, Map<String, dynamic> strings) {
     for (final entry in strings.entries) {
@@ -80,7 +92,26 @@ class Localization {
   static String? stored(String key, AppLanguage lang) =>
       _dictionary[key]?[lang];
 
+  /// The pack text for [key], found as stored or trimmed (keeping the
+  /// caller's spacing around it); null when the pack lacks it or left it
+  /// empty.
+  static String? _packText(String key, AppLanguage lang) {
+    final exact = _dictionary[key]?[lang];
+    if (exact != null && exact.trim().isNotEmpty) return exact;
+    final trimmed = key.trim();
+    final text = _dictionary[trimmed]?[lang]?.trim();
+    if (text == null || text.isEmpty) return null;
+    final start = key.indexOf(trimmed);
+    return '${key.substring(0, start)}$text'
+        '${key.substring(start + trimmed.length)}';
+  }
+
   static String translate(String key, AppLanguage lang) {
+    // A pack language has its own texts only; everything else, including
+    // the dynamic patterns below, comes from its built-in fallback.
+    if (!lang.isBuiltIn) {
+      return _packText(key, lang) ?? translate(key, lang.fallback);
+    }
     final trimmedKey = key.trim();
 
     // Intercept dynamic series names like "سلسلة 45" or "سلسله 45" or "سلسلة"

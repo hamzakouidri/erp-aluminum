@@ -40,12 +40,12 @@ extension _WindowViewGlass on _WindowViewState {
         final message = fit == null
             ? (lang == AppLanguage.french
                 ? 'Attention : Aucune combinaison de joints active ne correspond au vitrage ($glass $unit) et à la capacité ($capacity $unit). Le manque est interdit, tolérance max +1 $unit.'
-                : lang == AppLanguage.english
+                : lang.fallback == AppLanguage.english
                 ? 'Warning: No active gasket combination matches glass ($glass $unit) and capacity ($capacity $unit). Deficit not allowed, max excess +1 $unit.'
                 : 'تنبيه: لا توجد تركيبة جوانات مفعّلة تطابق الزجاج ($glass $unit) والسعة ($capacity $unit). النقص ممنوع والزيادة القصوى 1 $unit.')
             : (lang == AppLanguage.french
                 ? 'Combinaison de joints suggérée : ${fit.map((row) => '${row['name']} (${row['thickness']} $unit)').join(' + ')}. Vitrage : $glass $unit, Capacité : $capacity $unit, tolérance max +1 $unit sans manque.'
-                : lang == AppLanguage.english
+                : lang.fallback == AppLanguage.english
                 ? 'Suggested gasket combination: ${fit.map((row) => '${row['name']} (${row['thickness']} $unit)').join(' + ')}. Glass: $glass $unit, Capacity: $capacity $unit, max excess +1 $unit without deficit.'
                 : 'تركيبة جوانات متوافقة مقترحة: ${fit.map((row) => '${row['name']} (${row['thickness']} $unit)').join(' + ')}. الزجاج: $glass $unit، السعة: $capacity $unit، الزيادة القصوى 1 $unit دون نقص.');
         return Padding(

@@ -8,6 +8,10 @@ import 'package:database_data/services/supabase_workshop_sync_service.dart';
 import 'package:database_data/services/auth_service.dart';
 import 'package:database_data/settings/localization.dart';
 
+import 'app_language.dart';
+
+export 'app_language.dart';
+
 bool get isAdmin {
   final user = AppAuthService().currentUser;
   return isApplicationAdminEmail(user?.email);
@@ -19,8 +23,6 @@ bool isApplicationAdminEmail(String? email) {
       clean == 'kouidrihamza046@gmail.com' ||
       clean == 'kouidrihamza46@gmail.com';
 }
-
-enum AppLanguage { arabic, french, english }
 
 enum CostMethod { linearMeter, squareMeter, percentage }
 
@@ -761,8 +763,14 @@ class AppSettingsProvider extends ChangeNotifier {
 
   /// The saved application language, readable without a [BuildContext]
   /// (background isolates, services, notification texts).
+  ///
+  /// The language is saved by code; older versions saved only its position
+  /// in [AppLanguage.builtIn], which is still written for them and read when
+  /// the code is missing or names a pack that is no longer installed.
   static AppLanguage languageFromPreferences(SharedPreferences prefs) {
-    final langIndex = prefs.getInt('app_language');
+    final byCode = AppLanguage.fromCode(_readString(prefs, 'app_language_code'));
+    if (byCode != null) return byCode;
+    final langIndex = _readInt(prefs, 'app_language');
     final hasExplicitLanguage = prefs.getBool('app_language_explicit') ?? false;
     final effectiveLanguageIndex =
         langIndex == null ||
@@ -770,9 +778,21 @@ class AppSettingsProvider extends ChangeNotifier {
         ? AppLanguage.french.index
         : langIndex;
     return effectiveLanguageIndex >= 0 &&
-            effectiveLanguageIndex < AppLanguage.values.length
-        ? AppLanguage.values[effectiveLanguageIndex]
+            effectiveLanguageIndex < AppLanguage.builtIn.length
+        ? AppLanguage.builtIn[effectiveLanguageIndex]
         : AppLanguage.french;
+  }
+
+  // A value of the wrong type (an old build wrote another one under the same
+  // key) reads as missing instead of throwing.
+  static String? _readString(SharedPreferences prefs, String key) {
+    final value = prefs.get(key);
+    return value is String ? value : null;
+  }
+
+  static int? _readInt(SharedPreferences prefs, String key) {
+    final value = prefs.get(key);
+    return value is int ? value : null;
   }
 
   static Future<AppLanguage> loadSavedLanguage() async {
@@ -884,6 +904,7 @@ class AppSettingsProvider extends ChangeNotifier {
     _language = lang;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('app_language_code', lang.code);
     await prefs.setInt('app_language', lang.index);
     await prefs.setBool('app_language_explicit', true);
     onLanguageChanged?.call(lang);

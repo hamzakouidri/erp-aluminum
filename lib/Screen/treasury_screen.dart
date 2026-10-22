@@ -112,12 +112,12 @@ class TreasuryScreen extends StatefulWidget {
           final dialogTitle = type == 'Encaissement'
               ? (lang == AppLanguage.french
                     ? 'Nouvel Encaissement (Caisse)'
-                    : (lang == AppLanguage.english
+                    : (lang.fallback == AppLanguage.english
                           ? 'New Income (Treasury)'
                           : 'قبض جديد / Encaissement'))
               : (lang == AppLanguage.french
                     ? 'Nouveau Décaissement (Caisse)'
-                    : (lang == AppLanguage.english
+                    : (lang.fallback == AppLanguage.english
                           ? 'New Expense (Treasury)'
                           : 'دفع جديد / Décaissement'));
 
@@ -818,12 +818,12 @@ class TreasuryScreen extends StatefulWidget {
                           type == 'Encaissement'
                               ? (lang == AppLanguage.french
                                     ? 'Encaissement enregistré avec succès'
-                                    : (lang == AppLanguage.english
+                                    : (lang.fallback == AppLanguage.english
                                           ? 'Income recorded successfully'
                                           : 'تم تسجيل القبض بنجاح'))
                               : (lang == AppLanguage.french
                                     ? 'Décaissement enregistré avec succès'
-                                    : (lang == AppLanguage.english
+                                    : (lang.fallback == AppLanguage.english
                                           ? 'Expense recorded successfully'
                                           : 'تم تسجيل الدفع بنجاح')),
                           style: const TextStyle(fontFamily: 'Cairo'),

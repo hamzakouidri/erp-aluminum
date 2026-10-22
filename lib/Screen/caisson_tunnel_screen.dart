@@ -140,7 +140,7 @@ class _CaissonTunnelScreenState extends State<CaissonTunnelScreen> {
 
   String get _appBarTitle {
     final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
-    if (lang == AppLanguage.french || lang == AppLanguage.english) {
+    if (lang == AppLanguage.french || lang.fallback == AppLanguage.english) {
       return 'Caisson Tunnel';
     }
     return 'Caisson Tunnel';

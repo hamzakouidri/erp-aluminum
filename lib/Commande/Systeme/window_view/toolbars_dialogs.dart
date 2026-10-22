@@ -4540,8 +4540,8 @@ extension _WindowViewToolbars on _WindowViewState {
     ).language;
     String tr(String ar, String fr, String en) => switch (lang) {
       AppLanguage.french => fr,
-      AppLanguage.english => en,
       AppLanguage.arabic => ar,
+      _ => en,
     };
 
     final sliding = widget.model.frameUsesSlidingSeries(frame);

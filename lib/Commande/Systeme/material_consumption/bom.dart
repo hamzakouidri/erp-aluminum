@@ -78,7 +78,7 @@ extension _MaterialBom on _MaterialConsumptionScreenState {
       if (trimmed == 'متر') return 'm';
       if (trimmed == 'قطعة') return 'pièce';
       if (trimmed == 'طقم') return 'kit';
-    } else if (language == AppLanguage.english) {
+    } else if (language.fallback == AppLanguage.english) {
       if (trimmed == 'بارة' || trimmed == 'قطاع') return 'bar';
       if (trimmed == 'متر') return 'm';
       if (trimmed == 'قطعة') return 'pcs';
