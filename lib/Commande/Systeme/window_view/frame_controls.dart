@@ -648,7 +648,24 @@ extension _WindowViewFrame on _WindowViewState {
     return closest;
   }
 
+  /// A mullion made of frames (Cadre double / 140) is built from the opening
+  /// series' frames only, never from the sliding series. `_frameProfiles`
+  /// follows the selected zone (sliding frames for a sliding zone), so it is
+  /// used only when it was loaded for the opening series itself.
   List<Map<String, dynamic>> _availableMullionFrameSections() {
+    final openingSeriesId = widget.model.activeSeries?.id;
+    final List<Map<String, dynamic>> openingFrames;
+    if (widget.systemMode == 'sliding' || openingSeriesId == null) {
+      openingFrames = const <Map<String, dynamic>>[];
+    } else if (_openingFrameProfiles.isNotEmpty) {
+      openingFrames = _openingFrameProfiles;
+    } else if (_loadedSeriesId == openingSeriesId &&
+        _loadedSeriesId != widget.model.activeSlidingSeries?.id) {
+      openingFrames = _frameProfiles;
+    } else {
+      openingFrames = const <Map<String, dynamic>>[];
+    }
+
     final frames = <Map<String, dynamic>>[];
     final seenIds = <String>{};
 
@@ -688,13 +705,7 @@ extension _WindowViewFrame on _WindowViewState {
       frames.add(Map<String, dynamic>.from(raw));
     }
 
-    for (final frame in _frameProfiles) {
-      addFrame(frame);
-    }
-    for (final frame in _openingFrameProfiles) {
-      addFrame(frame);
-    }
-    for (final frame in _slidingFrameProfiles) {
+    for (final frame in openingFrames) {
       addFrame(frame);
     }
 
