@@ -58,6 +58,7 @@ part 'window_view/canvas_interaction.dart';
 part 'window_view/toolbars_dialogs.dart';
 part 'window_view/drawers.dart';
 part 'window_view/frame_controls.dart';
+part 'window_view/accessory_parts_row.dart';
 part 'window_view/corner_notch_editor.dart';
 
 enum _FrameResizeHandle {
@@ -6716,7 +6717,14 @@ class _Tier2RowItem extends StatelessWidget {
   final int rowIndex;
   final Widget child;
 
-  const _Tier2RowItem({required this.rowIndex, required this.child});
+  /// Keeps the two rows even with few items (a parts row under its types).
+  final bool forceRows;
+
+  const _Tier2RowItem({
+    required this.rowIndex,
+    required this.child,
+    this.forceRows = false,
+  });
 
   @override
   Widget build(BuildContext context) => child;

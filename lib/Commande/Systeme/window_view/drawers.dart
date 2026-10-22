@@ -2,6 +2,18 @@ part of '../show_system_francais.dart';
 
 /// Side drawers and bottom panels of the drawing page.
 extension _WindowViewDrawers on _WindowViewState {
+  /// A drawing of fixed glass only has no handle: its handles tab is hidden.
+  bool get _drawingHasSash => widget.model.zones.any(
+    (zone) =>
+        zone.content == ZoneContent.singleSash ||
+        zone.content == ZoneContent.doubleSash ||
+        zone.content == ZoneContent.slidingSash,
+  );
+
+  /// The open bottom tab, or the common tab when the open one is hidden.
+  int get _visibleBottomTab =>
+      _activeBottomTab == 5 && !_drawingHasSash ? 0 : _activeBottomTab;
+
   /// The PVC recessed handle (poignée encastrée) of an opening sash.
   Widget _encastreeHandleButton(WindowZone zone, AppLanguage lang) =>
       _ContentButton(
@@ -4976,7 +4988,8 @@ extension _WindowViewDrawers on _WindowViewState {
     // opening and sliding controls immediately visible.
     final items = rawItems.where((w) => w is! SizedBox).toList();
     if (items.isEmpty) return [];
-    if (items.length <= 5) {
+    final forceRows = items.any((w) => w is _Tier2RowItem && w.forceRows);
+    if (items.length <= 5 && !forceRows) {
       return [
         Row(
           mainAxisSize: MainAxisSize.min,
@@ -4995,7 +5008,8 @@ extension _WindowViewDrawers on _WindowViewState {
         // Explicit groups (opening / sliding frame choices) retain their
         // own stable row even when optional controls appear or disappear.
         (item.rowIndex == 0 ? firstRow : secondRow).add(item.child);
-      } else if (firstRow.length < firstRowCapacity) {
+      } else if (forceRows || firstRow.length < firstRowCapacity) {
+        // With a forced second row, the other controls stay above it.
         firstRow.add(item);
       } else {
         secondRow.add(item);
@@ -5311,7 +5325,8 @@ extension _WindowViewDrawers on _WindowViewState {
       if (isMullionSelected)
         {'id': 3, 'label': 'عامود', 'icon': Icons.vertical_split_rounded},
       {'id': 4, 'label': 'زجاج / حشوات', 'icon': Icons.grid_on_rounded},
-      {'id': 5, 'label': 'مقابض', 'icon': Icons.vpn_key_rounded},
+      if (_drawingHasSash)
+        {'id': 5, 'label': 'مقابض', 'icon': Icons.vpn_key_rounded},
       if (widget.model.hasShutter)
         {'id': 6, 'label': 'الستار', 'icon': Icons.layers_rounded},
     ];
@@ -5328,7 +5343,7 @@ extension _WindowViewDrawers on _WindowViewState {
             final id = tab['id'] as int;
             final isSelected = _isShutterSelected
                 ? (id == 6)
-                : (_activeBottomTab == id);
+                : (_visibleBottomTab == id);
 
             return InkWell(
               onTap: () => _switchToBottomTab(id),
@@ -5412,7 +5427,7 @@ extension _WindowViewDrawers on _WindowViewState {
 
     List<Widget> children = [];
 
-    switch (_activeBottomTab) {
+    switch (_visibleBottomTab) {
       case 0: // شائع (Common tools)
         if (widget.systemMode != 'sliding') {
           // 1. Split horizontal
@@ -7959,6 +7974,22 @@ extension _WindowViewDrawers on _WindowViewState {
             ),
           ),
         );
+        // Under the handle kinds: the catalogue parts of the selected kind.
+        final handleSlot = widget.model.handleSlotFor(zone);
+        if (handleSlot != null) {
+          children.add(
+            _Tier2RowItem(
+              rowIndex: 1,
+              forceRows: true,
+              child: _AccessoryPartsRow(
+                model: widget.model,
+                slot: handleSlot,
+                needed: widget.model.handlesNeeded(handleSlot),
+                onChanged: () => _setViewState(() {}),
+              ),
+            ),
+          );
+        }
         break;
     }
 

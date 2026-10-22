@@ -10,6 +10,7 @@ abstract final class AccessoryCategory {
   static const doorHandleKey = 'Poignée Porte à Clé';
   static const doorHandleCondamnation = 'Poignée Porte Condamnation';
   static const marechalHandle = 'Poignée Maréchal';
+  static const octoHandle = 'octo';
   static const hinges = 'Paumelles';
   static const verrou = 'Verrou';
   static const cremone = 'Crémone';
@@ -88,6 +89,75 @@ extension WindowModelAccessoryChoice on WindowModel {
               : 'المقبض (Handle)'),
     AccessoryCategory.windowHandle,
   );
+
+  /// The handle row of [zone] in the cost table, following the counting of
+  /// calculate_component (door lock types first, then the window handle
+  /// kinds). Null for a zone without an opening sash or with a handle kind
+  /// that has no category yet (point lock, recessed PVC handle).
+  DrawingAccessorySlot? handleSlotFor(WindowZone zone) {
+    if (zone.content != ZoneContent.singleSash &&
+        zone.content != ZoneContent.doubleSash) {
+      return null;
+    }
+    final isTprThinSash =
+        (activeSeries?.name.toLowerCase() ?? '').contains('tpr') &&
+        !zone.isSash105;
+    const doorLocks = {
+      LockType.clef,
+      LockType.condamnation,
+      LockType.rouleau,
+      LockType.rouleau2000,
+    };
+    final hasDoorLock = doorLocks.contains(zone.lockType) && !isTprThinSash;
+    final isDoor =
+        (zone.isSash105 || hasDoorLock) &&
+        zone.lockType != LockType.none &&
+        zone.useOctoHandle != true &&
+        zone.usePvcHandleOnAlu != true;
+    if (isDoor) {
+      return switch (zone.lockType) {
+        LockType.rouleau => marechal125Slot,
+        LockType.rouleau2000 => marechal2mSlot,
+        LockType.condamnation => doorHandleCondamnationSlot,
+        LockType.clef => doorHandleKeySlot,
+        _ => doorHandleSlot,
+      };
+    }
+    final windowHandleOnDoor = zone.isSash105 && zone.usePvcHandleOnAlu;
+    if (zone.content == ZoneContent.singleSash &&
+        zone.lockType == LockType.point) {
+      return null;
+    }
+    if (zone.usePvcHandleOnAlu && !windowHandleOnDoor) {
+      return const DrawingAccessorySlot(
+        'مقبض نافذة بي في سي (Poignée Fenêtre PVC)',
+        AccessoryCategory.windowHandle,
+      );
+    }
+    if (isPVC && zone.useEncastreeHandle) return null;
+    if (zone.useOctoHandle) {
+      return const DrawingAccessorySlot(
+        'مقبض أوكتو (Octo)',
+        AccessoryCategory.octoHandle,
+      );
+    }
+    // An aluminium opening counts its ordinary handle as a crémone.
+    return isPVC ? windowHandleSlot : cremoneSlot;
+  }
+
+  /// How many parts of [slot] the opening sashes of this drawing use, for
+  /// the window quantity: the stock a choice must cover.
+  int handlesNeeded(DrawingAccessorySlot slot) {
+    var count = 0;
+    for (final zone in zones) {
+      if (handleSlotFor(zone)?.bomKey != slot.bomKey) continue;
+      count += zone.content == ZoneContent.doubleSash &&
+              zone.doubleSashHasTwoHandles
+          ? 2
+          : 1;
+    }
+    return count * math.max(1, quantity);
+  }
 
   /// Whether [accessory] (an `Accessories` row) may replace an accessory of
   /// [category] in this drawing: same category, active, the drawing's

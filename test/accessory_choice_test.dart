@@ -275,6 +275,57 @@ void main() {
     expect(window.isAccessoryChosen(key), isFalse);
   });
 
+  test('each handle kind uses its own cost-table row', () async {
+    final database = await _openDatabase();
+    final window = _window(database);
+    final zone = window.zones.single;
+
+    // Aluminium: the ordinary handle is the crémone.
+    expect(window.handleSlotFor(zone)?.bomKey, 'كريمون (Cremone)');
+    zone.usePvcHandleOnAlu = true;
+    expect(
+      window.handleSlotFor(zone)?.bomKey,
+      'مقبض نافذة بي في سي (Poignée Fenêtre PVC)',
+    );
+    zone
+      ..usePvcHandleOnAlu = false
+      ..useOctoHandle = true;
+    expect(window.handleSlotFor(zone)?.category, AccessoryCategory.octoHandle);
+
+    zone
+      ..useOctoHandle = false
+      ..isSash105 = true
+      ..lockType = LockType.clef;
+    expect(window.handleSlotFor(zone)?.category, AccessoryCategory.doorHandleKey);
+    zone.lockType = LockType.rouleau2000;
+    expect(
+      window.handleSlotFor(zone)?.bomKey,
+      'مقبض كبير ماريشال 2 متر (Poignée Maréchal 2m)',
+    );
+
+    final pvcWindow = _window(database, seriesName: 'PVC 70');
+    expect(
+      pvcWindow.handleSlotFor(pvcWindow.zones.single)?.bomKey,
+      'مقبض نافذة (Poignée Fenêtre)',
+    );
+
+    final fixed = WindowZone(
+      id: 'fixed',
+      content: ZoneContent.fixedGlass,
+      boundary: const Rect.fromLTWH(0, 0, 100, 100),
+    );
+    expect(window.handleSlotFor(fixed), isNull);
+  });
+
+  test('the stock a handle choice must cover', () async {
+    final database = await _openDatabase();
+    final window = _window(database)..quantity = 3;
+    final slot = window.handleSlotFor(window.zones.single)!;
+    expect(window.handlesNeeded(slot), 3);
+    window.zones.single.doubleSashHasTwoHandles = true;
+    expect(window.handlesNeeded(slot), 6);
+  });
+
   test('free stock leaves out other orders and follows the colour', () async {
     final database = await _openDatabase();
     final connection = database.connection;
