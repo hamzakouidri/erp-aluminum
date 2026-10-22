@@ -5782,8 +5782,7 @@ class WindowModel extends ChangeNotifier {
     if (zones.isEmpty) {
       Rect drawnRect = Rect.fromPoints(drawingStart!, drawingCurrent!);
       if (drawnRect.width > 50 && drawnRect.height > 50) {
-        // A first frame is never smaller than 380 mm (250 mm beside a side
-        // of one metre or more).
+        // A first frame is never smaller than 250 mm per side.
         final firstFrame = _limitFrameSize(drawnRect.width, drawnRect.height);
         width = firstFrame.width;
         height = firstFrame.height;
@@ -6013,7 +6012,7 @@ class WindowModel extends ChangeNotifier {
         newW = _limitFrameDimension(newW);
         newH = _limitFrameDimension(newH);
         // The new frame shares its other side with the frames it is placed
-        // against, so the 380/250 mm rule is measured against that span.
+        // against: the 250 mm rule applies to both of its sides.
         if (minVal == dxRight || minVal == dxLeft) {
           newW = math.max(newW, minimumFrameSideFor(spanBottom - spanTop));
         } else {

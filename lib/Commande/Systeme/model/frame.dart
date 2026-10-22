@@ -458,12 +458,10 @@ extension WindowModelFrame on WindowModel {
   double _limitFrameDimension(double value) =>
       value.clamp(200.0, maximumFrameBarLengthMm).toDouble();
 
-  /// Smallest side of one outer frame: 380 mm, or 250 mm when the other
-  /// side is at least one metre (a long, narrow frame is still buildable).
-  double minimumFrameSideFor(double otherSide) =>
-      otherSide >= 1000.0 ? 250.0 : 380.0;
+  /// Smallest side of one outer frame: 250 mm, whatever the other side.
+  double minimumFrameSideFor(double otherSide) => 250.0;
 
-  /// Applies [_limitFrameDimension] and the 380/250 mm frame rule together.
+  /// Applies [_limitFrameDimension] and the 250 mm frame rule together.
   Size _limitFrameSize(double w, double h) {
     w = _limitFrameDimension(w);
     h = _limitFrameDimension(h);
@@ -2857,8 +2855,8 @@ extension WindowModelFrame on WindowModel {
       return value.clamp(minimum, maximum).toDouble();
     }
 
-    // 380 mm per side (250 mm beside a side of one metre or more); a legacy
-    // frame already smaller keeps its size instead of jumping.
+    // 250 mm per side; a legacy frame already smaller keeps its size
+    // instead of jumping.
     final minFrameW = math.max(
       minInnerSize + (2 * profileThickness),
       math.min(

@@ -1292,8 +1292,8 @@ extension _WindowViewToolbars on _WindowViewState {
               ),
               onPressed: () {
                 final val = double.tryParse(ctrl.text);
-                // Same range the model enforces: 380 mm (250 mm beside a
-                // side of one metre or more) up to one bar length.
+                // Same range the model enforces: 250 mm up to one bar
+                // length.
                 final limits = widget.model.frameOuterLimits(
                   hit.zoneId,
                   isWidth: hit.isWidth,
