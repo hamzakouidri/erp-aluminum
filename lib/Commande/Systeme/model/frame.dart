@@ -496,6 +496,24 @@ extension WindowModelFrame on WindowModel {
         _contentMinimumSpanMm(zone, isWidth: isWidth),
       );
 
+  /// Top end of a vertical mullion centred at [x], [barWidth] wide, that
+  /// reaches a slanted or arched head: y of its long point (the higher
+  /// corner on the head's inner face) and its cut angle with the head in
+  /// degrees, 90 being a square cut. Null under a flat head.
+  ({double longPointY, double cutAngleDeg})? verticalMullionHeadCut(
+    double x,
+    double barWidth,
+  ) {
+    if (!hasArchOrSlant || barWidth <= 0) return null;
+    final inset = profileThickness;
+    final yLeft = headEdgeY(x - barWidth / 2, inset);
+    final yRight = headEdgeY(x + barWidth / 2, inset);
+    final slopeDeg =
+        math.atan2((yRight - yLeft).abs(), barWidth) * 180 / math.pi;
+    if (slopeDeg < 0.05) return null;
+    return (longPointY: math.min(yLeft, yRight), cutAngleDeg: 90 - slopeDeg);
+  }
+
   /// Whether every zone in [parts] keeps [minimumZoneSpanMm] along the axis
   /// a division just cut ([isWidth] for a vertical mullion).
   bool zonesKeepMinimumSpan(

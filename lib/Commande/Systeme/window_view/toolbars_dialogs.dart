@@ -640,10 +640,14 @@ extension _WindowViewToolbars on _WindowViewState {
               onPressed: () {
                 final val = double.tryParse(ctrl.text);
                 if (val == null || val <= 0) {
-                  _acceptDimension(null, 1, isH ? widget.model.height : widget.model.width);
+                  _acceptDimension(
+                    null,
+                    1,
+                    isH ? widget.model.height : widget.model.width,
+                  );
                   return;
                 }
-                  widget.model.resizeMullionDimension(section, val);
+                widget.model.resizeMullionDimension(section, val);
                 // The model keeps every neighbouring zone above its minimum;
                 // tell the user when the typed size had to be adjusted.
                 final applied = widget.model.selection.mullionPosition;
@@ -651,11 +655,12 @@ extension _WindowViewToolbars on _WindowViewState {
                   ScaffoldMessenger.of(this.context).showSnackBar(
                     SnackBar(
                       content: Text(
-                        _tr('تم ضبط القياس إلى {value} مم ليبقى كل جزء ضمن الحد الأدنى')
-                            .replaceAll(
-                              '{value}',
-                              valueAt(applied).round().toString(),
-                            ),
+                        _tr(
+                          'تم ضبط القياس إلى {value} مم ليبقى كل جزء ضمن الحد الأدنى',
+                        ).replaceAll(
+                          '{value}',
+                          valueAt(applied).round().toString(),
+                        ),
                       ),
                       backgroundColor: Colors.orange.shade800,
                     ),
@@ -779,14 +784,18 @@ extension _WindowViewToolbars on _WindowViewState {
       iconButton(
         icon: Icons.remove,
         tooltip: Localization.translate('تصغير الرسم', lang),
-        onPressed: () =>
-            _changeDrawingZoom(1 / _WindowViewState._zoomStep, _drawingViewportCenter()),
+        onPressed: () => _changeDrawingZoom(
+          1 / _WindowViewState._zoomStep,
+          _drawingViewportCenter(),
+        ),
       ),
       iconButton(
         icon: Icons.add,
         tooltip: Localization.translate('تكبير الرسم', lang),
-        onPressed: () =>
-            _changeDrawingZoom(_WindowViewState._zoomStep, _drawingViewportCenter()),
+        onPressed: () => _changeDrawingZoom(
+          _WindowViewState._zoomStep,
+          _drawingViewportCenter(),
+        ),
       ),
     ];
   }
@@ -1025,9 +1034,7 @@ extension _WindowViewToolbars on _WindowViewState {
                       final cellCount = axisPositions.length + 1;
                       double cellSize(int i) {
                         final start = i == 0 ? 0.0 : axisPositions[i - 1];
-                        final end = i == cellCount - 1
-                            ? 1.0
-                            : axisPositions[i];
+                        final end = i == cellCount - 1 ? 1.0 : axisPositions[i];
                         return (end - start) * glassLength -
                             (i > 0 ? dividerT / 2 : 0) -
                             (i < cellCount - 1 ? dividerT / 2 : 0);
@@ -1173,18 +1180,16 @@ extension _WindowViewToolbars on _WindowViewState {
                       ScaffoldMessenger.of(this.context).showSnackBar(
                         SnackBar(
                           content: Text(
-                            _tr('هذا الجزء غير مقسّم: غيّر القياس الخارجي للإطار'),
+                            _tr(
+                              'هذا الجزء غير مقسّم: غيّر القياس الخارجي للإطار',
+                            ),
                           ),
                           backgroundColor: Colors.orange.shade800,
                         ),
                       );
-                    } else if (!_acceptDimension(
-                      val,
-                      limits.min,
-                      limits.max,
-                    )) {
+                    } else if (!_acceptDimension(val, limits.min, limits.max)) {
                       return;
-                  } else {
+                    } else {
                       widget.model.resizeZoneInner(
                         hit.zoneId,
                         hit.isWidth,
@@ -1523,20 +1528,20 @@ extension _WindowViewToolbars on _WindowViewState {
     _isContextMenuOpen = true;
     try {
       selectedValue = await showMenu<String>(
-      context: context,
+        context: context,
         position: RelativeRect.fromRect(
           Rect.fromLTWH(globalPosition.dx, globalPosition.dy, 1, 1),
           Offset.zero & overlay.size,
-      ),
-        constraints: const BoxConstraints(maxWidth: 420, maxHeight: 560),
-      color: isDark ? const Color(0xFF252536) : Colors.white,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        side: BorderSide(
-          color: isDark ? Colors.white24 : Colors.grey.shade300,
-          width: 0.8,
         ),
-      ),
+        constraints: const BoxConstraints(maxWidth: 420, maxHeight: 560),
+        color: isDark ? const Color(0xFF252536) : Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(
+            color: isDark ? Colors.white24 : Colors.grey.shade300,
+            width: 0.8,
+          ),
+        ),
         items: menuItems,
       );
     } finally {
@@ -1849,10 +1854,7 @@ extension _WindowViewToolbars on _WindowViewState {
       height: 36,
       child: Row(
         children: [
-          SizedBox(
-            width: 28,
-            child: Icon(icon, size: 18, color: itemColor),
-          ),
+          SizedBox(width: 28, child: Icon(icon, size: 18, color: itemColor)),
           Expanded(
             child: Text(
               Localization.translate(
@@ -2829,15 +2831,19 @@ extension _WindowViewToolbars on _WindowViewState {
         children: [
           const Icon(Icons.crop_square_rounded, color: Colors.white),
           const SizedBox(width: 10),
-          Text(
-            Localization.translate('الإطار محدد', lang),
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
+          Expanded(
+            child: Text(
+              Localization.translate('الإطار محدد', lang),
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
-          const Spacer(),
-          if (widget.model.getFrameRects().length > 1)
+          _buildCornerNotchButton(),
+          if (widget.model.getFrameRects().length > 1) ...[
+            const SizedBox(width: 8),
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red.shade600,
@@ -2853,6 +2859,7 @@ extension _WindowViewToolbars on _WindowViewState {
               ),
               onPressed: () => widget.model.deleteSelectedFrame(),
             ),
+          ],
         ],
       ),
     );
@@ -3954,38 +3961,38 @@ extension _WindowViewToolbars on _WindowViewState {
             const SizedBox(width: 8),
             // زر التبديل بين الأوضاع (اللمس فقط)
             if (!_isWindowsDesktop)
-            InkWell(
-              onTap: () {
-                if (widget.model.isDrawingMode) {
-                  _stopDrawingTimer();
-                } else {
-                  _startDrawingTimer();
-                }
-                _setViewState(() {});
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: widget.model.isDrawingMode
-                      ? Colors.green.shade600
-                      : Colors.blueGrey,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  widget.model.isDrawingMode
-                      ? Localization.translate('وضع الرسم', lang)
-                      : Localization.translate('وضع التحريك', lang),
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
+              InkWell(
+                onTap: () {
+                  if (widget.model.isDrawingMode) {
+                    _stopDrawingTimer();
+                  } else {
+                    _startDrawingTimer();
+                  }
+                  _setViewState(() {});
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: widget.model.isDrawingMode
+                        ? Colors.green.shade600
+                        : Colors.blueGrey,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    widget.model.isDrawingMode
+                        ? Localization.translate('وضع الرسم', lang)
+                        : Localization.translate('وضع التحريك', lang),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),
-            ),
             const SizedBox(width: 8),
             InkWell(
               onTap: _activateShutterFromDesign,
@@ -4748,19 +4755,7 @@ extension _WindowViewToolbars on _WindowViewState {
                         subtitle: Text(
                           '${tr('العرض الظاهر', 'Largeur visible', 'Visible width')}: '
                           '${widget.model.frameSectionFaceWidth(AluminumSection.fromMap(item)).toStringAsFixed(0)} mm • '
-                          '${((item['couvre_joint_width'] as num?)?.toDouble() ??
-                                      0) >
-                                  0
-                              ? tr(
-                                  'بغطاء جانبي مدمج',
-                                  'Avec couvre-joint intégré',
-                                  'Integrated side cover',
-                                )
-                              : tr(
-                                  'بدون غطاء جانبي مدمج',
-                                  'Sans couvre-joint intégré',
-                                  'Without integrated side cover',
-                                )}',
+                          '${((item['couvre_joint_width'] as num?)?.toDouble() ?? 0) > 0 ? tr('بغطاء جانبي مدمج', 'Avec couvre-joint intégré', 'Integrated side cover') : tr('بدون غطاء جانبي مدمج', 'Sans couvre-joint intégré', 'Without integrated side cover')}',
                         ),
                         enabled: selectedSides.isNotEmpty,
                         onTap: selectedSides.isEmpty
@@ -5315,9 +5310,13 @@ extension _WindowViewToolbars on _WindowViewState {
                     String? error;
                     if (isEqualSplit) {
                       if (isHorizontal) {
-                        error =widget.model.splitSelectedZoneHorizontal(parts: parts);
+                        error = widget.model.splitSelectedZoneHorizontal(
+                          parts: parts,
+                        );
                       } else {
-                        error = widget.model.splitSelectedZoneVertical(parts: parts);
+                        error = widget.model.splitSelectedZoneVertical(
+                          parts: parts,
+                        );
                       }
                     } else {
                       List<double> customSizes = [];

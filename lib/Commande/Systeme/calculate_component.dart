@@ -8077,10 +8077,12 @@ class ComponentCalculator {
     List<double> mullionPieces = [];
     final Map<String, List<double>> selectedMullionPieces = {};
     final Map<String, Map<String, dynamic>> selectedMullionSections = {};
+    // Cut angles of pieces not cut square, by index in their pieces list.
+    final Map<int, String> mullionPieceAngles = {};
+    final Map<String, Map<int, String>> selectedMullionAngles = {};
 
     void addOuterMullionPiece(_MullionSegment segment, bool isHorizontal) {
-      final length = (segment.end - segment.start) / 1000.0;
-      if (length <= 0) return;
+      if (segment.end - segment.start <= 0) return;
 
       final section = window.effectiveMullionSectionAt(
         isHorizontal,
@@ -8090,22 +8092,65 @@ class ComponentCalculator {
         isHorizontal,
         segment.position,
       );
+
+      // Each physical bar: its length at the long point and its cut angles.
+      // A vertical bar reaching a slanted or arched head is cut along the
+      // head (top angle) and square at the bottom.
+      final reachesHead =
+          !isHorizontal &&
+          (segment.start - window.profileThickness).abs() < 5.0;
+      final bars = <({double length, String angles})>[];
+      void addBar(double centre, double barWidth) {
+        final cut = reachesHead
+            ? window.verticalMullionHeadCut(centre, barWidth)
+            : null;
+        final start = cut?.longPointY ?? segment.start;
+        final length = (segment.end - start) / 1000.0;
+        if (length <= 0) return;
+        bars.add((
+          length: length,
+          angles: cut == null
+              ? '90/90'
+              : '${cut.cutAngleDeg.toStringAsFixed(1)}/90',
+        ));
+      }
+
+      if (isDoubleFrame) {
+        final frameWidth = window.frameProfileWidthAt(
+          isHorizontal,
+          segment.position,
+        );
+        addBar(segment.position - frameWidth / 2, frameWidth);
+        addBar(segment.position + frameWidth / 2, frameWidth);
+      } else {
+        addBar(segment.position, window.mullionThickness);
+      }
+
       if (section == null) {
-        mullionPieces.add(length);
-        totalMullionLengthMeters += length;
+        for (final bar in bars) {
+          if (bar.angles != '90/90') {
+            mullionPieceAngles[mullionPieces.length] = bar.angles;
+          }
+          mullionPieces.add(bar.length);
+          totalMullionLengthMeters += bar.length;
+        }
         return;
       }
 
       final sectionId = section['id']?.toString() ?? 'custom';
       final groupKey = '$sectionId:${isDoubleFrame ? 'double' : 'single'}';
       final pieces = selectedMullionPieces.putIfAbsent(groupKey, () => []);
-      final physicalPieces = isDoubleFrame ? 2 : 1;
-      for (var i = 0; i < physicalPieces; i++) {
-        pieces.add(length);
+      final angles = selectedMullionAngles.putIfAbsent(groupKey, () => {});
+      for (final bar in bars) {
+        if (bar.angles != '90/90') angles[pieces.length] = bar.angles;
+        pieces.add(bar.length);
+        totalMullionLengthMeters += bar.length;
       }
       selectedMullionSections[groupKey] = section;
-      totalMullionLengthMeters += length * physicalPieces;
     }
+
+    List<String> mullionAngles(List<double> pieces, Map<int, String>? cuts) =>
+        List<String>.generate(pieces.length, (i) => cuts?[i] ?? '90/90');
 
     // Collect all frame mullion segments from adjacent zones
     final List<_MullionSegment> horizontalSegments = [];
@@ -8581,7 +8626,7 @@ class ComponentCalculator {
             'تقسيم الزجاج (Mullion)',
             colorName,
             pieces: mullionPieces,
-            pieceCutAngles: uniformAngles(mullionPieces, '90/90'),
+            pieceCutAngles: mullionAngles(mullionPieces, mullionPieceAngles),
             unit: 'قطاع',
           ),
         );
@@ -8597,7 +8642,10 @@ class ComponentCalculator {
             label,
             colorName,
             pieces: entry.value,
-            pieceCutAngles: uniformAngles(entry.value, '90/90'),
+            pieceCutAngles: mullionAngles(
+              entry.value,
+              selectedMullionAngles[entry.key],
+            ),
             unit: 'قطاع',
             overrideMap: section,
             preferOverrideMap: true,

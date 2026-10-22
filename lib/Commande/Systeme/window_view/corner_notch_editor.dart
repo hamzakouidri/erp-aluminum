@@ -169,13 +169,25 @@ extension _CornerNotchEditor on _WindowViewState {
     return true;
   }
 
-  /// The "corner cut" button among the options of the selected frame, beside
-  /// the others; on desktop it also tells about the right-button drag.
+  /// The "corner cut" button in the blue bar of the selected frame, beside
+  /// "delete frame"; on desktop it also tells about the right-button drag.
   Widget _buildCornerNotchButton() {
-    final button = _ContentButton(
-      label: Localization.translate('notch_button', _notchLang),
-      icon: Icons.turn_slight_left,
-      selected: widget.model.cornerNotchMode,
+    final selected = widget.model.cornerNotchMode;
+    final button = OutlinedButton.icon(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: Colors.white,
+        backgroundColor: selected ? Colors.white24 : null,
+        side: BorderSide(
+          color: selected ? Colors.white : Colors.white38,
+          width: selected ? 1.6 : 1.0,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      ),
+      icon: const Icon(Icons.turn_slight_left, size: 16),
+      label: Text(
+        Localization.translate('notch_button', _notchLang),
+        style: const TextStyle(fontSize: 12),
+      ),
       onPressed: _toggleCornerNotchMode,
     );
     if (!_isWindowsDesktop) return button;

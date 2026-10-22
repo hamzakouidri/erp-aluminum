@@ -4573,6 +4573,8 @@
     "إضافة مفصل هنا": "Ajouter une paumelle ici",
     "حذف المفصل": "Supprimer la paumelle",
     "توزيع المفاصل تلقائياً": "Répartition automatique des paumelles",
+    "حذف مفصل": "Supprimer une paumelle",
+    "توزيع تلقائي": "Répartition automatique",
     "مفاصل نظام OB ثابتة ضمن الطقم ولا يمكن تعديلها": "Les paumelles du système OB font partie du kit et ne se modifient pas",
     "لا يوجد مكان لمفصل آخر: {min} مم من الطرف و {gap} مم بين المفاصل": "Pas de place pour une autre paumelle : {min} mm des extrémités et {gap} mm entre paumelles",
     "يجب أن تبقى في الضلفة مفصلتان على الأقل": "Un ouvrant garde au moins deux paumelles",

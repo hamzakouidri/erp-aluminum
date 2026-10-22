@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:database_data/Commande/Systeme/calculate_component.dart';
 import 'package:database_data/Commande/Systeme/model.dart';
 import 'package:database_data/Commande/Systeme/model_serialization.dart';
@@ -219,6 +221,18 @@ void main() {
       model.zones.first.content = content;
       return model;
     }
+
+    test('a mullion under a slanted head is cut along it', () {
+      final model = makeModel(ZoneContent.fixedGlass);
+      expect(model.verticalMullionHeadCut(1000, 60), isNull);
+      // The head rises 200 mm over the 2120 mm width: about 5.4°.
+      model.topSlantLeftY = 200;
+      final cut = model.verticalMullionHeadCut(1000, 60)!;
+      final slope = math.atan(200 / 2120) * 180 / math.pi;
+      expect(cut.cutAngleDeg, closeTo(90 - slope, 0.01));
+      // The long point is the higher corner, on the right of the bar.
+      expect(cut.longPointY, closeTo(model.headEdgeY(1030, 60), 0.001));
+    });
 
     test('dividers survive serialization and clone', () {
       final zone = WindowZone(

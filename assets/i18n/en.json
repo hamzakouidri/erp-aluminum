@@ -4573,6 +4573,8 @@
     "إضافة مفصل هنا": "Add hinge here",
     "حذف المفصل": "Delete hinge",
     "توزيع المفاصل تلقائياً": "Automatic hinge layout",
+    "حذف مفصل": "Delete hinge",
+    "توزيع تلقائي": "Auto layout",
     "مفاصل نظام OB ثابتة ضمن الطقم ولا يمكن تعديلها": "OB system hinges are part of the kit and cannot be changed",
     "لا يوجد مكان لمفصل آخر: {min} مم من الطرف و {gap} مم بين المفاصل": "No room for another hinge: {min} mm from the ends and {gap} mm between hinges",
     "يجب أن تبقى في الضلفة مفصلتان على الأقل": "A sash keeps at least two hinges",

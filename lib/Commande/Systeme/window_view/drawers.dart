@@ -6144,8 +6144,7 @@ extension _WindowViewDrawers on _WindowViewState {
               onPressed: () => _showFrameSideProfileDialog(context),
             ),
           );
-          children.add(const SizedBox(width: 8));
-          children.add(_buildCornerNotchButton());
+          // The corner-cut button lives in the blue frame bar at the top.
         }
 
         // زر الغطاء الجانبي (Side Cover toggle)
