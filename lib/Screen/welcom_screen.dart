@@ -43,9 +43,12 @@ import '../widgets/resizable_columns_table.dart';
 import 'ai_guide_chat_dialog.dart';
 import 'cutting_optimization_screen.dart';
 import 'tempered_glass_work_screen.dart';
+import '../widgets/auth_session_view.dart';
 
+/// The computer dashboard: Windows, or the website on a wide screen.
 bool get _isWindowsDesktop =>
-    !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+    (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) ||
+    isWebDesktopLayout;
 
 class _DesktopSearchResult {
   final String type;

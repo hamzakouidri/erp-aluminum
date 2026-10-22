@@ -25,6 +25,7 @@ import 'drawer.dart';
 import 'settings_screen.dart';
 import 'welcom_screen.dart';
 import '../login_screen.dart';
+import '../widgets/auth_session_view.dart';
 
 const double _workspaceHeaderHeight = 110;
 
@@ -93,6 +94,10 @@ Future<void> _confirmHomeExit(BuildContext context) async {
 
 bool get _isWindowsDesktop =>
     !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+
+/// The computer workspace (document tabs and the command menu row): Windows,
+/// or the website on a wide screen.
+bool get _usesDesktopLayout => _isWindowsDesktop || isWebDesktopLayout;
 
 class WorkspaceEntry {
   final String id;
@@ -567,7 +572,7 @@ void openAdaptiveScreen(
   // Windows always uses the desktop workspace shell.  Even when the saved
   // preference is still `classic`, pushing on the root navigator would place
   // the screen above DesktopWindowFrame and hide the permanent tab strip.
-  if (!_isWindowsDesktop && settings.viewMode == AppViewMode.classic) {
+  if (!_usesDesktopLayout && settings.viewMode == AppViewMode.classic) {
     Navigator.of(
       context,
       rootNavigator: true,
@@ -657,7 +662,7 @@ class AppWorkspaceShell extends StatelessWidget {
 
     // The Windows shell is intentionally unified: permanent document tabs on
     // the first row and the command menu on the second row.
-    if (_isWindowsDesktop) {
+    if (_usesDesktopLayout) {
       workspace = const _TabbedWorkspaceView();
     } else {
       switch (settings.viewMode) {
@@ -1636,7 +1641,7 @@ class _TabbedWorkspaceViewState extends State<_TabbedWorkspaceView> {
     final workspace = Provider.of<WorkspaceController>(context);
     final lang = context.read<AppSettingsProvider>().language;
     final isDesktop =
-        _isWindowsDesktop || MediaQuery.of(context).size.width >= 900;
+        _usesDesktopLayout || MediaQuery.of(context).size.width >= 900;
     // Keep the desktop tab bar visible even on the dashboard. The workshop
     // brand is the first tab, and all opened pages remain beside it in the
     // same top application bar.
@@ -1920,7 +1925,7 @@ class _FloatingWorkspaceViewState extends State<_FloatingWorkspaceView> {
   Widget build(BuildContext context) {
     final workspace = Provider.of<WorkspaceController>(context);
     final isDesktop =
-        _isWindowsDesktop || MediaQuery.of(context).size.width >= 900;
+        _usesDesktopLayout || MediaQuery.of(context).size.width >= 900;
     final lang = context.read<AppSettingsProvider>().language;
     final immersiveIndex = workspace.entries.indexWhere(
       (entry) => entry.immersive,
@@ -1944,7 +1949,7 @@ class _FloatingWorkspaceViewState extends State<_FloatingWorkspaceView> {
         body: LayoutBuilder(
           builder: (context, constraints) {
             final headerHeight = immersiveIndex == -1
-                ? _workspaceHeaderHeight + (_isWindowsDesktop ? 48.0 : 0.0)
+                ? _workspaceHeaderHeight + (_usesDesktopLayout ? 48.0 : 0.0)
                 : 0.0;
             final canvasSize = Size(
               constraints.maxWidth,

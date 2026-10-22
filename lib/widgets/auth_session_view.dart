@@ -114,3 +114,14 @@ class _AuthSessionViewState extends State<AuthSessionView> {
 /// Width from which the website shows the computer layout (menus and
 /// document tabs) instead of the phone layout.
 const double webDesktopMinWidth = 1024;
+
+/// Whether the website currently shows the computer layout. Screens that
+/// otherwise follow the Windows platform use it so the browser on a computer
+/// gets the same dashboard and document tabs.
+bool get isWebDesktopLayout {
+  if (!kIsWeb) return false;
+  final views = WidgetsBinding.instance.platformDispatcher.views;
+  if (views.isEmpty) return false;
+  final view = views.first;
+  return view.physicalSize.width / view.devicePixelRatio >= webDesktopMinWidth;
+}

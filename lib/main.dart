@@ -881,23 +881,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       ),
       builder: (context, child) {
         final commandShortcuts = ShortcutBindings.instance;
-        Widget content = child!;
-        if (kIsWeb) {
-          content = Center(
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 480),
-              decoration: BoxDecoration(
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
-                    blurRadius: 20,
-                  ),
-                ],
-              ),
-              child: child,
-            ),
-          );
-        }
+        // The website uses the whole browser width: AuthSessionView picks the
+        // computer or the phone layout from it.
+        final Widget content = child!;
         return Focus(
           canRequestFocus: false,
           onKeyEvent: (_, event) {
