@@ -367,7 +367,7 @@ class _LoginScreenState extends State<LoginScreen>
           'عذرًا، اكتمل عدد المستخدمين المسموح به لهذه الورشة. يُرجى التواصل مع مدير الورشة.',
         AppLanguage.french =>
           'Le nombre maximal d’utilisateurs autorisés pour cet atelier est atteint. Veuillez contacter le responsable de l’atelier.',
-        AppLanguage.english =>
+        _ =>
           'This workshop has reached its user limit. Please contact the workshop manager.',
       };
     }

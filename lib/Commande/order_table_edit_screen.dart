@@ -692,7 +692,7 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
     if (p.isShutterOnly) {
       if (curLang == AppLanguage.french) {
         details.add('Volet roulant');
-      } else if (curLang == AppLanguage.english) {
+      } else if (curLang.fallback == AppLanguage.english) {
         details.add('Rolling shutter');
       } else {
         details.add('ستار رولان (Volet roulant)');
@@ -701,7 +701,7 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
       int sCount = p.zones.isNotEmpty ? p.zones.first.slidingSashesCount : 2;
       if (curLang == AppLanguage.french) {
         details.add('Système Coulissant - $sCount vantaux');
-      } else if (curLang == AppLanguage.english) {
+      } else if (curLang.fallback == AppLanguage.english) {
         details.add('Sliding System - $sCount sashes');
       } else {
         details.add('نظام منزلق (Coulissant) - $sCount ضلفات');
@@ -709,7 +709,7 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
     } else {
       if (curLang == AppLanguage.french) {
         details.add('Système Battant');
-      } else if (curLang == AppLanguage.english) {
+      } else if (curLang.fallback == AppLanguage.english) {
         details.add('Casement System');
       } else {
         details.add('نظام مفصلي (Battant)');
@@ -720,12 +720,12 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
     String gamName = p.isShutterOnly
         ? (curLang == AppLanguage.french
             ? 'Volet'
-            : (curLang == AppLanguage.english ? 'Shutter' : 'ستار'))
+            : (curLang.fallback == AppLanguage.english ? 'Shutter' : 'ستار'))
         : (p.activeSeries?.name ?? p.loadedSeriesName ?? '');
     if (gamName.isNotEmpty) {
       if (curLang == AppLanguage.french) {
         details.add('Gamme: $gamName');
-      } else if (curLang == AppLanguage.english) {
+      } else if (curLang.fallback == AppLanguage.english) {
         details.add('Series: $gamName');
       } else {
         details.add('القطاع: $gamName');
@@ -746,7 +746,7 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
       if (p.isShutterOnly || p.hasShutter) {
         details.add('Couleur Volet: $profColor');
       }
-    } else if (curLang == AppLanguage.english) {
+    } else if (curLang.fallback == AppLanguage.english) {
       details.add('Profile Color: $profColor');
       details.add('Accessory Color: $accColor');
       if (p.isShutterOnly || p.hasShutter) {
@@ -780,7 +780,7 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
           final handleH = (p.height - handleY).toInt();
           if (curLang == AppLanguage.french) {
             details.add('Hauteur Poignée: ${handleH} mm');
-          } else if (curLang == AppLanguage.english) {
+          } else if (curLang.fallback == AppLanguage.english) {
             details.add('Handle Height: ${handleH} mm');
           } else {
             details.add('ارتفاع المقبض: ${handleH} مم');
@@ -796,7 +796,7 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
           p.zones.first.glass.structure == GlassStructure.double;
       if (curLang == AppLanguage.french) {
         details.add(isDouble ? 'Vitrage: Double' : 'Vitrage: Simple');
-      } else if (curLang == AppLanguage.english) {
+      } else if (curLang.fallback == AppLanguage.english) {
         details.add(isDouble ? 'Glass: Double' : 'Glass: Single');
       } else {
         details.add(
@@ -819,7 +819,7 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
       if (isMultiFrame) {
         if (curLang == AppLanguage.french) {
           details.add('Couvre-joint: périmètre extérieur de tous les cadres');
-        } else if (curLang == AppLanguage.english) {
+        } else if (curLang.fallback == AppLanguage.english) {
           details.add('Cover joint: outer perimeter of all frames');
         } else {
           details.add('كوفرو جوان: المحيط الخارجي لجميع الإطارات');
@@ -831,7 +831,7 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
         if (hasT) sides.add('Haut');
         if (hasB) sides.add('Bas');
         if (sides.isNotEmpty) details.add('Couvre-joint: ${sides.join(', ')}');
-      } else if (curLang == AppLanguage.english) {
+      } else if (curLang.fallback == AppLanguage.english) {
         final sides = <String>[];
         if (hasL) sides.add('Left');
         if (hasR) sides.add('Right');
@@ -942,7 +942,7 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
 
       if (curLang == AppLanguage.french) {
         details.add('Fermeture: $fermetureVal');
-      } else if (curLang == AppLanguage.english) {
+      } else if (curLang.fallback == AppLanguage.english) {
         details.add('Closure: $fermetureVal');
       } else {
         details.add('الإغلاق (Fermeture): $fermetureVal');
@@ -966,28 +966,28 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
             details.add(switch (curLang) {
               AppLanguage.french =>
                 'Montant latéral: $lateralReinforcedCount renforcé(s), $lateralNormalCount simple(s)',
-              AppLanguage.english =>
-                'Lateral montant: $lateralReinforcedCount reinforced, $lateralNormalCount standard',
               AppLanguage.arabic =>
                 'القائم الجانبي: $lateralReinforcedCount مدعم، $lateralNormalCount غير مدعم',
+              _ =>
+                'Lateral montant: $lateralReinforcedCount reinforced, $lateralNormalCount standard',
             });
           } else if (lateralReinforcedCount > 0) {
             details.add(switch (curLang) {
               AppLanguage.french =>
                 'Montant latéral: $lateralReinforcedCount renforcé(s)',
-              AppLanguage.english =>
-                'Lateral montant: $lateralReinforcedCount reinforced',
               AppLanguage.arabic =>
                 'القائم الجانبي: $lateralReinforcedCount مدعم',
+              _ =>
+                'Lateral montant: $lateralReinforcedCount reinforced',
             });
           } else {
             details.add(switch (curLang) {
               AppLanguage.french =>
                 'Montant latéral: $lateralNormalCount simple(s)',
-              AppLanguage.english =>
-                'Lateral montant: $lateralNormalCount standard',
               AppLanguage.arabic =>
                 'القائم الجانبي: $lateralNormalCount غير مدعم',
+              _ =>
+                'Lateral montant: $lateralNormalCount standard',
             });
           }
         }
@@ -998,28 +998,28 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
             details.add(switch (curLang) {
               AppLanguage.french =>
                 'Montant central: $centralReinforcedCount renforcé(s), $centralNormalCount simple(s)',
-              AppLanguage.english =>
-                'Central montant: $centralReinforcedCount reinforced, $centralNormalCount standard',
               AppLanguage.arabic =>
                 'القائم الوسطي: $centralReinforcedCount مدعم، $centralNormalCount غير مدعم',
+              _ =>
+                'Central montant: $centralReinforcedCount reinforced, $centralNormalCount standard',
             });
           } else if (centralReinforcedCount > 0) {
             details.add(switch (curLang) {
               AppLanguage.french =>
                 'Montant central: $centralReinforcedCount renforcé(s)',
-              AppLanguage.english =>
-                'Central montant: $centralReinforcedCount reinforced',
               AppLanguage.arabic =>
                 'القائم الوسطي: $centralReinforcedCount مدعم',
+              _ =>
+                'Central montant: $centralReinforcedCount reinforced',
             });
           } else {
             details.add(switch (curLang) {
               AppLanguage.french =>
                 'Montant central: $centralNormalCount simple(s)',
-              AppLanguage.english =>
-                'Central montant: $centralNormalCount standard',
               AppLanguage.arabic =>
                 'القائم الوسطي: $centralNormalCount غير مدعم',
+              _ =>
+                'Central montant: $centralNormalCount standard',
             });
           }
         }
@@ -1042,7 +1042,7 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
 
       if (curLang == AppLanguage.french) {
         details.add('Volet: $mechLabel');
-      } else if (curLang == AppLanguage.english) {
+      } else if (curLang.fallback == AppLanguage.english) {
         details.add('Shutter: $mechLabel');
       } else {
         details.add('ستار: $mechLabel');
@@ -1053,7 +1053,7 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
       if (lameFullName.isNotEmpty) {
         if (curLang == AppLanguage.french) {
           details.add('Lame: $lameFullName');
-        } else if (curLang == AppLanguage.english) {
+        } else if (curLang.fallback == AppLanguage.english) {
           details.add('Lame: $lameFullName');
         } else {
           details.add('الشفرة: $lameFullName');
@@ -1069,7 +1069,7 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
                 .replaceAll('Glissiere', 'Coulisse')
                 .replaceAll('Glissière', 'Coulisse'),
           );
-        } else if (curLang == AppLanguage.english) {
+        } else if (curLang.fallback == AppLanguage.english) {
           details.add(
             glis
                 .replaceAll('Glissiere', 'Slide')
@@ -1107,7 +1107,7 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
       if (lower == 'black' || lower == 'noir' || lower == 'أسود') return 'Noir';
       if (lower == 'beige' || lower == 'بيج') return 'Beige';
       return color;
-    } else if (curLang == AppLanguage.english) {
+    } else if (curLang.fallback == AppLanguage.english) {
       if (lower == 'white' || lower == 'blanc' || lower == 'أبيض')
         return 'White';
       if (lower == 'gray' ||
@@ -1329,67 +1329,67 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
   String _defaultKeyForCategory(String category) {
     switch (category) {
       case 'gam':
-        return lang == AppLanguage.english
+        return lang.fallback == AppLanguage.english
             ? 'Series:'
             : lang == AppLanguage.french
             ? 'Gamme:'
             : 'السلسلة:';
       case 'profileColor':
-        return lang == AppLanguage.english
+        return lang.fallback == AppLanguage.english
             ? 'Profile color:'
             : lang == AppLanguage.french
             ? 'Couleur profil:'
             : 'لون البروفيل:';
       case 'accessoryColor':
-        return lang == AppLanguage.english
+        return lang.fallback == AppLanguage.english
             ? 'Accessory color:'
             : lang == AppLanguage.french
             ? 'Couleur accessoire:'
             : 'لون الإكسسوار:';
       case 'shutterColor':
-        return lang == AppLanguage.english
+        return lang.fallback == AppLanguage.english
             ? 'Shutter color:'
             : lang == AppLanguage.french
             ? 'Couleur volet:'
             : 'لون الستار:';
       case 'glass':
-        return lang == AppLanguage.english
+        return lang.fallback == AppLanguage.english
             ? 'Glass:'
             : lang == AppLanguage.french
             ? 'Vitrage:'
             : 'الزجاج:';
       case 'cover':
-        return lang == AppLanguage.english
+        return lang.fallback == AppLanguage.english
             ? 'Cover joint:'
             : lang == AppLanguage.french
             ? 'Couvre-joint:'
             : 'القطعة الجانبية:';
       case 'base':
-        return lang == AppLanguage.english
+        return lang.fallback == AppLanguage.english
             ? 'Base frame:'
             : lang == AppLanguage.french
             ? 'Cadre de base:'
             : 'الإطار السفلي:';
       case 'closure':
-        return lang == AppLanguage.english
+        return lang.fallback == AppLanguage.english
             ? 'Closure:'
             : lang == AppLanguage.french
             ? 'Fermeture:'
             : 'نوعية الغلق:';
       case 'shutter':
-        return lang == AppLanguage.english
+        return lang.fallback == AppLanguage.english
             ? 'Shutter mechanism:'
             : lang == AppLanguage.french
             ? 'Mécanisme volet:'
             : 'ميكانيزم الستار:';
       case 'lame':
-        return lang == AppLanguage.english
+        return lang.fallback == AppLanguage.english
             ? 'Shutter blade:'
             : lang == AppLanguage.french
             ? 'Lame volet:'
             : 'لام الستار:';
       case 'coulisse':
-        return lang == AppLanguage.english
+        return lang.fallback == AppLanguage.english
             ? 'Coulisse:'
             : lang == AppLanguage.french
             ? 'Coulisse:'

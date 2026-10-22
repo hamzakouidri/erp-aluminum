@@ -1606,7 +1606,7 @@ extension _WindowViewShutter on _WindowViewState {
                     label: Text(
                       lang == AppLanguage.french
                           ? 'Appliquer la recommandation'
-                          : (lang == AppLanguage.english
+                          : (lang.fallback == AppLanguage.english
                                 ? 'Apply recommendation'
                                 : 'تطبيق المقترح'),
                       style: const TextStyle(
@@ -1811,7 +1811,7 @@ extension _WindowViewShutter on _WindowViewState {
                           ? SnackBarAction(
                               label: lang == AppLanguage.french
                                   ? 'Appliquer'
-                                  : (lang == AppLanguage.english
+                                  : (lang.fallback == AppLanguage.english
                                         ? 'Apply'
                                         : 'تطبيق المقترح'),
                               textColor: Colors.yellowAccent,
@@ -1883,7 +1883,7 @@ extension _WindowViewShutter on _WindowViewState {
                     label: Text(
                       lang == AppLanguage.french
                           ? 'Appliquer'
-                          : (lang == AppLanguage.english ? 'Apply' : 'تطبيق'),
+                          : (lang.fallback == AppLanguage.english ? 'Apply' : 'تطبيق'),
                       style: const TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,

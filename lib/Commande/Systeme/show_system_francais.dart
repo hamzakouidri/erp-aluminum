@@ -592,9 +592,10 @@ class _WindowViewState extends State<WindowView> {
         widget.model.selection.type == SelectionType.mullion;
     final isInnerDivisionSelected =
         widget.model.selection.type == SelectionType.innerDivision;
+    // A single frame shows the blue bar too: it holds the corner-cut button
+    // ("delete frame" appears only when there are several frames).
     final isFrameSelected =
-        widget.model.selection.type == SelectionType.frame &&
-        widget.model.getFrameRects().length > 1;
+        widget.model.selection.type == SelectionType.frame;
 
     Widget? activeTopToolbar;
     if (isInnerDivisionSelected) {
@@ -672,7 +673,7 @@ class _WindowViewState extends State<WindowView> {
                                   label: Text(
                                     lang == AppLanguage.french
                                         ? 'Appliquer la lame recommandée'
-                                        : (lang == AppLanguage.english
+                                        : (lang.fallback == AppLanguage.english
                                               ? 'Apply recommended blade'
                                               : 'تطبيق الشفرة المقترحة'),
                                     style: const TextStyle(
@@ -5463,24 +5464,43 @@ class AppWorkspacePainter extends CustomPainter {
                     (isOnlyFrame || (frame.bottom - maxFrameBottom).abs() < 0.1)
                 ? separateCoverThickness
                 : 0.0);
-        _paintProfileDimensionLabel(
-          canvas,
-          cutLabel(frameWidth, sideFrameCode('top')),
-          Rect.fromLTWH(
-            frame.left + 2,
-            frame.top + 1,
-            math.max(0.0, frame.width - 4),
-            math.max(0.0, frameThickness - 2),
-          ),
-        );
+        // A frame under a slanted or arched head: the top label sits in the
+        // head bar and turns with it, the left one starts below the head.
+        final underShapedHead =
+            model.hasArchOrSlant && (frame.top - minFrameTop).abs() < 0.1;
+        if (underShapedHead) {
+          _paintHeadProfileLabel(
+            canvas,
+            model,
+            cutLabel(frameWidth, sideFrameCode('top')),
+            frame.left,
+            frame.right,
+            frameThickness / 2,
+            frameThickness,
+          );
+        } else {
+          _paintProfileDimensionLabel(
+            canvas,
+            cutLabel(frameWidth, sideFrameCode('top')),
+            Rect.fromLTWH(
+              frame.left + 2,
+              frame.top + 1,
+              math.max(0.0, frame.width - 4),
+              math.max(0.0, frameThickness - 2),
+            ),
+          );
+        }
+        final leftTop = underShapedHead
+            ? model.headEdgeY(frame.left + frameThickness, frameThickness)
+            : frame.top + 2;
         _paintProfileDimensionLabel(
           canvas,
           cutLabel(frameHeight, sideFrameCode('left')),
-          Rect.fromLTWH(
+          Rect.fromLTRB(
             frame.left + 1,
-            frame.top + 2,
-            math.max(0.0, frameThickness - 2),
-            math.max(0.0, frame.height - 4),
+            leftTop,
+            frame.left + math.max(1.0, frameThickness - 1),
+            math.max(leftTop, frame.bottom - 2),
           ),
           vertical: true,
         );
@@ -5515,7 +5535,17 @@ class AppWorkspacePainter extends CustomPainter {
         final hasTop = hasIntegratedCover
             ? !model.removedShutterSides.contains('top')
             : hasSeparateCoverTop;
-        if (hasTop) {
+        if (hasTop && model.hasArchOrSlant) {
+          _paintHeadProfileLabel(
+            canvas,
+            model,
+            cutLabel(coverCutWidth, coverCode),
+            0,
+            model.width,
+            -coverWidth / 2,
+            coverWidth,
+          );
+        } else if (hasTop) {
           _paintProfileDimensionLabel(
             canvas,
             cutLabel(coverCutWidth, coverCode),
@@ -5531,11 +5561,12 @@ class AppWorkspacePainter extends CustomPainter {
           _paintProfileDimensionLabel(
             canvas,
             cutLabel(coverCutHeight, coverCode),
-            Rect.fromLTWH(
+            Rect.fromLTRB(
               -coverWidth + 1,
-              2,
-              math.max(0.0, coverWidth - 2),
-              math.max(0.0, model.height - 4),
+              // Under a slanted or arched head the side starts at the head.
+              model.hasArchOrSlant ? model.headEdgeY(0, 0) + 2 : 2,
+              -1,
+              model.height - 2,
             ),
             vertical: true,
           );
@@ -5564,16 +5595,14 @@ class AppWorkspacePainter extends CustomPainter {
     }
   }
 
-  void _paintProfileDimensionLabel(
-    Canvas canvas,
+  /// The label of a profile [mainAxis] long and [crossAxis] wide, shrunk to
+  /// fit along it; null when it cannot fit.
+  TextPainter? _profileLabelPainter(
     String text,
-    Rect bounds, {
-    bool vertical = false,
-    bool alignStart = false,
-  }) {
-    final crossAxis = vertical ? bounds.width : bounds.height;
-    final mainAxis = vertical ? bounds.height : bounds.width;
-    if (crossAxis < 12 || mainAxis < 35) return;
+    double mainAxis,
+    double crossAxis,
+  ) {
+    if (crossAxis < 12 || mainAxis < 35) return null;
 
     double fontSize = math.min(34.0, math.max(15.0, crossAxis * 0.78));
     late TextPainter painter;
@@ -5592,7 +5621,50 @@ class AppWorkspacePainter extends CustomPainter {
       if (painter.width <= mainAxis - 8 || fontSize <= 10) break;
       fontSize -= 1.0;
     }
-    if (painter.width > mainAxis - 4) return;
+    return painter.width > mainAxis - 4 ? null : painter;
+  }
+
+  /// Label of a bar [barWidth] wide running along a slanted or arched head
+  /// from [x0] to [x1]: centred on its middle line, [depth] mm under the
+  /// head's outer edge (negative above it), and turned along it.
+  void _paintHeadProfileLabel(
+    Canvas canvas,
+    WindowModel model,
+    String text,
+    double x0,
+    double x1,
+    double depth,
+    double barWidth,
+  ) {
+    final cx = (x0 + x1) / 2;
+    final angle = math.atan2(
+      model.headEdgeY(cx + 1, depth) - model.headEdgeY(cx - 1, depth),
+      2,
+    );
+    final painter = _profileLabelPainter(
+      text,
+      (x1 - x0 - 4) / math.cos(angle),
+      barWidth - 2,
+    );
+    if (painter == null) return;
+    canvas.save();
+    canvas.translate(cx, model.headEdgeY(cx, depth));
+    canvas.rotate(angle);
+    painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
+    canvas.restore();
+  }
+
+  void _paintProfileDimensionLabel(
+    Canvas canvas,
+    String text,
+    Rect bounds, {
+    bool vertical = false,
+    bool alignStart = false,
+  }) {
+    final crossAxis = vertical ? bounds.width : bounds.height;
+    final mainAxis = vertical ? bounds.height : bounds.width;
+    final painter = _profileLabelPainter(text, mainAxis, crossAxis);
+    if (painter == null) return;
 
     canvas.save();
     if (vertical) {

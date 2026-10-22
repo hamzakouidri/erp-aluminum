@@ -892,7 +892,7 @@ extension WindowModelShutter on WindowModel {
       return _shutterBladeWarningCatalogue.isEmpty
           ? '$base Veuillez choisir une lame adaptée à cette largeur.'
           : '$base Aucune lame disponible ne supporte cette largeur ; vérifiez les dimensions ou le catalogue.';
-    } else if (lang == AppLanguage.english) {
+    } else if (lang.fallback == AppLanguage.english) {
       final base =
           'Shutter width ($wStr mm) exceeds the maximum limit for blade «$bladeName» ($limitStr mm).';
       if (recommended != null) {

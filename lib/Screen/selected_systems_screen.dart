@@ -317,8 +317,8 @@ class _SelectedSystemsScreenState extends State<SelectedSystemsScreen>
     ).language;
     final suffix = switch (lang) {
       AppLanguage.french => 'Fr',
-      AppLanguage.english => 'En',
       AppLanguage.arabic => 'Ar',
+      _ => 'En',
     };
 
     // 1. Load System Modes preferences

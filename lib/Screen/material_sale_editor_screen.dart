@@ -57,7 +57,7 @@ class _MaterialSaleEditorScreenState extends State<MaterialSaleEditorScreen> {
       listen: false,
     ).language;
     if (lang == AppLanguage.french) return fr;
-    if (lang == AppLanguage.english) return en ?? fr;
+    if (lang.fallback == AppLanguage.english) return en ?? fr;
     return ar;
   }
 

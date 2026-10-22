@@ -435,7 +435,7 @@ class _CommandeState extends State<Commande> {
         default:
           return 'Document pour commande #$num';
       }
-    } else if (lang == AppLanguage.english) {
+    } else if (lang.fallback == AppLanguage.english) {
       switch (docType) {
         case 'devis':
           return 'Quote for order #$num';
@@ -3106,7 +3106,7 @@ class _CommandeState extends State<Commande> {
                                 title: Text(
                                   lang == AppLanguage.french
                                       ? 'Expédition complète (Toutes les fenêtres)'
-                                      : lang == AppLanguage.english
+                                      : lang.fallback == AppLanguage.english
                                       ? 'Full Shipping (All windows)'
                                       : 'فاتورة شحن كلية (جميع النوافذ)',
                                   style: const TextStyle(
@@ -3130,7 +3130,7 @@ class _CommandeState extends State<Commande> {
                                 title: Text(
                                   lang == AppLanguage.french
                                       ? 'Expédition partielle (Par bon de livraison)'
-                                      : lang == AppLanguage.english
+                                      : lang.fallback == AppLanguage.english
                                       ? 'Partial Shipping (By delivery note)'
                                       : 'فاتورة شحن جزئية (حسب وصل الشحن الجزئي)',
                                   style: const TextStyle(
@@ -3640,7 +3640,7 @@ class _CommandeState extends State<Commande> {
                           entryId: 'fiche_coupe_$orderId2',
                           title: lang == AppLanguage.french
                               ? 'Fiche de coupe pour commande #$num — ${_orderClientName(orderData)}'
-                              : (lang == AppLanguage.english
+                              : (lang.fallback == AppLanguage.english
                                     ? 'Cutting sheet for order #$num — ${_orderClientName(orderData)}'
                                     : 'ورقة التقطيع للطلبية رقم $num — ${_orderClientName(orderData)}'),
                           icon: Icons.cut_outlined,
@@ -5180,7 +5180,7 @@ class _CommandeState extends State<Commande> {
                   title: Text(
                     lang == AppLanguage.french
                         ? 'Expédition complète (Toutes les fenêtres)'
-                        : lang == AppLanguage.english
+                        : lang.fallback == AppLanguage.english
                         ? 'Full Shipping (All windows)'
                         : 'فاتورة شحن كلية (جميع النوافذ)',
                     style: const TextStyle(
@@ -5204,7 +5204,7 @@ class _CommandeState extends State<Commande> {
                   title: Text(
                     lang == AppLanguage.french
                         ? 'Expédition partielle (Par bon de livraison)'
-                        : lang == AppLanguage.english
+                        : lang.fallback == AppLanguage.english
                         ? 'Partial Shipping (By delivery note)'
                         : 'فاتورة شحن جزئية (حسب وصل الشحن الجزئي)',
                     style: const TextStyle(
@@ -5508,7 +5508,7 @@ class _CommandeState extends State<Commande> {
             entryId: 'fiche_coupe_$oId',
             title: lang == AppLanguage.french
                 ? 'Fiche de coupe pour commande #$numStr — ${_orderClientName(orderData)}'
-                : (lang == AppLanguage.english
+                : (lang.fallback == AppLanguage.english
                       ? 'Cutting sheet for order #$numStr — ${_orderClientName(orderData)}'
                       : 'ورقة التقطيع للطلبية رقم $numStr — ${_orderClientName(orderData)}'),
             icon: Icons.cut_outlined,
@@ -6124,7 +6124,7 @@ class _CommandeState extends State<Commande> {
   Future<bool?> _confirmWorkerProgressReset(AppLanguage lang) {
     String tr(String ar, String fr, String en) => lang == AppLanguage.french
         ? fr
-        : lang == AppLanguage.english
+        : lang.fallback == AppLanguage.english
         ? en
         : ar;
     return showDialog<bool>(

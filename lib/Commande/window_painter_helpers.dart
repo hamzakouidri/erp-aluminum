@@ -36,11 +36,16 @@ class _MullionVisual {
   final double position;
   final bool isPrimary;
 
+  /// A vertical bar ending on a slanted or arched head: its top is cut
+  /// along the head instead of square ([rect] reaches its higher corner).
+  final bool topFollowsHead;
+
   const _MullionVisual({
     required this.rect,
     required this.isHorizontal,
     required this.position,
     this.isPrimary = false,
+    this.topFollowsHead = false,
   });
 }
 

@@ -145,25 +145,25 @@ extension _WindowViewSliding on _WindowViewState {
   String _trackCountLabel(int count, AppLanguage lang) => switch (lang) {
     AppLanguage.arabic => '$count سكك',
     AppLanguage.french => '$count rails',
-    AppLanguage.english => '$count tracks',
+    _ => '$count tracks',
   };
 
   String _trackTitle(AppLanguage lang) => switch (lang) {
     AppLanguage.arabic => 'عدد السكك في الإطار:',
     AppLanguage.french => 'Nombre de rails du cadre :',
-    AppLanguage.english => 'Frame track count:',
+    _ => 'Frame track count:',
   };
 
   String _trackShortTitle(AppLanguage lang) => switch (lang) {
     AppLanguage.arabic => 'السكك:',
     AppLanguage.french => 'Rails :',
-    AppLanguage.english => 'Tracks:',
+    _ => 'Tracks:',
   };
 
   String _slidingCountLabel(int count, AppLanguage lang) => switch (lang) {
     AppLanguage.arabic => 'منزلق $count',
     AppLanguage.french => 'Coulissant $count vantaux',
-    AppLanguage.english => '$count-sash sliding',
+    _ => '$count-sash sliding',
   };
 
   String _frameTrackCompositionLabel(
@@ -175,14 +175,14 @@ extension _WindowViewSliding on _WindowViewState {
       return switch (lang) {
         AppLanguage.arabic => 'إطار كامل بـ $trackCount سكك',
         AppLanguage.french => 'Cadre complet à $trackCount rails',
-        AppLanguage.english => 'Complete $trackCount-track frame',
+        _ => 'Complete $trackCount-track frame',
       };
     }
     if (trackCount <= 2) {
       return switch (lang) {
         AppLanguage.arabic => 'إطار أساسي بسكتين',
         AppLanguage.french => 'Cadre de base à 2 rails',
-        AppLanguage.english => 'Two-track base frame',
+        _ => 'Two-track base frame',
       };
     }
     final additions = trackCount - 2;
@@ -190,7 +190,7 @@ extension _WindowViewSliding on _WindowViewState {
       AppLanguage.arabic => 'إطار أساسي بسكتين + $additions سكة إضافية',
       AppLanguage.french =>
         'Cadre de base à 2 rails + $additions rail(s) ajouté(s)',
-      AppLanguage.english =>
+      _ =>
         'Two-track base frame + $additions additional track(s)',
     };
   }

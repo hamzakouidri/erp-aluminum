@@ -31,7 +31,7 @@ class _LinkExistingOrdersScreenState extends State<LinkExistingOrdersScreen> {
         return ar;
       case AppLanguage.french:
         return fr;
-      case AppLanguage.english:
+      default:
         return en;
     }
   }

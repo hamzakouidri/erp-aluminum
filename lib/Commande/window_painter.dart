@@ -4019,8 +4019,15 @@ class WindowPainter extends CustomPainter {
         }
       }
 
+      // Under a slanted or arched head the bar reaches the head at its higher
+      // corner and is cut along it (see drawMullion).
+      var topFollowsHead = false;
       if ((v.start - (topOffset + t)).abs() < 5.0) {
-        top = getInnerTopY(x, t, topOffset);
+        top = math.min(
+          getInnerTopY(x - vThick / 2, t, topOffset),
+          getInnerTopY(x + vThick / 2, t, topOffset),
+        );
+        topFollowsHead = model.hasArchOrSlant;
       }
 
       // Check if bottom terminates at an uncut horizontal mullion
@@ -4056,6 +4063,7 @@ class WindowPainter extends CustomPainter {
               isHorizontal: false,
               position: x,
               isPrimary: true,
+              topFollowsHead: topFollowsHead,
             ),
           );
         }
@@ -4076,6 +4084,7 @@ class WindowPainter extends CustomPainter {
                 isHorizontal: false,
                 position: x,
                 isPrimary: false,
+                topFollowsHead: topFollowsHead && currentTop == top,
               ),
             );
           }
@@ -4190,9 +4199,7 @@ class WindowPainter extends CustomPainter {
       }
     }
 
-    void drawMullion(_MullionVisual mullion) {
-      if (mullion.rect.width <= 0 || mullion.rect.height <= 0) return;
-
+    void drawMullionBody(_MullionVisual mullion) {
       if (model.isGroovedFrameMullionAt(
         mullion.isHorizontal,
         mullion.position,
@@ -4332,6 +4339,28 @@ class WindowPainter extends CustomPainter {
           );
         }
       }
+    }
+
+    // A bar ending on a slanted or arched head is cut along the head: its
+    // body is clipped under the head line, which is then drawn as the cut.
+    void drawMullion(_MullionVisual mullion) {
+      if (mullion.rect.width <= 0 || mullion.rect.height <= 0) return;
+      if (!mullion.topFollowsHead) {
+        drawMullionBody(mullion);
+        return;
+      }
+      final r = mullion.rect;
+      final cut = Path()..moveTo(r.left, getInnerTopY(r.left, t, topOffset));
+      _lineAlongHead(cut, r.left, r.right, t, topOffset);
+      final body = Path.from(cut)
+        ..lineTo(r.right, r.bottom + 1.0)
+        ..lineTo(r.left, r.bottom + 1.0)
+        ..close();
+      canvas.save();
+      canvas.clipPath(body);
+      drawMullionBody(mullion);
+      canvas.restore();
+      canvas.drawPath(cut, border);
     }
 
     // Internal divisions stop at the inner face of their enclosing frame.
@@ -4553,11 +4582,39 @@ class WindowPainter extends CustomPainter {
       return sashCode.isEmpty ? size : '$size ($sashCode)';
     }
 
+    // Under a slanted or arched head the top sash bar follows the head, so
+    // its labels move and turn with it instead of staying on the flat box.
+    final double topOffset = _topOffset;
+    final bool underShapedHead = model.hasArchOrSlant && _isTopZone(zone);
+    final double sashInset = _sashInset(
+      r.top,
+      model.profileThickness,
+      topOffset,
+    );
+    double sashBarY(double x, double depth) =>
+        model.headEdgeY(x, sashInset + depth, topOffset: topOffset);
+
     void paintWidthInSashProfile(
       TextPainter text,
       Rect sashRect, {
       bool avoidCenter = false,
     }) {
+      if (underShapedHead) {
+        final cx = sashRect.center.dx;
+        final y0 = sashBarY(cx - 1, sashThickness / 2);
+        final y1 = sashBarY(cx + 1, sashThickness / 2);
+        final angle = math.atan2(y1 - y0, 2);
+        final length = (sashRect.width - 8) / math.cos(angle);
+        if (length < text.width + 8 || sashThickness - 4 < text.height) {
+          return;
+        }
+        canvas.save();
+        canvas.translate(cx, sashBarY(cx, sashThickness / 2));
+        canvas.rotate(angle);
+        text.paint(canvas, Offset(-text.width / 2, -text.height / 2));
+        canvas.restore();
+        return;
+      }
       final profile = Rect.fromLTRB(
         sashRect.left + 4,
         sashRect.top + 2,
@@ -4582,10 +4639,21 @@ class WindowPainter extends CustomPainter {
       Rect sashRect, {
       required bool onRight,
     }) {
+      final stileLeft = onRight
+          ? sashRect.right - sashThickness
+          : sashRect.left;
+      // The stile starts under the top bar, which is lower on one side of
+      // a slanted head.
+      final stileTop = underShapedHead
+          ? math.max(
+              sashBarY(stileLeft, sashThickness),
+              sashBarY(stileLeft + sashThickness, sashThickness),
+            )
+          : sashRect.top + sashThickness;
       final profile = Rect.fromLTRB(
-        onRight ? sashRect.right - sashThickness + 2 : sashRect.left + 2,
-        sashRect.top + sashThickness + 4,
-        onRight ? sashRect.right - 2 : sashRect.left + sashThickness - 2,
+        stileLeft + 2,
+        stileTop + 4,
+        stileLeft + sashThickness - 2,
         sashRect.bottom - sashThickness - 4,
       );
       if (profile.height < text.width + 8 || profile.width < text.height + 4) {
@@ -9362,8 +9430,14 @@ class WindowPainter extends CustomPainter {
   }) {
     // Visible parclose band; 18 mm (was 12) so the bead and the shape of its
     // 45°/90° corner joints read at normal zoom.
-    final double pT = customThickness ?? 18.0;
-    if (rect.width <= pT * 2 || rect.height <= pT * 2) return;
+    // Between two close mullions the parclose (and its cavity) must stay
+    // visible: in a zone narrower than two bands both sides narrow to meet
+    // with a thin strip of glass between them instead of disappearing.
+    final double pT = math.min(
+      customThickness ?? 18.0,
+      (math.min(rect.width, rect.height) - 2.0) / 2,
+    );
+    if (pT <= 1.0) return;
 
     final bool isBottomOpen =
         !_hasEffectiveBottomFrame && (rect.bottom - model.height).abs() < 1.0;

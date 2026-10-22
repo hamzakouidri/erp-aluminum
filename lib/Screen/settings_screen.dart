@@ -2243,7 +2243,10 @@ class DisplaySettingsScreen extends StatelessWidget {
                   return DropdownMenuItem(
                     value: l,
                     child: Text(
-                      Localization.translate(l.name, lang),
+                      // A pack language is shown under its own name.
+                      l.isBuiltIn
+                          ? Localization.translate(l.name, lang)
+                          : l.nativeName,
                       style: const TextStyle(fontFamily: 'Cairo'),
                     ),
                   );

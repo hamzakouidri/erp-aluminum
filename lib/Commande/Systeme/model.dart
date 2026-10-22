@@ -642,10 +642,10 @@ class FrameAngleJunction {
     switch (lang) {
       case AppLanguage.french:
         return 'Entre cadre ${firstFrameIndex + 1} et ${secondFrameIndex + 1}';
-      case AppLanguage.english:
-        return 'Between frame ${firstFrameIndex + 1} and ${secondFrameIndex + 1}';
       case AppLanguage.arabic:
         return 'بين الإطار ${firstFrameIndex + 1} و ${secondFrameIndex + 1}';
+      default:
+        return 'Between frame ${firstFrameIndex + 1} and ${secondFrameIndex + 1}';
     }
   }
 }

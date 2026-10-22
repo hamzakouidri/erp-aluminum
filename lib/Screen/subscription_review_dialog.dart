@@ -506,7 +506,7 @@ class SubscriptionReviewDialog extends StatelessWidget {
                             child: Text(
                               lang == AppLanguage.french
                                   ? 'Votre compte est rattaché à l\'abonnement de l\'atelier. La gestion et le renouvellement de l\'abonnement incombent exclusivement au responsable de l\'atelier.'
-                                  : (lang == AppLanguage.english
+                                  : (lang.fallback == AppLanguage.english
                                       ? 'Your account is linked to the workshop\'s unified subscription. Subscription management and renewals are handled exclusively by the workshop manager.'
                                       : 'حسابك مسجل كعامل ومرتبط باشتراك الورشة الموحد. تجديد الاشتراك وإدارته من اختصاص مدير الورشة فقط.'),
                               style: TextStyle(
