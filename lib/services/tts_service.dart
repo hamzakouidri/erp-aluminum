@@ -81,57 +81,71 @@ class TtsService {
     _stateController.add(_ttsState);
 
     // Always use high-quality Google Studio Neural voice stream via AudioPlayer first
+    final unspoken = await _speakWithAudioPlayer(
+      cleanText,
+      currentSession,
+      languageCode: languageCode,
+    );
+    // The online voice reports failure by returning what it could not say
+    // (offline, blocked, non-200). Say that part with the device's own engine
+    // instead of staying silent.
+    if (unspoken.isEmpty || _speakSessionId != currentSession) return;
+    debugPrint('Google online TTS failed, falling back to flutter_tts.');
+    if (_flutterTts == null) return;
     try {
-      await _speakWithAudioPlayer(cleanText, currentSession, languageCode: languageCode);
+      await _flutterTts!.setLanguage(languageCode);
+      await _flutterTts!.setSpeechRate(0.5);
+      await _flutterTts!.setPitch(1.0);
+      await _flutterTts!.speak(unspoken);
     } catch (e) {
-      debugPrint('Google online AudioPlayer TTS failed, falling back to flutter_tts: $e');
-      if (_flutterTts != null) {
-        try {
-          await _flutterTts!.setLanguage(languageCode);
-          await _flutterTts!.setSpeechRate(0.9); // Normal natural speed
-          await _flutterTts!.setPitch(1.0);
-          await _flutterTts!.speak(cleanText);
-        } catch (e2) {
-          debugPrint('flutterTts fallback failed: $e2');
-        }
-      }
+      debugPrint('flutterTts fallback failed: $e');
+      _ttsState = TtsState.stopped;
+      _stateController.add(_ttsState);
     }
   }
 
-  /// High quality speech synthesis played via AudioPlayer
-  Future<void> _speakWithAudioPlayer(
+  /// High quality speech synthesis played via AudioPlayer.
+  ///
+  /// Returns the text it could not play (empty when everything was said or
+  /// the speech was cancelled), so [speak] can hand it to flutter_tts.
+  Future<String> _speakWithAudioPlayer(
     String text,
     int sessionId, {
     String languageCode = 'ar',
   }) async {
+    final chunks = _splitIntoChunks(text, 140);
+    var played = 0;
     try {
-      final chunks = _splitIntoChunks(text, 140);
       final tempDir = await getTemporaryDirectory();
 
       for (int i = 0; i < chunks.length; i++) {
-        if (_speakSessionId != sessionId) break;
+        if (_speakSessionId != sessionId) return '';
 
         final chunk = chunks[i];
-        if (chunk.trim().isEmpty) continue;
+        if (chunk.trim().isEmpty) {
+          played = i + 1;
+          continue;
+        }
 
         final url = Uri.parse(
           'https://translate.google.com/translate_tts?ie=UTF-8&q=${Uri.encodeComponent(chunk)}&tl=$languageCode&client=tw-ob',
         );
 
-        final response = await http.get(
-          url,
-          headers: {'User-Agent': 'Mozilla/5.0'},
-        ).timeout(const Duration(seconds: 8));
+        final response = await http
+            .get(url, headers: {'User-Agent': 'Mozilla/5.0'})
+            .timeout(const Duration(seconds: 8));
 
-        if (_speakSessionId != sessionId) break;
+        if (_speakSessionId != sessionId) return '';
 
         if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
-          final tempFile = File(p.join(tempDir.path, 'tts_voice_${sessionId}_$i.mp3'));
+          final tempFile = File(
+            p.join(tempDir.path, 'tts_voice_${sessionId}_$i.mp3'),
+          );
           await tempFile.writeAsBytes(response.bodyBytes);
 
           if (_speakSessionId != sessionId) {
             tempFile.delete().ignore();
-            break;
+            return '';
           }
 
           final completer = Completer<void>();
@@ -148,6 +162,10 @@ class TtsService {
           );
 
           tempFile.delete().ignore();
+          played = i + 1;
+        } else {
+          debugPrint('Google TTS returned HTTP ${response.statusCode}.');
+          break;
         }
       }
     } catch (e) {
@@ -158,6 +176,8 @@ class TtsService {
         _stateController.add(_ttsState);
       }
     }
+    if (_speakSessionId != sessionId) return '';
+    return chunks.skip(played).where((c) => c.trim().isNotEmpty).join('. ');
   }
 
   /// Splits long Arabic text into sensible chunks for the TTS engine
@@ -227,9 +247,20 @@ class TtsService {
     // Remove markdown code blocks
     result = result.replaceAll(RegExp(r'```[\s\S]*?```'), '');
     // Remove raw JSON keys if leaked
-    result = result.replaceAll(RegExp(r'"?(speech_response|transcribed_text|action_type|detected_language|parameters)"?\s*:\s*'), '');
+    result = result.replaceAll(
+      RegExp(
+        r'"?(speech_response|transcribed_text|action_type|detected_language|parameters)"?\s*:\s*',
+      ),
+      '',
+    );
     // Remove emojis and UI decorative symbols
-    result = result.replaceAll(RegExp(r'[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}🔹🔸💰🗣️🎙️🔴•]', unicode: true), ' ');
+    result = result.replaceAll(
+      RegExp(
+        r'[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}🔹🔸💰🗣️🎙️🔴•]',
+        unicode: true,
+      ),
+      ' ',
+    );
     // Remove markdown headers and bold/italics
     result = result.replaceAll(RegExp(r'[*_#`~]'), '');
     // Remove brackets and parenthetical URLs
