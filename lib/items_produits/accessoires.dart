@@ -424,6 +424,10 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
 
       'Poignée Porte Condamnation',
 
+      'Poignée Porte',
+
+      'Poignée Maréchal',
+
       'Verrou',
 
       'Paumelles',
@@ -1388,6 +1392,10 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
       'Poignée Porte à Clé',
 
       'Poignée Porte Condamnation',
+
+      'Poignée Porte',
+
+      'Poignée Maréchal',
 
       'Verrou',
 
@@ -2694,6 +2702,10 @@ class _AccessoriesScreenState extends State<AccessoriesScreen> {
       'Poignée Porte à Clé',
 
       'Poignée Porte Condamnation',
+
+      'Poignée Porte',
+
+      'Poignée Maréchal',
 
       'Verrou',
 

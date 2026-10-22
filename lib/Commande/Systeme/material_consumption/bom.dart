@@ -1116,7 +1116,6 @@ extension _MaterialBom on _MaterialConsumptionScreenState {
         _fetchProgress = 0.20;
       });
     }
-    _accessoryPriceCache.clear();
     // Never publish the preliminary/raw BOM. The table is published only
     // after defaults, catalogue links and the strict visibility check finish.
     var visibleBomItems = const <BomItem>[];
@@ -2141,6 +2140,10 @@ extension _MaterialBom on _MaterialConsumptionScreenState {
       try {
         double price = 0.0;
         final db = SqlDatabase();
+        // An accessory is prepared exactly like a choice made on the drawing
+        // page: colour price plus the gâche, screws and linked accessories
+        // the cost table reads from the stored row.
+        Map<String, dynamic>? accessoryChoice;
         // حساب السعر: بروفيل حسب اللون، وإلا السعر العام المباشر.
         // سعر الشراء مُدمج مسبقاً فيه (المتوسط المرجّح عند كل شراء).
         if (pCategory == 'profile') {
@@ -2151,14 +2154,15 @@ extension _MaterialBom on _MaterialConsumptionScreenState {
             price = _safeDouble(selected['price_dzd'] ?? selected['price']);
           }
         } else if (pCategory == 'accessory') {
-          final dbInstance = await db.db;
-          price = dbInstance == null
-              ? _safeDouble(selected['price_dzd'] ?? selected['price'])
-              : await _resolveSelectedAccessoryPrice(dbInstance, selected);
+          accessoryChoice = await widget.model.prepareAccessoryChoice(
+            Map<String, dynamic>.from(selected),
+          );
+          price = _safeDouble(accessoryChoice['calculated_price']);
         } else {
           price = _safeDouble(selected['price_dzd'] ?? selected['price']);
         }
-        final mutableSelected = Map<String, dynamic>.from(selected);
+        final mutableSelected =
+            accessoryChoice ?? Map<String, dynamic>.from(selected);
         mutableSelected['manual_selection'] = true;
         mutableSelected['user_selected'] = true;
         mutableSelected['automatic_selection'] = false;

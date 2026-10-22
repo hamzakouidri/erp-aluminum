@@ -106,7 +106,6 @@ class _MaterialConsumptionScreenState extends State<MaterialConsumptionScreen> {
   final List<Timer> _initialPriceRetryTimers = <Timer>[];
   StreamSubscription<String>? _dbUpdateSubscription;
   String _lastPriceContextSignature = '';
-  final Map<String, double> _accessoryPriceCache = {};
   Map<String, double> _mainWarehouseStock = const {};
   Map<int, Map<String, dynamic>> _profileCalculationRules = {};
 

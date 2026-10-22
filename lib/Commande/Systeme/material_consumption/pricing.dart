@@ -47,48 +47,6 @@ extension _MaterialPricing on _MaterialConsumptionScreenState {
     return item.linearMeterMultiplier;
   }
 
-  /// Accessories may keep their real selling price in AccessoryColorPrices
-  /// while their base price remains zero. Use the accessory colour selected in
-  /// the drawing. A colourless accessory uses its base price and must not
-  /// inherit the profile colour.
-  Future<double> _resolveSelectedAccessoryPrice(
-    Database database,
-    Map<String, dynamic> accessory,
-  ) async {
-    final rawId = accessory['id'];
-    final accessoryId = rawId is num
-        ? rawId.toInt()
-        : int.tryParse('${rawId ?? ''}');
-    final colorId = _selectedAccessoryColorId();
-    final cacheKey = '${accessoryId ?? 'none'}:${colorId ?? 'none'}';
-    final canCachePrice = accessoryId != null;
-    final cachedPrice = canCachePrice ? _accessoryPriceCache[cacheKey] : null;
-    if (cachedPrice != null) return cachedPrice;
-
-    if (accessoryId != null && colorId != null) {
-      final colorRows = await database.query(
-        'AccessoryColorPrices',
-        columns: const ['price'],
-        where: 'accessory_id = ? AND color_id = ?',
-        whereArgs: [accessoryId, colorId],
-        limit: 1,
-      );
-      if (colorRows.isNotEmpty) {
-        final colorPrice = _safeDouble(colorRows.first['price']);
-        if (colorPrice > 0) {
-          if (canCachePrice) _accessoryPriceCache[cacheKey] = colorPrice;
-          return colorPrice;
-        }
-      }
-    }
-
-    // Purchases already write their weighted average cost into these price
-    // columns, so the stored price is the current cost.
-    final price = _safeDouble(accessory['price_dzd'] ?? accessory['price']);
-    if (canCachePrice) _accessoryPriceCache[cacheKey] = price;
-    return price;
-  }
-
   bool get _isShutterOnlyPricing => widget.model.isShutterOnly;
 
   /// The kit definition and the kit selling price live in two different

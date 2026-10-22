@@ -165,6 +165,68 @@ extension SqlDatabaseInventory on SqlDatabase {
     );
   }
 
+  /// Free stock of each accessory in [accessoryIds], over every location:
+  /// the quantity on hand minus the active reservations of other orders
+  /// ([excludeOrderId] keeps that order's own hold free). With [colorId],
+  /// an accessory stocked in colours counts only that colour; one stocked
+  /// without colour counts its colourless balance. Never negative.
+  Future<Map<int, double>> readFreeAccessoryStock(
+    Iterable<int> accessoryIds, {
+    int? colorId,
+    int? excludeOrderId,
+  }) async {
+    final ids = accessoryIds.toSet().toList();
+    final result = {for (final id in ids) id: 0.0};
+    final myDb = await db;
+    if (myDb == null || ids.isEmpty) return result;
+    // Creates StockReservations on databases that never reserved stock.
+    await _ensureRemnantInventorySchema(myDb);
+
+    final types = SqlDatabase._inventoryTypeAliases('Accessory').toList();
+    final idMarks = List.filled(ids.length, '?').join(', ');
+    final typeMarks = List.filled(types.length, '?').join(', ');
+
+    // Per accessory: quantity by colour (0 for colourless rows).
+    Future<Map<int, Map<int, double>>> byColour(String sql, List args) async {
+      final rows = await myDb.rawQuery(sql, args);
+      final totals = <int, Map<int, double>>{};
+      for (final row in rows) {
+        final id = (row['item_id'] as num?)?.toInt();
+        if (id == null) continue;
+        final colour = (row['color_id'] as num?)?.toInt() ?? 0;
+        final qty = SqlDatabase._readStoredNumber(row['qty']) ?? 0;
+        final perColour = totals.putIfAbsent(id, () => {});
+        perColour[colour] = (perColour[colour] ?? 0) + qty;
+      }
+      return totals;
+    }
+
+    final onHand = await byColour(
+      'SELECT item_id, color_id, SUM(quantity) AS qty FROM CurrentStock '
+      'WHERE item_id IN ($idMarks) AND item_type IN ($typeMarks) '
+      'GROUP BY item_id, color_id',
+      [...ids, ...types],
+    );
+    final reserved = await byColour(
+      'SELECT item_id, color_id, SUM(quantity) AS qty FROM StockReservations '
+      "WHERE status = 'active' AND item_id IN ($idMarks) "
+      'AND item_type IN ($typeMarks) '
+      '${excludeOrderId == null ? '' : 'AND order_id != ? '}'
+      'GROUP BY item_id, color_id',
+      [...ids, ...types, if (excludeOrderId != null) excludeOrderId],
+    );
+
+    for (final id in ids) {
+      final stock = onHand[id] ?? const <int, double>{};
+      final colour = colorId != null && colorId > 0 && stock.containsKey(colorId)
+          ? colorId
+          : 0;
+      final free = (stock[colour] ?? 0) - (reserved[id]?[colour] ?? 0);
+      result[id] = free > 0 ? free : 0.0;
+    }
+    return result;
+  }
+
   /// Total held by active reservations on one CurrentStock balance.
   /// [excludeOrderId] leaves out that order's own hold, so an order can
   /// always use what it reserved.
