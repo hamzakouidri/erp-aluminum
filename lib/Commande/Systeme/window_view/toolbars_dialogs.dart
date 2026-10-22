@@ -3263,11 +3263,15 @@ extension _WindowViewToolbars on _WindowViewState {
     final hasSliding = widget.model.zones.any(
       (zone) => zone.content == ZoneContent.slidingSash,
     );
-    final hasOpening = widget.model.zones.any(
-      (zone) =>
-          zone.content == ZoneContent.singleSash ||
-          zone.content == ZoneContent.doubleSash,
-    );
+    // A division drawn on a frame makes it an opening frame: sliding series
+    // have no mullions.
+    final hasOpening =
+        widget.model.zones.any(
+          (zone) =>
+              zone.content == ZoneContent.singleSash ||
+              zone.content == ZoneContent.doubleSash,
+        ) ||
+        widget.model.hasDividedOpeningFrame;
 
     // قواعد الظهور والاختفاء بدقة:
     // 1) عند الدخول إلى صفحة جديدة: تظهر السلسلتان معاً

@@ -5025,6 +5025,15 @@ extension WindowModelFrame on WindowModel {
     return width + 4.0;
   }
 
+  /// Whether a frame without a sliding sash has at least one division. A
+  /// sliding series has no mullions, so such a frame is an opening frame
+  /// even while its panes are still fixed glass.
+  bool get hasDividedOpeningFrame => _frameZoneGroups().any(
+    (group) =>
+        group.length > 1 &&
+        !group.any((zone) => zone.content == ZoneContent.slidingSash),
+  );
+
   List<List<WindowZone>> _frameZoneGroups() {
     final List<List<WindowZone>> groups = [];
     // Threshold for two zones belonging to the same physical frame:
