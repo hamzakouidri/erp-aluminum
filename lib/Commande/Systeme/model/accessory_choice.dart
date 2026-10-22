@@ -159,6 +159,47 @@ extension WindowModelAccessoryChoice on WindowModel {
     return count * math.max(1, quantity);
   }
 
+  /// The accessories of the accessories tab this drawing uses, each with the
+  /// parts it needs for the window quantity, counted like calculate_component.
+  /// Empty for a drawing without an opening sash. The crémone is not listed:
+  /// it belongs to the handles tab.
+  List<({DrawingAccessorySlot slot, int needed})> drawingAccessorySlots() {
+    if (systemMode == 'sliding') return const [];
+    final windows = math.max(1, quantity);
+    var hinges = 0;
+    var doubleSashes = 0;
+    var canons = 0;
+    final usesOb = effectiveUseSystemOB || effectiveUseDemiOB;
+    for (final zone in zones) {
+      if (zone.content != ZoneContent.singleSash &&
+          zone.content != ZoneContent.doubleSash) {
+        continue;
+      }
+      final leaves = zone.content == ZoneContent.doubleSash ? 2 : 1;
+      if (leaves == 2) doubleSashes++;
+      // With OB the handle leaf's hinges come in its kit.
+      final obLeaf = isHandleLeaf(zone, 0) ? 0 : 1;
+      for (var leaf = 0; leaf < leaves; leaf++) {
+        if (usesOb && leaf == obLeaf) continue;
+        hinges += hingeCountForLeaf(zone, leaf);
+      }
+      for (final key in zone.cellIsSash.keys) {
+        if (zone.cellIsSash[key] == true) hinges += 2;
+      }
+      for (final key in zone.cellIsDoubleSash.keys) {
+        if (zone.cellIsDoubleSash[key] == true) hinges += 4;
+      }
+      if (handleSlotFor(zone)?.bomKey == doorHandleKeySlot.bomKey) canons++;
+    }
+    final verrouCentral = canUseOpeningOnlyOptions && useVerrouCentral;
+    return [
+      if (hinges > 0) (slot: hingesSlot, needed: hinges * windows),
+      if (doubleSashes > 0 && !verrouCentral)
+        (slot: verrouSlot, needed: doubleSashes * 2 * windows),
+      if (canons > 0) (slot: canonSlot, needed: canons * windows),
+    ];
+  }
+
   /// Whether [accessory] (an `Accessories` row) may replace an accessory of
   /// [category] in this drawing: same category, active, the drawing's
   /// material, and global or linked to [seriesId].

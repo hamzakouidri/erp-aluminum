@@ -268,6 +268,9 @@ class _WindowViewState extends State<WindowView> {
   int _activeBottomTab = 0; // 0: شائع, 1: إطار, 2: ورقة, 3: عامود, 4: زجاج
   bool _isBottomPanelExpanded = false;
 
+  /// Cost-table key of the accessory open in the accessories tab.
+  String _accessorySubTab = '';
+
   /// Height of the page body (under the app bar), measured each layout.
   double _drawingBodyHeight = 0;
 
@@ -5334,6 +5337,120 @@ class AppWorkspacePainter extends CustomPainter {
         vertical: true,
         editable: editableHeight,
       );
+      if (zone.slantedDividers.isNotEmpty) {
+        _paintSlantedDivisionDimensions(
+          canvas,
+          model,
+          zone,
+          bottomInset: bottomInset,
+          rightInset: rightInset,
+        );
+      }
+    }
+  }
+
+  /// Sizes a slanted division leaves unknown: the parts of each zone side
+  /// cut by a division end (measured to its centre line), and the length
+  /// of the division on its long and short sides.
+  void _paintSlantedDivisionDimensions(
+    Canvas canvas,
+    WindowModel model,
+    WindowZone zone, {
+    required double bottomInset,
+    required double rightInset,
+  }) {
+    final r = zone.boundary;
+    final geometry = model.slantedGeometryFor(
+      zone,
+      dividers: model.slantedDividersShownFor(zone),
+    );
+    bool horizontal(ZoneEdge e) => e == ZoneEdge.top || e == ZoneEdge.bottom;
+
+    // Where the divisions end on each side of the zone.
+    final splits = <ZoneEdge, List<double>>{};
+    for (final d in geometry.dividers) {
+      final (a, b) = geometry.centreLine(d);
+      for (final atStart in [true, false]) {
+        final edge = geometry.endMeets(d, atStart: atStart).edge;
+        if (edge == null) continue;
+        final p = atStart ? a : b;
+        splits.putIfAbsent(edge, () => []).add(horizontal(edge) ? p.dx : p.dy);
+      }
+    }
+    // The bottom and right sides already carry the full zone size.
+    const fullLabelGap = 46.0;
+    for (final entry in splits.entries) {
+      final edge = entry.key;
+      final from = horizontal(edge) ? r.left : r.top;
+      final to = horizontal(edge) ? r.right : r.bottom;
+      final stops = [
+        from,
+        for (final s in entry.value)
+          if (s > from + 1 && s < to - 1) s,
+        to,
+      ]..sort();
+      if (stops.length < 3) continue;
+      for (var i = 0; i + 1 < stops.length; i++) {
+        final length = stops[i + 1] - stops[i];
+        if (length < 30) continue;
+        final mid = (stops[i] + stops[i + 1]) / 2;
+        final center = switch (edge) {
+          ZoneEdge.top => Offset(mid, r.top + bottomInset),
+          ZoneEdge.bottom => Offset(mid, r.bottom - bottomInset - fullLabelGap),
+          ZoneEdge.left => Offset(r.left + rightInset, mid),
+          ZoneEdge.right => Offset(r.right - rightInset - fullLabelGap, mid),
+        };
+        _paintZoneRegionLabel(
+          canvas,
+          '${length.round()} mm',
+          center,
+          math.max(20.0, length - 18.0),
+          vertical: !horizontal(edge),
+          editable: false,
+        );
+      }
+    }
+
+    // Division length along both faces of its band.
+    for (final d in geometry.dividers) {
+      final (a, b) = geometry.centreLine(d);
+      final axis = b - a;
+      if (axis.distance < 1) continue;
+      final band = geometry.band(d);
+      if (band.length < 3) continue;
+      final middle = SlantedDivisionGeometry.centroid(band);
+      final faces = <({double length, Offset mid})>[];
+      for (var i = 0; i < band.length; i++) {
+        final p = band[i];
+        final q = band[(i + 1) % band.length];
+        final e = q - p;
+        if (e.distance < 30) continue;
+        final cross = (e.dx * axis.dy - e.dy * axis.dx).abs();
+        if (cross > 0.01 * e.distance * axis.distance) continue;
+        faces.add((length: e.distance, mid: (p + q) / 2));
+      }
+      if (faces.isEmpty) continue;
+      faces.sort((x, y) => y.length.compareTo(x.length));
+      // Text runs along the division and stays upright.
+      var angle = math.atan2(axis.dy, axis.dx);
+      if (angle > math.pi / 2) angle -= math.pi;
+      if (angle < -math.pi / 2) angle += math.pi;
+      // The long face (what is set on the saw) in blue, the short one grey.
+      final shown = [faces.first, if (faces.length > 1) faces.last];
+      for (var i = 0; i < shown.length; i++) {
+        final face = shown[i];
+        final out = face.mid - middle;
+        final unit = out.distance < 1e-6 ? Offset.zero : out / out.distance;
+        _paintZoneRegionLabel(
+          canvas,
+          '${face.length.round()} mm',
+          face.mid + unit * 30,
+          math.max(20.0, face.length - 60.0),
+          angle: angle,
+          editable: false,
+          color: i == 0 ? const Color(0xFF1565C0) : null,
+        );
+      }
     }
   }
 
@@ -5343,7 +5460,9 @@ class AppWorkspacePainter extends CustomPainter {
     Offset center,
     double maxMainAxis, {
     bool vertical = false,
+    double? angle,
     required bool editable,
+    Color? color,
   }) {
     double fontSize = math.min(34.0, math.max(16.0, maxMainAxis * 0.18));
     late TextPainter painter;
@@ -5352,7 +5471,9 @@ class AppWorkspacePainter extends CustomPainter {
         text: TextSpan(
           text: text,
           style: TextStyle(
-            color: editable ? const Color(0xFF0F172A) : Colors.grey.shade700,
+            color:
+                color ??
+                (editable ? const Color(0xFF0F172A) : Colors.grey.shade700),
             fontSize: fontSize,
             fontWeight: FontWeight.w400,
           ),
@@ -5366,7 +5487,11 @@ class AppWorkspacePainter extends CustomPainter {
 
     canvas.save();
     canvas.translate(center.dx, center.dy);
-    if (vertical) canvas.rotate(-math.pi / 2);
+    if (vertical) {
+      canvas.rotate(-math.pi / 2);
+    } else if (angle != null) {
+      canvas.rotate(angle);
+    }
     painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
     canvas.restore();
   }

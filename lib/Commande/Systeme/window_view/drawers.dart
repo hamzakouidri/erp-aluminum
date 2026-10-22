@@ -11,8 +11,61 @@ extension _WindowViewDrawers on _WindowViewState {
   );
 
   /// The open bottom tab, or the common tab when the open one is hidden.
-  int get _visibleBottomTab =>
-      _activeBottomTab == 5 && !_drawingHasSash ? 0 : _activeBottomTab;
+  int get _visibleBottomTab => switch (_activeBottomTab) {
+    5 when !_drawingHasSash => 0,
+    7 when widget.model.drawingAccessorySlots().isEmpty => 0,
+    _ => _activeBottomTab,
+  };
+
+  /// Name of an accessory of the accessories tab.
+  String _accessoryLabel(DrawingAccessorySlot slot) => switch (slot.category) {
+    AccessoryCategory.hinges => 'المفاصل',
+    AccessoryCategory.verrou => 'الفيرو',
+    AccessoryCategory.canon => 'الأسطوانة',
+    _ => slot.category,
+  };
+
+  /// The accessories tab: one sub-tab per accessory the drawing uses
+  /// (crémone excepted, it belongs to the handles), then its parts.
+  List<Widget> _accessoriesTabOptions(AppLanguage lang) {
+    final accessories = widget.model.drawingAccessorySlots();
+    if (accessories.isEmpty) return const [];
+    final open = accessories.firstWhere(
+      (entry) => entry.slot.bomKey == _accessorySubTab,
+      orElse: () => accessories.first,
+    );
+    return [
+      for (final entry in accessories)
+        _Tier2RowItem(
+          rowIndex: 0,
+          child: Padding(
+            padding: const EdgeInsetsDirectional.only(end: 8),
+            child: _ContentButton(
+              label: Localization.translate(_accessoryLabel(entry.slot), lang),
+              icon: switch (entry.slot.category) {
+                AccessoryCategory.hinges => Icons.settings_input_component,
+                AccessoryCategory.canon => Icons.vpn_key_rounded,
+                _ => Icons.lock_outline_rounded,
+              },
+              selected: entry.slot.bomKey == open.slot.bomKey,
+              onPressed: () =>
+                  _setViewState(() => _accessorySubTab = entry.slot.bomKey),
+            ),
+          ),
+        ),
+      _Tier2RowItem(
+        rowIndex: 1,
+        forceRows: true,
+        child: _AccessoryPartsRow(
+          key: ValueKey(open.slot.bomKey),
+          model: widget.model,
+          slot: open.slot,
+          needed: open.needed,
+          onChanged: () => _setViewState(() {}),
+        ),
+      ),
+    ];
+  }
 
   /// The PVC recessed handle (poignée encastrée) of an opening sash.
   Widget _encastreeHandleButton(WindowZone zone, AppLanguage lang) =>
@@ -5327,6 +5380,8 @@ extension _WindowViewDrawers on _WindowViewState {
       {'id': 4, 'label': 'زجاج / حشوات', 'icon': Icons.grid_on_rounded},
       if (_drawingHasSash)
         {'id': 5, 'label': 'مقابض', 'icon': Icons.vpn_key_rounded},
+      if (widget.model.drawingAccessorySlots().isNotEmpty)
+        {'id': 7, 'label': 'الإكسسوارات', 'icon': Icons.handyman_rounded},
       if (widget.model.hasShutter)
         {'id': 6, 'label': 'الستار', 'icon': Icons.layers_rounded},
     ];
@@ -7990,6 +8045,9 @@ extension _WindowViewDrawers on _WindowViewState {
             ),
           );
         }
+        break;
+      case 7: // الإكسسوارات (hinges, verrou, canon)
+        children.addAll(_accessoriesTabOptions(lang));
         break;
     }
 

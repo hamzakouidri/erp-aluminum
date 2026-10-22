@@ -326,6 +326,37 @@ void main() {
     expect(window.handlesNeeded(slot), 6);
   });
 
+  test('the accessories tab lists only what the drawing uses', () async {
+    final database = await _openDatabase();
+    final window = _window(database)..quantity = 2;
+    final zone = window.zones.single;
+    String keys() => window
+        .drawingAccessorySlots()
+        .map((entry) => entry.slot.category)
+        .join(',');
+
+    // A double window sash: hinges and verrou, never the crémone.
+    expect(keys(), 'Paumelles,Verrou');
+    final verrou = window.drawingAccessorySlots().last;
+    expect(verrou.needed, 4);
+    final hinges = window.drawingAccessorySlots().first;
+    expect(
+      hinges.needed,
+      (window.hingeCountForLeaf(zone, 0) + window.hingeCountForLeaf(zone, 1)) *
+          2,
+    );
+
+    // A key door adds its cylinder.
+    zone
+      ..isSash105 = true
+      ..lockType = LockType.clef;
+    expect(keys(), 'Paumelles,Verrou,Canon');
+
+    // Fixed glass only: nothing, so the tab is hidden.
+    zone.content = ZoneContent.fixedGlass;
+    expect(window.drawingAccessorySlots(), isEmpty);
+  });
+
   test('free stock leaves out other orders and follows the colour', () async {
     final database = await _openDatabase();
     final connection = database.connection;

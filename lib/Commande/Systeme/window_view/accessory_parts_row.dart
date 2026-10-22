@@ -11,6 +11,7 @@ class _AccessoryPartsRow extends StatefulWidget {
   final VoidCallback onChanged;
 
   const _AccessoryPartsRow({
+    super.key,
     required this.model,
     required this.slot,
     required this.needed,
