@@ -10721,6 +10721,9 @@ class ComponentCalculator {
             selectorType: '67114',
             roleKey: 'reducer',
             ignoreSavedOverride: true,
+            // The quantity table checks the row against the rules of this
+            // series, not the sliding one selected beside an opening window.
+            slidingSeries: hasSlidingReducerPieces,
           ),
         );
       }
