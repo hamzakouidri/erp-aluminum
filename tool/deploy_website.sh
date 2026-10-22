@@ -31,7 +31,11 @@ cat > "$OUT/firebase.json" <<EOF
     ],
     "headers": [
       {
-        "source": "/index.html",
+        "source": "/",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      },
+      {
+        "source": "**/*.@(html|js|json)",
         "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
       }
     ]
