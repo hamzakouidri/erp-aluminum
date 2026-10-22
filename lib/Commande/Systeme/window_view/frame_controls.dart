@@ -647,20 +647,22 @@ extension _WindowViewFrame on _WindowViewState {
   }
 
   /// A mullion made of frames (Cadre double / 140) is built from the opening
-  /// series' frames only. The lists loaded for the drawing follow the
-  /// selected zone, so in a sliding drawing or with a sliding zone selected
-  /// they held only sliding frames; the opening series is therefore read
-  /// here directly and sliding frames are never offered.
-  Future<List<Map<String, dynamic>>> _availableMullionFrameSections() async {
-    final openingSeries = widget.model.activeSeries;
-    if (openingSeries == null || isSlidingSeriesForDrawing(openingSeries)) {
-      return const <Map<String, dynamic>>[];
+  /// series' frames only, never from the sliding series. `_frameProfiles`
+  /// follows the selected zone (sliding frames for a sliding zone), so it is
+  /// used only when it was loaded for the opening series itself.
+  List<Map<String, dynamic>> _availableMullionFrameSections() {
+    final openingSeriesId = widget.model.activeSeries?.id;
+    final List<Map<String, dynamic>> openingFrames;
+    if (widget.systemMode == 'sliding' || openingSeriesId == null) {
+      openingFrames = const <Map<String, dynamic>>[];
+    } else if (_openingFrameProfiles.isNotEmpty) {
+      openingFrames = _openingFrameProfiles;
+    } else if (_loadedSeriesId == openingSeriesId &&
+        _loadedSeriesId != widget.model.activeSlidingSeries?.id) {
+      openingFrames = _frameProfiles;
+    } else {
+      openingFrames = const <Map<String, dynamic>>[];
     }
-    final openingFrames = await _loadFrameProfilesForSeries(
-      SqlDatabase(),
-      openingSeries.id,
-      sliding: false,
-    );
 
     final frames = <Map<String, dynamic>>[];
     final seenIds = <String>{};
