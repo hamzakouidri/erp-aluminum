@@ -4609,10 +4609,12 @@ class WindowModel extends ChangeNotifier {
   /// from the pointer.
   bool holdCamera = false;
 
-  /// Fits the drawing into [widgetSize] and centres it. The view passes a
-  /// fixed working area (not the canvas that the bottom menu shrinks), so
-  /// panels and menus never move the drawing; only a new drawing size or a
-  /// resized app window does.
+  /// Places the drawing in [widgetSize], a fixed working area passed by the
+  /// view (not the canvas that the bottom menu shrinks), so panels and menus
+  /// never move it. A drawing already on screen keeps its camera, like a CAD
+  /// view: the first frame stays where and as large as it was dragged. The
+  /// drawing is fitted and centred only when it is opened, when it no longer
+  /// fits the working area, or when the user asks (centerDrawingOnCanvas).
   void updateLayoutMetrics(Size widgetSize) {
     // تجنب إعادة الحساب أثناء الرسم النشط لمنع تحريف الإحداثيات
     if (drawingStart != null || holdCamera) return;
@@ -4639,6 +4641,8 @@ class WindowModel extends ChangeNotifier {
     }
 
     final double effectiveHeight = widgetSize.height;
+    final bool? wasEmpty = _lastIsEmpty;
+    final Size? previousSize = lastLayoutSize;
 
     lastLayoutSize = widgetSize;
     _lastIsEmpty = zones.isEmpty;
@@ -4659,14 +4663,20 @@ class WindowModel extends ChangeNotifier {
     const double viewportPadding = 24.0;
     final double centerY = effectiveHeight / 2;
 
-    if (width <= 0 || height <= 0 || zones.isEmpty) {
-      double virtualW = 2400.0;
-      double virtualH = 1800.0;
+    // The empty canvas: a 2400 x 1800 mm sheet where the first frame is
+    // dragged.
+    void useEmptyCanvasCamera() {
+      const double virtualW = 2400.0;
+      const double virtualH = 1800.0;
       double sX = (widgetSize.width - viewportPadding) / virtualW;
       double sY = (effectiveHeight - viewportPadding) / virtualH;
       canvasScale = math.min(sX, sY) * 0.94;
       canvasDx = widgetSize.width / 2 - (virtualW / 2 * canvasScale);
       canvasDy = centerY - (virtualH / 2 * canvasScale);
+    }
+
+    if (width <= 0 || height <= 0 || zones.isEmpty) {
+      useEmptyCanvasCamera();
       return;
     }
 
@@ -4675,6 +4685,35 @@ class WindowModel extends ChangeNotifier {
     final double sideCoverExtension = hasSideCovers
         ? sideCoverWidth + 15.0
         : 0.0;
+
+    // Whether the frame (covers and arch included) leaves the working area.
+    bool frameLeavesView() {
+      final double left = canvasDx - sideCoverExtension * canvasScale;
+      final double right =
+          canvasDx + (width + sideCoverExtension) * canvasScale;
+      final double top =
+          canvasDy - (headRiseMm + sideCoverExtension) * canvasScale;
+      final double bottom =
+          canvasDy + (height + sideCoverExtension) * canvasScale;
+      return left < 0 ||
+          top < 0 ||
+          right > widgetSize.width ||
+          bottom > effectiveHeight;
+    }
+
+    if (previousSize != null && wasEmpty == false && canvasScale > 0) {
+      // Already on screen: keep the zoom and the place. A resized app
+      // window keeps the drawing at the same distance from the centre.
+      canvasDx += (widgetSize.width - previousSize.width) / 2;
+      canvasDy += (widgetSize.height - previousSize.height) / 2;
+      if (!frameLeavesView()) return;
+    } else if (wasEmpty == true && drawnLeft != null && drawnTop != null) {
+      // The first frame just dragged: same zoom and place as the drag.
+      useEmptyCanvasCamera();
+      canvasDx += drawnLeft! * canvasScale;
+      canvasDy += drawnTop! * canvasScale;
+      if (!frameLeavesView()) return;
+    }
     // Dimension text and spacing are painted at a constant screen size
     // (AppWorkspacePainter), so their room is reserved in pixels; frame,
     // covers, arch and wall are reserved in millimetres.
