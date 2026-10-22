@@ -34,7 +34,10 @@ class _OrderTableEditScreenState extends State<OrderTableEditScreen> {
       MaterialPageRoute(
         builder: (_) => WindowView(
           model: draft,
-          systemMode: original.systemMode ?? 'mixed',
+          // Same rule as the order page: editing an existing drawing exposes
+          // the full design tools. Its saved mode ('sliding') hid the
+          // opening sashes, fixed glass and splits.
+          systemMode: 'mixed',
         ),
       ),
     );
