@@ -191,6 +191,12 @@ class CornerNotches {
   }) {
     final pts = outline(width, height, top: top);
     if (inset == 0) return pts;
+    return insetPolygon(pts, inset);
+  }
+
+  /// A clockwise polygon whose sides are all horizontal or vertical, moved
+  /// [inset] inward: each vertex moves by the inward normals of its sides.
+  static List<Offset> insetPolygon(List<Offset> pts, double inset) {
     final n = pts.length;
     return [
       for (var i = 0; i < n; i++)
@@ -198,6 +204,110 @@ class CornerNotches {
             (_inward(pts[(i - 1 + n) % n], pts[i]) +
                     _inward(pts[i], pts[(i + 1) % n])) *
                 inset,
+    ];
+  }
+
+  /// The part of [rect] inside the outline moved [inset] inward (the opening
+  /// of a frame of that width), as a clockwise polygon from the top-left.
+  /// Null when no cut reaches [rect]; empty when [rect] lies wholly in a
+  /// cut or the steps would cross each other.
+  List<Offset>? clipRect(
+    Rect rect,
+    double width,
+    double height, {
+    double inset = 0,
+    double top = 0,
+  }) {
+    const far = 1e9;
+    final b = top + height;
+    // The area each cut takes from the opening, open towards its corner.
+    final blocks = <NotchCorner, Rect>{};
+    for (final c in NotchCorner.values) {
+      final n = of(c);
+      if (!n.isCut) continue;
+      final x = isLeft(c) ? n.width + inset : width - n.width - inset;
+      final y = isTop(c) ? top + n.height + inset : b - n.height - inset;
+      blocks[c] = Rect.fromLTRB(
+        isLeft(c) ? -far : x,
+        isTop(c) ? -far : y,
+        isLeft(c) ? x : far,
+        isTop(c) ? y : far,
+      );
+    }
+    const eps = 0.01;
+    bool overlaps(Rect a, Rect r) =>
+        a.left < r.right - eps &&
+        a.right > r.left + eps &&
+        a.top < r.bottom - eps &&
+        a.bottom > r.top + eps;
+    if (!blocks.values.any((a) => overlaps(a, rect))) return null;
+
+    // A cut across the whole width or height shortens the rect.
+    var r = rect;
+    for (var changed = true; changed;) {
+      changed = false;
+      for (final a in blocks.values) {
+        if (!overlaps(a, r)) continue;
+        Rect? next;
+        if (a.left <= r.left + eps && a.right >= r.right - eps) {
+          next = a.top <= r.top + eps
+              ? Rect.fromLTRB(r.left, a.bottom, r.right, r.bottom)
+              : Rect.fromLTRB(r.left, r.top, r.right, a.top);
+        } else if (a.top <= r.top + eps && a.bottom >= r.bottom - eps) {
+          next = a.left <= r.left + eps
+              ? Rect.fromLTRB(a.right, r.top, r.right, r.bottom)
+              : Rect.fromLTRB(r.left, r.top, a.left, r.bottom);
+        }
+        if (next == null) continue;
+        if (next.width <= eps || next.height <= eps) return const [];
+        r = next;
+        changed = true;
+      }
+    }
+
+    // Any other cut still reaching the rect takes one of its corners.
+    Rect? step(NotchCorner c) {
+      final a = blocks[c];
+      return a != null && overlaps(a, r) ? a : null;
+    }
+
+    final tl = step(NotchCorner.topLeft), tr = step(NotchCorner.topRight);
+    final br = step(NotchCorner.bottomRight), bl = step(NotchCorner.bottomLeft);
+    bool crosses(Rect? a, Rect? c, bool horizontal) =>
+        a != null &&
+        c != null &&
+        (horizontal ? a.right > c.left - eps : a.bottom > c.top - eps);
+    if (crosses(tl, tr, true) ||
+        crosses(bl, br, true) ||
+        crosses(tl, bl, false) ||
+        crosses(tr, br, false)) {
+      return const [];
+    }
+    return [
+      if (tl != null) ...[
+        Offset(r.left, tl.bottom),
+        Offset(tl.right, tl.bottom),
+        Offset(tl.right, r.top),
+      ] else
+        r.topLeft,
+      if (tr != null) ...[
+        Offset(tr.left, r.top),
+        Offset(tr.left, tr.bottom),
+        Offset(r.right, tr.bottom),
+      ] else
+        r.topRight,
+      if (br != null) ...[
+        Offset(r.right, br.top),
+        Offset(br.left, br.top),
+        Offset(br.left, r.bottom),
+      ] else
+        r.bottomRight,
+      if (bl != null) ...[
+        Offset(bl.right, r.bottom),
+        Offset(bl.right, bl.top),
+        Offset(r.left, bl.top),
+      ] else
+        r.bottomLeft,
     ];
   }
 
