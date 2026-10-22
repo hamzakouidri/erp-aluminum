@@ -9,6 +9,7 @@ import 'package:database_data/Commande/decor_panel_designs.dart';
 import 'package:flutter/material.dart';
 
 import 'package:database_data/Commande/Systeme/model.dart';
+import 'package:database_data/Commande/Systeme/corner_notch.dart';
 import 'package:database_data/utils/real_color_resolver.dart';
 
 part 'window_painter_helpers.dart';
@@ -4950,7 +4951,20 @@ class WindowPainter extends CustomPainter {
             isTopBound,
           );
         }
-        if (!isDecorPanel) {
+        // A corner cut reaching the zone: the parclose follows the cut
+        // glass outline instead of the clipped-away full rectangle.
+        final notchedGlass = !isDecorPanel && model.hasCornerNotches
+            ? model.cornerNotches.clipRect(
+                contentRect,
+                model.width,
+                model.height - topOffset,
+                inset: t,
+                top: topOffset,
+              )
+            : null;
+        if (notchedGlass != null) {
+          _drawNotchedParclose(canvas, notchedGlass);
+        } else if (!isDecorPanel) {
           _drawRealisticParclose(
             canvas,
             contentRect,
@@ -9589,6 +9603,58 @@ class WindowPainter extends CustomPainter {
       ];
       for (final corner in corners) {
         _drawParcloseCornerCap(canvas, corner & Size(pT, pT));
+      }
+    }
+  }
+
+  /// The parclose of a glass cut by a frame corner cut: the same band, cavity
+  /// line, joints and caps as [_drawRealisticParclose], along every side of
+  /// the cut glass [outer] (clockwise, sides horizontal or vertical),
+  /// including its inner corner.
+  void _drawNotchedParclose(Canvas canvas, List<Offset> outer) {
+    const double pT = 18.0;
+    if (outer.length < 4) return;
+    final inner = CornerNotches.insetPolygon(outer, pT);
+    // Too small for the band: every inner side keeps its direction.
+    for (var i = 0; i < outer.length; i++) {
+      final j = (i + 1) % outer.length;
+      final o = outer[j] - outer[i];
+      final n = inner[j] - inner[i];
+      if (o.dx * n.dx + o.dy * n.dy <= 1.0) return;
+    }
+
+    final outerPath = Path()..addPolygon(outer, true);
+    final innerPath = Path()..addPolygon(inner, true);
+    final framePath = Path()
+      ..addPath(outerPath, Offset.zero)
+      ..addPath(innerPath, Offset.zero)
+      ..fillType = PathFillType.evenOdd;
+    final bounds = outerPath.getBounds();
+    canvas.drawPath(framePath, _buildPaint(bounds));
+
+    final Paint linePaint = Paint()
+      ..color = _fb.withValues(alpha: 0.5)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+    canvas.drawPath(innerPath, linePaint);
+
+    final cutMode = (!model.isPVC && model.parcloseCutAt90)
+        ? model.parcloseCutMode
+        : '45';
+    for (var i = 0; i < outer.length; i++) {
+      final o = outer[i], n = inner[i];
+      if (cutMode == '90_length') {
+        canvas.drawLine(Offset(n.dx, o.dy), n, linePaint);
+      } else if (cutMode == '90_width') {
+        canvas.drawLine(Offset(o.dx, n.dy), n, linePaint);
+      } else {
+        canvas.drawLine(o, n, linePaint);
+      }
+    }
+
+    if (model.showsParcloseCornerCaps) {
+      for (var i = 0; i < outer.length; i++) {
+        _drawParcloseCornerCap(canvas, Rect.fromPoints(outer[i], inner[i]));
       }
     }
   }

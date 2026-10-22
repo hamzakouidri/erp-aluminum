@@ -107,6 +107,38 @@ extension _WindowViewDrawers on _WindowViewState {
     });
   }
 
+  /// [content] of a side drawer under a slim bar holding its close button,
+  /// on the edge towards the drawing ([closeOnRight] for the left drawer).
+  Widget _withDrawerCloseButton(
+    BuildContext context, {
+    required Widget content,
+    required bool closeOnRight,
+    required VoidCallback onClose,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final lang = Provider.of<AppSettingsProvider>(context).language;
+    return Column(
+      children: [
+        Align(
+          alignment: closeOnRight
+              ? Alignment.centerRight
+              : Alignment.centerLeft,
+          child: IconButton(
+            tooltip: Localization.translate('إغلاق', lang),
+            visualDensity: VisualDensity.compact,
+            icon: Icon(
+              Icons.close_rounded,
+              size: 20,
+              color: isDark ? Colors.white70 : Colors.black54,
+            ),
+            onPressed: onClose,
+          ),
+        ),
+        Expanded(child: content),
+      ],
+    );
+  }
+
   Widget _buildLeftDrawerContent(BuildContext context) {
     return ScrollConfiguration(
       behavior: _drawerScrollBehavior(context, scrollbars: false),

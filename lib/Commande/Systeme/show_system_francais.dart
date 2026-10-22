@@ -592,14 +592,17 @@ class _WindowViewState extends State<WindowView> {
         widget.model.selection.type == SelectionType.mullion;
     final isInnerDivisionSelected =
         widget.model.selection.type == SelectionType.innerDivision;
-    // A single frame shows the blue bar too: it holds the corner-cut button
-    // ("delete frame" appears only when there are several frames).
+    // A single frame shows the blue bar too: it holds the corner-cut and
+    // "delete frame" buttons.
     final isFrameSelected =
         widget.model.selection.type == SelectionType.frame;
 
     Widget? activeTopToolbar;
     if (isInnerDivisionSelected) {
       activeTopToolbar = _buildInnerDivisionToolbar(context);
+    } else if (isFrameSelected && widget.model.frameShapeMode) {
+      // A double tap on the frame shows the slant/arch circles: no bar.
+      activeTopToolbar = null;
     } else if (isFrameSelected) {
       activeTopToolbar = _buildFrameToolbar(context);
     } else if (isMullionSelected) {
@@ -3605,7 +3608,13 @@ class _WindowViewState extends State<WindowView> {
                                 ),
                               ],
                             ),
-                            child: _buildLeftDrawerContent(context),
+                            child: _withDrawerCloseButton(
+                              context,
+                              content: _buildLeftDrawerContent(context),
+                              closeOnRight: true,
+                              onClose: () =>
+                                  setState(() => _isLeftDrawerOpen = false),
+                            ),
                           ),
                           if (!_isWindowsDesktop)
                           GestureDetector(
@@ -3770,7 +3779,13 @@ class _WindowViewState extends State<WindowView> {
                               ),
                             ],
                           ),
-                          child: _buildDrawerContent(context),
+                          child: _withDrawerCloseButton(
+                            context,
+                            content: _buildDrawerContent(context),
+                            closeOnRight: false,
+                            onClose: () =>
+                                setState(() => _isDrawerOpen = false),
+                          ),
                         ),
                       ],
                     ),
