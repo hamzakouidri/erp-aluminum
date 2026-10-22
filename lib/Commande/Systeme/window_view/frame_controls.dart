@@ -691,6 +691,22 @@ extension _WindowViewFrame on _WindowViewState {
           type == 'dormant' ||
           type == 'إطار';
       if (!isFrame) return;
+      // A traverse already divides two zones on its own; two of them are
+      // never coupled back-to-back, so it is not a Cadre double frame even
+      // when the catalogue flags it as a frame.
+      // A name such as "Dormant D.T et Traverse" is still a frame profile.
+      final lowerName = name.toLowerCase();
+      final namedAsFrame =
+          lowerName.contains('dormant') || lowerName.contains('cadre');
+      final isTraverse =
+          type == 'mullion' ||
+          type.contains('traverse') ||
+          type.contains('meneau') ||
+          (!namedAsFrame &&
+              (lowerName.contains('traverse') ||
+                  lowerName.contains('meneau') ||
+                  lowerName.contains('ترافيرس')));
+      if (isTraverse) return;
       final coverWidth = readDimension(raw, 'couvre_joint_width');
       final hasIntegratedCover =
           coverWidth > 0.5 ||
