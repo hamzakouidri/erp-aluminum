@@ -3608,7 +3608,13 @@ class _WindowViewState extends State<WindowView> {
                                 ),
                               ],
                             ),
-                            child: _buildLeftDrawerContent(context),
+                            child: _withDrawerCloseButton(
+                              context,
+                              content: _buildLeftDrawerContent(context),
+                              closeOnRight: true,
+                              onClose: () =>
+                                  setState(() => _isLeftDrawerOpen = false),
+                            ),
                           ),
                           if (!_isWindowsDesktop)
                           GestureDetector(
@@ -3773,7 +3779,13 @@ class _WindowViewState extends State<WindowView> {
                               ),
                             ],
                           ),
-                          child: _buildDrawerContent(context),
+                          child: _withDrawerCloseButton(
+                            context,
+                            content: _buildDrawerContent(context),
+                            closeOnRight: false,
+                            onClose: () =>
+                                setState(() => _isDrawerOpen = false),
+                          ),
                         ),
                       ],
                     ),
