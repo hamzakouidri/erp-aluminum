@@ -4664,14 +4664,14 @@ class WindowModel extends ChangeNotifier {
     const double viewportPadding = 24.0;
     final double centerY = effectiveHeight / 2;
 
-    // The empty canvas: a 2400 x 1800 mm sheet where the first frame is
-    // dragged.
+    // The empty canvas: a 1500 x 1125 mm sheet where the first frame is
+    // dragged, close enough for a usual window to fill most of the view.
     void useEmptyCanvasCamera() {
-      const double virtualW = 2400.0;
-      const double virtualH = 1800.0;
+      const double virtualW = 1500.0;
+      const double virtualH = 1125.0;
       double sX = (widgetSize.width - viewportPadding) / virtualW;
       double sY = (effectiveHeight - viewportPadding) / virtualH;
-      canvasScale = math.min(sX, sY) * 0.94;
+      canvasScale = math.min(sX, sY);
       canvasDx = widgetSize.width / 2 - (virtualW / 2 * canvasScale);
       canvasDy = centerY - (virtualH / 2 * canvasScale);
     }
@@ -4719,10 +4719,13 @@ class WindowModel extends ChangeNotifier {
     // (AppWorkspacePainter), so their room is reserved in pixels; frame,
     // covers, arch and wall are reserved in millimetres.
     final bool multiFrame = getFrameRects().length > 1;
-    const double dimensionLeftPx = 120.0;
-    const double dimensionRightPx = 120.0;
     // Slanted mullions add a row of end positions on each side they reach.
     final bool hasSlantRows = zones.any((z) => z.slantedDividers.isNotEmpty);
+    // The side dimension line sits 44 px out, its number just beyond; the
+    // shutter adds its own height line on the right.
+    final double dimensionLeftPx = 70.0 + (hasSlantRows ? 44.0 : 0.0);
+    final double dimensionRightPx =
+        70.0 + (hasSlantRows ? 44.0 : 0.0) + (hasShutter ? 60.0 : 0.0);
     final double dimensionTopPx =
         (multiFrame ? 120.0 : 75.0) +
         (hasSlantRows ? 44.0 : 0.0) +
