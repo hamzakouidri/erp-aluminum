@@ -442,6 +442,19 @@ extension _WindowViewFrame on _WindowViewState {
         return false;
       }
 
+      // A frame reinforcement (Renfort cadre, steel tube inside a PVC frame)
+      // often carries "cadre" in its name, but it is not a frame: it follows
+      // the selected frame automatically (syncFrameReinforcement).
+      final isReinforcement =
+          role.contains('renfor') ||
+          normalizedType.contains('renfor') ||
+          label.contains('renfor') ||
+          label.contains('reinforc') ||
+          label.contains('حديد');
+      if (isReinforcement) {
+        return false;
+      }
+
       final isFrameRole = role == 'frame' || role == 'sliding_frame';
       final isNonFrameRole =
           role == 'side_cover' ||

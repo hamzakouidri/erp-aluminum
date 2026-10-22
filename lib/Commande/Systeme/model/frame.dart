@@ -821,7 +821,8 @@ extension WindowModelFrame on WindowModel {
           'Sections',
           where:
               "series_id = ? AND (LOWER(type) LIKE ? OR LOWER(name) LIKE ? OR name LIKE ?)",
-          whereArgs: [seriesId, '%renfort%', '%renfort%', '%حديد%'],
+          // "renfor" also matches the catalogue spelling "Renfore".
+          whereArgs: [seriesId, '%renfor%', '%renfor%', '%حديد%'],
         );
         if (candidates.isNotEmpty) {
           final preferred = candidates.firstWhere((candidate) {
