@@ -2842,24 +2842,24 @@ extension _WindowViewToolbars on _WindowViewState {
             ),
           ),
           _buildCornerNotchButton(),
-          if (widget.model.getFrameRects().length > 1) ...[
-            const SizedBox(width: 8),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red.shade600,
-              ),
-              icon: const Icon(
-                Icons.delete_sweep,
-                color: Colors.white,
-                size: 18,
-              ),
-              label: Text(
-                Localization.translate('حذف الإطار', lang),
-                style: const TextStyle(color: Colors.white),
-              ),
-              onPressed: () => widget.model.deleteSelectedFrame(),
+          // A single frame can be deleted too: the drawing is then cleared
+          // (deleteSelectedFrame), which undo brings back.
+          const SizedBox(width: 8),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade600,
             ),
-          ],
+            icon: const Icon(
+              Icons.delete_sweep,
+              color: Colors.white,
+              size: 18,
+            ),
+            label: Text(
+              Localization.translate('حذف الإطار', lang),
+              style: const TextStyle(color: Colors.white),
+            ),
+            onPressed: () => widget.model.deleteSelectedFrame(),
+          ),
         ],
       ),
     );
