@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 import '../settings/localization.dart';
 import '../services/cloud_sync_service.dart';
 import 'receipt_pdf_service.dart';
+import 'treasury_app_bar.dart';
 import '../widgets/resizable_columns_table.dart';
 import '../widgets/numeric_filter_search_field.dart';
 import '../widgets/table_date_range_filter.dart';
@@ -3120,128 +3121,119 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
 
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          Localization.translate('الخزينة (Caisse)', lang),
-          style: const TextStyle(
-            fontFamily: 'Cairo',
-            fontWeight: FontWeight.bold,
-          ),
+    // Ordered by priority: the first ones stay visible on narrow screens.
+    final appBarActions = <TreasuryAppBarAction>[
+      if (!widget.readOnly)
+        TreasuryAppBarAction(
+          icon: Icons.add_circle_outline_rounded,
+          label: Localization.translate('معاملة جديدة', lang),
+          onPressed: _showAddTransactionDialog,
         ),
+      if (!widget.readOnly && settingsProvider.canCloseBusinessDay())
+        TreasuryAppBarAction(
+          icon: Icons.lock_clock_rounded,
+          label: Localization.translate('التسوية اليومية', lang),
+          onPressed: _showDailyClosingDialog,
+        ),
+      TreasuryAppBarAction(
+        icon: _showSearch ? Icons.search_off : Icons.search,
+        label: Localization.translate('بحث', lang),
+        onPressed: () => setState(() => _showSearch = !_showSearch),
+      ),
+      TreasuryAppBarAction(
+        icon: _showFilters ? Icons.filter_alt_off : Icons.filter_alt,
+        label: Localization.translate('فلترة', lang),
+        onPressed: () => setState(() => _showFilters = !_showFilters),
+      ),
+      TreasuryAppBarAction(
+        icon: Icons.refresh,
+        label: Localization.translate('تحديث', lang),
+        onPressed: () async {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                Localization.translate('جاري التحديث...', lang),
+              ),
+              duration: const Duration(milliseconds: 900),
+            ),
+          );
+          await CloudSyncService().syncPendingNow();
+          await _loadData();
+          await _loadEntities();
+        },
+      ),
+      if (settingsProvider.canManageCaisses() ||
+          settingsProvider.canAddCaisses())
+        TreasuryAppBarAction(
+          icon: Icons.settings_outlined,
+          label: Localization.translate('إدارة الصناديق', lang),
+          onPressed: _showManageCaissesDialog,
+        ),
+    ];
+
+    return Scaffold(
+      appBar: TreasuryAppBar(
+        title: Localization.translate('الخزينة (Caisse)', lang),
         backgroundColor: isDark
             ? Theme.of(context).appBarTheme.backgroundColor
             : Colors.teal,
-        actions: [
-          if (!widget.readOnly && settingsProvider.canCloseBusinessDay())
-            IconButton(
-              icon: const Icon(Icons.lock_clock_rounded),
-              tooltip: Localization.translate('التسوية اليومية', lang),
-              onPressed: _showDailyClosingDialog,
+        moreLabel: Localization.translate('خيارات أخرى', lang),
+        actions: appBarActions,
+        caisseSelectorBuilder: (labelMaxWidth) => PopupMenuButton<String>(
+          initialValue: _selectedCaisse,
+          tooltip: Localization.translate('اختيار الصندوق', lang),
+          onSelected: (value) {
+            setState(() => _selectedCaisse = value);
+            _loadData();
+          },
+          itemBuilder: (context) => [
+            PopupMenuItem<String>(
+              value: 'الكل',
+              child: Text(
+                Localization.translate('الكل (جميع الصناديق)', lang),
+                style: const TextStyle(fontFamily: 'Cairo'),
+              ),
             ),
-          PopupMenuButton<String>(
-            initialValue: _selectedCaisse,
-            tooltip: Localization.translate('اختيار الصندوق', lang),
-            onSelected: (value) {
-              setState(() => _selectedCaisse = value);
-              _loadData();
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem<String>(
-                value: 'الكل',
+            ..._caisseNames.map(
+              (name) => PopupMenuItem<String>(
+                value: name,
                 child: Text(
-                  Localization.translate('الكل (جميع الصناديق)', lang),
+                  Localization.translate(name, lang),
                   style: const TextStyle(fontFamily: 'Cairo'),
                 ),
               ),
-              ..._caisseNames.map(
-                (name) => PopupMenuItem<String>(
-                  value: name,
+            ),
+          ],
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.account_balance_wallet_outlined, size: 19),
+                const SizedBox(width: 4),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: labelMaxWidth),
                   child: Text(
-                    Localization.translate(name, lang),
-                    style: const TextStyle(fontFamily: 'Cairo'),
-                  ),
-                ),
-              ),
-            ],
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.account_balance_wallet_outlined, size: 19),
-                  const SizedBox(width: 4),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 125),
-                    child: Text(
-                      Localization.translate(
-                        _selectedCaisse == 'الكل'
-                            ? 'كل الصناديق'
-                            : _selectedCaisse,
-                        lang,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontFamily: 'Cairo',
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Localization.translate(
+                      _selectedCaisse == 'الكل'
+                          ? 'كل الصناديق'
+                          : _selectedCaisse,
+                      lang,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const Icon(Icons.arrow_drop_down, size: 18),
-                ],
-              ),
-            ),
-          ),
-          if (!widget.readOnly)
-            IconButton(
-              icon: const Icon(Icons.add_circle_outline_rounded),
-              tooltip: Localization.translate('معاملة جديدة', lang),
-              onPressed: _showAddTransactionDialog,
-            ),
-          if (settingsProvider.canManageCaisses() ||
-              settingsProvider.canAddCaisses())
-            IconButton(
-              icon: const Icon(Icons.settings_outlined),
-              tooltip: Localization.translate('إدارة الصناديق', lang),
-              onPressed: _showManageCaissesDialog,
-            ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: Localization.translate('تحديث', lang),
-            onPressed: () async {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    Localization.translate('جاري التحديث...', lang),
-                  ),
-                  duration: const Duration(milliseconds: 900),
                 ),
-              );
-              await CloudSyncService().syncPendingNow();
-              await _loadData();
-              await _loadEntities();
-            },
+                const Icon(Icons.arrow_drop_down, size: 18),
+              ],
+            ),
           ),
-          IconButton(
-            icon: Icon(_showSearch ? Icons.search_off : Icons.search),
-            tooltip: Localization.translate('بحث', lang),
-            onPressed: () {
-              setState(() {
-                _showSearch = !_showSearch;
-              });
-            },
-          ),
-          IconButton(
-            icon: Icon(_showFilters ? Icons.filter_alt_off : Icons.filter_alt),
-            tooltip: Localization.translate('فلترة', lang),
-            onPressed: () {
-              setState(() {
-                _showFilters = !_showFilters;
-              });
-            },
-          ),
-        ],
+        ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
