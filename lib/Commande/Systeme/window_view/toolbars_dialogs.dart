@@ -2493,6 +2493,11 @@ extension _WindowViewToolbars on _WindowViewState {
     MullionProfileType type,
   ) async {
     final frames = _availableMullionFrameSections();
+    // Nothing to choose between: apply the only frame straight away.
+    if (frames.length == 1) {
+      await _applyMullionFrameSection(type, frames.single);
+      return;
+    }
     final title = type == MullionProfileType.flat
         ? 'Cadre doublé - اختر إطار التقسيم'
         : 'Cadre مفرد / 140 - اختر إطار التقسيم';
