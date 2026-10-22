@@ -8804,6 +8804,7 @@ class ComponentCalculator {
     double requiredSlidingParcloseDoubleThickness = 0.0;
     List<double> reducteurPieces = [];
     bool hasSimpleGlassReducerPieces = false;
+    bool hasSlidingReducerPieces = false;
     bool truthyOption(Object? value) {
       if (value is bool) return value;
       if (value is num) return value != 0;
@@ -9348,8 +9349,11 @@ class ComponentCalculator {
           // are enabled for quantities but not loaded for drawing.
           // Reducer eligibility is controlled exclusively by the configured
           // series role; drawing mode or product name must not enable it.
-          final reductionSeriesForGlass =
-              window.activeSlidingSeries ?? window.activeSeries;
+          // An opening cell uses its own series: the sliding series chosen
+          // beside it on the drawing page is not this window's series.
+          final reductionSeriesForGlass = isSlidingSystem
+              ? window.activeSlidingSeries ?? window.activeSeries
+              : window.activeSeries;
           // A reducer is never inferred from a product name or from missing
           // role metadata. It is valid only when the active series explicitly
           // assigns one of its own sections to the reducer role.
@@ -9359,6 +9363,7 @@ class ComponentCalculator {
 
           void addReducteurPieces(int multiplier) {
             hasSimpleGlassReducerPieces = true;
+            if (isSlidingSystem) hasSlidingReducerPieces = true;
             for (int q = 0; q < multiplier; q++) {
               reducteurPieces.add(cellGw / 1000.0);
               reducteurPieces.add(cellGw / 1000.0);
@@ -10673,10 +10678,13 @@ class ComponentCalculator {
           window.componentOverrides['ريديكتور (Réducteur)'] ??
           window.componentOverrides['مخفض الزجاج (Réducteur)'];
 
-      // Reducer demand is produced by sliding cells. In a mixed drawing the
-      // outer frame belongs to the opening series, but Réducteure must still
-      // be resolved against the selected sliding series.
-      final reductionSeries = window.activeSlidingSeries ?? window.activeSeries;
+      // In a mixed drawing the outer frame belongs to the opening series, but
+      // a Réducteure of sliding cells must still be resolved against the
+      // selected sliding series. Without sliding cells it is the opening
+      // series' own reducer.
+      final reductionSeries = hasSlidingReducerPieces
+          ? window.activeSlidingSeries ?? window.activeSeries
+          : window.activeSeries;
       final configuredReducers = reductionSeries == null
           ? const <AluminumSection>[]
           : window.getConfiguredSectionsForRole(
