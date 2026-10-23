@@ -3670,6 +3670,17 @@ class ComponentCalculator {
           final qty =
               ((item['base_qty'] as num?)?.toDouble() ?? 1) * itemLeafCount;
           final componentName = item['component_type'] as String? ?? '';
+          final rawComponent = item['shutter_component'];
+          final component = rawComponent is Map
+              ? Map<String, dynamic>.from(rawComponent)
+              : null;
+          final componentId = catalogueId(component);
+          final componentColorPrices =
+              (item['shutter_color_prices'] as List?)
+                  ?.whereType<Map>()
+                  .map((row) => Map<String, dynamic>.from(row))
+                  .toList() ??
+              const <Map<String, dynamic>>[];
           result.add(
             BomItem(
               category: category,
@@ -3677,9 +3688,22 @@ class ComponentCalculator {
               name: componentName,
               quantity: qty,
               unit: unit,
-              unitPrice: (item['price'] as num?)?.toDouble() ?? 0.0,
+              unitPrice: component == null
+                  ? (item['price'] as num?)?.toDouble() ?? 0.0
+                  : resolveShutterComponentUnitPrice(
+                      component: component,
+                      colorPrices: componentColorPrices,
+                      selectedColorId: catalogueColorId(null),
+                    ),
               isActive: isActive,
               kitGroupName: expandedItemGroupName,
+              // Linked to its component so that a price typed in the
+              // quantity table can be saved to the database.
+              catalogItemId: componentId,
+              inventoryItemType: componentId == null
+                  ? null
+                  : 'ShutterComponent',
+              colorId: componentId == null ? null : catalogueColorId(null),
               selectorCategory: selectorCategoryForKitChild(componentName),
               selectorType: selectorTypeForKitChild(componentName),
               roleKey: roleKeyForKitChild(componentName),
@@ -3879,7 +3903,19 @@ class ComponentCalculator {
           );
         }
       }
-      return result;
+      // A price typed in the quantity table is kept under the row's name;
+      // without this the next rebuild put the catalogue price back.
+      BomItem withManualPrice(BomItem row) {
+        final saved = window.componentOverrides[row.originalName];
+        if (saved is! Map) return row;
+        final raw = saved['calculated_price'] ?? saved['price'];
+        final price = raw is num
+            ? raw.toDouble()
+            : double.tryParse(raw?.toString() ?? '');
+        return price == null ? row : row.copyWith(unitPrice: price);
+      }
+
+      return result.map(withManualPrice).toList();
     }
 
     final double weldVal = isOuterFramePvc ? 5.0 : 0.0;

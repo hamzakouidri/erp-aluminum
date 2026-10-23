@@ -520,7 +520,10 @@ class _WindowViewState extends State<WindowView> {
         widget.model.availableSystems.isNotEmpty &&
         (widget.model.activeSeries != null ||
             widget.model.activeSlidingSeries != null);
-    _initialCatalogReady = true;
+    // Without its catalogue a saved drawing has no profile widths yet: its
+    // glass covered the frame head until the load finished. Show the loader
+    // instead of that intermediate drawing.
+    _initialCatalogReady = hasReusableCatalog;
     if (!hasReusableCatalog) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) unawaited(_loadInitialCatalog());

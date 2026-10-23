@@ -432,29 +432,7 @@ class WindowPainter extends CustomPainter {
 
       if (model.hasShutter && !isSlantedOrArched) {
         if (model.isCaissonTunnel) {
-          final hasManualSplit = model.effectiveShutterSplits.any((split) {
-            final mechanism = split.mechanism?.trim().isNotEmpty == true
-                ? split.mechanism!.trim()
-                : model.shutterMechanism;
-            final normalized = mechanism.toLowerCase();
-            return mechanism == 'حزام' ||
-                mechanism == 'منايفال' ||
-                mechanism == 'مانيفال' ||
-                normalized.contains('manivelle') ||
-                normalized.contains('maniv');
-          });
-          if (hasManualSplit) {
-            canvas.save();
-            canvas.translate(0, -model.shutterBoxHeight);
-            _drawShutterBox(
-              canvas,
-              w,
-              model.shutterBoxHeight,
-              h,
-              drawOnlyManualControls: true,
-            );
-            canvas.restore();
-          }
+          _drawTunnelShutterControls(canvas, w, h);
         } else {
           _drawShutterBox(canvas, w, topOffset, h);
         }
@@ -545,29 +523,7 @@ class WindowPainter extends CustomPainter {
           model.isCaissonTunnel ? 0.0 : model.shutterBoxHeight,
         );
         if (model.isCaissonTunnel) {
-          final hasManualSplit = model.effectiveShutterSplits.any((split) {
-            final mechanism = split.mechanism?.trim().isNotEmpty == true
-                ? split.mechanism!.trim()
-                : model.shutterMechanism;
-            final normalized = mechanism.toLowerCase();
-            return mechanism == 'حزام' ||
-                mechanism == 'منايفال' ||
-                mechanism == 'مانيفال' ||
-                normalized.contains('manivelle') ||
-                normalized.contains('maniv');
-          });
-          if (hasManualSplit) {
-            canvas.save();
-            canvas.translate(0, -model.shutterBoxHeight);
-            _drawShutterBox(
-              canvas,
-              w,
-              model.shutterBoxHeight,
-              h,
-              drawOnlyManualControls: true,
-            );
-            canvas.restore();
-          }
+          _drawTunnelShutterControls(canvas, w, h);
         } else {
           _drawShutterBox(canvas, w, topOffset, h);
         }
@@ -5608,11 +5564,10 @@ class WindowPainter extends CustomPainter {
       final unit = bisector.distance < 1e-6
           ? dirInto
           : bisector / bisector.distance;
-      _drawAngleBadge(
-        canvas,
-        end + unit * 170,
-        geometry.angleWithEdgeDeg(d, atStart: atStart),
-      );
+      final angle = geometry.angleWithEdgeDeg(d, atStart: atStart);
+      // A square end is an ordinary straight joint: no badge.
+      if ((angle - 90).abs() < 0.05) continue;
+      _drawAngleBadge(canvas, end + unit * 170, angle);
     }
   }
 
@@ -6620,19 +6575,6 @@ class WindowPainter extends CustomPainter {
         vPositions.add(stepX * i);
       }
     }
-      if (recordHitTargets) {
-        model.drawnInnerDivisionRects
-            .putIfAbsent(
-              WindowModel.innerDivisionKey(
-                zone.id,
-                isRightSash: isRightSash,
-                isHorizontal: isHorizontal,
-                index: index,
-              ),
-              () => [],
-            )
-            .add(rect);
-      }
 
     String getVKey(int r, int v) {
       if (zone.content == ZoneContent.doubleSash && isRightSash) {
@@ -6677,6 +6619,19 @@ class WindowPainter extends CustomPainter {
         primaryDivisionRects.add(rect);
       } else {
         secondaryDivisionRects.add(rect);
+      }
+      if (recordHitTargets) {
+        model.drawnInnerDivisionRects
+            .putIfAbsent(
+              WindowModel.innerDivisionKey(
+                zone.id,
+                isRightSash: isRightSash,
+                isHorizontal: isHorizontal,
+                index: index,
+              ),
+              () => [],
+            )
+            .add(rect);
       }
       if (selectedThisSide &&
           selectedIsHorizontal == isHorizontal &&
@@ -6939,20 +6894,6 @@ class WindowPainter extends CustomPainter {
 
           for (int col = c; col < c + w - 1; col++) {
             if (zone.disabledVerticalDivisions[getVKey(r + h, col)] != true) {
-        if (recordHitTargets) {
-          model.drawnGlassCells
-              .putIfAbsent(zone.id, () => [])
-              .add(
-                DrawnGlassCell(
-                  key: cellKey,
-                  row: r,
-                  col: c,
-                  hSpan: h,
-                  wSpan: w,
-                  rect: cellRect,
-                ),
-              );
-        }
               canMergeRow = false;
               break;
             }
@@ -6998,6 +6939,20 @@ class WindowPainter extends CustomPainter {
             key: cellKey,
           ),
         );
+        if (recordHitTargets) {
+          model.drawnGlassCells
+              .putIfAbsent(zone.id, () => [])
+              .add(
+                DrawnGlassCell(
+                  key: cellKey,
+                  row: r,
+                  col: c,
+                  hSpan: h,
+                  wSpan: w,
+                  rect: cellRect,
+                ),
+              );
+        }
       }
     }
 
@@ -7261,6 +7216,51 @@ class WindowPainter extends CustomPainter {
 
     for (var cell in mergedCells) {
       final isCellSash =
+          (zone.cellIsSash[cell.key] ?? false) ||
+          (zone.cellIsDoubleSash[cell.key] ?? false) ||
+          zone.content == ZoneContent.singleSash ||
+          zone.content == ZoneContent.doubleSash ||
+          zone.content == ZoneContent.slidingSash;
+      if (isCellSash) continue;
+
+      if (cols > 1 || cell.wSpan > 1) {
+        final cellW = cell.rect.width;
+        final widthText = TextPainter(
+          text: TextSpan(text: "${cellW.toInt()}", style: textStyle),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        bool isBottomBound =
+            (cell.rect.bottom -
+                    (model.height - (_hasEffectiveBottomFrame ? t : 0.0)))
+                .abs() <
+            5.0;
+        final double labelY = (_isSlantedOrArched && isBottomBound)
+            ? (model.height + 10.0)
+            : (cell.rect.bottom - widthText.height - 12.0);
+        final wOffset = Offset(
+          cell.rect.left + (cellW - widthText.width) / 2,
+          labelY,
+        );
+        widthText.paint(canvas, wOffset);
+      }
+
+      if (rows > 1 || cell.hSpan > 1) {
+        final cellH = cell.rect.height;
+        final heightText = TextPainter(
+          text: TextSpan(text: "${cellH.toInt()}", style: textStyle),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        double left = cell.rect.left;
+        canvas.save();
+        canvas.translate(
+          left + 5 + heightText.height,
+          cell.rect.top + (cellH + heightText.width) / 2,
+        );
+        canvas.rotate(-3.1415926535897932 / 2);
+        heightText.paint(canvas, Offset(0, -heightText.height));
+        canvas.restore();
+      }
+    }
 
     // Inside a divided opening sash the editor shows each column width at
     // the top of the glass and each row height on its left, where a tap
@@ -7307,51 +7307,6 @@ class WindowPainter extends CustomPainter {
         canvas.translate(glassR.left + 6, (top + bottom + text.width) / 2);
         canvas.rotate(-math.pi / 2);
         text.paint(canvas, Offset.zero);
-        canvas.restore();
-      }
-    }
-          (zone.cellIsSash[cell.key] ?? false) ||
-          (zone.cellIsDoubleSash[cell.key] ?? false) ||
-          zone.content == ZoneContent.singleSash ||
-          zone.content == ZoneContent.doubleSash ||
-          zone.content == ZoneContent.slidingSash;
-      if (isCellSash) continue;
-
-      if (cols > 1 || cell.wSpan > 1) {
-        final cellW = cell.rect.width;
-        final widthText = TextPainter(
-          text: TextSpan(text: "${cellW.toInt()}", style: textStyle),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        bool isBottomBound =
-            (cell.rect.bottom -
-                    (model.height - (_hasEffectiveBottomFrame ? t : 0.0)))
-                .abs() <
-            5.0;
-        final double labelY = (_isSlantedOrArched && isBottomBound)
-            ? (model.height + 10.0)
-            : (cell.rect.bottom - widthText.height - 12.0);
-        final wOffset = Offset(
-          cell.rect.left + (cellW - widthText.width) / 2,
-          labelY,
-        );
-        widthText.paint(canvas, wOffset);
-      }
-
-      if (rows > 1 || cell.hSpan > 1) {
-        final cellH = cell.rect.height;
-        final heightText = TextPainter(
-          text: TextSpan(text: "${cellH.toInt()}", style: textStyle),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        double left = cell.rect.left;
-        canvas.save();
-        canvas.translate(
-          left + 5 + heightText.height,
-          cell.rect.top + (cellH + heightText.width) / 2,
-        );
-        canvas.rotate(-3.1415926535897932 / 2);
-        heightText.paint(canvas, Offset(0, -heightText.height));
         canvas.restore();
       }
     }
@@ -9242,12 +9197,28 @@ class WindowPainter extends CustomPainter {
     }
   }
 
+  /// A tunnel box is hidden in the wall above the window: no box cover is
+  /// drawn, but its drive (motor cable, belt or crank) still comes out of
+  /// the tunnel drawn in the masonry.
+  void _drawTunnelShutterControls(Canvas canvas, double w, double h) {
+    canvas.save();
+    canvas.translate(0, -model.shutterBoxHeight);
+    _drawShutterBox(
+      canvas,
+      w,
+      model.shutterBoxHeight,
+      h,
+      drawOnlyControls: true,
+    );
+    canvas.restore();
+  }
+
   void _drawShutterBox(
     Canvas canvas,
     double w,
     double boxSize,
     double h, {
-    bool drawOnlyManualControls = false,
+    bool drawOnlyControls = false,
   }) {
     final _fc = getEffectiveGradientColors(
       model.frameColor,
@@ -9289,78 +9260,76 @@ class WindowPainter extends CustomPainter {
 
       // Draw Motor mechanism BEFORE the box so it appears from behind
       if (mechanism == 'محرك') {
-        if (!drawOnlyManualControls) {
-          double sideX = isRight ? (endX - 10) : (startX + 10);
-          double startY = -10; // Start above/behind the box
-          double wireLength = h * 0.65 + effectiveBoxSize;
-          double step = wireLength / 3;
+        double sideX = isRight ? (endX - 10) : (startX + 10);
+        double startY = -10; // Start above/behind the box
+        double wireLength = h * 0.65 + effectiveBoxSize;
+        double step = wireLength / 3;
 
-          Paint motorPaint = Paint()
-            ..color = const Color(0xFF212121)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 4.5
-            ..strokeCap = StrokeCap.round;
+        Paint motorPaint = Paint()
+          ..color = const Color(0xFF212121)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 4.5
+          ..strokeCap = StrokeCap.round;
 
-          Path wirePath = Path();
-          wirePath.moveTo(sideX, startY);
+        Path wirePath = Path();
+        wirePath.moveTo(sideX, startY);
 
-          wirePath.quadraticBezierTo(
-            sideX + (sign * 45),
-            startY + (step * 0.5),
-            sideX + (sign * 20),
-            startY + step,
-          );
-          wirePath.quadraticBezierTo(
-            sideX - (sign * 5),
-            startY + (step * 1.5),
-            sideX + (sign * 30),
-            startY + (step * 2.0),
-          );
-          wirePath.quadraticBezierTo(
-            sideX + (sign * 55),
-            startY + (step * 2.5),
-            sideX + (sign * 15),
-            startY + wireLength,
-          );
+        wirePath.quadraticBezierTo(
+          sideX + (sign * 45),
+          startY + (step * 0.5),
+          sideX + (sign * 20),
+          startY + step,
+        );
+        wirePath.quadraticBezierTo(
+          sideX - (sign * 5),
+          startY + (step * 1.5),
+          sideX + (sign * 30),
+          startY + (step * 2.0),
+        );
+        wirePath.quadraticBezierTo(
+          sideX + (sign * 55),
+          startY + (step * 2.5),
+          sideX + (sign * 15),
+          startY + wireLength,
+        );
 
-          canvas.drawPath(wirePath, motorPaint);
+        canvas.drawPath(wirePath, motorPaint);
 
-          double endXPos = sideX + (sign * 15);
-          double endY = startY + wireLength;
+        double endXPos = sideX + (sign * 15);
+        double endY = startY + wireLength;
 
-          canvas.drawRRect(
-            RRect.fromRectAndRadius(
-              Rect.fromCenter(
-                center: Offset(endXPos, endY + 8),
-                width: 14,
-                height: 20,
-              ),
-              const Radius.circular(4),
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(
+              center: Offset(endXPos, endY + 8),
+              width: 14,
+              height: 20,
             ),
-            Paint()
-              ..color = const Color(0xFF212121)
-              ..style = PaintingStyle.fill,
-          );
+            const Radius.circular(4),
+          ),
+          Paint()
+            ..color = const Color(0xFF212121)
+            ..style = PaintingStyle.fill,
+        );
 
-          Paint pinPaint = Paint()
-            ..color = Colors.grey.shade400
-            ..strokeWidth = 2.5
-            ..strokeCap = StrokeCap.round;
+        Paint pinPaint = Paint()
+          ..color = Colors.grey.shade400
+          ..strokeWidth = 2.5
+          ..strokeCap = StrokeCap.round;
 
-          canvas.drawLine(
-            Offset(endXPos - 3, endY + 18),
-            Offset(endXPos - 3, endY + 28),
-            pinPaint,
-          );
-          canvas.drawLine(
-            Offset(endXPos + 3, endY + 18),
-            Offset(endXPos + 3, endY + 28),
-            pinPaint,
-          );
-        }
+        canvas.drawLine(
+          Offset(endXPos - 3, endY + 18),
+          Offset(endXPos - 3, endY + 28),
+          pinPaint,
+        );
+        canvas.drawLine(
+          Offset(endXPos + 3, endY + 18),
+          Offset(endXPos + 3, endY + 28),
+          pinPaint,
+        );
       }
 
-      if (!drawOnlyManualControls) {
+      if (!drawOnlyControls) {
         // Draw the box cover
         final Paint boxPaint = Paint();
         if (_isWoodColor() && TextureCache.woodTexture != null) {
@@ -9450,7 +9419,8 @@ class WindowPainter extends CustomPainter {
           );
         } else if (mechanism == 'مانيفال' ||
             mechanism == 'منايفال' ||
-            mechanism.toLowerCase().contains('manivelle')) {
+            mechanism == 'مانيفر' ||
+            mechanism.toLowerCase().contains('maniv')) {
           paint.color = Colors.grey.shade300;
           paint.strokeWidth = 10.0;
           paint.strokeJoin = StrokeJoin.round;

@@ -1329,6 +1329,16 @@ extension _MaterialPricing on _MaterialConsumptionScreenState {
 
                       if (saveToDb) {
                         await _updatePriceInDatabase(item, newPrice);
+                        // Kit rows are built from the kit data read when
+                        // the table opened; read it again so the saved
+                        // price is the one shown.
+                        if (item.kitGroupName != null) {
+                          final sqlDb = SqlDatabase();
+                          final database = await sqlDb.db;
+                          if (database != null) {
+                            await _loadStrictKitBundles(database, sqlDb);
+                          }
+                        }
                       }
 
                       if (mounted) {

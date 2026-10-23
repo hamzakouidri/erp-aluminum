@@ -3047,15 +3047,26 @@ extension SqlDatabaseCatalog on SqlDatabase {
         if (compType.isNotEmpty) {
           final compRows = await database.query(
             'ShutterComponents',
-            columns: const ['id', 'name', 'price'],
             where:
                 'LOWER(TRIM(name)) = LOWER(TRIM(?)) OR LOWER(TRIM(component_type)) = LOWER(TRIM(?))',
             whereArgs: [compType, compType],
             limit: 1,
           );
           if (compRows.isNotEmpty) {
-            itemMap['price'] = compRows.first['price'];
-            itemMap['shutter_component_id'] = compRows.first['id'];
+            final component = Map<String, dynamic>.from(compRows.first);
+            itemMap['price'] = component['price'];
+            itemMap['shutter_component_id'] = component['id'];
+            // The real price of a component is usually per colour, as for
+            // the ranges below.
+            final prices = await database.query(
+              'ShutterColorPrices',
+              where: 'shutter_component_id = ?',
+              whereArgs: [component['id']],
+            );
+            itemMap['shutter_component'] = component;
+            itemMap['shutter_color_prices'] = prices
+                .map((price) => Map<String, dynamic>.from(price))
+                .toList();
           }
         }
       }

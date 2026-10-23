@@ -166,6 +166,20 @@ void main() {
         previousOnError?.call(details);
       };
       final model = _framedWindow();
+      // A catalogue already loaded, as when a drawing is opened from an
+      // order: the page then draws at once instead of showing its loader.
+      final series = AluminumSeries(
+        id: 10,
+        profileId: 1,
+        name: 'Test',
+        type: 'opening',
+        sections: const [],
+      );
+      model.availableSystems = [
+        AluminumProfileSystem(id: 1, name: 'Alu', type: 'Aluminium')
+          ..series = [series],
+      ];
+      model.activeSeries = series;
       await tester.pumpWidget(
         MultiProvider(
           providers: [
