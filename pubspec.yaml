@@ -58,6 +58,8 @@ dependencies:
   tray_manager: ^0.5.2
   launch_at_startup: ^0.5.1
   mobile_scanner: ^7.4.2
+  flutter_soloud: ^3.5.4
+  web_socket_channel: ^3.0.3
 
 dependency_overrides:
   # SQLCipher 3.4.x options are incompatible with the new concrete-options

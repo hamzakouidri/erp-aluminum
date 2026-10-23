@@ -825,26 +825,42 @@ asked.
 ''';
   }
 
+  /// [systemInstruction] for a spoken Live conversation.
+  static String voiceInstruction(AppLanguage language, String userName) =>
+      '''
+${systemInstruction(language, userName)}
+This is a live voice conversation, like a phone call with a colleague:
+- Speak naturally and briefly, one or two sentences unless asked for more.
+  No lists, tables, symbols or markdown: they are not read aloud.
+- Answer in the language and dialect the user speaks (Algerian Darija stays
+  Darija, French stays French), switching when they switch.
+- Say numbers the way people say them; round money to the dinar.
+- Before a tool that may take a moment, say a few words ("I'll check").
+- If the user interrupts, stop and listen.
+''';
+
   /// Answers [userText] in the context of [history] (alternating
   /// {'role': 'user'|'model', 'content': text}), using the tools the user's
   /// [permissions] allow and asking [confirm] before every change.
+  /// [attachments] are extra parts of the user turn (an image, a sketch).
   Future<AiAgentResult> run({
     required String userText,
     List<Map<String, String>> history = const [],
     required AppLanguage language,
     required AiAgentPermissions permissions,
     required AiConfirm confirm,
+    List<Map<String, dynamic>> attachments = const [],
     int maxSteps = 8,
   }) async {
     _navigateTo = null;
     _lastError = null;
-    final tools = _tools(permissions, language);
-    final byName = {for (final t in tools) t.name: t};
+    final declarations = functionDeclarations(permissions, language);
     final contents = <Map<String, dynamic>>[
       ..._history(history),
       {
         'role': 'user',
         'parts': [
+          ...attachments,
           {'text': userText},
         ],
       },
@@ -865,18 +881,9 @@ asked.
             ],
           },
           'contents': contents,
-          if (tools.isNotEmpty)
+          if (declarations.isNotEmpty)
             'tools': [
-              {
-                'functionDeclarations': [
-                  for (final t in tools)
-                    {
-                      'name': t.name,
-                      'description': t.description,
-                      'parameters': t.parameters,
-                    },
-                ],
-              },
+              {'functionDeclarations': declarations},
             ],
           'generationConfig': {'temperature': 0.2},
         },
@@ -946,29 +953,16 @@ asked.
       for (final call in calls) {
         final name = call['name']?.toString() ?? '';
         final args = Map<String, dynamic>.from(call['args'] as Map? ?? {});
-        final tool = byName[name];
-        Map<String, dynamic> result;
-        if (tool == null) {
-          result = {'error': 'this tool is not available to this user'};
-        } else {
-          final approval = tool.confirm?.call(args);
-          final approved =
-              approval == null || await confirm(approval.$1, approval.$2);
-          if (!approved) {
-            result = {'status': 'cancelled by the user'};
-            steps.add('✋ $name');
-          } else {
-            try {
-              result = await tool.run(args);
-              steps.add('${approval == null ? '🔎' : '✅'} $name');
-            } catch (error) {
-              result = {'error': error.toString()};
-              steps.add('⚠️ $name');
-            }
-          }
-        }
+        final (result, step) = await callTool(
+          name,
+          args,
+          permissions: permissions,
+          language: language,
+          confirm: confirm,
+        );
+        steps.add(step);
         responses.add({
-          'functionResponse': {'name': name, 'response': _plain(result)},
+          'functionResponse': {'name': name, 'response': result},
         });
       }
       contents.add({'role': 'user', 'parts': responses});
@@ -985,6 +979,51 @@ asked.
       model: usedModel,
       navigateTo: _navigateTo,
     );
+  }
+
+  /// The declarations of the tools [permissions] allow, for a request's
+  /// `functionDeclarations` (the Live session uses them too).
+  List<Map<String, dynamic>> functionDeclarations(
+    AiAgentPermissions permissions,
+    AppLanguage language,
+  ) => [
+    for (final t in _tools(permissions, language))
+      {'name': t.name, 'description': t.description, 'parameters': t.parameters},
+  ];
+
+  /// The screen the last [callTool] of `open_screen` asked for.
+  String? get navigateTo => _navigateTo;
+
+  /// Runs the tool [name] under [permissions], asking [confirm] first when it
+  /// changes data. Returns the function response and the trace line.
+  Future<(Map<String, dynamic>, String)> callTool(
+    String name,
+    Map<String, dynamic> args, {
+    required AiAgentPermissions permissions,
+    required AppLanguage language,
+    required AiConfirm confirm,
+  }) async {
+    final tool = _tools(permissions, language)
+        .where((t) => t.name == name)
+        .firstOrNull;
+    if (tool == null) {
+      return (<String, dynamic>{'error': 'this tool is not available to this user'}, '⚠️ $name');
+    }
+    final approval = tool.confirm?.call(args);
+    final approved =
+        approval == null || await confirm(approval.$1, approval.$2);
+    if (!approved) {
+      return (<String, dynamic>{'status': 'cancelled by the user'}, '✋ $name');
+    }
+    try {
+      final result = await tool.run(args);
+      return (
+        Map<String, dynamic>.from(_plain(result) as Map),
+        '${approval == null ? '🔎' : '✅'} $name',
+      );
+    } catch (error) {
+      return (<String, dynamic>{'error': error.toString()}, '⚠️ $name');
+    }
   }
 
   static List<Map<String, dynamic>> _history(List<Map<String, String>> turns) {

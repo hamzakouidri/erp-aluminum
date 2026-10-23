@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:convert';
 import 'package:database_data/widgets/app_material.dart';
 import 'package:provider/provider.dart';
 import 'package:record/record.dart';
@@ -11,6 +12,7 @@ import '../settings/app_settings.dart';
 import '../services/ai_agent_service.dart';
 import '../services/ai_controller_service.dart';
 import '../services/gemini_gateway.dart';
+import '../services/gemini_live_service.dart';
 import '../services/tts_service.dart';
 import '../settings/localization.dart';
 
@@ -68,6 +70,11 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
   /// the one that answered last.
   String? _model;
   String? _activeModel;
+
+  /// The live voice call, while one is open, and the bubbles it is filling.
+  GeminiLiveSession? _live;
+  ChatMessage? _liveUserBubble;
+  ChatMessage? _liveModelBubble;
 
   StreamSubscription<Amplitude>? _amplitudeSub;
   double _currentAmplitudeDb = -160.0;
@@ -153,6 +160,7 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
 
   @override
   void dispose() {
+    _live?.stop();
     _amplitudeSub?.cancel();
     _ttsService.stop();
     _audioRecorder.dispose();
@@ -378,50 +386,44 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
 
     if (result == null || result.files.single.path == null) return;
 
-    final lang = context.read<AppSettingsProvider>().language;
-    final file = File(result.files.single.path!);
+    if (_isLoading) return;
+    final path = result.files.single.path!;
+    final bytes = await File(path).readAsBytes();
+    final extension = p.extension(path).toLowerCase();
+    final mimeType = switch (extension) {
+      '.png' => 'image/png',
+      '.webp' => 'image/webp',
+      '.heic' => 'image/heic',
+      _ => 'image/jpeg',
+    };
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _messages.add(ChatMessage(
         text: _t(
-          ar: '📷 تم إرسال صورة المخطط للتحليل الهندسي بالذكاء الاصطناعي...',
-          fr: '📷 Image du croquis envoyée pour analyse par l\'IA...',
-          en: '📷 Sketch image sent for AI engineering analysis...',
+          ar: '📷 صورة مخطط مرفقة للقراءة',
+          fr: '📷 Croquis joint pour lecture',
+          en: '📷 Sketch attached for reading',
         ),
         isUser: true,
       ));
     });
     _scrollToBottom();
 
-    final aiService = AiControllerService(gateway: await _gateway());
-
-    final action = await aiService.processSketchImage(file, language: lang);
-
-    if (!mounted) return;
-
-    setState(() {
-      _isLoading = false;
-      _messages.add(ChatMessage(
-        text: action.speechResponse,
-        isUser: false,
-        actionType: action.actionType,
-      ));
-    });
-    _scrollToBottom();
-
-    if (!_isVoiceMuted) {
-      final ttsLang = action.detectedLanguage ?? _currentLangCode;
-      await _ttsService.speak(action.speechResponse, languageCode: ttsLang);
-    }
-
-    if (action.actionType == 'create_order') {
-      final res = await aiService.executeCreateOrder(action.parameters, language: lang);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(res), backgroundColor: Colors.teal),
-        );
-      }
-    }
+    // The sketch goes to the same agent as any question: it reads the
+    // drawing, looks up the client and asks before changing anything.
+    await _runAgent(
+      _t(
+        ar: 'هذه صورة مخطط أو مقاسات لنوافذ/أبواب. اقرأ كل عنصر فيها: النوع، العرض والارتفاع بالمليمتر، العدد، عدد الدرفات، الزجاج، اللون واسم الزبون إن وُجد. لخّصها لي بوضوح، وقل ما هو غير واضح، ولا تنشئ أي شيء قبل أن أطلب.',
+        fr: 'Voici un croquis ou des mesures de fenêtres/portes. Lisez chaque élément : type, largeur et hauteur en mm, quantité, vantaux, vitrage, couleur et nom du client s’il figure. Résumez clairement, signalez ce qui est illisible, et ne créez rien avant ma demande.',
+        en: 'This is a sketch or measurements of windows/doors. Read every item: type, width and height in mm, quantity, sashes, glass, colour and the client name if shown. Summarise clearly, say what is unclear, and create nothing until I ask.',
+      ),
+      attachments: [
+        {
+          'inlineData': {'mimeType': mimeType, 'data': base64Encode(bytes)},
+        },
+      ],
+    );
   }
 
   Future<void> _handleSend([String? presetText]) async {
@@ -442,7 +444,10 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
 
   /// Answers [text] with the workshop agent: it reads the app's data through
   /// its tools, under this user's permissions, and asks before any change.
-  Future<void> _runAgent(String text) async {
+  Future<void> _runAgent(
+    String text, {
+    List<Map<String, dynamic>> attachments = const [],
+  }) async {
     final settings = context.read<AppSettingsProvider>();
     final lang = settings.language;
     final permissions = AiAgentPermissions.fromSettings(settings);
@@ -466,6 +471,7 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
       language: lang,
       permissions: permissions,
       confirm: _confirmAction,
+      attachments: attachments,
     );
     if (!mounted) return;
 
@@ -488,6 +494,243 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
     if (!_isVoiceMuted && !result.isError) {
       await _ttsService.speak(result.text, languageCode: _currentLangCode);
     }
+  }
+
+  /// Opens a live voice call with Gemini: it hears the microphone and
+  /// answers with its own voice in real time, using the same tools.
+  Future<void> _startLive() async {
+    if (_live != null || _isLoading) return;
+    await _ttsService.stop();
+    if (_isListening) {
+      await _amplitudeSub?.cancel();
+      await _audioRecorder.stop();
+      setState(() => _isListening = false);
+    }
+    if (!mounted) return;
+    final settings = context.read<AppSettingsProvider>();
+    final gateway = await _gateway();
+    if (!mounted) return;
+    final session = GeminiLiveSession(
+      agent: AiAgentService(gateway: gateway),
+      permissions: AiAgentPermissions.fromSettings(settings),
+      language: settings.language,
+      confirm: _confirmAction,
+      history: [
+        for (final m in _messages)
+          if (!m.text.startsWith('🎤 ['))
+            {
+              'role': m.isUser ? 'user' : 'model',
+              'content': m.text.replaceFirst('🗣️ ', ''),
+            },
+      ],
+    );
+    session.onUserSpeech = (text, {required newTurn}) {
+      if (!mounted) return;
+      setState(() {
+        if (newTurn || _liveUserBubble == null) {
+          _liveUserBubble = ChatMessage(text: '', isUser: true);
+          _liveModelBubble = null;
+          _messages.add(_liveUserBubble!);
+        }
+        _liveUserBubble!.text += text;
+      });
+      _scrollToBottom();
+    };
+    session.onModelSpeech = (text, {required newTurn}) {
+      if (!mounted) return;
+      setState(() {
+        if (newTurn || _liveModelBubble == null) _newLiveModelBubble();
+        _liveModelBubble!.text += text;
+      });
+      _scrollToBottom();
+    };
+    session.onStep = (step) {
+      if (!mounted) return;
+      setState(() {
+        if (_liveModelBubble == null) _newLiveModelBubble();
+        _liveModelBubble!.steps.add(step);
+      });
+    };
+    session.onNavigate = (screen) {
+      if (mounted) setState(() => _live = null);
+      widget.onNavigateRequested?.call(screen);
+    };
+    session.onError = (_) {
+      if (!mounted) return;
+      setState(() {
+        _live = null;
+        _messages.add(ChatMessage(
+          text: _t(
+            ar: 'انقطعت المحادثة المباشرة. يمكنك فتحها من جديد.',
+            fr: 'L’appel en direct a été interrompu. Vous pouvez le relancer.',
+            en: 'The live call was interrupted. You can start it again.',
+          ),
+          isUser: false,
+        ));
+      });
+    };
+    setState(() => _live = session);
+    try {
+      await session.start();
+      if (mounted) setState(() => _activeModel = session.model);
+    } catch (error) {
+      debugPrint('Gemini Live failed to start: $error');
+      await session.stop();
+      if (!mounted) return;
+      final quota = error is GeminiException && error.isQuota;
+      final microphone = error is StateError &&
+          error.message.contains('microphone');
+      setState(() {
+        _live = null;
+        _messages.add(ChatMessage(
+          text: quota
+              ? _t(
+                  ar: 'وصلتَ إلى الحد اليومي لاستعمال المساعد. حاول غداً.',
+                  fr: 'La limite quotidienne de l’assistant est atteinte. Réessayez demain.',
+                  en: 'The assistant\'s daily limit has been reached. Try again tomorrow.',
+                )
+              : microphone
+              ? _t(
+                  ar: 'يرجى منح إذن استخدام الميكروفون',
+                  fr: 'Veuillez accorder l\'autorisation du microphone',
+                  en: 'Please grant microphone permission',
+                )
+              : _t(
+                  ar: 'تعذر فتح المحادثة المباشرة مع Gemini. تحقق من الاتصال ومن نشر وظيفة gemini-live-token.',
+                  fr: 'Impossible d’ouvrir l’appel en direct avec Gemini. Vérifiez la connexion et la fonction gemini-live-token.',
+                  en: 'Could not open the live call with Gemini. Check the connection and the gemini-live-token function.',
+                ),
+          isUser: false,
+        ));
+      });
+    }
+  }
+
+  void _newLiveModelBubble() {
+    _liveModelBubble = ChatMessage(text: '', isUser: false, steps: <String>[]);
+    _liveUserBubble = null;
+    _messages.add(_liveModelBubble!);
+  }
+
+  Future<void> _endLive() async {
+    final session = _live;
+    setState(() {
+      _live = null;
+      _liveUserBubble = null;
+      _liveModelBubble = null;
+    });
+    await session?.stop();
+  }
+
+  Widget _buildLivePanel(GeminiLiveSession session, bool isDark) {
+    return ValueListenableBuilder<GeminiLiveState>(
+      valueListenable: session.state,
+      builder: (context, state, _) {
+        final (label, color) = switch (state) {
+          GeminiLiveState.connecting => (
+            _t(ar: 'جاري الاتصال بـ Gemini...', fr: 'Connexion à Gemini...', en: 'Connecting to Gemini...'),
+            Colors.grey,
+          ),
+          GeminiLiveState.listening => (
+            session.micMuted
+                ? _t(ar: 'الميكروفون مكتوم', fr: 'Micro coupé', en: 'Microphone muted')
+                : _t(ar: 'أستمع إليك... تكلم بحرية', fr: 'Je vous écoute... parlez librement', en: 'Listening... speak freely'),
+            const Color(0xFF00C6FF),
+          ),
+          GeminiLiveState.thinking => (
+            _t(ar: 'أبحث في بيانات التطبيق...', fr: 'Je consulte les données...', en: 'Checking the app data...'),
+            Colors.amber,
+          ),
+          GeminiLiveState.speaking => (
+            _t(ar: 'يتكلم... اضغط على الدائرة للمقاطعة', fr: 'Parle... touchez le cercle pour l’interrompre', en: 'Speaking... tap the circle to interrupt'),
+            const Color(0xFF7C4DFF),
+          ),
+          GeminiLiveState.closed => ('', Colors.grey),
+        };
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF262A36) : const Color(0xFFF5F5F5),
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Row(
+            children: [
+              ValueListenableBuilder<double>(
+                valueListenable: session.level,
+                builder: (context, level, _) {
+                  final pulse = state == GeminiLiveState.speaking
+                      ? 0.6
+                      : level;
+                  return GestureDetector(
+                    onTap: session.interrupt,
+                    child: SizedBox(
+                      width: 64,
+                      height: 64,
+                      child: Center(
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 120),
+                          width: 40 + pulse * 24,
+                          height: 40 + pulse * 24,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              colors: [color, color.withValues(alpha: 0.5)],
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: color.withValues(alpha: 0.45),
+                                blurRadius: 8 + pulse * 18,
+                              ),
+                            ],
+                          ),
+                          child: state == GeminiLiveState.connecting
+                              ? const Padding(
+                                  padding: EdgeInsets.all(10),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.graphic_eq_rounded, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _t(ar: 'محادثة مباشرة مع Gemini', fr: 'Appel en direct avec Gemini', en: 'Live call with Gemini'),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(label, style: TextStyle(fontSize: 12, color: color)),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: session.micMuted
+                    ? _t(ar: 'تشغيل الميكروفون', fr: 'Activer le micro', en: 'Unmute microphone')
+                    : _t(ar: 'كتم الميكروفون', fr: 'Couper le micro', en: 'Mute microphone'),
+                icon: Icon(session.micMuted ? Icons.mic_off_rounded : Icons.mic_rounded),
+                onPressed: () => setState(() => session.setMicMuted(!session.micMuted)),
+              ),
+              FilledButton.icon(
+                style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+                onPressed: _endLive,
+                icon: const Icon(Icons.call_end_rounded, size: 18),
+                label: Text(_t(ar: 'إنهاء', fr: 'Terminer', en: 'End')),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   static const _toolLabels = {
@@ -926,8 +1169,10 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
                 ),
               ),
 
+            if (_live != null) _buildLivePanel(_live!, isDark),
+
             // Quick Prompts Chips
-            SingleChildScrollView(
+            if (_live == null) SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: _quickPrompts.map((p) {
@@ -943,7 +1188,7 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
             ),
 
             // Input Bar
-            Container(
+            if (_live == null) Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
                 color: isDark ? const Color(0xFF262A36) : const Color(0xFFF5F5F5),
@@ -960,6 +1205,15 @@ class _AiGuideChatDialogState extends State<AiGuideChatDialog> {
                       en: 'Scan hand sketch with camera (Sketch-to-Order)',
                     ),
                     onPressed: _pickAndAnalyzeSketch,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.graphic_eq_rounded, color: Color(0xFF7C4DFF), size: 26),
+                    tooltip: _t(
+                      ar: 'محادثة صوتية مباشرة مع Gemini',
+                      fr: 'Appel vocal en direct avec Gemini',
+                      en: 'Live voice call with Gemini',
+                    ),
+                    onPressed: _startLive,
                   ),
                   // Microphone button for live STT
                   IconButton(
