@@ -1,5 +1,8 @@
 part of '../model.dart';
 
+/// Saw angles of one joint between a head bar and the vertical bar below it.
+typedef HeadJointCut = ({double headDeg, double sideDeg});
+
 /// Outer frames, covers, bottom frame, plinthe and profile angles of [WindowModel].
 extension WindowModelFrame on WindowModel {
   List<AluminumSection> _sideCoversForSeries(AluminumSeries series) {
@@ -510,6 +513,106 @@ extension WindowModelFrame on WindowModel {
         math.atan2((yRight - yLeft).abs(), barWidth) * 180 / math.pi;
     if (slopeDeg < 0.05) return null;
     return (longPointY: math.min(yLeft, yRight), cutAngleDeg: 90 - slopeDeg);
+  }
+
+  /// Saw angles of the two top joints of a bar [depth] mm wide running along
+  /// a slanted or arched head from [x0] to [x1], its outer edge [inset] mm
+  /// under the head, where it meets the vertical bars below it (frame jambs
+  /// or sash stiles). The joint runs from the outer corner to the inner
+  /// corner, as drawn: [sideDeg] is its angle with the vertical bar and
+  /// [headDeg] its angle with the head bar's tangent, 45/45 under a flat
+  /// head and 90 a square cut. Null under a flat head.
+  ({HeadJointCut left, HeadJointCut right})? headBarCuts(
+    double x0,
+    double x1, {
+    required double inset,
+    required double depth,
+  }) {
+    if (!hasArchOrSlant || depth <= 0 || x1 - x0 <= 2 * depth) return null;
+    HeadJointCut cutAt(double x, double inward) {
+      final outer = Offset(x, headEdgeY(x, inset));
+      final innerX = x + inward * depth;
+      final joint = Offset(innerX, headEdgeY(innerX, inset + depth)) - outer;
+      // The head bar's direction at the joint, on its middle line.
+      final midX = x + inward * depth / 2;
+      final tangent = Offset(
+        2,
+        headEdgeY(midX + 1, inset + depth / 2) -
+            headEdgeY(midX - 1, inset + depth / 2),
+      );
+      // Angle between two lines, 0..90°.
+      double lineAngle(Offset a, Offset b) =>
+          math.atan2(
+            (a.dx * b.dy - a.dy * b.dx).abs(),
+            (a.dx * b.dx + a.dy * b.dy).abs(),
+          ) *
+          180 /
+          math.pi;
+
+      return (
+        headDeg: lineAngle(joint, tangent),
+        sideDeg: lineAngle(joint, const Offset(0, 1)),
+      );
+    }
+
+    return (left: cutAt(x0, 1), right: cutAt(x1, -1));
+  }
+
+  /// Length along the head edge [inset] mm under it (negative above it)
+  /// from [x0] to [x1]: the developed arc under an arch, the slanted line
+  /// under a slant, the plain span under a flat head.
+  double headEdgeLength(double x0, double x1, double inset) {
+    final arc = headArc();
+    if (arc != null) {
+      final radius = math.max(1e-6, arc.radius - inset);
+      double angle(double x) =>
+          math.asin(((x - arc.center.dx) / radius).clamp(-1.0, 1.0));
+      return radius * (angle(x1) - angle(x0)).abs();
+    }
+    return (Offset(x1, headEdgeY(x1, inset)) - Offset(x0, headEdgeY(x0, inset)))
+        .distance;
+  }
+
+  /// What a bar cut along the head from [x0] to [x1] ([inset] mm under it)
+  /// is longer than the same bar cut straight: added to the flat cut size.
+  double headExtraLength(double x0, double x1, double inset) =>
+      math.max(0.0, headEdgeLength(x0, x1, inset) - (x1 - x0).abs());
+
+  /// [headBarCuts] of each leaf of the opening sash in [zone], left to
+  /// right: one leaf, or two split at [leftLeafRatio] of the zone width as
+  /// the drawing splits them, with what its top bar gains along the head
+  /// ([headExtraLength] on its outer edge). Null when the zone does not
+  /// reach the slanted or arched head.
+  List<({HeadJointCut left, HeadJointCut right, double extraLength})>?
+  sashHeadCuts(
+    WindowZone zone, {
+    double? leftLeafRatio,
+  }) {
+    if (!hasArchOrSlant || zones.isEmpty) return null;
+    final r = zone.boundary;
+    final topRow = zones.map((z) => z.boundary.top).reduce(math.min);
+    if (r.top != topRow) return null;
+    final inset = math.max(profileThickness, r.top);
+    final depth =
+        zone.sashThickness ?? getSectionThickness('sash', fallback: 45.0);
+    final leaves = leftLeafRatio == null
+        ? [(r.left, r.right)]
+        : [
+            (r.left, r.left + r.width * leftLeafRatio - 2),
+            (r.left + r.width * leftLeafRatio + 2, r.right),
+          ];
+    final cuts =
+        <({HeadJointCut left, HeadJointCut right, double extraLength})>[];
+    for (final (x0, x1) in leaves) {
+      final cut = headBarCuts(x0, x1, inset: inset, depth: depth);
+      if (cut == null) return null;
+      cuts.add((
+        left: cut.left,
+        right: cut.right,
+        extraLength: headExtraLength(x0, x1, inset),
+      ));
+    }
+    return cuts;
   }
 
   /// Whether every zone in [parts] keeps [minimumZoneSpanMm] along the axis

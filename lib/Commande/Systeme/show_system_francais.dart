@@ -5654,10 +5654,14 @@ class AppWorkspacePainter extends CustomPainter {
         final underShapedHead =
             model.hasArchOrSlant && (frame.top - minFrameTop).abs() < 0.1;
         if (underShapedHead) {
+          // The head bar is cut to its developed length (the arc).
           _paintHeadProfileLabel(
             canvas,
             model,
-            cutLabel(frameWidth, sideFrameCode('top')),
+            cutLabel(
+              frameWidth + model.headExtraLength(frame.left, frame.right, 0),
+              sideFrameCode('top'),
+            ),
             frame.left,
             frame.right,
             frameThickness / 2,
@@ -5724,7 +5728,15 @@ class AppWorkspacePainter extends CustomPainter {
           _paintHeadProfileLabel(
             canvas,
             model,
-            cutLabel(coverCutWidth, coverCode),
+            cutLabel(
+              coverCutWidth +
+                  model.headExtraLength(
+                    -coverWidth,
+                    model.width + coverWidth,
+                    -coverWidth,
+                  ),
+              coverCode,
+            ),
             0,
             model.width,
             -coverWidth / 2,

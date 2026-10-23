@@ -753,7 +753,25 @@ class WindowPainter extends CustomPainter {
     }
 
     if (w > 0) {
-      if (model.topSlantLeftY != model.topSlantRightY) {
+      final archCuts = model.archHeight > 0
+          ? model.headBarCuts(0, w, inset: 0, depth: model.profileThickness)
+          : null;
+      if (archCuts != null) {
+        // Where the arch meets each jamb: the corner angle along the drawn
+        // joint, which the cutting list halves into its two saw angles.
+        _drawAngleBadge(
+          canvas,
+          Offset(40, topOffset + model.topSlantLeftY + 30),
+          archCuts.left.headDeg + archCuts.left.sideDeg,
+          key: 'top_left',
+        );
+        _drawAngleBadge(
+          canvas,
+          Offset(w - 40, topOffset + model.topSlantRightY + 30),
+          archCuts.right.headDeg + archCuts.right.sideDeg,
+          key: 'top_right',
+        );
+      } else if (model.topSlantLeftY != model.topSlantRightY) {
         double angleRad = math.atan(
           (model.topSlantRightY - model.topSlantLeftY) / w,
         );
@@ -4754,6 +4772,24 @@ class WindowPainter extends CustomPainter {
       displayHeight = cuttingH;
     }
 
+    // Under a slanted or arched head each top bar is cut to its developed
+    // length along the head (the arc), as in the cutting list.
+    if (underShapedHead && zone.content != ZoneContent.slidingSash) {
+      final isInternal = overrideIsInternalView ?? model.isInternalView;
+      final leaves = model.sashHeadCuts(
+        zone,
+        leftLeafRatio: zone.content == ZoneContent.doubleSash
+            ? (isInternal ? zone.doubleSashRatio : 1.0 - zone.doubleSashRatio)
+            : null,
+      );
+      if (leaves != null && zone.content == ZoneContent.doubleSash) {
+        displayWLeft += leaves.first.extraLength;
+        displayWRight += leaves.last.extraLength;
+      } else if (leaves != null) {
+        displayWidth += leaves.first.extraLength;
+      }
+    }
+
     if (zone.content == ZoneContent.doubleSash) {
       final isInternal = overrideIsInternalView ?? model.isInternalView;
       final double effectiveRatio = isInternal
@@ -4817,6 +4853,38 @@ class WindowPainter extends CustomPainter {
         paintHeightInSashProfile(heightText, rightSash, onRight: true);
       } else {
         paintHeightInSashProfile(heightText, r, onRight: false);
+      }
+    }
+
+    // Under a slanted or arched head the top corners of each opening leaf
+    // are not square: show their angle like the frame's. A 90° corner (two
+    // leaves meeting under the crown of an arch) needs none.
+    if (underShapedHead && zone.content != ZoneContent.slidingSash) {
+      final isInternal = overrideIsInternalView ?? model.isInternalView;
+      final leafRatio = zone.content == ZoneContent.doubleSash
+          ? (isInternal ? zone.doubleSashRatio : 1.0 - zone.doubleSashRatio)
+          : null;
+      final leaves =
+          model.sashHeadCuts(zone, leftLeafRatio: leafRatio) ?? const [];
+      final splitX = r.left + r.width * (leafRatio ?? 1.0);
+      for (var i = 0; i < leaves.length; i++) {
+        final x0 = i == 0 ? r.left : splitX + 2;
+        final x1 = leafRatio == null || i == 1 ? r.right : splitX - 2;
+        for (final atLeft in [true, false]) {
+          final cut = atLeft ? leaves[i].left : leaves[i].right;
+          final corner = cut.headDeg + cut.sideDeg;
+          if ((corner - 90).abs() < 0.05) continue;
+          final innerX = atLeft ? x0 + sashThickness : x1 - sashThickness;
+          _drawAngleBadge(
+            canvas,
+            Offset(
+              innerX + (atLeft ? 70 : -70),
+              sashBarY(innerX, sashThickness) + 45,
+            ),
+            corner,
+            key: 'sash_${zone.id}_${i}_${atLeft ? 'left' : 'right'}',
+          );
+        }
       }
     }
   }

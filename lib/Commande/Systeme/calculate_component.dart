@@ -4060,10 +4060,49 @@ class ComponentCalculator {
       }
 
       final hasBottom = window.hasBottomFrameForRect(r);
-      addFrameSide('top', wPiece, '45/45');
+      final bottomAngle = hasBottom ? '45' : '90';
+      // Under a slanted or arched head the top joints are not 45°: each
+      // piece is cut along the joint drawn from the outer to the inner
+      // corner (the head against its tangent, the jamb against the vertical).
+      final headCuts = (r.top - minFrameTop).abs() < 0.1
+          ? window.headBarCuts(
+              r.left,
+              r.right,
+              inset: 0,
+              depth: window.profileThickness,
+            )
+          : null;
+      String deg(double value) => value.toStringAsFixed(1);
+      // The head bar (and an integrated cover above it) runs along the
+      // head: its developed length, the arc under an arch.
+      final coverAbove = integratedCoverCutExtension / 2;
+      final topPiece = headCuts == null
+          ? wPiece
+          : wPiece +
+                window.headExtraLength(
+                      r.left - coverAbove,
+                      r.right + coverAbove,
+                      -coverAbove,
+                    ) /
+                    1000.0;
+      addFrameSide(
+        'top',
+        topPiece,
+        headCuts == null
+            ? '45/45'
+            : '${deg(headCuts.left.headDeg)}/${deg(headCuts.right.headDeg)}',
+      );
       if (hasBottom) addFrameSide('bottom', wPiece, '45/45');
-      addFrameSide('left', hPiece, hasBottom ? '45/45' : '45/90');
-      addFrameSide('right', hPiece, hasBottom ? '45/45' : '45/90');
+      addFrameSide(
+        'left',
+        hPiece,
+        '${headCuts == null ? '45' : deg(headCuts.left.sideDeg)}/$bottomAngle',
+      );
+      addFrameSide(
+        'right',
+        hPiece,
+        '${headCuts == null ? '45' : deg(headCuts.right.sideDeg)}/$bottomAngle',
+      );
 
       if (isOuterFramePvc) {
         double rw = r.width - renfortFrameDeduction;
@@ -4971,27 +5010,50 @@ class ComponentCalculator {
           () => <String>[],
         );
 
+        // Under a slanted or arched head the top joints of a leaf follow
+        // the head instead of the plain 45° mitre.
+        String deg(double value) => value.toStringAsFixed(1);
+        List<String> leafAngles(
+          ({HeadJointCut left, HeadJointCut right, double extraLength})? cut,
+        ) {
+          final bottom = zone.hasSashPlintheBottom ? '90' : '45';
+          final top = cut == null
+              ? '45/45'
+              : '${deg(cut.left.headDeg)}/${deg(cut.right.headDeg)}';
+          final leftStile =
+              '${cut == null ? '45' : deg(cut.left.sideDeg)}'
+              '/$bottom';
+          final rightStile =
+              '${cut == null ? '45' : deg(cut.right.sideDeg)}'
+              '/$bottom';
+          return zone.hasSashPlintheBottom
+              ? [top, leftStile, rightStile]
+              : [top, '45/45', leftStile, rightStile];
+        }
+
         if (zone.content == ZoneContent.singleSash) {
           double sashW = clearW + overlap * 2;
           double sashH = clearH + overlap * 2;
+          final headCut = window.sashHeadCuts(zone)?.first;
+          final angles = leafAngles(headCut);
+          // The top bar runs along the head: its developed length.
+          final topW = sashW + (headCut?.extraLength ?? 0.0);
           if (zone.hasSashPlintheBottom) {
-            final cuts = [sashW / 1000.0, sashH / 1000.0, sashH / 1000.0];
+            final cuts = [topW / 1000.0, sashH / 1000.0, sashH / 1000.0];
             sashPieces.addAll(cuts);
             zoneSashPieces.addAll(cuts);
-            const angles = ['45/45', '45/90', '45/90'];
             sashPieceAngles.addAll(angles);
             zoneSashAngles.addAll(angles);
             sashPlinthePieces.add(plintheCutWidth(sashW) / 1000.0);
           } else {
             final cuts = [
-              sashW / 1000.0,
+              topW / 1000.0,
               sashW / 1000.0,
               sashH / 1000.0,
               sashH / 1000.0,
             ];
             sashPieces.addAll(cuts);
             zoneSashPieces.addAll(cuts);
-            final angles = List<String>.filled(4, '45/45');
             sashPieceAngles.addAll(angles);
             zoneSashAngles.addAll(angles);
           }
@@ -5004,43 +5066,45 @@ class ComponentCalculator {
           double sashWLeft = totalSashWidth * zone.doubleSashRatio;
           double sashWRight = totalSashWidth * (1.0 - zone.doubleSashRatio);
           double sashH = clearH + overlap * 2;
+          final leafCuts = window.sashHeadCuts(
+            zone,
+            leftLeafRatio: zone.doubleSashRatio,
+          );
+          final angles = [
+            ...leafAngles(leafCuts?.first),
+            ...leafAngles(leafCuts?.last),
+          ];
+          // Each top bar runs along the head: its developed length.
+          final topWLeft = sashWLeft + (leafCuts?.first.extraLength ?? 0.0);
+          final topWRight = sashWRight + (leafCuts?.last.extraLength ?? 0.0);
           if (zone.hasSashPlintheBottom) {
             final cuts = [
-              sashWLeft / 1000.0,
+              topWLeft / 1000.0,
               sashH / 1000.0,
               sashH / 1000.0,
-              sashWRight / 1000.0,
+              topWRight / 1000.0,
               sashH / 1000.0,
               sashH / 1000.0,
             ];
             sashPieces.addAll(cuts);
             zoneSashPieces.addAll(cuts);
-            const angles = [
-              '45/45',
-              '45/90',
-              '45/90',
-              '45/45',
-              '45/90',
-              '45/90',
-            ];
             sashPieceAngles.addAll(angles);
             zoneSashAngles.addAll(angles);
             sashPlinthePieces.add(plintheCutWidth(sashWLeft) / 1000.0);
             sashPlinthePieces.add(plintheCutWidth(sashWRight) / 1000.0);
           } else {
             final cuts = [
-              sashWLeft / 1000.0,
+              topWLeft / 1000.0,
               sashWLeft / 1000.0,
               sashH / 1000.0,
               sashH / 1000.0,
-              sashWRight / 1000.0,
+              topWRight / 1000.0,
               sashWRight / 1000.0,
               sashH / 1000.0,
               sashH / 1000.0,
             ];
             sashPieces.addAll(cuts);
             zoneSashPieces.addAll(cuts);
-            final angles = List<String>.filled(8, '45/45');
             sashPieceAngles.addAll(angles);
             zoneSashAngles.addAll(angles);
           }
