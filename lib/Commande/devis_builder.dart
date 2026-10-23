@@ -291,14 +291,13 @@ class DevisBuilder {
     // An order is confirmed if it has reached or passed 'Confirmed' status (weight >= 20 and not cancelled).
     final bool isOrderConfirmed =
         statusWeight >= 20 && statusWeight != 999;
-    // Discount is applicable if the order is confirmed, or if it is an official invoice / partial delivery
-    final bool isDiscountApplicable =
-        isOrderConfirmed || isOfficialInvoice || isPartial;
+    // The discount entered on the pricing screen applies to every document,
+    // a quote for a pending order included, so its totals match the screen.
+    const bool isDiscountApplicable = true;
 
-    final rawRemise = isOfficialInvoice
+    final remise = isOfficialInvoice
         ? (_toDouble(order['remise']) / 1.19)
         : _toDouble(order['remise']);
-    final remise = isDiscountApplicable ? rawRemise : 0.0;
     final tvaPercent = isOfficialInvoice ? 19.0 : _toDouble(order['tva']);
     final totalBrutValue = totalBrut;
     final totalBeforeTax = totalBrutValue - remise;

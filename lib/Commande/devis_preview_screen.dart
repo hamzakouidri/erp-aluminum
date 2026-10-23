@@ -2766,9 +2766,10 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
 
   Future<void> _savePdf(BuildContext context) async {
     // Ask filename
-    final defaultFileName = data.clientName.trim().isNotEmpty
-        ? data.clientName.trim().replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
-        : 'devis_${data.orderId}';
+    final defaultFileName = devisPdfBaseName(
+      clientName: data.clientName,
+      orderNumber: data.orderId,
+    );
     final nameController = TextEditingController(text: defaultFileName);
     if (!context.mounted) return;
     final confirmedName = await showDialog<String>(
@@ -2924,7 +2925,8 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
       }
       await Printing.layoutPdf(
         onLayout: (_) async => bytes,
-        name: 'devis_${data.orderId}.pdf',
+        name:
+            '${devisPdfBaseName(clientName: data.clientName, orderNumber: data.orderId)}.pdf',
       );
     } catch (e) {
       if (context.mounted) {
@@ -2961,14 +2963,12 @@ class _DevisPreviewScreenState extends State<DevisPreviewScreen> {
         }
         return;
       }
-      final filename = sharedPdfFilename(
-        documentType: 'Devis',
-        orderNumber: data.orderId,
-        clientName: data.clientName,
-      );
+      // Shared under the same name as a saved quote: the client name exactly
+      // as entered, whatever the interface language.
+      final filename =
+          '${devisPdfBaseName(clientName: data.clientName, orderNumber: data.orderId)}.pdf';
       // A real temporary file preserves the attachment name across Android,
-      // iOS and Windows. The ASCII-safe client slug avoids URL-encoded Arabic
-      // names appearing as percent sequences in receiving applications.
+      // iOS and Windows.
       final tempDirectory = await getTemporaryDirectory();
       final separator = Platform.isWindows ? '\\' : '/';
       final file = File('${tempDirectory.path}$separator$filename');
