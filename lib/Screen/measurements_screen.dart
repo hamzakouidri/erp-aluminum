@@ -113,6 +113,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
   final _audioPlayer = AudioPlayer();
   bool _isRecording = false;
   bool _isPlaying = false;
+  StreamSubscription<void>? _playerCompleteSub;
 
   // Speech-to-text (continuous dictation) state
   final stt.SpeechToText _speechToText = stt.SpeechToText();
@@ -137,6 +138,11 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
         _loadSavedMeasurements();
       }
     });
+    // One listener for the whole screen: a new one on every play would
+    // pile up and keep flipping the play button.
+    _playerCompleteSub = _audioPlayer.onPlayerComplete.listen((_) {
+      if (mounted) setState(() => _isPlaying = false);
+    });
   }
 
   @override
@@ -150,6 +156,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
     _lengthFocus.dispose();
     _widthFocus.dispose();
     _noteFocus.dispose();
+    _playerCompleteSub?.cancel();
     _audioRecorder.dispose();
     _audioPlayer.dispose();
     _speechToText.stop();
@@ -202,6 +209,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
   // ── Populating Form from Saved Measurement ────────────────────────────
   void _populateFormFromMeasurement(Map<String, dynamic> item) {
     final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+    _stopAudioPlayback();
     setState(() {
       _lengthController.text = (item['length'] ?? '').toString();
       _widthController.text = (item['width'] ?? '').toString();
@@ -478,6 +486,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
 
   // ── Voice recording ───────────────────────────────────────────────────
   Future<void> _toggleAudioRecording() async {
+    final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
     try {
       if (_isRecording) {
         final path = await _audioRecorder.stop();
@@ -486,12 +495,25 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
           _recordedAudioPath = path;
         });
         if (mounted) {
-          final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(Localization.translate('تم حفظ التسجيل الصوتي بنجاح', lang))),
           );
         }
       } else {
+        // Android and iOS refuse to record until the user allows the
+        // microphone; without asking, start() fails and nothing is saved.
+        if (!await _audioRecorder.hasPermission()) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(Localization.translate('يجب السماح بالوصول إلى الميكروفون لتسجيل الصوت', lang)),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+          return;
+        }
+        await _stopAudioPlayback();
         final appDir = await getApplicationDocumentsDirectory();
         final targetFolder = Directory(p.join(appDir.path, 'measurements_media'));
         if (!await targetFolder.exists()) {
@@ -506,32 +528,50 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
       }
     } catch (e) {
       debugPrint('Audio recording error: $e');
+      if (mounted) {
+        setState(() => _isRecording = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(Localization.translate('تعذر تسجيل الصوت', lang)),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Stops the voice note being played, before another measurement's note,
+  /// a new recording or a cleared form takes its place.
+  Future<void> _stopAudioPlayback() async {
+    if (!_isPlaying) return;
+    setState(() => _isPlaying = false);
+    try {
+      await _audioPlayer.stop();
+    } catch (e) {
+      debugPrint('Audio playback error: $e');
     }
   }
 
   Future<void> _playRecordedAudio() async {
     if (_recordedAudioPath == null) return;
+    if (_isPlaying) {
+      await _stopAudioPlayback();
+      return;
+    }
     try {
-      if (_isPlaying) {
-        await _audioPlayer.stop();
-        setState(() {
-          _isPlaying = false;
-        });
-      } else {
-        await _audioPlayer.play(DeviceFileSource(_recordedAudioPath!));
-        setState(() {
-          _isPlaying = true;
-        });
-        _audioPlayer.onPlayerComplete.listen((_) {
-          if (mounted) {
-            setState(() {
-              _isPlaying = false;
-            });
-          }
-        });
-      }
+      await _audioPlayer.play(DeviceFileSource(_recordedAudioPath!));
+      if (mounted) setState(() => _isPlaying = true);
     } catch (e) {
       debugPrint('Audio playback error: $e');
+      if (mounted) {
+        final lang = Provider.of<AppSettingsProvider>(context, listen: false).language;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(Localization.translate('تعذر تشغيل التسجيل الصوتي', lang)),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -685,6 +725,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
     _widthController.clear();
     _locationController.text = 'المطبخ';
     _noteController.clear();
+    _stopAudioPlayback();
     setState(() {
       _imageFile = null;
       _videoFile = null;
@@ -1318,7 +1359,10 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                                       Text(Localization.translate('تسجيل صوتي', lang), style: const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
                                       const SizedBox(width: 8),
                                       GestureDetector(
-                                        onTap: () => setState(() => _recordedAudioPath = null),
+                                        onTap: () {
+                                          _stopAudioPlayback();
+                                          setState(() => _recordedAudioPath = null);
+                                        },
                                         child: const Icon(Icons.close, size: 16, color: Colors.red),
                                       ),
                                     ],

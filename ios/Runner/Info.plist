@@ -55,5 +55,9 @@
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>The camera scans barcode labels of profiles, offcuts and orders.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>The microphone records voice notes on measurements and dictates notes.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Speech recognition turns your dictation into measurement notes.</string>
 </dict>
 </plist>
